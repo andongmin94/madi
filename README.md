@@ -185,7 +185,7 @@ core/main/preload 오류에는 snapshot과 원고 본문을 출력하지 않는�
 
 현재 baseline commit에는 `vendor/typie`가 mode `160000` gitlink로 기록돼 있다.
 remote가 없으므로 새 경로의 실제 `git clone --recurse-submodules` 재현은 아직
-`DEFERRED TO REPOSITORY HARDENING`이다.
+`DEFERRED TO PRE-RELEASE`다.
 
 checkout 확인:
 
@@ -197,7 +197,7 @@ git -C .\vendor\typie status --short
 ```
 
 일반 앱 build는 고정된 runtime artifact를 사용한다. `wasm-opt`을 포함하는 Typie
-runtime 전체 source 재현 build는 `DEFERRED TO BUILD HARDENING`이다.
+runtime 전체 source 재현 build는 `DEFERRED TO PRE-RELEASE`다.
 
 ## Windows 개발 요구사항
 
@@ -208,6 +208,13 @@ runtime 전체 source 재현 build는 `DEFERRED TO BUILD HARDENING`이다.
 - Rust `1.97.1` MSVC (`rust-toolchain.toml`)
 - Rust targets `x86_64-pc-windows-msvc`, `wasm32-unknown-unknown`
 - Visual Studio 2022 Build Tools의 C++ desktop workload와 Windows SDK
+
+Windows에서 pnpm CLI를 한 번만 준비한다. 이 명령은 전역 CLI 설치에만 npm을
+사용하며, 저장소 설치·build·test·package는 계속 pnpm만 사용한다.
+
+```powershell
+npm install --global pnpm@11.9.0
+```
 
 설치:
 
@@ -272,7 +279,7 @@ output/madi-win32-x64/resources/licenses/
 | 항목 | 현재 기록 |
 |---|---|
 | Rust 전체 test | `16 / 16 PASS` |
-| renderer focused test | `53 / 53 PASS` |
+| renderer focused test | `56 / 56 PASS` |
 | Phase 1A sidecar 재시작 round-trip | `PASS` — 2 process, WORK 1/VOLUME 2/CHAPTER 4/SCENE 6, 한국어 장면 3, scene break 1, 최종 revision 14 |
 | 기존 Phase 0.5 integration | `PASS` |
 | Phase 1A 변경 뒤 최종 `pnpm verify` | `PASS` — exit 0 |
@@ -345,7 +352,7 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 [`docs/LICENSE_DECISION_REQUIRED.md`](docs/LICENSE_DECISION_REQUIRED.md)는 법률
 자문이 아니라 결정 입력 문서다.
 
-## hardening으로 미룬 항목
+## 후속 단계로 미룬 항목
 
 다음은 완료가 아니라 비공개 Phase 1A의 차단에서 후속 단계로 옮긴 것이다.
 
@@ -355,8 +362,8 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 - 저장 중 crash/power-loss fault injection
 - screen reader·keyboard-only 접근성 및 native 후보창 위치
 - 실제 후보 Typie commit upgrade rehearsal
-- remote recursive clean clone
-- `wasm-opt` 포함 runtime source 재현 build
+- remote recursive clean clone: `DEFERRED TO PRE-RELEASE`
+- `wasm-opt` 포함 runtime source 재현 build: `DEFERRED TO PRE-RELEASE`
 
 ## 문서
 

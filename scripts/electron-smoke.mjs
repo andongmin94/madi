@@ -624,7 +624,7 @@ try {
       canvas.dataset.cursorPage === "1";
   });
 
-  const canvas = await readCanvasEvidence(firstPage);
+  const pointerCanvas = await readCanvasEvidence(firstPage);
   await firstPage
     .getByRole("button", { name: "한국어 IME 체크" })
     .click();
@@ -774,7 +774,26 @@ try {
     childType: "SCENE",
     childTitle: binderTitles.sceneFour
   });
-  await selectBinderScene(firstPage, binderTitles.defaultScene);
+  await selectBinderScene(firstPage, binderTitles.sceneThree);
+  const selectedSceneFixture = `${longFixture} 선택 장면 전용 본문`;
+  await input.fill(selectedSceneFixture);
+  await firstPage.getByRole("button", { name: "장면 구분선" }).click();
+  await input.focus();
+  await input.pressSequentially("세 번째 장면 끝", { delay: 10 });
+  await firstPage.getByRole("button", { name: "저장" }).click();
+  await firstPage
+    .locator('[data-testid="save-status"][data-phase="saved"]')
+    .waitFor({ timeout: 30_000 });
+  await firstPage.waitForFunction(() => {
+    const canvases = document.querySelectorAll(".typie-runtime__canvas");
+    const firstCanvas = canvases[0];
+    return (
+      canvases.length >= 2 &&
+      firstCanvas instanceof HTMLCanvasElement &&
+      Number(firstCanvas.dataset.semanticSceneBreaks ?? "0") >= 1
+    );
+  });
+  const canvas = await readCanvasEvidence(firstPage);
   await waitForBinderCounts(firstPage, {
     WORK: 1,
     VOLUME: 2,
@@ -829,6 +848,39 @@ try {
   );
   reportStage("Binder hierarchy, scene saves, and sibling reorder verified");
 
+  const persistedBinderWidth = 420;
+  const binderWidthControl = firstPage.getByRole("slider", {
+    name: "Binder 폭"
+  });
+  await binderWidthControl.focus();
+  await binderWidthControl.press("Home");
+  for (let step = 220; step < persistedBinderWidth; step += 10) {
+    await binderWidthControl.press("ArrowRight");
+  }
+  await pollBinderUi(
+    async () =>
+      Number(await binderWidthControl.inputValue()) === persistedBinderWidth,
+    "Binder width change"
+  );
+  const volumeOneBeforeClose = await binderRowByTitle(
+    firstPage,
+    "VOLUME",
+    binderTitles.volumeOne
+  );
+  await directBinderRow(volumeOneBeforeClose)
+    .getByRole("button", {
+      name: `${binderTitles.volumeOne} 접기`,
+      exact: true
+    })
+    .click();
+  await pollBinderUi(
+    async () =>
+      (await volumeOneBeforeClose.getAttribute("aria-expanded")) === "false",
+    "collapsed Binder state"
+  );
+  await firstPage.waitForTimeout(700);
+  reportStage("per-project Binder selection, expansion, and width state saved");
+
   const firstDiagnostics = await readDiagnostics(firstPage);
   await firstPage.screenshot({ path: firstScreenshot });
   reportStage("first document saved and UI evidence captured");
@@ -846,7 +898,7 @@ try {
     canvas.height === 0 ||
     canvas.pageCount < 2 ||
     !canvas.allSurfacesRendered ||
-    canvas.cursorPage !== 1 ||
+    pointerCanvas.cursorPage !== 1 ||
     canvas.nonTransparentSamples === 0 ||
     canvas.surfaceBackend !== "cpu" ||
     canvas.frameKey === "unavailable" ||
@@ -955,16 +1007,61 @@ try {
   await secondPage
     .locator('[data-testid="save-status"][data-phase="saved"]')
     .waitFor({ timeout: 30_000 });
-  await waitForBinderCounts(secondPage, binderExpectation.counts);
-  const restoredDefaultSceneRow = await binderRowByTitle(
+  await waitForBinderCounts(secondPage, {
+    WORK: 1,
+    VOLUME: 2
+  });
+  const restoredSelectedSceneRow = await binderRowByTitle(
     secondPage,
     "SCENE",
-    binderTitles.defaultScene
+    binderTitles.sceneThree
+  );
+  const restoredSelectedNodeId = await restoredSelectedSceneRow.getAttribute(
+    "data-node-id"
   );
   await pageWaitForSelectedBinderRow(
     secondPage,
-    await restoredDefaultSceneRow.getAttribute("data-node-id")
+    restoredSelectedNodeId
   );
+  const restoredBinderWidth = Number(
+    await secondPage
+      .getByRole("slider", { name: "Binder 폭" })
+      .inputValue()
+  );
+  const restoredVolumeOne = await binderRowByTitle(
+    secondPage,
+    "VOLUME",
+    binderTitles.volumeOne
+  );
+  const restoredVolumeOneCollapsed =
+    (await restoredVolumeOne.getAttribute("aria-expanded")) === "false";
+  if (
+    restoredSelectedNodeId !== sceneThreeId ||
+    restoredBinderWidth !== persistedBinderWidth ||
+    !restoredVolumeOneCollapsed
+  ) {
+    throw new Error(
+      `Restart did not restore per-project Binder UI state: ${JSON.stringify({
+        expected: {
+          selectedNodeId: sceneThreeId,
+          binderWidth: persistedBinderWidth,
+          collapsedNodeId: volumeOneId
+        },
+        actual: {
+          selectedNodeId: restoredSelectedNodeId,
+          binderWidth: restoredBinderWidth,
+          volumeOneCollapsed: restoredVolumeOneCollapsed
+        }
+      })}`
+    );
+  }
+  await directBinderRow(restoredVolumeOne)
+    .getByRole("button", {
+      name: `${binderTitles.volumeOne} 펼치기`,
+      exact: true
+    })
+    .click();
+  await waitForBinderCounts(secondPage, binderExpectation.counts);
   const restoredBinderEvidence = await readBinderEvidence(secondPage);
   const verifiedRestoredBinder = verifyBinderEvidence(
     restoredBinderEvidence,
@@ -1063,6 +1160,12 @@ try {
           siblingOrderBeforeRestart: verifiedFirstBinder.siblingOrder,
           siblingOrderAfterRestart: verifiedRestoredBinder.siblingOrder,
           processRestartRestore: true
+        },
+        uiStateRestore: {
+          selectedNodeId: restoredSelectedNodeId,
+          selectedNonFallbackScene: restoredSelectedNodeId === sceneThreeId,
+          collapsedNodeId: volumeOneId,
+          binderWidth: restoredBinderWidth
         },
         shortSceneRecovery: {
           sceneCount: shortSceneFixtures.length,

@@ -30,8 +30,8 @@ Phase 0.5의 `CONDITIONAL TECHNICAL GO`는 비공개 로컬 Phase 1A 개발을 �
 | crash/power-loss fault injection | `DEFERRED TO HARDENING` | 비차단 | release hardening에서 수행 |
 | screen reader·keyboard-only 접근성 | `DEFERRED TO HARDENING` | 비차단 | 지원 범위 확정 전 수행 |
 | Typie 후보 commit upgrade rehearsal | `DEFERRED TO HARDENING` | 비차단 | Typie pin 변경 전에 수행 |
-| remote recursive clean clone | `DEFERRED TO REPOSITORY HARDENING` | 비차단 | remote와 commit이 생긴 뒤 수행 |
-| `wasm-opt` 포함 runtime source 재현 build | `DEFERRED TO BUILD HARDENING` | 비차단 | source 배포·release 정책에 맞춰 수행 |
+| remote recursive clean clone | `DEFERRED TO PRE-RELEASE` | 비차단 | remote와 commit이 생긴 뒤 수행 |
+| `wasm-opt` 포함 runtime source 재현 build | `DEFERRED TO PRE-RELEASE` | 비차단 | source 배포·release 정책에 맞춰 수행 |
 
 위 항목은 미완료다. `DEFERRED`는 통과나 면제가 아니라 담당 Phase를 옮긴 것이다.
 라이선스가 결정되기 전에는 public download, 고객·유료 pilot, app store, package
@@ -320,7 +320,7 @@ fallback한다.
 
 ### TypeScript / React
 
-- 현재 focused run: `53 / 53 PASS`
+- 현재 focused run: `56 / 56 PASS`
 - Binder render/create/rename/delete/reorder와 non-SCENE 선택 test 존재
 - save-before-load, composition guard, rapid selection과 실패 보존 test 존재
 - response scene/document/generation/sequence, unchanged-content dedupe와 SCENE 0개
@@ -352,6 +352,6 @@ release hardening 항목은 완료로 바꾸지 않으며 비공개 로컬 Phase
 
 ## 16. Phase 1B 진입
 
-비공개 로컬 Phase 1B 진입은 `GO`다. Phase 0.5에서 hardening으로 옮긴 항목은
+비공개 로컬 Phase 1B 진입은 `GO`다. Phase 0.5에서 후속 gate로 옮긴 항목은
 완료되지 않았으며, 해당 지원 또는 배포 경계에 도달하기 전에 각각 다시 gate로
 승격해야 한다.

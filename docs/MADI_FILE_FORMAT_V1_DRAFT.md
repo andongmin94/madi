@@ -10,9 +10,10 @@ Implementation conformance: PHASE 1A PASS — HARDENING GAPS DOCUMENTED
 Migration/core-sidecar round-trip: PASS WITH LIMITS
 ```
 
-이 문서는 Phase 1A가 목표로 하는 저장 계약이다. SQL과 불변식이 구체적이어도 실제
-구현·migration·재열기 검증을 통과했다는 뜻은 아니다. 배포 전에는 구현과 fixture를
-대조해 이 초안을 확정 문서로 승격해야 한다.
+이 문서는 Phase 1A의 저장 계약을 기록한다. 이 명세의 문구만으로 구현 적합성을
+증명하지는 않으며, 현재 migration·재열기 검증 증거와 제한은
+`PHASE_1A_RESULT.md`를 따른다. 배포 전에는 구현과 fixture를 다시 대조해 이 초안을
+확정 문서로 승격해야 한다.
 
 `MUST`, `MUST NOT`, `SHOULD`는 각각 필수, 금지, 권고 요구사항이다.
 

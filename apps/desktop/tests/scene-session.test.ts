@@ -239,35 +239,50 @@ describe("Phase 1A scene session safety", () => {
     expect(api.loadSceneDocument).not.toHaveBeenCalled();
   });
 
-  it("rejects a save response whose generation does not match the active scene", async () => {
-    const api = createApi({
-      saveSceneDocument: vi.fn(async (request) => ({
-        sceneId: request.sceneId,
-        documentId: request.documentId,
-        revision: 99,
-        updatedAt: "2026-08-02T00:01:00.000Z",
-        generation: request.generation + 1,
-        saveSequence: request.saveSequence
-      }))
-    });
-    const editor = new SceneEditor();
-    const controller = new DocumentSessionController(
-      api,
-      editor,
-      "fixed-commit",
-      1
-    );
-    await controller.createProject();
+  it.each(["sceneId", "documentId", "generation", "saveSequence"] as const)(
+    "rejects a save response whose %s does not match the active scene",
+    async (mismatch) => {
+      const api = createApi({
+        saveSceneDocument: vi.fn(async (request) => {
+          const matching: SaveSceneDocumentResult = {
+            sceneId: request.sceneId,
+            documentId: request.documentId,
+            revision: 99,
+            updatedAt: "2026-08-02T00:01:00.000Z",
+            generation: request.generation,
+            saveSequence: request.saveSequence
+          };
+          switch (mismatch) {
+            case "sceneId":
+              return { ...matching, sceneId: "scene-stale" };
+            case "documentId":
+              return { ...matching, documentId: "document-stale" };
+            case "generation":
+              return { ...matching, generation: request.generation + 1 };
+            case "saveSequence":
+              return { ...matching, saveSequence: request.saveSequence + 1 };
+          }
+        })
+      });
+      const editor = new SceneEditor();
+      const controller = new DocumentSessionController(
+        api,
+        editor,
+        "fixed-commit",
+        1
+      );
+      await controller.createProject();
 
-    expect(await controller.selectScene("scene-b")).toBe(false);
-    expect(controller.getState()).toMatchObject({
-      activeSceneId: "scene-a",
-      revision: 1,
-      savePhase: "error"
-    });
-    expect(editor.opened).toEqual([undefined]);
-    expect(api.loadSceneDocument).not.toHaveBeenCalled();
-  });
+      expect(await controller.selectScene("scene-b")).toBe(false);
+      expect(controller.getState()).toMatchObject({
+        activeSceneId: "scene-a",
+        revision: 1,
+        savePhase: "error"
+      });
+      expect(editor.opened).toEqual([undefined]);
+      expect(api.loadSceneDocument).not.toHaveBeenCalled();
+    }
+  );
 
   it("does not write an unchanged snapshot again after a dirty event", async () => {
     const api = createApi();

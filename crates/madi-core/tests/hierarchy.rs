@@ -385,11 +385,11 @@ fn ui_state_round_trip_does_not_change_manuscript_revision() {
     let value = json!({
         "expanded_node_ids": ["chapter-a", "scene-a"],
         "selected_node_id": "scene-a",
-        "panel_width": 312
+        "binder_width": 320
     });
     let saved = save_ui_state(SaveUiStateParams {
         file_path: path.clone(),
-        key: "binder".to_owned(),
+        key: "workspace.v1".to_owned(),
         value: value.clone(),
     })
     .unwrap();
@@ -398,7 +398,7 @@ fn ui_state_round_trip_does_not_change_manuscript_revision() {
 
     let loaded = load_ui_state(LoadUiStateParams {
         file_path: path.clone(),
-        key: "binder".to_owned(),
+        key: "workspace.v1".to_owned(),
     })
     .unwrap();
     assert_eq!(loaded.metadata.revision, 0);

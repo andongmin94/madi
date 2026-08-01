@@ -2,7 +2,7 @@
   "name": "madi",
   "version": "0.0.1",
   "private": true,
-  "description": "Local-first Windows authoring tool phase-0 Typie feasibility prototype",
+  "description": "Local-first Windows authoring tool Phase 1A Binder and scene prototype",
   "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=20.19.0",

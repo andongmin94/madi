@@ -13,7 +13,7 @@ Phase 1B entry: GO — PRIVATE LOCAL
 ```
 
 이 문서는 현재 저장소의 구현과 2026-08-02 최종 실행 증거를 기록한다. 사용자의
-최종 보고 13개 항목을 대신하지 않으며 수동·배포·hardening 항목을 성공으로
+최종 보고 12개 항목을 대신하지 않으며 수동·배포·후속 gate 항목을 성공으로
 간주하지 않는다.
 
 ## 구현 snapshot
@@ -122,7 +122,7 @@ transaction으로 rollback되지만 migration 전 별도 `.bak`은 만들지 않
 | 범위 | 기록 | 해석 |
 |---|---|---|
 | Rust 전체 test | `16 / 16 PASS` | storage, migration, hierarchy, JSON-RPC, scene/UI round-trip |
-| renderer focused test | `53 / 53 PASS` | response identity, unchanged-content dedupe, SCENE 0개 reopen 포함 |
+| renderer focused test | `56 / 56 PASS` | response identity, 4-way stale 응답, unchanged-content dedupe, SCENE 0개 reopen 포함 |
 | Phase 0.5 integration scripts | `PASS` | 기존 round-trip/endurance/scene-break/recovery 회귀 |
 | Phase 1A sidecar restart | `PASS` | 아래 별도 2-process fixture |
 
@@ -143,7 +143,7 @@ transaction으로 rollback되지만 migration 전 별도 `.bak`은 만들지 않
 | plain-text recovery | 세 장면 exact 동일 |
 | scene reorder | reopen 뒤 순서 동일 |
 | `madi.scene-break.v1` | 의미 node 1개 보존 |
-| generic UI-state JSON | reopen 뒤 exact 동일 |
+| `workspace.v1` UI state | 선택 node·펼침 node·Binder 폭이 reopen 뒤 exact 동일 |
 | 최종 revision | 14 |
 
 이 fixture는 Rust sidecar process와 실제 Typie host를 사용한다. hierarchy, 한국어
@@ -161,7 +161,8 @@ snapshot/recovery, reorder, scene break와 UI-state persistence를 새 core proc
 | 한국어 장면 | 짧은 장면 22자·24자와 기본 5,445자 fixture |
 | reorder | 같은 부모의 두 SCENE 순서가 restart 전후 동일 |
 | scene break | 기본 장면의 `madi.scene-break.v1` 1개 보존 |
-| dirty close | revision 28 → 29, recovery 5,457 → 5,469자 |
+| dirty close | revision 29 → 30, recovery 5,473 → 5,485자 |
+| 작품별 UI state | fallback이 아닌 `닫힌 성문` 선택·다른 권 접힘·Binder 420px 폭이 restart 뒤 동일 |
 | lifecycle | 창 종료, Electron process 종료, 새 process, 같은 파일 reopen |
 | runtime boundary | offline, 외부 요청 0, 임의 local file read 차단 |
 
@@ -169,8 +170,8 @@ snapshot/recovery, reorder, scene break와 UI-state persistence를 새 core proc
 
 | gate | 상태 | 완료로 바꾸는 증거 |
 |---|---|---|
-| 변경 뒤 renderer 전체 test | `PASS` | `53 / 53` |
-| 변경 뒤 `pnpm verify` | `PASS` | exit 0, 66.1초 |
+| 변경 뒤 renderer 전체 test | `PASS` | `56 / 56` |
+| 변경 뒤 `pnpm verify` | `PASS` | exit 0, 61.9초 |
 | 변경 뒤 독립 `pnpm package:unpacked` | `PASS` | `output/madi-win32-x64/madi.exe` |
 | unpacked 실제 실행 | `PASS` | packaged startup/save/close/reopen |
 | 다중 Binder Electron acceptance | `PASS` | 개발/packaged Playwright evidence |
@@ -194,7 +195,7 @@ bytes다. sidecar SHA-256은
 3. **Delete-time UI sanitation:** core delete transaction은 generic UI-state JSON을
    수정하지 않는다. renderer가 새 tree에서 fallback한 뒤 약 300ms 후 저장한다.
 
-다음 edge case는 최신 renderer 구현과 `53 / 53` focused test에서 닫혔다.
+다음 edge case는 최신 renderer 구현과 `56 / 56` focused test에서 닫혔다.
 
 - malformed `workspace.v1`은 `{ state: null }` default로 격리해 tree 복원을 계속함
 - SCENE이 하나도 없는 유효 project를 Binder-only mode로 reopen
@@ -215,8 +216,8 @@ bytes다. sidecar SHA-256은
 - crash/power-loss fault injection: `DEFERRED TO HARDENING`
 - screen reader/keyboard-only/native 후보창: `DEFERRED TO HARDENING`
 - 실제 후보 Typie upgrade rehearsal: `DEFERRED TO HARDENING`
-- remote recursive clean clone: `DEFERRED TO REPOSITORY HARDENING`
-- `wasm-opt` 포함 runtime source 재현 build: `DEFERRED TO BUILD HARDENING`
+- remote recursive clean clone: `DEFERRED TO PRE-RELEASE`
+- `wasm-opt` 포함 runtime source 재현 build: `DEFERRED TO PRE-RELEASE`
 
 이 항목은 비공개 로컬 Phase 1A 구현을 막지 않지만 완료된 것으로 표시하지 않는다.
 

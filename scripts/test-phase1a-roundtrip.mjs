@@ -294,7 +294,7 @@ async function run() {
   const defaultDocumentId = "document-scene-default";
   const projectTitle = "드래곤을 죽이다";
   const defaultTitle = "프롤로그";
-  const uiStateKey = "binder";
+  const uiStateKey = "workspace.v1";
   let firstProcess;
   let secondProcess;
   let host;
@@ -492,8 +492,13 @@ async function run() {
 
     const uiState = {
       selected_node_id: "scene-volume-1-a-2",
-      collapsed_node_ids: ["volume-2", "chapter-volume-1-b"],
-      active_panel: "binder",
+      expanded_node_ids: [
+        workId,
+        "volume-1",
+        "chapter-volume-1-a",
+        "chapter-volume-1-b",
+      ],
+      binder_width: 420,
     };
     const savedUi = await firstProcess.request("save_ui_state", {
       file_path: projectPath,

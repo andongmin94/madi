@@ -2,7 +2,7 @@
   "name": "@madi/desktop",
   "version": "0.0.1",
   "private": true,
-  "description": "madi phase-0 Electron verification shell",
+  "description": "madi Phase 1A Electron Binder and scene authoring prototype",
   "main": "dist/electron/main/index.js",
   "scripts": {
     "build": "pnpm run build:main && pnpm run build:preload && pnpm run build:renderer",

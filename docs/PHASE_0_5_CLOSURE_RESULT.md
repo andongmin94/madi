@@ -42,7 +42,7 @@ plain-text 긴급 복구와 adapter 격리는 자동 검증 범위에서 통과�
 `MANUAL VALIDATION PENDING`, 라이선스는
 `HUMAN DECISION REQUIRED BEFORE DISTRIBUTION`, installer·현실 성능·crash·접근성·
 Typie upgrade는 `DEFERRED TO HARDENING`이다. remote recursive clean clone과
-runtime source 재현 build도 각각 repository/build hardening으로 미루며 완료됐다고
+runtime source 재현 build는 `DEFERRED TO PRE-RELEASE`로 미루며 완료됐다고
 표시하지 않는다. 공개·유료·installer 외부 배포는 계속 금지한다.
 
 ### 폐쇄 이후 VCS 갱신
@@ -51,7 +51,7 @@ runtime source 재현 build도 각각 repository/build hardening으로 미루며
 `fbe5c4bf860d1717a66e66bea2374a2e39f0dd26`의 mode `160000` gitlink로 기록됐다.
 따라서 durable superproject pin 자체는 현재 `PASS`다. remote가 없어 실제
 `git clone --recurse-submodules` 새 경로 재현은 여전히
-`DEFERRED TO REPOSITORY HARDENING`이며 완료되지 않았다. 아래 Phase 0.5 exit 표의
+`DEFERRED TO PRE-RELEASE`이며 완료되지 않았다. 아래 Phase 0.5 exit 표의
 B-01b/B-03b는 폐쇄 시점의 역사적 상태다.
 
 ### 최종 자동 검증 기록
@@ -348,7 +348,7 @@ Windows unpacked layout을 다시 만들었다. 이 결과는 “기존 생성�
 작업트리를 다시 build할 수 있다”는 증거다.
 
 현재 root에는 baseline commit이 있지만 remote가 없다. 따라서 아래 절차는 아직
-**실행된 결과가 아니라 remote가 생긴 뒤 수행할 repository hardening gate**다.
+**실행된 결과가 아니라 remote가 생긴 뒤 수행할 pre-release repository gate**다.
 
 ```powershell
 git clone --recurse-submodules <madi-repository-url> madi-clean
@@ -363,7 +363,7 @@ pnpm test:dev
 
 - cache/생성물을 공유하지 않는 현재 작업트리 재설치·재build: **PASS**
 - committed superproject의 새 경로 clean clone 재현:
-  **DEFERRED TO REPOSITORY HARDENING**
+  **DEFERRED TO PRE-RELEASE**
 
 또한 체크인된 runtime을 소비하는 앱 build와 Typie runtime을 source에서 다시
 만드는 release build는 다르다. 후자는 `wasm-opt`과 exact tool manifest가 없어
@@ -686,8 +686,8 @@ Phase 0.5 종료표의 `FAIL — UNMET`은 당시 증거가 없었다는 사실�
 | screen reader·keyboard-only·후보창 | `DEFERRED TO HARDENING` | 비차단, 미완료 | 지원 접근성 범위 확정 전 |
 | 실제 후보 Typie commit upgrade rehearsal | `DEFERRED TO HARDENING` | 비차단, 미완료 | Typie pin 변경 전 |
 | superproject durable gitlink | `PASS` — baseline `10067f8` | 현재 commit에 exact Typie gitlink 기록 | pin 변경 시 재검증 |
-| 실제 remote recursive clean clone | `DEFERRED TO REPOSITORY HARDENING` | 비차단, 미완료 | remote가 생긴 뒤 repository release gate |
-| `wasm-opt` 포함 runtime source 재현 build | `DEFERRED TO BUILD HARDENING` | 비차단, 미완료 | source/release 배포 정책 적용 전 |
+| 실제 remote recursive clean clone | `DEFERRED TO PRE-RELEASE` | 비차단, 미완료 | remote가 생긴 뒤 repository release gate |
+| `wasm-opt` 포함 runtime source 재현 build | `DEFERRED TO PRE-RELEASE` | 비차단, 미완료 | source/release 배포 정책 적용 전 |
 | Phase 1A 구현·11단계 재열기·package 결과 | `PASS` — sidecar와 개발/packaged Electron | 비공개 로컬 Phase 1A 완료 | 이후 Phase 완료 gate |
 
 Phase 1A 구현은 다음 경계를 지켜야 한다.
@@ -731,5 +731,5 @@ Phase 1A 구현은 다음 경계를 지켜야 한다.
 - 프로젝트 전체 검색·치환
 - 이름 있는 snapshot
 
-비공개 로컬 Phase 1B 진입은 `GO`다. hardening으로 옮긴 항목은 각 지원·배포
+비공개 로컬 Phase 1B 진입은 `GO`다. 후속 gate로 옮긴 항목은 각 지원·배포
 경계에 도달하기 전에 다시 명시적 gate로 적용한다.

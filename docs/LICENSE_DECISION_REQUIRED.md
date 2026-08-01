@@ -1,6 +1,6 @@
 # Typie 라이선스 결정 필요사항
 
-## 현재 상태: HUMAN DECISION REQUIRED
+## 현재 상태: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 
 **이 문서는 법률 자문이 아니다.** 기술 구조와 확인 가능한 license 자료를 바탕으로
 제품 책임자가 결정해야 할 선택지를 정리한 의사결정 기록이다. 저작권·오픈소스
@@ -10,7 +10,7 @@
 현재 결정 상태:
 
 ```text
-Decision: HUMAN DECISION REQUIRED
+Decision: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Approved option: NONE
 Proprietary production distribution authorized: NO
 External pilot/customer binary distribution authorized: NO

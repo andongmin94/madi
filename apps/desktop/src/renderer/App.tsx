@@ -51,6 +51,7 @@ export interface AppProps {
 type EnginePhase = "loading" | "ready" | "error";
 type Panel = "development" | "ime";
 const AUTOSAVE_DELAY_MS = 550;
+const DEFAULT_BINDER_WIDTH = 300;
 
 function expandedNodeIds(
   tree: ProjectTree,
@@ -107,7 +108,7 @@ export function App({
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<ReadonlySet<string>>(
     () => new Set()
   );
-  const [binderWidth, setBinderWidth] = useState(300);
+  const [binderWidth, setBinderWidth] = useState(DEFAULT_BINDER_WIDTH);
   const [treeError, setTreeError] = useState("");
   const [uiStateReady, setUiStateReady] = useState(false);
   const [panel, setPanel] = useState<Panel>("development");
@@ -241,11 +242,11 @@ export function App({
         setCollapsedNodeIds(
           new Set(branches.filter((id) => !validExpanded.has(id)))
         );
-        if (storedUi.state) {
-          setBinderWidth(
-            Math.min(640, Math.max(220, storedUi.state.binderWidth))
-          );
-        }
+        setBinderWidth(
+          storedUi.state
+            ? Math.min(640, Math.max(220, storedUi.state.binderWidth))
+            : DEFAULT_BINDER_WIDTH
+        );
         if (
           target?.kind === "SCENE" &&
           target.id !== workspace.activeSceneId
