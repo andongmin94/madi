@@ -6,7 +6,16 @@ import {
   type ReactNode
 } from "react";
 import type { MadiDesktopApi } from "../shared/contracts";
+import type { ProjectTree } from "../shared/contracts";
 import type { MadiEditorAdapterFactory } from "./editor/MadiEditorAdapter";
+import {
+  Binder,
+  type BinderCreateRequest,
+  type BinderDeleteRequest,
+  type BinderRenameRequest,
+  type BinderReorderRequest,
+  type BinderSelectRequest
+} from "./components/Binder";
 import { SaveStatusBadge } from "./components/SaveStatusBadge";
 import { ImeChecklist } from "./components/ImeChecklist";
 import type { CompositionEventSummary } from "./components/imeManualResults";
@@ -14,10 +23,12 @@ import {
   DocumentSessionController,
   type WorkspaceState
 } from "./workspace/DocumentSessionController";
+import { buildBinderTree } from "./workspace/binderTree";
 
 const INITIAL_WORKSPACE: WorkspaceState = {
   savePhase: "no-project",
   session: null,
+  activeSceneId: null,
   title: "새 작품",
   revision: 0,
   snapshotBytes: 0,
@@ -26,6 +37,7 @@ const INITIAL_WORKSPACE: WorkspaceState = {
   canUndo: false,
   canRedo: false,
   isComposing: false,
+  lastSavedAt: "",
   errorMessage: ""
 };
 
@@ -38,7 +50,19 @@ export interface AppProps {
 
 type EnginePhase = "loading" | "ready" | "error";
 type Panel = "development" | "ime";
-const AUTOSAVE_DELAY_MS = 1_200;
+const AUTOSAVE_DELAY_MS = 550;
+
+function expandedNodeIds(
+  tree: ProjectTree,
+  collapsedNodeIds: ReadonlySet<string>
+): string[] {
+  return tree.nodes
+    .filter(
+      (node) =>
+        node.kind !== "SCENE" && !collapsedNodeIds.has(node.id)
+    )
+    .map((node) => node.id);
+}
 
 function ToolbarButton({
   children,
@@ -78,6 +102,14 @@ export function App({
   const [enginePhase, setEnginePhase] = useState<EnginePhase>("loading");
   const [engineError, setEngineError] = useState("");
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [projectTree, setProjectTree] = useState<ProjectTree | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const [binderWidth, setBinderWidth] = useState(300);
+  const [treeError, setTreeError] = useState("");
+  const [uiStateReady, setUiStateReady] = useState(false);
   const [panel, setPanel] = useState<Panel>("development");
   const [lastCompositionEvent, setLastCompositionEvent] =
     useState<CompositionEventSummary | null>(null);
@@ -102,6 +134,13 @@ export function App({
           },
     [appVersion, editorSchemaVersion, typieCommit]
   );
+  const binderTree = useMemo(
+    () => (projectTree ? buildBinderTree(projectTree.nodes) : null),
+    [projectTree]
+  );
+  const selectedNode =
+    projectTree?.nodes.find((node) => node.id === selectedNodeId) ?? null;
+  const selectedScene = selectedNode?.kind === "SCENE" ? selectedNode : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -158,6 +197,85 @@ export function App({
   }, [adapterFactory, api, editorSchemaVersion, typieCommit]);
 
   useEffect(() => {
+    const session = workspace.session;
+    if (!session || !controller) {
+      setUiStateReady(false);
+      setProjectTree(null);
+      setSelectedNodeId(null);
+      setCollapsedNodeIds(new Set());
+      setTreeError("");
+      return;
+    }
+    let cancelled = false;
+    setUiStateReady(false);
+    const restoreStructure = async () => {
+      try {
+        const [tree, storedUi] = await Promise.all([
+          api.getProjectTree({ sessionId: session.sessionId }),
+          api
+            .loadUiState({ sessionId: session.sessionId })
+            .catch(() => ({ state: null }))
+        ]);
+        if (cancelled) {
+          return;
+        }
+        const ids = new Set(tree.nodes.map((node) => node.id));
+        const branches = tree.nodes
+          .filter((node) => node.kind !== "SCENE")
+          .map((node) => node.id);
+        const validExpanded = new Set(
+          storedUi.state?.expandedNodeIds.filter((id) => ids.has(id)) ??
+            branches
+        );
+        const preferredId = storedUi.state?.selectedNodeId;
+        const fallback =
+          tree.nodes.find((node) => node.id === session.sceneId) ??
+          tree.nodes.find((node) => node.kind === "SCENE") ??
+          tree.nodes.find((node) => node.kind === "WORK") ??
+          null;
+        const target =
+          (preferredId
+            ? tree.nodes.find((node) => node.id === preferredId)
+            : undefined) ?? fallback;
+        setProjectTree(tree);
+        setCollapsedNodeIds(
+          new Set(branches.filter((id) => !validExpanded.has(id)))
+        );
+        if (storedUi.state) {
+          setBinderWidth(
+            Math.min(640, Math.max(220, storedUi.state.binderWidth))
+          );
+        }
+        if (
+          target?.kind === "SCENE" &&
+          target.id !== workspace.activeSceneId
+        ) {
+          const switched = await controller.selectScene(
+            target.id,
+            () => compositionActiveRef.current
+          );
+          if (!switched || cancelled) {
+            return;
+          }
+        }
+        setSelectedNodeId(target?.id ?? null);
+        setUiStateReady(true);
+        setTreeError("");
+      } catch (error) {
+        if (!cancelled) {
+          setTreeError(
+            error instanceof Error ? error.message : "작품 구조 복원 실패"
+          );
+        }
+      }
+    };
+    void restoreStructure();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, controller, workspace.session?.sessionId]);
+
+  useEffect(() => {
     const saveShortcut = (event: KeyboardEvent) => {
       if (
         controller &&
@@ -180,7 +298,35 @@ export function App({
             () => compositionActiveRef.current
           ) ?? true
         )
-          .then(async (readyToClose) => {
+          .then(async (documentReady) => {
+            let readyToClose = documentReady;
+            if (
+              readyToClose &&
+              uiStateReady &&
+              workspace.session &&
+              projectTree
+            ) {
+              try {
+                await api.saveUiState({
+                  sessionId: workspace.session.sessionId,
+                  state: {
+                    selectedNodeId,
+                    expandedNodeIds: expandedNodeIds(
+                      projectTree,
+                      collapsedNodeIds
+                    ),
+                    binderWidth
+                  }
+                });
+              } catch (error) {
+                readyToClose = false;
+                setTreeError(
+                  error instanceof Error
+                    ? error.message
+                    : "UI 상태 저장 실패"
+                );
+              }
+            }
             const root = document.documentElement;
             if (readyToClose) {
               root.inert = true;
@@ -206,7 +352,16 @@ export function App({
           });
       }
     });
-  }, [api, controller]);
+  }, [
+    api,
+    binderWidth,
+    collapsedNodeIds,
+    controller,
+    projectTree,
+    selectedNodeId,
+    uiStateReady,
+    workspace.session
+  ]);
 
   useEffect(() => {
     if (
@@ -223,6 +378,38 @@ export function App({
     }, AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [controller, enginePhase, isComposing, workspace]);
+
+  useEffect(() => {
+    const session = workspace.session;
+    if (!session || !projectTree || !uiStateReady) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void api
+        .saveUiState({
+          sessionId: session.sessionId,
+          state: {
+            selectedNodeId,
+            expandedNodeIds: expandedNodeIds(projectTree, collapsedNodeIds),
+            binderWidth
+          }
+        })
+        .catch((error: unknown) => {
+          setTreeError(
+            error instanceof Error ? error.message : "UI 상태 저장 실패"
+          );
+        });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [
+    api,
+    binderWidth,
+    collapsedNodeIds,
+    projectTree,
+    selectedNodeId,
+    uiStateReady,
+    workspace.session
+  ]);
 
   useEffect(() => {
     const recordCompositionEvent = (event: CompositionEvent) => {
@@ -265,7 +452,157 @@ export function App({
     };
   }, []);
 
-  const hasDocument = enginePhase === "ready" && !!workspace.session;
+  const flushBeforeStructureChange = async (): Promise<boolean> =>
+    controller?.flushPendingChanges(
+      () => compositionActiveRef.current
+    ) ?? false;
+
+  const selectBinderNode = async ({ nodeId, type }: BinderSelectRequest) => {
+    if (!controller) {
+      return;
+    }
+    if (type === "SCENE") {
+      const switched = await controller.selectScene(
+        nodeId,
+        () => compositionActiveRef.current
+      );
+      if (!switched) {
+        return;
+      }
+    } else if (!(await flushBeforeStructureChange())) {
+      return;
+    }
+    setSelectedNodeId(nodeId);
+    setTreeError("");
+  };
+
+  const createBinderNode = async ({
+    parentId,
+    type,
+    title
+  }: BinderCreateRequest) => {
+    const session = workspace.session;
+    if (!session || !(await flushBeforeStructureChange())) {
+      return;
+    }
+    try {
+      const before = new Set(projectTree?.nodes.map((node) => node.id));
+      const next = await api.createNode({
+        sessionId: session.sessionId,
+        parentId,
+        kind: type,
+        title,
+        editorEngineCommit: typieCommit,
+        editorSchemaVersion
+      });
+      setProjectTree(next);
+      setCollapsedNodeIds((current) => {
+        const updated = new Set(current);
+        updated.delete(parentId);
+        return updated;
+      });
+      const created = next.nodes.find((node) => !before.has(node.id));
+      if (created?.kind === "SCENE" && controller) {
+        const switched = await controller.selectScene(
+          created.id,
+          () => compositionActiveRef.current
+        );
+        if (switched) {
+          setSelectedNodeId(created.id);
+        }
+      } else if (created) {
+        setSelectedNodeId(created.id);
+      }
+      setTreeError("");
+    } catch (error) {
+      setTreeError(
+        error instanceof Error ? error.message : "노드 생성 실패"
+      );
+    }
+  };
+
+  const renameBinderNode = async ({ nodeId, title }: BinderRenameRequest) => {
+    const session = workspace.session;
+    if (!session || !(await flushBeforeStructureChange())) {
+      return;
+    }
+    try {
+      setProjectTree(
+        await api.renameNode({ sessionId: session.sessionId, nodeId, title })
+      );
+      setTreeError("");
+    } catch (error) {
+      setTreeError(
+        error instanceof Error ? error.message : "이름 변경 실패"
+      );
+    }
+  };
+
+  const deleteBinderNode = async ({ nodeId }: BinderDeleteRequest) => {
+    const session = workspace.session;
+    if (!session || !(await flushBeforeStructureChange())) {
+      return;
+    }
+    try {
+      const next = await api.deleteNode({
+        sessionId: session.sessionId,
+        nodeId,
+        recursive: true
+      });
+      setProjectTree(next);
+      const selectedStillExists = next.nodes.some(
+        (node) => node.id === selectedNodeId
+      );
+      if (!selectedStillExists) {
+        const fallback =
+          next.nodes.find((node) => node.kind === "SCENE") ??
+          next.nodes.find((node) => node.kind === "WORK") ??
+          null;
+        if (fallback?.kind === "SCENE" && controller) {
+          const switched = await controller.selectScene(
+            fallback.id,
+            () => compositionActiveRef.current
+          );
+          setSelectedNodeId(switched ? fallback.id : null);
+        } else {
+          setSelectedNodeId(fallback?.id ?? null);
+        }
+      }
+      setTreeError("");
+    } catch (error) {
+      setTreeError(error instanceof Error ? error.message : "노드 삭제 실패");
+    }
+  };
+
+  const reorderBinderNode = async ({
+    nodeId,
+    direction
+  }: BinderReorderRequest) => {
+    const session = workspace.session;
+    if (!session || !(await flushBeforeStructureChange())) {
+      return;
+    }
+    try {
+      setProjectTree(
+        await api.reorderNode({
+          sessionId: session.sessionId,
+          nodeId,
+          direction
+        })
+      );
+      setTreeError("");
+    } catch (error) {
+      setTreeError(
+        error instanceof Error ? error.message : "순서 변경 실패"
+      );
+    }
+  };
+
+  const hasDocument =
+    enginePhase === "ready" &&
+    !!workspace.session?.documentId &&
+    !!workspace.activeSceneId &&
+    (!selectedNode || selectedNode.kind === "SCENE");
   const busy =
     workspace.savePhase === "saving" ||
     workspace.savePhase === "restoring";
@@ -275,15 +612,15 @@ export function App({
       <header className="titlebar">
         <div className="wordmark" aria-label="madi">
           madi
-          <span>phase 0.5</span>
+          <span>phase 1A</span>
         </div>
         <label className="document-title">
-          <span className="sr-only">문서 제목</span>
+          <span className="sr-only">현재 작품명</span>
           <input
-            value={workspace.title}
-            onChange={(event) => controller?.setTitle(event.target.value)}
+            value={projectTree?.project.title ?? workspace.session?.title ?? "새 작품"}
+            readOnly
             maxLength={500}
-            aria-label="문서 제목"
+            aria-label="현재 작품명"
           />
         </label>
         <SaveStatusBadge phase={workspace.savePhase} />
@@ -364,8 +701,72 @@ export function App({
         </div>
       </nav>
 
-      <section className="workspace">
+      <section
+        className="workspace phase1-workspace"
+        style={{ gridTemplateColumns: `${binderWidth}px minmax(0, 1fr)` }}
+      >
+        <div className="binder-pane">
+          <label className="binder-width-control">
+            <span>Binder 폭</span>
+            <input
+              type="range"
+              min="220"
+              max="640"
+              step="10"
+              value={binderWidth}
+              onChange={(event) => setBinderWidth(Number(event.target.value))}
+              aria-label="Binder 폭"
+            />
+          </label>
+          {binderTree ? (
+            <Binder
+              tree={binderTree}
+              selectedNodeId={selectedNodeId}
+              collapsedNodeIds={collapsedNodeIds}
+              onSelect={(request) => void selectBinderNode(request)}
+              onToggleCollapsed={(nodeId, collapsed) =>
+                setCollapsedNodeIds((current) => {
+                  const updated = new Set(current);
+                  if (collapsed) {
+                    updated.add(nodeId);
+                  } else {
+                    updated.delete(nodeId);
+                  }
+                  return updated;
+                })
+              }
+              onCreate={(request) => void createBinderNode(request)}
+              onRename={(request) => void renameBinderNode(request)}
+              onDelete={(request) => void deleteBinderNode(request)}
+              onReorder={(request) => void reorderBinderNode(request)}
+            />
+          ) : (
+            <aside className="binder binder--empty" aria-label="작품 Binder">
+              <h2>Binder</h2>
+              <p>새 프로젝트를 만들거나 `.madi` 파일을 여세요.</p>
+            </aside>
+          )}
+          {treeError && (
+            <p className="error-message binder-error" role="alert">
+              {treeError}
+            </p>
+          )}
+        </div>
         <section className="editor-stage" aria-label="Typie 편집기">
+          <header className="scene-editor-heading">
+            <div>
+              <span>{selectedScene ? "현재 장면" : "선택한 항목"}</span>
+              <strong>{selectedNode?.title ?? "장면을 선택하세요"}</strong>
+            </div>
+            <div>
+              <span>마지막 저장</span>
+              <strong>
+                {workspace.lastSavedAt
+                  ? new Date(workspace.lastSavedAt).toLocaleTimeString()
+                  : "—"}
+              </strong>
+            </div>
+          </header>
           <div className="editor-stage__ruler">
             <span>0</span>
             <span>20</span>
@@ -377,8 +778,12 @@ export function App({
             ref={mountRef}
             id="typie-editor-mount"
             data-testid="typie-editor-mount"
-            className="typie-editor-mount"
+            className={`typie-editor-mount${
+              hasDocument ? "" : " typie-editor-mount--inactive"
+            }`}
             aria-label="Typie WASM editor mount"
+            aria-hidden={!hasDocument}
+            inert={hasDocument ? undefined : true}
             onMouseDown={() => hasDocument && controller?.focus()}
           />
           {enginePhase !== "ready" && (
@@ -401,8 +806,18 @@ export function App({
               새 프로젝트를 만들거나 기존 .madi 파일을 여세요.
             </div>
           )}
+          {enginePhase === "ready" && workspace.session && selectedNode && !selectedScene && (
+            <div className="empty-document non-scene-selection">
+              <strong>{selectedNode.title}</strong>
+              <span>본문을 편집하려면 Binder에서 장면을 선택하세요.</span>
+            </div>
+          )}
+          {enginePhase === "ready" && hasDocument && workspace.recoveryCharacters === 0 && (
+            <div className="empty-scene-hint">빈 장면입니다. 여기에 본문을 입력하세요.</div>
+          )}
         </section>
 
+        <div className="inspector-drawer">
         {panel === "ime" && imeEnvironment ? (
           <ImeChecklist
             key={`${imeEnvironment.appVersion}:${imeEnvironment.typieCommit}:${imeEnvironment.editorSchemaVersion}:${imeEnvironment.platform}:${imeEnvironment.userAgent}`}
@@ -464,7 +879,9 @@ export function App({
               </div>
               <div>
                 <dt>revision</dt>
-                <dd>{workspace.revision}</dd>
+                <dd>
+                  {Math.max(projectTree?.revision ?? 0, workspace.revision)}
+                </dd>
               </div>
               <div>
                 <dt>snapshot</dt>
@@ -509,6 +926,7 @@ export function App({
             </p>
           </aside>
         )}
+        </div>
       </section>
 
       <footer className="statusbar">

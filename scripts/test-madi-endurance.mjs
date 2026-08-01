@@ -67,8 +67,8 @@ function assertProjectInspection(inspected, expectedRevision) {
     inspected.application_id !== 0x4d414449 ||
     inspected.integrity_check !== "ok" ||
     inspected.metadata.format_name !== "madi" ||
-    inspected.metadata.format_version !== 0 ||
-    inspected.metadata.schema_version !== 1 ||
+    inspected.metadata.format_version !== 1 ||
+    inspected.metadata.schema_version !== 2 ||
     inspected.metadata.revision !== expectedRevision
   ) {
     throw new Error(
@@ -78,8 +78,9 @@ function assertProjectInspection(inspected, expectedRevision) {
     );
   }
   if (
-    inspected.schema_migrations.length !== 1 ||
-    inspected.schema_migrations[0]?.version !== 1
+    inspected.schema_migrations.length !== 2 ||
+    inspected.schema_migrations[0]?.version !== 1 ||
+    inspected.schema_migrations[1]?.version !== 2
   ) {
     throw new Error("Schema migration record changed during endurance test");
   }
@@ -282,7 +283,7 @@ try {
       snapshotSha256: sha256(storedSnapshot),
       recoveryUtf8Bytes: Buffer.byteLength(plainText, "utf8"),
       sceneBreaks: countSceneBreaks(plainText),
-      migration: inspected.schema_migrations[0].version,
+      migrations: inspected.schema_migrations.map(({ version }) => version),
     });
   }
 
@@ -305,7 +306,7 @@ try {
         semanticSceneBreaks: roundReports.at(-1)?.sceneBreaks,
         orderedContent: true,
         sqliteQuickCheck: "ok",
-        schemaMigrationVersions: [1],
+        schemaMigrationVersions: [1, 2],
         perRound: roundReports,
       },
       null,

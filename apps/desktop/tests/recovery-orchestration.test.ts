@@ -74,6 +74,40 @@ function createApi() {
     revision: 8
   };
   const api: MadiDesktopApi = {
+    getProjectTree: vi.fn(async () => ({
+      project: {
+        id: session.projectId,
+        title: session.title,
+        authorName: null,
+        createdAt: "2026-08-02T00:00:00.000Z",
+        updatedAt: "2026-08-02T00:00:00.000Z"
+      },
+      nodes: [],
+      revision: session.revision
+    })),
+    createNode: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    renameNode: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    moveNode: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    reorderNode: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    deleteNode: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    loadSceneDocument: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    saveSceneDocument: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    saveUiState: vi.fn(async () => undefined),
+    loadUiState: vi.fn(async () => ({ state: null })),
     createProject: vi.fn(async () => session),
     openProject: vi.fn(async () => session),
     loadDocument: vi.fn(async () => ({

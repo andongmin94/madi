@@ -20,6 +20,7 @@ fn create_params(path: &std::path::Path) -> CreateProjectParams {
         file_path: path.to_path_buf(),
         title: "드래곤을 죽이다".to_owned(),
         created_by: Some("madi-test/0".to_owned()),
+        author_name: Some("테스트 작가".to_owned()),
         project_id: Some(PROJECT_ID.to_owned()),
         document_id: Some(DOCUMENT_ID.to_owned()),
         document_title: Some("1화".to_owned()),
@@ -44,8 +45,9 @@ fn creates_real_sqlite_madi_with_application_metadata_and_migration() {
     assert_eq!(created.project.metadata.schema_version, SCHEMA_VERSION);
     assert_eq!(created.project.metadata.revision, 0);
     assert_eq!(created.project.documents.len(), 1);
-    assert_eq!(created.project.schema_migrations.len(), 1);
+    assert_eq!(created.project.schema_migrations.len(), 2);
     assert_eq!(created.project.schema_migrations[0].version, 1);
+    assert_eq!(created.project.schema_migrations[1].version, 2);
 
     let connection = Connection::open(&path).unwrap();
     let application_id: i64 = connection

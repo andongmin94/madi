@@ -2,16 +2,29 @@ import {
   IPC_CHANNELS,
   IPC_EVENTS,
   type CompleteCloseRequest,
+  type CreateNodeRequest,
   type CreateProjectRequest,
+  type DeleteNodeRequest,
+  type LoadedSceneDocument,
   type LoadedDocument,
+  type LoadSceneDocumentRequest,
   type LoadDocumentRequest,
+  type LoadUiStateResult,
   type MadiDesktopApi,
+  type MoveNodeRequest,
   type OpenProjectRequest,
   type PlainTextRecovery,
+  type ProjectTree,
   type ProjectSession,
   type RecoverPlainTextRequest,
+  type RenameNodeRequest,
+  type ReorderNodeRequest,
+  type SaveSceneDocumentRequest,
+  type SaveSceneDocumentResult,
   type SaveDocumentRequest,
-  type SaveDocumentResult
+  type SaveDocumentResult,
+  type SaveUiStateRequest,
+  type SessionRequest
 } from "../shared/contracts";
 
 export type Invoke = (
@@ -98,6 +111,63 @@ export function createMadiDesktopApi(
         IPC_CHANNELS.recoverPlainText,
         request
       )) as PlainTextRecovery;
+    },
+
+    async getProjectTree(request: SessionRequest): Promise<ProjectTree> {
+      return (await invoke(
+        IPC_CHANNELS.getProjectTree,
+        request
+      )) as ProjectTree;
+    },
+
+    async createNode(request: CreateNodeRequest): Promise<ProjectTree> {
+      return (await invoke(IPC_CHANNELS.createNode, request)) as ProjectTree;
+    },
+
+    async renameNode(request: RenameNodeRequest): Promise<ProjectTree> {
+      return (await invoke(IPC_CHANNELS.renameNode, request)) as ProjectTree;
+    },
+
+    async moveNode(request: MoveNodeRequest): Promise<ProjectTree> {
+      return (await invoke(IPC_CHANNELS.moveNode, request)) as ProjectTree;
+    },
+
+    async reorderNode(request: ReorderNodeRequest): Promise<ProjectTree> {
+      return (await invoke(IPC_CHANNELS.reorderNode, request)) as ProjectTree;
+    },
+
+    async deleteNode(request: DeleteNodeRequest): Promise<ProjectTree> {
+      return (await invoke(IPC_CHANNELS.deleteNode, request)) as ProjectTree;
+    },
+
+    async loadSceneDocument(
+      request: LoadSceneDocumentRequest
+    ): Promise<LoadedSceneDocument> {
+      const document = (await invoke(
+        IPC_CHANNELS.loadSceneDocument,
+        request
+      )) as LoadedSceneDocument;
+      return { ...document, snapshot: copyBytes(document.snapshot) };
+    },
+
+    async saveSceneDocument(
+      request: SaveSceneDocumentRequest
+    ): Promise<SaveSceneDocumentResult> {
+      return (await invoke(IPC_CHANNELS.saveSceneDocument, {
+        ...request,
+        snapshot: copyBytes(request.snapshot)
+      })) as SaveSceneDocumentResult;
+    },
+
+    async saveUiState(request: SaveUiStateRequest): Promise<void> {
+      await invoke(IPC_CHANNELS.saveUiState, request);
+    },
+
+    async loadUiState(request: SessionRequest): Promise<LoadUiStateResult> {
+      return (await invoke(
+        IPC_CHANNELS.loadUiState,
+        request
+      )) as LoadUiStateResult;
     },
 
     async getAppVersion(): Promise<string> {

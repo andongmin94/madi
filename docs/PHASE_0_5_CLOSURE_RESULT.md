@@ -6,10 +6,12 @@
 
 ```text
 Phase 0.5 technical verdict: CONDITIONAL TECHNICAL GO
-Windows native Korean IME: NOT TESTED
-License/distribution decision: HUMAN DECISION REQUIRED
+Windows native Korean IME: MANUAL VALIDATION PENDING (15 / 15 NOT TESTED)
+License/distribution decision: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Production distribution authorized: NO
-Phase 1 product-feature entry authorized: NO
+Private local Phase 1A development authorized: YES
+Phase 1A implementation: COMPLETE
+Phase 1A final result: TECHNICAL GO — PRIVATE LOCAL
 ```
 
 저장·복원, Typie 서비스 비의존, scene break 의미 보존, 현재 작업트리의 build,
@@ -19,8 +21,8 @@ plain-text 긴급 복구와 adapter 격리는 자동 검증 범위에서 통과�
 그러나 다음 항목이 남아 있으므로 완전한 `TECHNICAL GO`로 올리지 않는다.
 
 - Windows native 한국어 IME 15개 항목이 모두 `NOT TESTED`다.
-- root 저장소에 아직 최초 `HEAD`와 mode `160000` Typie gitlink가 없어, 새
-  clone이 같은 source를 재생한다는 durable 증거가 없다.
+- Phase 0.5 폐쇄 당시 root 저장소에 최초 `HEAD`와 mode `160000` Typie gitlink가
+  없었다. 이후 baseline commit에는 gitlink가 기록됐지만 remote clone 증거는 없다.
 - Binaryen `wasm-opt`을 포함한 Typie runtime end-to-end 재현 build가 완성되지
   않았다.
 - Windows unpacked packaged-layout smoke는 통과했지만 실제 installer를 만들고
@@ -29,10 +31,28 @@ plain-text 긴급 복구와 adapter 격리는 자동 검증 범위에서 통과�
   접근성·screen reader·native IME 후보창은 검증되지 않았다.
 - 과거 snapshot을 실제 후보 Typie commit으로 여는 upgrade rehearsal은 수행하지
   않았다.
-- Typie 결합 구조의 생산 배포 정책은 `HUMAN DECISION REQUIRED`다.
+- Typie 결합 구조의 생산 배포 정책은
+  `HUMAN DECISION REQUIRED BEFORE DISTRIBUTION`이다.
 
 이 판정은 로컬 기술검증 시제품에만 적용된다. unpacked Windows 실행물이 만들어진
 사실은 installer, code signing, 공개 배포 또는 라이선스 승인을 뜻하지 않는다.
+
+2026-08-01 승인에 따라 위 미완료 항목 전부를 비공개 로컬 Phase 1A의 차단 조건으로
+사용하지 않는다. 이는 항목을 통과로 바꾸는 조치가 아니다. Windows native IME는
+`MANUAL VALIDATION PENDING`, 라이선스는
+`HUMAN DECISION REQUIRED BEFORE DISTRIBUTION`, installer·현실 성능·crash·접근성·
+Typie upgrade는 `DEFERRED TO HARDENING`이다. remote recursive clean clone과
+runtime source 재현 build도 각각 repository/build hardening으로 미루며 완료됐다고
+표시하지 않는다. 공개·유료·installer 외부 배포는 계속 금지한다.
+
+### 폐쇄 이후 VCS 갱신
+
+2026-08-02에 baseline commit `10067f8`이 만들어졌고 `vendor/typie`는
+`fbe5c4bf860d1717a66e66bea2374a2e39f0dd26`의 mode `160000` gitlink로 기록됐다.
+따라서 durable superproject pin 자체는 현재 `PASS`다. remote가 없어 실제
+`git clone --recurse-submodules` 새 경로 재현은 여전히
+`DEFERRED TO REPOSITORY HARDENING`이며 완료되지 않았다. 아래 Phase 0.5 exit 표의
+B-01b/B-03b는 폐쇄 시점의 역사적 상태다.
 
 ### 최종 자동 검증 기록
 
@@ -108,6 +128,11 @@ crosswalk를 사용한다.
 `TODO`를 Phase 진입 여부가 명확한 이진 gate로 표현한 것이다. 현재 실행한 자동
 검증에는 `FAIL — VERIFIED FAILURE`가 없다. 수동 시험의 `NOT TESTED`도 자동
 통과로 바꾸지 않고 `FAIL — UNMET / NOT TESTED`로 표시한다.
+
+이 표는 Phase 0.5 종료 시점의 증거 충족 여부를 보존하는 역사적 crosswalk다.
+2026-08-01의 Phase 1A 승인 이후 `FAIL — UNMET` 9개가 모두 비공개 로컬 개발을
+막는다는 뜻으로 읽지 않는다. 현재 개발·배포별 분류는 이 문서 17절이 우선하며,
+어느 항목도 소급해 `PASS`로 바꾸지 않는다.
 
 EXIT 관리표 합계는 `PASS 15 / TODO 9 / FAIL 0 / HUMAN DECISION REQUIRED 1`이다.
 아래 표는 인접한 PASS 조건을 일부 묶거나 같은 원 조건의 구현·미충족 부분을
@@ -233,9 +258,10 @@ tag 또는 `latest`를 조회하지 않고 저장소의 고정 runtime을 사용
 `scripts/check-repository.mjs`는 WASM, ICU, JS, TypeScript binding과 Nanum Gothic
 resource 3개, 총 7개 파일의 SHA-256을 검사한다.
 
-다만 `.gitmodules`의 URL만으로 commit은 고정되지 않는다. root 최초 commit에
-`vendor/typie` mode `160000` gitlink가 위 object ID로 기록되고, 새 경로 clone에서
-재검증되기 전 durable pin 상태는 `FAIL — UNMET`이다.
+`.gitmodules` URL만 있던 Phase 0.5 폐쇄 시점에는 durable pin이
+`FAIL — UNMET`이었다. 현재 baseline commit `10067f8`에는 `vendor/typie` mode
+`160000` gitlink가 위 object ID로 기록돼 durable pin 자체는 `PASS`다. remote의
+새 경로 clone 재검증은 아직 수행하지 않았다.
 
 ## 5. Typie patch 목록
 
@@ -321,8 +347,8 @@ pnpm install --frozen-lockfile
 Windows unpacked layout을 다시 만들었다. 이 결과는 “기존 생성물 없이 현재
 작업트리를 다시 build할 수 있다”는 증거다.
 
-그러나 root repository는 최초 commit 전이고 remote가 없다. 따라서 아래 절차는
-아직 **실행된 결과가 아니라 최초 commit 이후 반드시 수행할 종료 gate**다.
+현재 root에는 baseline commit이 있지만 remote가 없다. 따라서 아래 절차는 아직
+**실행된 결과가 아니라 remote가 생긴 뒤 수행할 repository hardening gate**다.
 
 ```powershell
 git clone --recurse-submodules <madi-repository-url> madi-clean
@@ -336,7 +362,8 @@ pnpm test:dev
 현재 clean build 판정은 두 부분으로 나뉜다.
 
 - cache/생성물을 공유하지 않는 현재 작업트리 재설치·재build: **PASS**
-- committed superproject의 새 경로 clean clone 재현: **FAIL — UNMET**
+- committed superproject의 새 경로 clean clone 재현:
+  **DEFERRED TO REPOSITORY HARDENING**
 
 또한 체크인된 runtime을 소비하는 앱 build와 Typie runtime을 source에서 다시
 만드는 release build는 다르다. 후자는 `wasm-opt`과 exact tool manifest가 없어
@@ -524,6 +551,7 @@ runtime artifact가 바뀌면 `pnpm verify`와 필요한 수동 gate를 다시 �
 Automated IME Test screen readiness: PASS
 Windows native Korean IME results: 15 / 15 NOT TESTED
 Human-validated PASS items: 0
+Current classification: MANUAL VALIDATION PENDING
 ```
 
 IME Test 화면에는 다음이 있다.
@@ -555,12 +583,14 @@ pnpm package:unpacked
 Vitest, Playwright `fill`, `pressSequentially`, composition event unit test는 실제
 Windows native 한국어 IME와 한글/Word clipboard를 검증하지 않는다. 따라서
 사람이 `docs/MANUAL_KOREAN_IME_CHECKLIST.md`를 수행하고 환경 metadata와 export를
-보존하기 전 M-01은 `FAIL — UNMET / NOT TESTED`다.
+보존하기 전 M-01의 Phase 0.5 증거 상태는 `FAIL — UNMET / NOT TESTED`다. 현재
+Phase 1A 진입 분류는 `MANUAL VALIDATION PENDING`이며 비공개 로컬 구현을 막지
+않는다. 실제 지원 환경 확정이나 외부 배포 전에 별도 gate로 다시 적용한다.
 
 ## 14. 남은 빌드·런타임 위험
 
-1. **Durable source pin:** root 최초 commit과 mode `160000` gitlink가 없다.
-   현재 nested HEAD는 맞지만 새 clone 재현 증거가 아니다.
+1. **Durable source pin:** baseline commit에 mode `160000` gitlink가 기록됐다.
+   다만 remote가 없어 새 clone 재현 증거는 아직 없다.
 2. **Runtime source build:** exact Binaryen version과 `wasm-opt`을 포함한
    end-to-end script, 두 clean build의 비교가 없다.
 3. **장편 성능:** 5,445자/4 page 기능 smoke는 통과했지만 현실적인 장편,
@@ -607,7 +637,7 @@ snapshot을 열지 못하면 조용히 저장·변환하지 말아야 한다. co
 
 ## 16. 라이선스 미결정 사항
 
-최종 상태: **HUMAN DECISION REQUIRED**
+최종 상태: **HUMAN DECISION REQUIRED BEFORE DISTRIBUTION**
 
 현재 승인된 option은 없다.
 
@@ -627,65 +657,79 @@ snapshot을 열지 못하면 조용히 저장·변환하지 말아야 한다. co
   서명이 없다.
 
 결정 전 허용 범위는 로컬 기술검증, 같은 조직 안의 제한된 평가, 수동 IME 검사와
-삭제 가능한 unpacked smoke다. public download, 고객/유료 pilot, app store,
-package registry와 proprietary production 배포는 승인되지 않는다.
+삭제 가능한 unpacked smoke 및 비공개 로컬 Phase 1A 개발이다. public download,
+고객/유료 pilot, app store, package registry, installer 외부 전달과 proprietary
+production 배포는 승인되지 않는다.
 
 이 절은 법률 자문이 아니다. 상세 비교와 필요한 결정 기록은
 `docs/LICENSE_DECISION_REQUIRED.md`를 따른다.
 
-## 17. 다음 Phase로 넘어가기 위한 정확한 조건
+## 17. Phase 1A 진입 승인과 deferred gate
 
-Phase 1 제품 기능 구현 진입은 현재 **승인하지 않는다**. 아래 조건 중 최종 자동
-gate만 현재 통과했고 나머지는 열려 있다. 모두 통과·유지한 뒤 기술 판정과
-제품/법률 gate를 다시 내려야 한다.
+비공개 로컬 **Phase 1A 개발 진입은 승인한다**. 승인 범위는 최소 Binder,
+WORK/VOLUME/CHAPTER/SCENE hierarchy, SCENE별 Typie document, 자동저장과 재열기다.
+Phase 1A 구현과 core-sidecar 재시작 fixture, 최종 `pnpm verify`, 독립 package와
+개발/packaged 다중 Binder Electron acceptance가 모두 통과했다. 승인 사실이 아니라
+이 실행 증거를 완료 근거로 사용한다.
 
-1. **최종 자동 gate — PASS, 유지 필요:** 2026-08-01 현재 작업트리 재검증에서
-   `pnpm verify` exit code `0`, `pnpm test:dev` PASS를 기록했다. source/runtime
-   변경 뒤에는 다시 통과해야 한다.
-2. **Durable pin — FAIL — UNMET:** 사람이 최초 commit에 `.gitmodules`와
-   `vendor/typie` mode `160000` gitlink
-   `fbe5c4bf860d1717a66e66bea2374a2e39f0dd26`을 기록해야 한다.
-3. **진짜 clean clone — FAIL — UNMET:** 원격의 새 빈 경로에서
-   `git clone --recurse-submodules`, `pnpm install --frozen-lockfile`,
-   `pnpm verify`, `pnpm test:dev`를 재현해야 한다.
-4. **Reproducible Typie runtime — FAIL — UNMET:** exact
-   Rust/wasm-bindgen/editor-bindgen/ICU/font, zstd/Binaryen version과 `wasm-opt`
-   명령을 script에 고정하고 두 clean build와 전체 runtime probe를 비교해야 한다.
-5. **Installed-state — FAIL — UNMET:** 지원할 installer로 깨끗한 Windows 사용자
-   환경에 설치한 뒤 설치 경로에서 입력·저장·완전 종료·재실행·복원·offline smoke를
-   반복하고, 설치 경로 권한과 제거 뒤 사용자 `.madi` 보존을 확인해야 한다.
-6. **사람 IME — FAIL — UNMET, 15/15 NOT TESTED:** 실제 Windows native IME와
-   한글/Word 앱으로 15개 항목을 수행해 환경 metadata와 JSON/Markdown export를
-   보존해야 한다. 중복·누락·조합 손상, 저장·완전 종료·복원에 해결되지 않은
-   실패가 없어야 한다.
-7. **현실 규모 — FAIL — UNMET:** 합의한 장편 fixture와 지원 DPI/monitor 환경에서
-   input/render, 저장 latency와 peak/steady memory 허용 기준을 정하고 통과해야
-   한다.
-8. **Crash recovery — FAIL — UNMET:** 저장/backup 주요 경계에서 강제 종료 fault
-   injection을 수행하고 원본/backup의 `quick_check`, revision,
-   snapshot/recovery 회수 절차를 통과해야 한다.
-9. **접근성/후보창 — FAIL — UNMET:** 지원할 Windows 접근성 범위를 정하고 실제 screen
-   reader, keyboard-only와 native IME candidate window 위치를 확인해야 한다.
-10. **Upgrade rehearsal — FAIL — UNMET:** 현재 commit의 과거 snapshot fixture를 실제 후보
-   commit gate에 넣어 호환 또는 안전한 거부/복구를 증명해야 한다.
-11. **License와 배포 — HUMAN DECISION REQUIRED:** 제품 책임자와 법률 전문가가
-    Option A/B/C 중 하나를 서면 승인하고 source/계약/독립 구현 증거, 전체
-    notice와 허용 배포 범위를 release gate에 연결해야 한다.
+Phase 0.5 종료표의 `FAIL — UNMET`은 당시 증거가 없었다는 사실을 계속 뜻한다. 다만
+2026-08-01 승인에 따라 아래처럼 비공개 개발, hardening 및 배포 gate를 분리한다.
 
-위 조건을 닫는 동안 허용되는 다음 작업은 engine-risk retirement, test,
-reproducibility, manual validation과 license 의사결정 지원뿐이다. 다음 기능은
-여전히 구현하면 안 된다.
+| 항목 | 현재 분류 | 비공개 로컬 Phase 1A에 미치는 영향 | 다시 차단 gate가 되는 시점 |
+|---|---|---|---|
+| 기존 `pnpm verify`, `pnpm test:dev` 기준선 | `PASS` — 최종 `pnpm verify` | Phase 1A 변경 뒤 회귀 없음 | 이후 최종 후보에서 재검증 |
+| Windows native 한국어 IME 15항목 | `MANUAL VALIDATION PENDING` | 비차단, 15/15는 계속 `NOT TESTED` | 지원 환경 확정·외부 배포 전 |
+| Typie 결합·배포 license | `HUMAN DECISION REQUIRED BEFORE DISTRIBUTION` | 비차단 | 공개·유료·installer 외부 배포 전 |
+| 실제 installer와 installed-state lifecycle | `DEFERRED TO HARDENING` | 비차단, 미완료 | installer 외부 배포 전 |
+| 장편·장시간·DPI·다중 monitor 성능 | `DEFERRED TO HARDENING` | 비차단, 미완료 | 지원 성능 기준 확정 전 |
+| 저장 중 crash/power-loss fault injection | `DEFERRED TO HARDENING` | 비차단, 미완료 | release hardening |
+| screen reader·keyboard-only·후보창 | `DEFERRED TO HARDENING` | 비차단, 미완료 | 지원 접근성 범위 확정 전 |
+| 실제 후보 Typie commit upgrade rehearsal | `DEFERRED TO HARDENING` | 비차단, 미완료 | Typie pin 변경 전 |
+| superproject durable gitlink | `PASS` — baseline `10067f8` | 현재 commit에 exact Typie gitlink 기록 | pin 변경 시 재검증 |
+| 실제 remote recursive clean clone | `DEFERRED TO REPOSITORY HARDENING` | 비차단, 미완료 | remote가 생긴 뒤 repository release gate |
+| `wasm-opt` 포함 runtime source 재현 build | `DEFERRED TO BUILD HARDENING` | 비차단, 미완료 | source/release 배포 정책 적용 전 |
+| Phase 1A 구현·11단계 재열기·package 결과 | `PASS` — sidecar와 개발/packaged Electron | 비공개 로컬 Phase 1A 완료 | 이후 Phase 완료 gate |
 
-- 완성형 Binder와 권·화·장면 CRUD
-- 세계관 설정·관계 그래프·플롯 Canvas
+Phase 1A 구현은 다음 경계를 지켜야 한다.
+
+- Phase 0.5의 저장·복원, adapter, offline, recovery, scene break와 Electron 보안
+  기준선을 삭제하거나 가짜 구현으로 대체하지 않는다.
+- 한 `.madi`에 project/tree/UI state schema migration을 추가한다.
+- project당 WORK 하나, VOLUME → WORK, CHAPTER → WORK/VOLUME,
+  SCENE → CHAPTER 규칙을 Rust에서 검증한다.
+- SCENE과 documents row를 1:1로 원자적으로 만들고 삭제한다.
+- 구조 변경, scene save와 explicit recursive delete를 transaction으로 처리한다.
+- 장면 전환은 IME guard와 save-before-load를 사용하고 stale async save가 다른
+  장면을 덮어쓰지 못하게 한다.
+- 실제 종료·새 process·동일 파일 reopen으로 구조, 순서, 제목, 장면별 한국어 본문과
+  `madi.scene-break.v1`을 대조한다.
+- `pnpm verify`와 `pnpm package:unpacked`의 Phase 1A 변경 뒤 결과를 기록한다.
+
+구체 범위와 완료 증거는 `docs/PHASE_1A_SCOPE.md`, schema 계약은
+`docs/MADI_FILE_FORMAT_V1_DRAFT.md`를 따른다.
+
+다음 기능은 Phase 1A에서도 구현하면 안 된다.
+
+- 등장인물
+- 세계관 설정
+- 관계 그래프
+- 플롯 Canvas
 - Reader Lab
-- EPUB, HWP/HWPX export
+- EPUB
+- HWP/HWPX
 - LLM adapter
-- Dropbox, MYBOX, NAS, sync
+- Dropbox, MYBOX, NAS 전용 기능
 - 자동 업데이트
-- production 디자인, 회원가입, server, cloud, collaboration
-- 모바일 앱과 웹 앱
+- 회원가입
+- server
+- 자체 cloud
+- collaboration
+- mobile 앱
+- web 앱
 - Typie 제품 UI 복사
+- 전체 원고 연속 보기
+- 프로젝트 전체 검색·치환
+- 이름 있는 snapshot
 
-Phase 0.5의 목적은 editor engine 채택 조건을 닫는 것이며, 위 제품 기능을 먼저
-추가해 열린 저장·입력·재현·license 위험을 가리는 것이 아니다.
+비공개 로컬 Phase 1B 진입은 `GO`다. hardening으로 옮긴 항목은 각 지원·배포
+경계에 도달하기 전에 다시 명시적 gate로 적용한다.

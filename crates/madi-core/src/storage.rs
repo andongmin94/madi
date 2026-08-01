@@ -4,22 +4,24 @@ use std::path::{Path, PathBuf};
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use rusqlite::{
-    params, Connection, OpenFlags, OptionalExtension, TransactionBehavior,
+    params, Connection, OpenFlags, OptionalExtension, Transaction,
+    TransactionBehavior,
 };
 use uuid::Uuid;
 
 use crate::error::{CoreError, Result};
 use crate::model::{
-    AppMeta, CreateProjectParams, CreateProjectResult, DocumentRecord, DocumentSummary,
-    LoadDocumentParams, MigrationRecord, OpenProjectParams, ProjectInspection,
-    RecoverPlainTextParams, RecoverPlainTextResult, SaveDocumentParams, SaveDocumentResult,
+    AppMeta, CreateProjectParams, CreateProjectResult, DocumentRecord,
+    DocumentSummary, LoadDocumentParams, MigrationRecord, OpenProjectParams,
+    ProjectInspection, RecoverPlainTextParams, RecoverPlainTextResult,
+    SaveDocumentParams, SaveDocumentResult,
 };
 
 /// ASCII `MADI` encoded as a big-endian integer.
 pub const APPLICATION_ID: i64 = 0x4D41_4449;
 pub const FORMAT_NAME: &str = "madi";
-pub const FORMAT_VERSION: i64 = 0;
-pub const SCHEMA_VERSION: i64 = 1;
+pub const FORMAT_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 const DEFAULT_EDITOR_ENGINE: &str = "typie";
 const UNINITIALIZED_EDITOR_COMMIT: &str = "uninitialized";
@@ -63,6 +65,55 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 );
 "#;
 
+const MIGRATION_V2: &str = r#"
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT NOT NULL PRIMARY KEY,
+    title TEXT NOT NULL,
+    author_name TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (id) REFERENCES app_meta(project_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tree_nodes (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    parent_id TEXT,
+    kind TEXT NOT NULL CHECK (kind IN ('WORK', 'VOLUME', 'CHAPTER', 'SCENE')),
+    title TEXT NOT NULL,
+    order_key REAL NOT NULL,
+    document_id TEXT UNIQUE,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES tree_nodes(id) ON DELETE CASCADE,
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE RESTRICT,
+    CHECK (
+        (kind = 'WORK' AND parent_id IS NULL AND document_id IS NULL) OR
+        (kind IN ('VOLUME', 'CHAPTER') AND parent_id IS NOT NULL AND document_id IS NULL) OR
+        (kind = 'SCENE' AND parent_id IS NOT NULL AND document_id IS NOT NULL)
+    )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS tree_nodes_one_work_per_project
+    ON tree_nodes(project_id) WHERE kind = 'WORK';
+CREATE UNIQUE INDEX IF NOT EXISTS tree_nodes_sibling_order
+    ON tree_nodes(project_id, COALESCE(parent_id, ''), order_key);
+CREATE INDEX IF NOT EXISTS tree_nodes_parent_order
+    ON tree_nodes(project_id, parent_id, order_key, id);
+
+CREATE TABLE IF NOT EXISTS ui_state (
+    project_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value_json TEXT NOT NULL CHECK (json_valid(value_json)),
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (project_id, key),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+"#;
+
+const ORDER_STEP: f64 = 1024.0;
+
 pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult> {
     validate_madi_destination(&params.file_path)?;
     validate_non_empty("title", &params.title)?;
@@ -87,6 +138,9 @@ pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult
         .created_by
         .unwrap_or_else(default_client_identifier);
     validate_non_empty("created_by", &created_by)?;
+    if let Some(author_name) = params.author_name.as_deref() {
+        validate_non_empty("author_name", author_name)?;
+    }
 
     let editor_engine = params
         .editor_engine
@@ -103,6 +157,9 @@ pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult
 
     let temporary_path = unique_sibling_path(&params.file_path, "create.tmp");
     let mut temporary_guard = TemporaryPathGuard::new(temporary_path.clone());
+    let work_node_id = Uuid::new_v4().to_string();
+    let default_chapter_node_id = Uuid::new_v4().to_string();
+    let default_scene_node_id = Uuid::new_v4().to_string();
 
     {
         let mut connection = Connection::open_with_flags(
@@ -152,6 +209,54 @@ pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult
                 now
             ],
         )?;
+        transaction.execute(
+            "INSERT INTO projects (
+                id, title, author_name, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?4)",
+            params![project_id, params.title, params.author_name, now],
+        )?;
+        transaction.execute(
+            "INSERT INTO tree_nodes (
+                id, project_id, parent_id, kind, title, order_key,
+                document_id, created_at, updated_at
+             ) VALUES (?1, ?2, NULL, 'WORK', ?3, ?4, NULL, ?5, ?5)",
+            params![
+                work_node_id,
+                project_id,
+                params.title,
+                ORDER_STEP,
+                now
+            ],
+        )?;
+        transaction.execute(
+            "INSERT INTO tree_nodes (
+                id, project_id, parent_id, kind, title, order_key,
+                document_id, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, 'CHAPTER', ?4, ?5, NULL, ?6, ?6)",
+            params![
+                default_chapter_node_id,
+                project_id,
+                work_node_id,
+                document_title,
+                ORDER_STEP,
+                now
+            ],
+        )?;
+        transaction.execute(
+            "INSERT INTO tree_nodes (
+                id, project_id, parent_id, kind, title, order_key,
+                document_id, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, 'SCENE', ?4, ?5, ?6, ?7, ?7)",
+            params![
+                default_scene_node_id,
+                project_id,
+                default_chapter_node_id,
+                document_title,
+                ORDER_STEP,
+                document_id,
+                now
+            ],
+        )?;
         transaction.commit()?;
         connection.close().map_err(|(_, error)| error)?;
     }
@@ -170,6 +275,9 @@ pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult
 
     Ok(CreateProjectResult {
         default_document_id: document_id,
+        work_node_id,
+        default_chapter_node_id,
+        default_scene_node_id,
         project,
     })
 }
@@ -276,6 +384,12 @@ pub fn save_document(params: SaveDocumentParams) -> Result<SaveDocumentResult> {
             now
         ],
     )?;
+    transaction.execute(
+        "UPDATE tree_nodes
+         SET title = ?1, updated_at = ?2
+         WHERE document_id = ?3",
+        params![params.document.title, now, params.document.id],
+    )?;
 
     let changed = transaction.execute(
         "UPDATE app_meta
@@ -365,7 +479,7 @@ fn inspect_path(file_path: &Path) -> Result<ProjectInspection> {
     })
 }
 
-fn open_existing(file_path: &Path) -> Result<Connection> {
+pub(crate) fn open_existing(file_path: &Path) -> Result<Connection> {
     if !file_path.is_file() {
         return Err(CoreError::NotFound(
             file_path.to_string_lossy().into_owned(),
@@ -389,6 +503,7 @@ fn open_existing(file_path: &Path) -> Result<Connection> {
     quick_check(&connection)?;
     let metadata = load_app_meta(&connection)?;
     validate_metadata(&metadata)?;
+    validate_phase_1a_structure(&connection, &metadata)?;
     Ok(connection)
 }
 
@@ -403,7 +518,7 @@ fn configure_connection(connection: &Connection) -> Result<()> {
 }
 
 fn migrate(connection: &mut Connection) -> Result<()> {
-    let current: i64 =
+    let mut current: i64 =
         connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if current > SCHEMA_VERSION {
         return Err(CoreError::UnsupportedSchema {
@@ -428,6 +543,158 @@ fn migrate(connection: &mut Connection) -> Result<()> {
         )?;
         transaction.pragma_update(None, "user_version", 1_i64)?;
         transaction.commit()?;
+        current = 1;
+    }
+
+    if current < 2 {
+        let transaction =
+            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute_batch(MIGRATION_V2)?;
+        backfill_phase_1a_hierarchy(&transaction)?;
+        let applied_at = database_timestamp(&transaction)?;
+        transaction.execute(
+            "INSERT OR IGNORE INTO schema_migrations
+                (version, applied_at, description)
+             VALUES (2, ?1, ?2)",
+            params![
+                applied_at,
+                "Phase 1A projects, tree hierarchy, scene links, and UI state"
+            ],
+        )?;
+        transaction.execute(
+            "UPDATE app_meta
+             SET format_version = 1, schema_version = 2
+             WHERE singleton = 1",
+            [],
+        )?;
+        transaction.pragma_update(None, "user_version", 2_i64)?;
+        transaction.commit()?;
+    }
+
+    Ok(())
+}
+
+fn backfill_phase_1a_hierarchy(transaction: &Transaction<'_>) -> Result<()> {
+    let legacy_project = transaction
+        .query_row(
+            "SELECT project_id, title, created_at, updated_at
+             FROM app_meta WHERE singleton = 1",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((project_id, title, created_at, updated_at)) = legacy_project else {
+        return Ok(());
+    };
+
+    transaction.execute(
+        "INSERT OR IGNORE INTO projects
+            (id, title, author_name, created_at, updated_at)
+         VALUES (?1, ?2, NULL, ?3, ?4)",
+        params![project_id, title, created_at, updated_at],
+    )?;
+
+    let existing_work = transaction
+        .query_row(
+            "SELECT id FROM tree_nodes
+             WHERE project_id = ?1 AND kind = 'WORK'",
+            [&project_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    let work_node_id = existing_work.unwrap_or_else(|| Uuid::new_v4().to_string());
+    transaction.execute(
+        "INSERT OR IGNORE INTO tree_nodes (
+            id, project_id, parent_id, kind, title, order_key,
+            document_id, created_at, updated_at
+         ) VALUES (?1, ?2, NULL, 'WORK', ?3, ?4, NULL, ?5, ?6)",
+        params![
+            work_node_id,
+            project_id,
+            title,
+            ORDER_STEP,
+            created_at,
+            updated_at
+        ],
+    )?;
+
+    let document_rows = {
+        let mut statement = transaction.prepare(
+            "SELECT id, title, created_at, updated_at
+             FROM documents
+             WHERE project_id = ?1
+             ORDER BY created_at, id",
+        )?;
+        let rows = statement.query_map([&project_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()?
+    };
+
+    let default_chapter_node_id = if document_rows.is_empty() {
+        None
+    } else {
+        let chapter_node_id = Uuid::new_v4().to_string();
+        transaction.execute(
+            "INSERT INTO tree_nodes (
+                id, project_id, parent_id, kind, title, order_key,
+                document_id, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, 'CHAPTER', '본문', ?4, NULL, ?5, ?6)",
+            params![
+                chapter_node_id,
+                project_id,
+                work_node_id,
+                ORDER_STEP,
+                created_at,
+                updated_at
+            ],
+        )?;
+        Some(chapter_node_id)
+    };
+
+    for (index, (document_id, document_title, created_at, updated_at)) in
+        document_rows.into_iter().enumerate()
+    {
+        let linked: Option<String> = transaction
+            .query_row(
+                "SELECT id FROM tree_nodes WHERE document_id = ?1",
+                [&document_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if linked.is_some() {
+            continue;
+        }
+        let scene_node_id = Uuid::new_v4().to_string();
+        let order_key = (index as f64 + 1.0) * ORDER_STEP;
+        transaction.execute(
+            "INSERT INTO tree_nodes (
+                id, project_id, parent_id, kind, title, order_key,
+                document_id, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, 'SCENE', ?4, ?5, ?6, ?7, ?8)",
+            params![
+                scene_node_id,
+                project_id,
+                default_chapter_node_id.as_deref(),
+                document_title,
+                order_key,
+                document_id,
+                created_at,
+                updated_at
+            ],
+        )?;
     }
 
     Ok(())
@@ -441,7 +708,7 @@ fn application_id(connection: &Connection) -> Result<i64> {
     )?)
 }
 
-fn database_timestamp(connection: &Connection) -> Result<String> {
+pub(crate) fn database_timestamp(connection: &Connection) -> Result<String> {
     Ok(connection.query_row(
         "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
         [],
@@ -449,7 +716,7 @@ fn database_timestamp(connection: &Connection) -> Result<String> {
     )?)
 }
 
-fn load_app_meta(connection: &Connection) -> Result<AppMeta> {
+pub(crate) fn load_app_meta(connection: &Connection) -> Result<AppMeta> {
     connection
         .query_row(
             "SELECT
@@ -497,7 +764,7 @@ fn load_document_summaries(connection: &Connection) -> Result<Vec<DocumentSummar
     Ok(documents)
 }
 
-fn load_document_summary(
+pub(crate) fn load_document_summary(
     connection: &Connection,
     document_id: &str,
 ) -> Result<DocumentSummary> {
@@ -535,7 +802,7 @@ fn document_summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Docume
     })
 }
 
-fn load_document_record(
+pub(crate) fn load_document_record(
     connection: &Connection,
     document_id: &str,
 ) -> Result<DocumentRecord> {
@@ -649,6 +916,63 @@ fn validate_metadata(metadata: &AppMeta) -> Result<()> {
     Ok(())
 }
 
+fn validate_phase_1a_structure(
+    connection: &Connection,
+    metadata: &AppMeta,
+) -> Result<()> {
+    let project_count: i64 = connection.query_row(
+        "SELECT count(*) FROM projects WHERE id = ?1",
+        [&metadata.project_id],
+        |row| row.get(0),
+    )?;
+    if project_count != 1 {
+        return Err(CoreError::Integrity(
+            "the project row is missing or duplicated".to_owned(),
+        ));
+    }
+    let work_count: i64 = connection.query_row(
+        "SELECT count(*) FROM tree_nodes
+         WHERE project_id = ?1 AND kind = 'WORK' AND parent_id IS NULL",
+        [&metadata.project_id],
+        |row| row.get(0),
+    )?;
+    if work_count != 1 {
+        return Err(CoreError::Integrity(
+            "the project must contain exactly one WORK root".to_owned(),
+        ));
+    }
+    let invalid_edges: i64 = connection.query_row(
+        "SELECT count(*)
+         FROM tree_nodes child
+         LEFT JOIN tree_nodes parent ON parent.id = child.parent_id
+         WHERE child.project_id = ?1
+           AND child.kind <> 'WORK'
+           AND (parent.id IS NULL OR NOT (
+             (parent.kind = 'WORK' AND child.kind IN ('VOLUME', 'CHAPTER')) OR
+             (parent.kind = 'VOLUME' AND child.kind = 'CHAPTER') OR
+             (parent.kind = 'CHAPTER' AND child.kind = 'SCENE')
+           ))",
+        [&metadata.project_id],
+        |row| row.get(0),
+    )?;
+    if invalid_edges != 0 {
+        return Err(CoreError::Integrity(
+            "tree hierarchy contains an invalid edge".to_owned(),
+        ));
+    }
+    let foreign_key_violation = connection
+        .query_row("PRAGMA foreign_key_check", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .optional()?;
+    if foreign_key_violation.is_some() {
+        return Err(CoreError::Integrity(
+            "project foreign-key integrity check failed".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn quick_check(connection: &Connection) -> Result<String> {
     let result: String =
         connection.query_row("PRAGMA quick_check(1)", [], |row| row.get(0))?;
@@ -658,7 +982,7 @@ fn quick_check(connection: &Connection) -> Result<String> {
     Ok(result)
 }
 
-fn create_consistent_backup(
+pub(crate) fn create_consistent_backup(
     connection: &Connection,
     project_path: &Path,
 ) -> Result<PathBuf> {
@@ -709,7 +1033,7 @@ fn unique_sibling_path(path: &Path, role: &str) -> PathBuf {
     path.with_file_name(format!(".{name}.{}.{}", Uuid::new_v4(), role))
 }
 
-fn sync_file(path: &Path) -> Result<()> {
+pub(crate) fn sync_file(path: &Path) -> Result<()> {
     OpenOptions::new()
         .read(true)
         .write(true)
@@ -742,7 +1066,7 @@ fn usable_parent(path: &Path) -> &Path {
         .unwrap_or_else(|| Path::new("."))
 }
 
-fn validate_non_empty(field: &str, value: &str) -> Result<()> {
+pub(crate) fn validate_non_empty(field: &str, value: &str) -> Result<()> {
     if value.trim().is_empty() {
         return Err(CoreError::InvalidInput(format!(
             "{field} must not be empty"
@@ -751,7 +1075,7 @@ fn validate_non_empty(field: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_editor_metadata(
+pub(crate) fn validate_editor_metadata(
     editor_engine: &str,
     editor_engine_commit: &str,
     editor_schema_version: i64,
@@ -766,13 +1090,16 @@ fn validate_editor_metadata(
     Ok(())
 }
 
-fn non_empty_or_generated(field: &str, value: Option<String>) -> Result<String> {
+pub(crate) fn non_empty_or_generated(
+    field: &str,
+    value: Option<String>,
+) -> Result<String> {
     let value = value.unwrap_or_else(|| Uuid::new_v4().to_string());
     validate_non_empty(field, &value)?;
     Ok(value)
 }
 
-fn default_client_identifier() -> String {
+pub(crate) fn default_client_identifier() -> String {
     format!("madi-core/{}", env!("CARGO_PKG_VERSION"))
 }
 

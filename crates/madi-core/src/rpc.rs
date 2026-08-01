@@ -4,8 +4,15 @@ use serde_json::{json, Value};
 
 use crate::error::{CoreError, Result};
 use crate::model::{
-    CreateProjectParams, LoadDocumentParams, OpenProjectParams,
-    RecoverPlainTextParams, SaveDocumentParams,
+    CreateProjectParams, CreateTreeNodeParams, DeleteTreeNodeParams,
+    LoadDocumentParams, LoadProjectTreeParams, LoadSceneParams, LoadUiStateParams,
+    MoveTreeNodeParams, OpenProjectParams, RecoverPlainTextParams,
+    RenameTreeNodeParams, ReorderTreeNodeParams, SaveDocumentParams,
+    SaveSceneParams, SaveUiStateParams,
+};
+use crate::hierarchy::{
+    create_tree_node, delete_tree_node, load_project_tree, load_scene, load_ui_state,
+    move_tree_node, rename_tree_node, reorder_tree_node, save_scene, save_ui_state,
 };
 use crate::storage::{
     create_project, inspect_project, load_document, open_project,
@@ -68,6 +75,46 @@ pub fn dispatch(method: &str, params: Value) -> Result<Value> {
         "recover_plain_text" => {
             let request: RecoverPlainTextParams = parse_params(params)?;
             Ok(serde_json::to_value(recover_plain_text(request)?)?)
+        }
+        "load_project_tree" => {
+            let request: LoadProjectTreeParams = parse_params(params)?;
+            Ok(serde_json::to_value(load_project_tree(request)?)?)
+        }
+        "create_tree_node" => {
+            let request: CreateTreeNodeParams = parse_params(params)?;
+            Ok(serde_json::to_value(create_tree_node(request)?)?)
+        }
+        "rename_tree_node" => {
+            let request: RenameTreeNodeParams = parse_params(params)?;
+            Ok(serde_json::to_value(rename_tree_node(request)?)?)
+        }
+        "move_tree_node" => {
+            let request: MoveTreeNodeParams = parse_params(params)?;
+            Ok(serde_json::to_value(move_tree_node(request)?)?)
+        }
+        "reorder_tree_node" => {
+            let request: ReorderTreeNodeParams = parse_params(params)?;
+            Ok(serde_json::to_value(reorder_tree_node(request)?)?)
+        }
+        "delete_tree_node" => {
+            let request: DeleteTreeNodeParams = parse_params(params)?;
+            Ok(serde_json::to_value(delete_tree_node(request)?)?)
+        }
+        "load_scene" => {
+            let request: LoadSceneParams = parse_params(params)?;
+            Ok(serde_json::to_value(load_scene(request)?)?)
+        }
+        "save_scene" => {
+            let request: SaveSceneParams = parse_params(params)?;
+            Ok(serde_json::to_value(save_scene(request)?)?)
+        }
+        "save_ui_state" => {
+            let request: SaveUiStateParams = parse_params(params)?;
+            Ok(serde_json::to_value(save_ui_state(request)?)?)
+        }
+        "load_ui_state" => {
+            let request: LoadUiStateParams = parse_params(params)?;
+            Ok(serde_json::to_value(load_ui_state(request)?)?)
         }
         _ => Err(CoreError::MethodNotFound(method.to_owned())),
     }
@@ -163,7 +210,15 @@ fn rpc_error(error: &CoreError, method: &str) -> (i64, String) {
         }
         CoreError::RevisionConflict { .. } => (-32001, error.to_string()),
         CoreError::AlreadyExists(_) => (-32002, error.to_string()),
-        CoreError::NotFound(_) => (-32004, error.to_string()),
+        CoreError::IdentifierConflict { .. } => (-32003, error.to_string()),
+        CoreError::NotFound(_) | CoreError::NodeNotFound { .. } => {
+            (-32004, error.to_string())
+        }
+        CoreError::InvalidHierarchy { .. }
+        | CoreError::WorkMutationForbidden { .. }
+        | CoreError::NodeKindMismatch { .. } => (-32020, error.to_string()),
+        CoreError::RecursiveDeleteRequired { .. } => (-32021, error.to_string()),
+        CoreError::InvalidTreePosition { .. } => (-32022, error.to_string()),
         CoreError::NotMadiFile { .. }
         | CoreError::UnsupportedSchema { .. }
         | CoreError::UnsupportedFormat { .. }

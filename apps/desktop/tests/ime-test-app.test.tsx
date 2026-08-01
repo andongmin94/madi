@@ -48,6 +48,60 @@ class EmptyTestEditor implements MadiEditorAdapter {
   }
 }
 
+function phase1ApiStubs(): Pick<
+  MadiDesktopApi,
+  | "getProjectTree"
+  | "createNode"
+  | "renameNode"
+  | "moveNode"
+  | "reorderNode"
+  | "deleteNode"
+  | "loadSceneDocument"
+  | "saveSceneDocument"
+  | "saveUiState"
+  | "loadUiState"
+> {
+  const tree = {
+    project: {
+      id: "ime-project",
+      title: "새 작품",
+      authorName: null,
+      createdAt: "2026-08-02T00:00:00.000Z",
+      updatedAt: "2026-08-02T00:00:00.000Z"
+    },
+    nodes: [
+      {
+        id: "ime-work",
+        projectId: "ime-project",
+        parentId: null,
+        kind: "WORK" as const,
+        title: "새 작품",
+        orderKey: 1024,
+        documentId: null,
+        createdAt: "2026-08-02T00:00:00.000Z",
+        updatedAt: "2026-08-02T00:00:00.000Z"
+      }
+    ],
+    revision: 0
+  };
+  return {
+    getProjectTree: vi.fn(async () => tree),
+    createNode: vi.fn(async () => tree),
+    renameNode: vi.fn(async () => tree),
+    moveNode: vi.fn(async () => tree),
+    reorderNode: vi.fn(async () => tree),
+    deleteNode: vi.fn(async () => tree),
+    loadSceneDocument: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    saveSceneDocument: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    saveUiState: vi.fn(async () => undefined),
+    loadUiState: vi.fn(async () => ({ state: null }))
+  };
+}
+
 function installMemoryStorage(): void {
   const values = new Map<string, string>();
   Object.defineProperty(window, "localStorage", {
@@ -74,6 +128,7 @@ describe("Phase 0.5 IME Test screen orchestration", () => {
 
   it("creates an empty Typie document, autosaves it, and redacts composition data", async () => {
     const api: MadiDesktopApi = {
+      ...phase1ApiStubs(),
       createProject: vi.fn(async () => ({
         sessionId: "ime-session",
         fileName: "ime-check.madi",
@@ -163,6 +218,7 @@ describe("Phase 0.5 IME Test screen orchestration", () => {
       | undefined;
     let resolveCloseAck: ((accepted: boolean) => void) | undefined;
     const api: MadiDesktopApi = {
+      ...phase1ApiStubs(),
       createProject: vi.fn(async () => ({
         sessionId: "close-session",
         fileName: "close-check.madi",

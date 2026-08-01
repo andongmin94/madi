@@ -27,12 +27,22 @@ describe("preload capability API", () => {
     expect(Object.keys(api).sort()).toEqual(
       [
         "createProject",
+        "createNode",
+        "deleteNode",
         "getAppVersion",
+        "getProjectTree",
         "loadDocument",
+        "loadSceneDocument",
+        "loadUiState",
+        "moveNode",
         "onCloseRequested",
         "openProject",
         "recoverPlainText",
+        "renameNode",
+        "reorderNode",
         "saveDocument",
+        "saveSceneDocument",
+        "saveUiState",
         "completeCloseRequest"
       ].sort()
     );
@@ -88,6 +98,9 @@ describe("preload capability API", () => {
       if (channel === IPC_CHANNELS.loadDocument) {
         return loadedDocument;
       }
+      if (channel === IPC_CHANNELS.loadSceneDocument) {
+        return { ...loadedDocument, sceneId: "scene-id" };
+      }
       if (channel === IPC_CHANNELS.getAppVersion) {
         return "0.0.1";
       }
@@ -102,6 +115,42 @@ describe("preload capability API", () => {
           documentId: "document-id",
           revision: 3,
           updatedAt: "2026-07-29T00:00:00.000Z"
+        };
+      }
+      if (channel === IPC_CHANNELS.saveSceneDocument) {
+        return {
+          sceneId: "scene-id",
+          documentId: "document-id",
+          revision: 4,
+          updatedAt: "2026-08-02T00:00:00.000Z",
+          generation: 1,
+          saveSequence: 1
+        };
+      }
+      if (channel === IPC_CHANNELS.loadUiState) {
+        return { state: null };
+      }
+      if (channel === IPC_CHANNELS.saveUiState) {
+        return undefined;
+      }
+      if (
+        channel === IPC_CHANNELS.getProjectTree ||
+        channel === IPC_CHANNELS.createNode ||
+        channel === IPC_CHANNELS.renameNode ||
+        channel === IPC_CHANNELS.moveNode ||
+        channel === IPC_CHANNELS.reorderNode ||
+        channel === IPC_CHANNELS.deleteNode
+      ) {
+        return {
+          project: {
+            id: "project-id",
+            title: "새 작품",
+            authorName: null,
+            createdAt: "2026-08-02T00:00:00.000Z",
+            updatedAt: "2026-08-02T00:00:00.000Z"
+          },
+          nodes: [],
+          revision: 4
         };
       }
       if (channel === IPC_CHANNELS.completeCloseRequest) {
@@ -135,6 +184,60 @@ describe("preload capability API", () => {
     });
     const restored = await api.loadDocument({ sessionId: "session" });
     await api.recoverPlainText({ sessionId: "session" });
+    await api.getProjectTree({ sessionId: "session" });
+    await api.createNode({
+      sessionId: "session",
+      parentId: "chapter-id",
+      kind: "SCENE",
+      title: "새 장면",
+      editorEngineCommit: "commit",
+      editorSchemaVersion: 1
+    });
+    await api.renameNode({
+      sessionId: "session",
+      nodeId: "scene-id",
+      title: "첫 장면"
+    });
+    await api.moveNode({
+      sessionId: "session",
+      nodeId: "scene-id",
+      newParentId: "other-chapter"
+    });
+    await api.reorderNode({
+      sessionId: "session",
+      nodeId: "scene-id",
+      direction: "up"
+    });
+    await api.deleteNode({
+      sessionId: "session",
+      nodeId: "scene-id",
+      recursive: true
+    });
+    const loadedScene = await api.loadSceneDocument({
+      sessionId: "session",
+      sceneId: "scene-id"
+    });
+    await api.saveSceneDocument({
+      sessionId: "session",
+      sceneId: "scene-id",
+      documentId: "document-id",
+      generation: 1,
+      saveSequence: 1,
+      editorEngine: "typie",
+      editorEngineCommit: "commit",
+      editorSchemaVersion: 1,
+      snapshot: outgoing,
+      plainTextRecovery: "복구"
+    });
+    await api.saveUiState({
+      sessionId: "session",
+      state: {
+        selectedNodeId: "scene-id",
+        expandedNodeIds: ["work-id"],
+        binderWidth: 300
+      }
+    });
+    await api.loadUiState({ sessionId: "session" });
     await api.getAppVersion();
     const listener = vi.fn();
     const unsubscribe = api.onCloseRequested(listener);
@@ -151,11 +254,23 @@ describe("preload capability API", () => {
       IPC_CHANNELS.saveDocument,
       IPC_CHANNELS.loadDocument,
       IPC_CHANNELS.recoverPlainText,
+      IPC_CHANNELS.getProjectTree,
+      IPC_CHANNELS.createNode,
+      IPC_CHANNELS.renameNode,
+      IPC_CHANNELS.moveNode,
+      IPC_CHANNELS.reorderNode,
+      IPC_CHANNELS.deleteNode,
+      IPC_CHANNELS.loadSceneDocument,
+      IPC_CHANNELS.saveSceneDocument,
+      IPC_CHANNELS.saveUiState,
+      IPC_CHANNELS.loadUiState,
       IPC_CHANNELS.getAppVersion,
       IPC_CHANNELS.completeCloseRequest
     ]);
     expect(restored.snapshot).toEqual(Uint8Array.from([3, 1, 4]));
     expect(restored.snapshot).not.toBe(loadedDocument.snapshot);
+    expect(loadedScene.snapshot).toEqual(Uint8Array.from([3, 1, 4]));
+    expect(loadedScene.snapshot).not.toBe(loadedDocument.snapshot);
     expect(closeAccepted).toBe(true);
   });
 });

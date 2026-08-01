@@ -15,6 +15,34 @@ pub enum CoreError {
     #[error("project was not found: {0}")]
     NotFound(String),
 
+    #[error("tree node was not found: {node_id}")]
+    NodeNotFound { node_id: String },
+
+    #[error("{entity} identifier already exists: {id}")]
+    IdentifierConflict {
+        entity: &'static str,
+        id: String,
+    },
+
+    #[error("node {node_id} must be {expected}, found {actual}")]
+    NodeKindMismatch {
+        node_id: String,
+        expected: &'static str,
+        actual: String,
+    },
+
+    #[error("invalid hierarchy: {rule}")]
+    InvalidHierarchy { rule: &'static str },
+
+    #[error("{operation} is not allowed for the WORK root")]
+    WorkMutationForbidden { operation: &'static str },
+
+    #[error("recursive delete must be explicitly enabled for node {node_id}")]
+    RecursiveDeleteRequired { node_id: String },
+
+    #[error("tree position is invalid: {reason}")]
+    InvalidTreePosition { reason: &'static str },
+
     #[error("RPC method was not found: {0}")]
     MethodNotFound(String),
 

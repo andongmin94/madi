@@ -11,7 +11,17 @@ export const CORE_METHODS = [
   "save_document",
   "load_document",
   "inspect_project",
-  "recover_plain_text"
+  "recover_plain_text",
+  "load_project_tree",
+  "create_tree_node",
+  "rename_tree_node",
+  "move_tree_node",
+  "reorder_tree_node",
+  "delete_tree_node",
+  "load_scene",
+  "save_scene",
+  "save_ui_state",
+  "load_ui_state"
 ] as const;
 
 export type CoreMethod = (typeof CORE_METHODS)[number];

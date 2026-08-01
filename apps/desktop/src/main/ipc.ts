@@ -6,11 +6,20 @@ import type {
 import {
   IPC_CHANNELS,
   type CompleteCloseRequest,
+  type CreateNodeRequest,
   type CreateProjectRequest,
+  type DeleteNodeRequest,
+  type LoadSceneDocumentRequest,
   type LoadDocumentRequest,
+  type MoveNodeRequest,
   type OpenProjectRequest,
   type RecoverPlainTextRequest,
-  type SaveDocumentRequest
+  type RenameNodeRequest,
+  type ReorderNodeRequest,
+  type SaveSceneDocumentRequest,
+  type SaveDocumentRequest,
+  type SaveUiStateRequest,
+  type SessionRequest
 } from "../shared/contracts";
 import type { DesktopService } from "./desktopService";
 
@@ -131,6 +140,106 @@ export function registerMadiIpc({
       authorize(event);
       return service.recoverPlainText(
         requireObject(rawRequest) as unknown as RecoverPlainTextRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.getProjectTree,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.getProjectTree(
+        requireObject(rawRequest) as unknown as SessionRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.createNode,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.createNode(
+        requireObject(rawRequest) as unknown as CreateNodeRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.renameNode,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.renameNode(
+        requireObject(rawRequest) as unknown as RenameNodeRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.moveNode,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.moveNode(
+        requireObject(rawRequest) as unknown as MoveNodeRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.reorderNode,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.reorderNode(
+        requireObject(rawRequest) as unknown as ReorderNodeRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.deleteNode,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.deleteNode(
+        requireObject(rawRequest) as unknown as DeleteNodeRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.loadSceneDocument,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.loadSceneDocument(
+        requireObject(rawRequest) as unknown as LoadSceneDocumentRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.saveSceneDocument,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.saveSceneDocument(
+        requireObject(rawRequest) as unknown as SaveSceneDocumentRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.saveUiState,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      await service.saveUiState(
+        requireObject(rawRequest) as unknown as SaveUiStateRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.loadUiState,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.loadUiState(
+        requireObject(rawRequest) as unknown as SessionRequest
       );
     }
   );
