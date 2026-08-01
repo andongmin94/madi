@@ -8,6 +8,8 @@ import type {
 } from "../src/shared/contracts";
 import type {
   EditorChange,
+  EditorReplacementDocument,
+  EditorTextReplacement,
   MadiEditorAdapter
 } from "../src/renderer/editor/MadiEditorAdapter";
 import { DocumentSessionController } from "../src/renderer/workspace/DocumentSessionController";
@@ -16,6 +18,9 @@ class SceneEditor implements MadiEditorAdapter {
   public readonly opened: Array<Uint8Array | undefined> = [];
   public snapshot = Uint8Array.from([1, 2, 3]);
   public plainText = "장면 A 본문";
+  public readonly interactionStates: boolean[] = [];
+  public undoCalls = 0;
+  public sceneBreakCalls = 0;
   private readonly listeners = new Set<(change: EditorChange) => void>();
 
   public async open(snapshot?: Uint8Array): Promise<void> {
@@ -30,10 +35,28 @@ class SceneEditor implements MadiEditorAdapter {
     return this.plainText;
   }
 
+  public async replaceTextRanges(
+    replacements: readonly EditorTextReplacement[]
+  ): Promise<EditorReplacementDocument> {
+    return {
+      snapshot: Uint8Array.from([7, replacements.length]),
+      plainTextRecovery: "치환된 본문",
+      semanticSceneBreakCount: 0
+    };
+  }
+
+  public setInteractionEnabled(enabled: boolean): void {
+    this.interactionStates.push(enabled);
+  }
+
   public focus(): void {}
-  public undo(): void {}
+  public undo(): void {
+    this.undoCalls += 1;
+  }
   public redo(): void {}
-  public insertSceneBreak(): void {}
+  public insertSceneBreak(): void {
+    this.sceneBreakCalls += 1;
+  }
 
   public onChanged(listener: (change: EditorChange) => void): () => void {
     this.listeners.add(listener);
@@ -94,7 +117,7 @@ function loadedScene(sceneId: string, revision: number): LoadedSceneDocument {
 
 function createApi(overrides: Partial<MadiDesktopApi> = {}): MadiDesktopApi {
   const unusedTree = vi.fn(async () => emptyTree);
-  return {
+  const api: MadiDesktopApi = {
     createProject: vi.fn(async () => session),
     openProject: vi.fn(async () => session),
     saveDocument: vi.fn(async () => ({
@@ -125,11 +148,41 @@ function createApi(overrides: Partial<MadiDesktopApi> = {}): MadiDesktopApi {
     })),
     saveUiState: vi.fn(async () => undefined),
     loadUiState: vi.fn(async () => ({ state: null })),
+    listDescendantScenes: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    searchProject: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    getTextStatistics: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    applyReplacementBatch: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    createNamedSnapshot: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    listNamedSnapshots: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    renameNamedSnapshot: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    deleteNamedSnapshot: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    diffNamedSnapshot: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    restoreNamedSnapshot: vi.fn(async () => {
+      throw new Error("not used");
+    }),
     getAppVersion: vi.fn(async () => "0.0.1"),
     onCloseRequested: vi.fn(() => () => undefined),
-    completeCloseRequest: vi.fn(async () => true),
-    ...overrides
+    completeCloseRequest: vi.fn(async () => true)
   };
+  return Object.assign(api, overrides);
 }
 
 function deferred<T>() {
@@ -335,5 +388,238 @@ describe("Phase 1A scene session safety", () => {
     expect(editor.opened).toEqual([undefined]);
     expect(api.loadDocument).not.toHaveBeenCalled();
     expect(api.loadSceneDocument).not.toHaveBeenCalled();
+  });
+
+  it("locks user interaction and refuses Ctrl+S while semantic replacement borrows the live editor", async () => {
+    const pendingTarget = deferred<LoadedSceneDocument>();
+    const api = createApi({
+      loadSceneDocument: vi.fn(async ({ sceneId }) => {
+        if (sceneId === "scene-b") {
+          return pendingTarget.promise;
+        }
+        return loadedScene(sceneId, 1);
+      }),
+      applyReplacementBatch: vi.fn(async () => ({
+        safetySnapshot: {
+          id: "snapshot-before-replace",
+          projectId: "project-1",
+          name: "치환 전",
+          note: null,
+          kind: "AUTO_BEFORE_REPLACE" as const,
+          payloadFormat: "madi-logical-project",
+          payloadVersion: 1,
+          payloadBytes: 100,
+          contentHash: "a".repeat(64),
+          createdAt: "2026-08-02T00:00:00.000Z",
+          updatedAt: "2026-08-02T00:00:00.000Z"
+        },
+        changedSceneIds: ["scene-b"],
+        changedScenes: 1,
+        changedOccurrences: 1,
+        revision: 2
+      }))
+    });
+    const editor = new SceneEditor();
+    const controller = new DocumentSessionController(
+      api,
+      editor,
+      "fixed-commit",
+      1
+    );
+    await controller.openProject();
+
+    const replacement = controller.applySemanticReplacementBatch(
+      [
+        {
+          sceneId: "scene-b",
+          documentId: "document-b",
+          sourceContentHash: "b".repeat(64),
+          replacements: [
+            {
+              id: "scene-b:0",
+              start: 0,
+              end: 1,
+              expectedText: "장",
+              replacement: "별"
+            }
+          ]
+        }
+      ],
+      1,
+      "장",
+      "별",
+      false
+    );
+    await vi.waitFor(() => expect(editor.interactionStates).toEqual([false]));
+
+    expect(await controller.save()).toBe(false);
+    controller.undo();
+    controller.insertSceneBreak();
+    expect(api.saveSceneDocument).not.toHaveBeenCalled();
+    expect(editor.undoCalls).toBe(0);
+    expect(editor.sceneBreakCalls).toBe(0);
+
+    pendingTarget.resolve(loadedScene("scene-b", 1));
+    expect(await replacement).not.toBeNull();
+    expect(api.applyReplacementBatch).toHaveBeenCalledTimes(1);
+    expect(api.saveSceneDocument).not.toHaveBeenCalled();
+    expect(editor.interactionStates).toEqual([false, true]);
+  });
+
+  it("aborts a replacement if an unexpected editor mutation crosses the lock", async () => {
+    const pendingTarget = deferred<LoadedSceneDocument>();
+    const api = createApi({
+      loadSceneDocument: vi.fn(async ({ sceneId }) =>
+        sceneId === "scene-b"
+          ? pendingTarget.promise
+          : loadedScene(sceneId, 1)
+      ),
+      applyReplacementBatch: vi.fn(async () => {
+        throw new Error("must not commit");
+      })
+    });
+    const editor = new SceneEditor();
+    const controller = new DocumentSessionController(
+      api,
+      editor,
+      "fixed-commit",
+      1
+    );
+    await controller.openProject();
+
+    const replacement = controller.applySemanticReplacementBatch(
+      [
+        {
+          sceneId: "scene-b",
+          documentId: "document-b",
+          sourceContentHash: "b".repeat(64),
+          replacements: [
+            {
+              id: "scene-b:0",
+              start: 0,
+              end: 1,
+              expectedText: "장",
+              replacement: "별"
+            }
+          ]
+        }
+      ],
+      1,
+      "장",
+      "별",
+      false
+    );
+    await vi.waitFor(() => expect(editor.interactionStates).toEqual([false]));
+    editor.emitContentChange();
+    pendingTarget.resolve(loadedScene("scene-b", 1));
+
+    expect(await replacement).toBeNull();
+    expect(api.applyReplacementBatch).not.toHaveBeenCalled();
+    expect(api.saveSceneDocument).not.toHaveBeenCalled();
+    expect(editor.interactionStates).toEqual([false, true]);
+    expect(controller.getState().errorMessage).toContain(
+      "프로젝트 작업 중 편집기 변경"
+    );
+  });
+
+  it("stays fail-closed if a committed replacement cannot reload the original scene", async () => {
+    let originalLoads = 0;
+    const api = createApi({
+      loadSceneDocument: vi.fn(async ({ sceneId }) => {
+        if (sceneId === "scene-a") {
+          originalLoads += 1;
+          if (originalLoads > 1) {
+            throw new Error("reload failed");
+          }
+        }
+        return loadedScene(sceneId, 1);
+      }),
+      applyReplacementBatch: vi.fn(async () => ({
+        safetySnapshot: {
+          id: "snapshot-before-replace",
+          projectId: "project-1",
+          name: "치환 전",
+          note: null,
+          kind: "AUTO_BEFORE_REPLACE" as const,
+          payloadFormat: "madi-logical-project",
+          payloadVersion: 1,
+          payloadBytes: 100,
+          contentHash: "a".repeat(64),
+          createdAt: "2026-08-02T00:00:00.000Z",
+          updatedAt: "2026-08-02T00:00:00.000Z"
+        },
+        changedSceneIds: ["scene-b"],
+        changedScenes: 1,
+        changedOccurrences: 1,
+        revision: 2
+      }))
+    });
+    const editor = new SceneEditor();
+    const controller = new DocumentSessionController(
+      api,
+      editor,
+      "fixed-commit",
+      1
+    );
+    await controller.openProject();
+
+    const result = await controller.applySemanticReplacementBatch(
+      [
+        {
+          sceneId: "scene-b",
+          documentId: "document-b",
+          sourceContentHash: "b".repeat(64),
+          replacements: [
+            {
+              id: "scene-b:0",
+              start: 0,
+              end: 1,
+              expectedText: "장",
+              replacement: "별"
+            }
+          ]
+        }
+      ],
+      1,
+      "장",
+      "별",
+      false
+    );
+
+    expect(result).toBeNull();
+    expect(controller.getState().savePhase).toBe("restoring");
+    expect(editor.interactionStates).toEqual([false]);
+    expect(await controller.save()).toBe(false);
+    expect(controller.isEditorFailClosed()).toBe(true);
+    expect(await controller.prepareForClose()).toBe(true);
+    expect(api.saveSceneDocument).not.toHaveBeenCalled();
+  });
+
+  it("keeps a named-restore style exclusive operation locked through storage reload", async () => {
+    const releaseRestore = deferred<void>();
+    const api = createApi();
+    const editor = new SceneEditor();
+    const controller = new DocumentSessionController(
+      api,
+      editor,
+      "fixed-commit",
+      1
+    );
+    await controller.openProject();
+
+    const operation = controller.runExclusiveEditorOperation(async () => {
+      await releaseRestore.promise;
+      await controller.reloadSceneFromStorage("scene-a", 2);
+      return "restored";
+    });
+    await vi.waitFor(() => expect(editor.interactionStates).toEqual([false]));
+    expect(controller.getState().savePhase).toBe("restoring");
+    expect(await controller.save()).toBe(false);
+    expect(api.saveSceneDocument).not.toHaveBeenCalled();
+
+    releaseRestore.resolve();
+    expect(await operation).toBe("restored");
+    expect(editor.interactionStates).toEqual([false, true]);
+    expect(controller.getState().savePhase).toBe("saved");
   });
 });

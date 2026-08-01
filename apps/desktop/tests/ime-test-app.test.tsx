@@ -11,6 +11,7 @@ import type {
   EditorChange,
   MadiEditorAdapter
 } from "../src/renderer/editor/MadiEditorAdapter";
+import { phase1bApiStubs } from "./phase1b-api-stubs";
 
 class EmptyTestEditor implements MadiEditorAdapter {
   private readonly listeners = new Set<(change: EditorChange) => void>();
@@ -60,6 +61,16 @@ function phase1ApiStubs(): Pick<
   | "saveSceneDocument"
   | "saveUiState"
   | "loadUiState"
+  | "listDescendantScenes"
+  | "searchProject"
+  | "getTextStatistics"
+  | "applyReplacementBatch"
+  | "createNamedSnapshot"
+  | "listNamedSnapshots"
+  | "renameNamedSnapshot"
+  | "deleteNamedSnapshot"
+  | "diffNamedSnapshot"
+  | "restoreNamedSnapshot"
 > {
   const tree = {
     project: {
@@ -85,6 +96,7 @@ function phase1ApiStubs(): Pick<
     revision: 0
   };
   return {
+    ...phase1bApiStubs(),
     getProjectTree: vi.fn(async () => tree),
     createNode: vi.fn(async () => tree),
     renameNode: vi.fn(async () => tree),

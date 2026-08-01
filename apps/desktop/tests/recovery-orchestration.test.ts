@@ -8,6 +8,7 @@ import type {
   MadiEditorAdapter
 } from "../src/renderer/editor/MadiEditorAdapter";
 import { DocumentSessionController } from "../src/renderer/workspace/DocumentSessionController";
+import { phase1bApiStubs } from "./phase1b-api-stubs";
 
 class TestEditorAdapter implements MadiEditorAdapter {
   public readonly openedSnapshots: Array<Uint8Array | undefined> = [];
@@ -74,6 +75,7 @@ function createApi() {
     revision: 8
   };
   const api: MadiDesktopApi = {
+    ...phase1bApiStubs(),
     getProjectTree: vi.fn(async () => ({
       project: {
         id: session.projectId,
@@ -108,6 +110,36 @@ function createApi() {
     }),
     saveUiState: vi.fn(async () => undefined),
     loadUiState: vi.fn(async () => ({ state: null })),
+    listDescendantScenes: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    searchProject: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    getTextStatistics: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    applyReplacementBatch: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    createNamedSnapshot: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    listNamedSnapshots: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    renameNamedSnapshot: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    deleteNamedSnapshot: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    diffNamedSnapshot: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    restoreNamedSnapshot: vi.fn(async () => {
+      throw new Error("not used");
+    }),
     createProject: vi.fn(async () => session),
     openProject: vi.fn(async () => session),
     loadDocument: vi.fn(async () => ({
