@@ -414,3 +414,347 @@ pub struct LoadUiStateResult {
     pub metadata: AppMeta,
     pub state: Option<UiStateRecord>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListDescendantScenesParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    #[serde(alias = "node_id")]
+    pub scope_node_id: String,
+    #[serde(default)]
+    pub offset: u64,
+    #[serde(default)]
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SceneWorkspaceRecord {
+    pub scene: TreeNode,
+    pub document: SceneDocumentPreview,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SceneDocumentPreview {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    pub plain_text_recovery: String,
+    pub source_content_hash: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ListDescendantScenesResult {
+    pub metadata: AppMeta,
+    pub scope: TreeNode,
+    pub scenes: Vec<SceneWorkspaceRecord>,
+    pub total_scenes: u64,
+    pub offset: u64,
+    pub limit: u64,
+    pub next_offset: Option<u64>,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum SearchTarget {
+    Titles,
+    Bodies,
+    #[default]
+    All,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum SearchField {
+    Title,
+    Body,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SearchProjectParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub query: String,
+    #[serde(default)]
+    pub case_sensitive: bool,
+    #[serde(default)]
+    pub target: SearchTarget,
+    #[serde(default, alias = "node_id")]
+    pub scope_node_id: Option<String>,
+    #[serde(default)]
+    pub offset: u64,
+    #[serde(default)]
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SearchHit {
+    pub occurrence_id: String,
+    pub node_id: String,
+    pub scene_id: Option<String>,
+    pub document_id: Option<String>,
+    pub node_kind: NodeKind,
+    pub node_title: String,
+    pub field: SearchField,
+    pub start_char: u64,
+    pub end_char: u64,
+    pub context_before: String,
+    pub matched_text: String,
+    pub context_after: String,
+    pub source_content_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SearchProjectResult {
+    pub metadata: AppMeta,
+    pub query: String,
+    pub case_sensitive: bool,
+    pub target: SearchTarget,
+    pub scope_node_id: String,
+    pub total_matches: u64,
+    pub scene_count: u64,
+    pub offset: u64,
+    pub limit: u64,
+    pub has_more: bool,
+    pub hits: Vec<SearchHit>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GetTextStatisticsParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    #[serde(default, alias = "node_id")]
+    pub scope_node_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SceneTextStatistics {
+    pub scene_id: String,
+    pub document_id: String,
+    pub with_spaces: u64,
+    pub without_spaces: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TextStatisticsResult {
+    pub metadata: AppMeta,
+    pub scope_node_id: String,
+    pub scene_count: u64,
+    pub with_spaces: u64,
+    pub without_spaces: u64,
+    pub scenes: Vec<SceneTextStatistics>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum NamedSnapshotKind {
+    #[default]
+    Manual,
+    AutoBeforeReplace,
+    AutoBeforeRestore,
+}
+
+impl NamedSnapshotKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Manual => "MANUAL",
+            Self::AutoBeforeReplace => "AUTO_BEFORE_REPLACE",
+            Self::AutoBeforeRestore => "AUTO_BEFORE_RESTORE",
+        }
+    }
+}
+
+impl FromStr for NamedSnapshotKind {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value {
+            "MANUAL" => Ok(Self::Manual),
+            "AUTO_BEFORE_REPLACE" => Ok(Self::AutoBeforeReplace),
+            "AUTO_BEFORE_RESTORE" => Ok(Self::AutoBeforeRestore),
+            _ => Err(format!("unsupported named snapshot kind {value}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NamedSnapshotSummary {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub note: Option<String>,
+    pub kind: NamedSnapshotKind,
+    pub payload_format: String,
+    pub payload_version: i64,
+    pub payload_bytes: u64,
+    pub content_hash: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreateNamedSnapshotParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub name: String,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub kind: NamedSnapshotKind,
+    #[serde(default)]
+    pub snapshot_id: Option<String>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreateNamedSnapshotResult {
+    pub metadata: AppMeta,
+    pub snapshot: NamedSnapshotSummary,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListNamedSnapshotsParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListNamedSnapshotsResult {
+    pub metadata: AppMeta,
+    pub snapshots: Vec<NamedSnapshotSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RenameNamedSnapshotParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub snapshot_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RenameNamedSnapshotResult {
+    pub metadata: AppMeta,
+    pub snapshot: NamedSnapshotSummary,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteNamedSnapshotParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub snapshot_id: String,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteNamedSnapshotResult {
+    pub metadata: AppMeta,
+    pub deleted_snapshot_id: String,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DiffNamedSnapshotParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub snapshot_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct SnapshotNodeCounts {
+    pub volumes: u64,
+    pub chapters: u64,
+    pub scenes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct SnapshotDiffSummary {
+    pub added: SnapshotNodeCounts,
+    pub deleted: SnapshotNodeCounts,
+    pub renamed_nodes: u64,
+    pub reordered_nodes: u64,
+    pub changed_scene_bodies: u64,
+    pub character_count_delta: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DiffNamedSnapshotResult {
+    pub metadata: AppMeta,
+    pub snapshot: NamedSnapshotSummary,
+    pub summary: SnapshotDiffSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RestoreNamedSnapshotParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub snapshot_id: String,
+    #[serde(default)]
+    pub auto_snapshot_name: Option<String>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RestoreNamedSnapshotResult {
+    pub metadata: AppMeta,
+    pub restored_snapshot: NamedSnapshotSummary,
+    pub safety_snapshot: NamedSnapshotSummary,
+    pub changes_before_restore: SnapshotDiffSummary,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TransformedSceneDocument {
+    pub scene_id: String,
+    pub document_id: String,
+    pub editor_engine: String,
+    pub editor_engine_commit: String,
+    pub editor_schema_version: i64,
+    pub snapshot_base64: String,
+    pub plain_text_recovery: String,
+    pub occurrence_count: u64,
+    #[serde(default)]
+    pub source_content_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ApplyReplacementBatchParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub expected_revision: i64,
+    pub query: String,
+    pub replacement: String,
+    #[serde(default)]
+    pub case_sensitive: bool,
+    pub transformed_scenes: Vec<TransformedSceneDocument>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+    #[serde(default)]
+    pub auto_snapshot_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ApplyReplacementBatchResult {
+    pub metadata: AppMeta,
+    pub safety_snapshot: NamedSnapshotSummary,
+    pub changed_scene_ids: Vec<String>,
+    pub changed_scenes: u64,
+    pub changed_occurrences: u64,
+    pub backup_file_path: PathBuf,
+}

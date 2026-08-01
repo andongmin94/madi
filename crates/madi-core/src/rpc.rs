@@ -4,11 +4,14 @@ use serde_json::{json, Value};
 
 use crate::error::{CoreError, Result};
 use crate::model::{
-    CreateProjectParams, CreateTreeNodeParams, DeleteTreeNodeParams,
-    LoadDocumentParams, LoadProjectTreeParams, LoadSceneParams, LoadUiStateParams,
-    MoveTreeNodeParams, OpenProjectParams, RecoverPlainTextParams,
-    RenameTreeNodeParams, ReorderTreeNodeParams, SaveDocumentParams,
-    SaveSceneParams, SaveUiStateParams,
+    ApplyReplacementBatchParams, CreateNamedSnapshotParams, CreateProjectParams,
+    CreateTreeNodeParams, DeleteNamedSnapshotParams, DeleteTreeNodeParams,
+    DiffNamedSnapshotParams, GetTextStatisticsParams, ListDescendantScenesParams,
+    ListNamedSnapshotsParams, LoadDocumentParams, LoadProjectTreeParams,
+    LoadSceneParams, LoadUiStateParams, MoveTreeNodeParams, OpenProjectParams,
+    RecoverPlainTextParams, RenameNamedSnapshotParams, RenameTreeNodeParams,
+    ReorderTreeNodeParams, RestoreNamedSnapshotParams, SaveDocumentParams,
+    SaveSceneParams, SaveUiStateParams, SearchProjectParams,
 };
 use crate::hierarchy::{
     create_tree_node, delete_tree_node, load_project_tree, load_scene, load_ui_state,
@@ -17,6 +20,12 @@ use crate::hierarchy::{
 use crate::storage::{
     create_project, inspect_project, load_document, open_project,
     recover_plain_text, save_document,
+};
+use crate::workspace::{
+    apply_replacement_batch, create_named_snapshot, delete_named_snapshot,
+    diff_named_snapshot, get_text_statistics, list_descendant_scenes,
+    list_named_snapshots, rename_named_snapshot, restore_named_snapshot,
+    search_project,
 };
 
 const JSON_RPC_VERSION: &str = "2.0";
@@ -116,6 +125,46 @@ pub fn dispatch(method: &str, params: Value) -> Result<Value> {
             let request: LoadUiStateParams = parse_params(params)?;
             Ok(serde_json::to_value(load_ui_state(request)?)?)
         }
+        "list_descendant_scenes" => {
+            let request: ListDescendantScenesParams = parse_params(params)?;
+            Ok(serde_json::to_value(list_descendant_scenes(request)?)?)
+        }
+        "search_project" => {
+            let request: SearchProjectParams = parse_params(params)?;
+            Ok(serde_json::to_value(search_project(request)?)?)
+        }
+        "get_text_statistics" => {
+            let request: GetTextStatisticsParams = parse_params(params)?;
+            Ok(serde_json::to_value(get_text_statistics(request)?)?)
+        }
+        "create_named_snapshot" => {
+            let request: CreateNamedSnapshotParams = parse_params(params)?;
+            Ok(serde_json::to_value(create_named_snapshot(request)?)?)
+        }
+        "list_named_snapshots" => {
+            let request: ListNamedSnapshotsParams = parse_params(params)?;
+            Ok(serde_json::to_value(list_named_snapshots(request)?)?)
+        }
+        "rename_named_snapshot" => {
+            let request: RenameNamedSnapshotParams = parse_params(params)?;
+            Ok(serde_json::to_value(rename_named_snapshot(request)?)?)
+        }
+        "delete_named_snapshot" => {
+            let request: DeleteNamedSnapshotParams = parse_params(params)?;
+            Ok(serde_json::to_value(delete_named_snapshot(request)?)?)
+        }
+        "diff_named_snapshot" => {
+            let request: DiffNamedSnapshotParams = parse_params(params)?;
+            Ok(serde_json::to_value(diff_named_snapshot(request)?)?)
+        }
+        "restore_named_snapshot" => {
+            let request: RestoreNamedSnapshotParams = parse_params(params)?;
+            Ok(serde_json::to_value(restore_named_snapshot(request)?)?)
+        }
+        "apply_replacement_batch" => {
+            let request: ApplyReplacementBatchParams = parse_params(params)?;
+            Ok(serde_json::to_value(apply_replacement_batch(request)?)?)
+        }
         _ => Err(CoreError::MethodNotFound(method.to_owned())),
     }
 }
@@ -208,7 +257,9 @@ fn rpc_error(error: &CoreError, method: &str) -> (i64, String) {
         CoreError::MethodNotFound(_) => {
             (-32601, format!("Method not found: {method}"))
         }
-        CoreError::RevisionConflict { .. } => (-32001, error.to_string()),
+        CoreError::RevisionConflict { .. } | CoreError::SourceContentConflict { .. } => {
+            (-32001, error.to_string())
+        }
         CoreError::AlreadyExists(_) => (-32002, error.to_string()),
         CoreError::IdentifierConflict { .. } => (-32003, error.to_string()),
         CoreError::NotFound(_) | CoreError::NodeNotFound { .. } => {
@@ -223,6 +274,7 @@ fn rpc_error(error: &CoreError, method: &str) -> (i64, String) {
         | CoreError::UnsupportedSchema { .. }
         | CoreError::UnsupportedFormat { .. }
         | CoreError::Integrity(_) => (-32010, error.to_string()),
+        CoreError::SnapshotIntegrity(_) => (-32030, error.to_string()),
         CoreError::Io(_) | CoreError::Sqlite(_) => {
             (-32000, "madi-core operation failed".to_owned())
         }

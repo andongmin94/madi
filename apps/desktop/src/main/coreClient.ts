@@ -21,7 +21,17 @@ export const CORE_METHODS = [
   "load_scene",
   "save_scene",
   "save_ui_state",
-  "load_ui_state"
+  "load_ui_state",
+  "list_descendant_scenes",
+  "search_project",
+  "get_text_statistics",
+  "apply_replacement_batch",
+  "create_named_snapshot",
+  "list_named_snapshots",
+  "rename_named_snapshot",
+  "delete_named_snapshot",
+  "diff_named_snapshot",
+  "restore_named_snapshot"
 ] as const;
 
 export type CoreMethod = (typeof CORE_METHODS)[number];

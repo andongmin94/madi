@@ -93,7 +93,7 @@ fn creates_v2_project_with_exactly_one_work_and_default_scene_link() {
     let user_version: i64 = connection
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .unwrap();
-    assert_eq!(user_version, 2);
+    assert_eq!(user_version, SCHEMA_VERSION);
     let duplicate_work = connection.execute(
         "INSERT INTO tree_nodes (
             id, project_id, parent_id, kind, title, order_key,

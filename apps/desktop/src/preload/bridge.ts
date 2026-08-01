@@ -1,22 +1,34 @@
 import {
   IPC_CHANNELS,
+  type ApplyReplacementBatchRequest,
+  type ApplyReplacementBatchResult,
   IPC_EVENTS,
   type CompleteCloseRequest,
+  type CreateNamedSnapshotRequest,
   type CreateNodeRequest,
   type CreateProjectRequest,
   type DeleteNodeRequest,
+  type DeleteNamedSnapshotRequest,
+  type DeleteNamedSnapshotResult,
+  type DiffNamedSnapshotRequest,
+  type DiffNamedSnapshotResult,
   type LoadedSceneDocument,
   type LoadedDocument,
   type LoadSceneDocumentRequest,
   type LoadDocumentRequest,
   type LoadUiStateResult,
+  type ListDescendantScenesRequest,
+  type ListDescendantScenesResult,
+  type ListNamedSnapshotsResult,
   type MadiDesktopApi,
+  type NamedSnapshotMutationResult,
   type MoveNodeRequest,
   type OpenProjectRequest,
   type PlainTextRecovery,
   type ProjectTree,
   type ProjectSession,
   type RecoverPlainTextRequest,
+  type RenameNamedSnapshotRequest,
   type RenameNodeRequest,
   type ReorderNodeRequest,
   type SaveSceneDocumentRequest,
@@ -24,7 +36,13 @@ import {
   type SaveDocumentRequest,
   type SaveDocumentResult,
   type SaveUiStateRequest,
-  type SessionRequest
+  type ScopeNodeRequest,
+  type SearchProjectRequest,
+  type SearchProjectResult,
+  type SessionRequest,
+  type RestoreNamedSnapshotRequest,
+  type RestoreNamedSnapshotResult,
+  type TextStatisticsResult
 } from "../shared/contracts";
 
 export type Invoke = (
@@ -168,6 +186,99 @@ export function createMadiDesktopApi(
         IPC_CHANNELS.loadUiState,
         request
       )) as LoadUiStateResult;
+    },
+
+    async listDescendantScenes(
+      request: ListDescendantScenesRequest
+    ): Promise<ListDescendantScenesResult> {
+      return (await invoke(
+        IPC_CHANNELS.listDescendantScenes,
+        request
+      )) as ListDescendantScenesResult;
+    },
+
+    async searchProject(
+      request: SearchProjectRequest
+    ): Promise<SearchProjectResult> {
+      return (await invoke(
+        IPC_CHANNELS.searchProject,
+        request
+      )) as SearchProjectResult;
+    },
+
+    async getTextStatistics(
+      request: ScopeNodeRequest
+    ): Promise<TextStatisticsResult> {
+      return (await invoke(
+        IPC_CHANNELS.getTextStatistics,
+        request
+      )) as TextStatisticsResult;
+    },
+
+    async applyReplacementBatch(
+      request: ApplyReplacementBatchRequest
+    ): Promise<ApplyReplacementBatchResult> {
+      return (await invoke(IPC_CHANNELS.applyReplacementBatch, {
+        ...request,
+        transformedScenes: request.transformedScenes.map((scene) => ({
+          ...scene,
+          snapshot: copyBytes(scene.snapshot)
+        }))
+      })) as ApplyReplacementBatchResult;
+    },
+
+    async createNamedSnapshot(
+      request: CreateNamedSnapshotRequest
+    ): Promise<NamedSnapshotMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.createNamedSnapshot,
+        request
+      )) as NamedSnapshotMutationResult;
+    },
+
+    async listNamedSnapshots(
+      request: SessionRequest
+    ): Promise<ListNamedSnapshotsResult> {
+      return (await invoke(
+        IPC_CHANNELS.listNamedSnapshots,
+        request
+      )) as ListNamedSnapshotsResult;
+    },
+
+    async renameNamedSnapshot(
+      request: RenameNamedSnapshotRequest
+    ): Promise<NamedSnapshotMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.renameNamedSnapshot,
+        request
+      )) as NamedSnapshotMutationResult;
+    },
+
+    async deleteNamedSnapshot(
+      request: DeleteNamedSnapshotRequest
+    ): Promise<DeleteNamedSnapshotResult> {
+      return (await invoke(
+        IPC_CHANNELS.deleteNamedSnapshot,
+        request
+      )) as DeleteNamedSnapshotResult;
+    },
+
+    async diffNamedSnapshot(
+      request: DiffNamedSnapshotRequest
+    ): Promise<DiffNamedSnapshotResult> {
+      return (await invoke(
+        IPC_CHANNELS.diffNamedSnapshot,
+        request
+      )) as DiffNamedSnapshotResult;
+    },
+
+    async restoreNamedSnapshot(
+      request: RestoreNamedSnapshotRequest
+    ): Promise<RestoreNamedSnapshotResult> {
+      return (await invoke(
+        IPC_CHANNELS.restoreNamedSnapshot,
+        request
+      )) as RestoreNamedSnapshotResult;
     },
 
     async getAppVersion(): Promise<string> {

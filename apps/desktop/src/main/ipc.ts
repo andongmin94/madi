@@ -5,20 +5,29 @@ import type {
 } from "electron";
 import {
   IPC_CHANNELS,
+  type ApplyReplacementBatchRequest,
   type CompleteCloseRequest,
+  type CreateNamedSnapshotRequest,
   type CreateNodeRequest,
   type CreateProjectRequest,
   type DeleteNodeRequest,
+  type DeleteNamedSnapshotRequest,
+  type DiffNamedSnapshotRequest,
   type LoadSceneDocumentRequest,
   type LoadDocumentRequest,
+  type ListDescendantScenesRequest,
   type MoveNodeRequest,
   type OpenProjectRequest,
   type RecoverPlainTextRequest,
+  type RenameNamedSnapshotRequest,
   type RenameNodeRequest,
   type ReorderNodeRequest,
   type SaveSceneDocumentRequest,
   type SaveDocumentRequest,
   type SaveUiStateRequest,
+  type ScopeNodeRequest,
+  type SearchProjectRequest,
+  type RestoreNamedSnapshotRequest,
   type SessionRequest
 } from "../shared/contracts";
 import type { DesktopService } from "./desktopService";
@@ -240,6 +249,106 @@ export function registerMadiIpc({
       authorize(event);
       return service.loadUiState(
         requireObject(rawRequest) as unknown as SessionRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.listDescendantScenes,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.listDescendantScenes(
+        requireObject(rawRequest) as unknown as ListDescendantScenesRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.searchProject,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.searchProject(
+        requireObject(rawRequest) as unknown as SearchProjectRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.getTextStatistics,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.getTextStatistics(
+        requireObject(rawRequest) as unknown as ScopeNodeRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.applyReplacementBatch,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.applyReplacementBatch(
+        requireObject(rawRequest) as unknown as ApplyReplacementBatchRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.createNamedSnapshot,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.createNamedSnapshot(
+        requireObject(rawRequest) as unknown as CreateNamedSnapshotRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.listNamedSnapshots,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.listNamedSnapshots(
+        requireObject(rawRequest) as unknown as SessionRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.renameNamedSnapshot,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.renameNamedSnapshot(
+        requireObject(rawRequest) as unknown as RenameNamedSnapshotRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.deleteNamedSnapshot,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.deleteNamedSnapshot(
+        requireObject(rawRequest) as unknown as DeleteNamedSnapshotRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.diffNamedSnapshot,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.diffNamedSnapshot(
+        requireObject(rawRequest) as unknown as DiffNamedSnapshotRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.restoreNamedSnapshot,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.restoreNamedSnapshot(
+        requireObject(rawRequest) as unknown as RestoreNamedSnapshotRequest
       );
     }
   );

@@ -2,29 +2,54 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { BrowserWindow, SaveDialogOptions } from "electron";
 import type {
+  ApplyReplacementBatchRequest,
+  ApplyReplacementBatchResult,
+  CreateNamedSnapshotRequest,
   CreateNodeRequest,
   CreateProjectRequest,
+  DeleteNamedSnapshotRequest,
+  DeleteNamedSnapshotResult,
   DeleteNodeRequest,
+  DiffNamedSnapshotRequest,
+  DiffNamedSnapshotResult,
   LoadedSceneDocument,
   LoadedDocument,
   LoadSceneDocumentRequest,
   LoadDocumentRequest,
   LoadUiStateResult,
+  ListDescendantScenesRequest,
+  ListDescendantScenesResult,
+  ListNamedSnapshotsResult,
   MoveNodeRequest,
+  NamedSnapshotKind,
+  NamedSnapshotMutationResult,
+  NamedSnapshotSummary,
   OpenProjectRequest,
   PlainTextRecovery,
   ProjectRecord,
   ProjectTree,
   ProjectSession,
   RecoverPlainTextRequest,
+  RenameNamedSnapshotRequest,
   RenameNodeRequest,
   ReorderNodeRequest,
+  RestoreNamedSnapshotRequest,
+  RestoreNamedSnapshotResult,
   SaveSceneDocumentRequest,
   SaveSceneDocumentResult,
   SaveDocumentRequest,
   SaveDocumentResult,
   SaveUiStateRequest,
+  ScopeNodeRequest,
+  SearchField,
+  SearchHit,
+  SearchProjectRequest,
+  SearchProjectResult,
+  SearchTarget,
   SessionRequest,
+  SnapshotDiffSummary,
+  SnapshotNodeCounts,
+  TextStatisticsResult,
   TreeNodeKind,
   TreeNodeRecord
 } from "../shared/contracts";
@@ -39,6 +64,13 @@ const TREE_NODE_KINDS = new Set<TreeNodeKind>([
   "VOLUME",
   "CHAPTER",
   "SCENE"
+]);
+const SEARCH_TARGETS = new Set<SearchTarget>(["TITLES", "BODIES", "ALL"]);
+const SEARCH_FIELDS = new Set<SearchField>(["TITLE", "BODY"]);
+const SNAPSHOT_KINDS = new Set<NamedSnapshotKind>([
+  "MANUAL",
+  "AUTO_BEFORE_REPLACE",
+  "AUTO_BEFORE_RESTORE"
 ]);
 
 export interface DialogPort {
@@ -122,6 +154,44 @@ function requiredNumber(
   const value = record[key];
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new Error(`The local core returned invalid ${label}`);
+  }
+  return value;
+}
+
+function requiredBoolean(
+  record: Readonly<Record<string, unknown>>,
+  key: string,
+  label = key
+): boolean {
+  const value = record[key];
+  if (typeof value !== "boolean") {
+    throw new Error(`The local core returned invalid ${label}`);
+  }
+  return value;
+}
+
+function validatePageNumber(
+  value: unknown,
+  label: string,
+  { allowZero, maximum }: { readonly allowZero: boolean; readonly maximum: number }
+): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < (allowZero ? 0 : 1) ||
+    value > maximum
+  ) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value;
+}
+
+function validateSha256(value: unknown, label: string): string {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
+    throw new Error(`Invalid ${label}`);
   }
   return value;
 }
@@ -277,6 +347,97 @@ function decodeSnapshot(value: string): Uint8Array {
     throw new Error("The local core returned an oversized snapshot");
   }
   return Uint8Array.from(bytes);
+}
+
+function responseRevision(
+  response: Readonly<Record<string, unknown>>,
+  label: string
+): number {
+  return requiredInteger(
+    asRecord(response.metadata, `${label} metadata`),
+    "revision",
+    `${label} revision`
+  );
+}
+
+function validateExactText(
+  value: unknown,
+  label: string,
+  maximumLength: number,
+  allowEmpty = false
+): string {
+  if (
+    typeof value !== "string" ||
+    (!allowEmpty && value.length === 0) ||
+    value.length > maximumLength
+  ) {
+    throw new Error(`${label} has an invalid length`);
+  }
+  return value;
+}
+
+function optionalNullableText(
+  record: Readonly<Record<string, unknown>>,
+  key: string
+): string | null {
+  const value = record[key];
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new Error(`The local core returned invalid ${key}`);
+  }
+  return value;
+}
+
+function parseNamedSnapshot(value: unknown): NamedSnapshotSummary {
+  const snapshot = asRecord(value, "named snapshot");
+  const kind = requiredString(snapshot, "kind") as NamedSnapshotKind;
+  if (!SNAPSHOT_KINDS.has(kind)) {
+    throw new Error("The local core returned invalid named snapshot kind");
+  }
+  const contentHash = requiredString(snapshot, "content_hash");
+  if (!/^[0-9a-f]{64}$/iu.test(contentHash)) {
+    throw new Error("The local core returned invalid snapshot hash");
+  }
+  return {
+    id: requiredString(snapshot, "id"),
+    projectId: requiredString(snapshot, "project_id"),
+    name: requiredString(snapshot, "name"),
+    note: optionalNullableText(snapshot, "note"),
+    kind,
+    payloadFormat: requiredString(snapshot, "payload_format"),
+    payloadVersion: requiredInteger(snapshot, "payload_version"),
+    payloadBytes: requiredInteger(snapshot, "payload_bytes"),
+    contentHash,
+    createdAt: requiredString(snapshot, "created_at"),
+    updatedAt: requiredString(snapshot, "updated_at")
+  };
+}
+
+function parseSnapshotNodeCounts(value: unknown): SnapshotNodeCounts {
+  const counts = asRecord(value, "snapshot node counts");
+  return {
+    volumes: requiredInteger(counts, "volumes"),
+    chapters: requiredInteger(counts, "chapters"),
+    scenes: requiredInteger(counts, "scenes")
+  };
+}
+
+function parseSnapshotDiff(value: unknown): SnapshotDiffSummary {
+  const summary = asRecord(value, "snapshot diff summary");
+  return {
+    added: parseSnapshotNodeCounts(summary.added),
+    deleted: parseSnapshotNodeCounts(summary.deleted),
+    renamedNodes: requiredInteger(summary, "renamed_nodes"),
+    reorderedNodes: requiredInteger(summary, "reordered_nodes"),
+    changedSceneBodies: requiredInteger(summary, "changed_scene_bodies"),
+    characterCountDelta: requiredNumber(summary, "character_count_delta")
+  };
+}
+
+function validateSnapshotId(value: unknown): string {
+  return validateShortText(value, "Snapshot id", 128);
 }
 
 export class DesktopService {
@@ -942,6 +1103,482 @@ export class DesktopService {
         ),
         binderWidth
       }
+    };
+  }
+
+  public async listDescendantScenes(
+    input: ListDescendantScenesRequest
+  ): Promise<ListDescendantScenesResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const scopeNodeId = validateNodeId(input.scopeNodeId, "Scope node id");
+    const offset = validatePageNumber(input.offset, "Scrivenings offset", {
+      allowZero: true,
+      maximum: Number.MAX_SAFE_INTEGER
+    });
+    const limit = validatePageNumber(input.limit, "Scrivenings limit", {
+      allowZero: false,
+      maximum: 1_000
+    });
+    const response = asRecord(
+      await this.core.request("list_descendant_scenes", {
+        file_path: session.filePath,
+        scope_node_id: scopeNodeId,
+        ...(offset === undefined ? {} : { offset }),
+        ...(limit === undefined ? {} : { limit })
+      }),
+      "descendant scenes response"
+    );
+    const scope = parseTreeNode(response.scope);
+    if (scope.id !== scopeNodeId || scope.kind === "SCENE") {
+      throw new Error("The local core returned an invalid Scrivenings scope");
+    }
+    if (!Array.isArray(response.scenes)) {
+      throw new Error("The local core returned invalid descendant scenes");
+    }
+    const scenes = response.scenes.map((value) => {
+      const pair = asRecord(value, "descendant scene");
+      const scene = parseTreeNode(pair.scene);
+      const document = asRecord(pair.document, "descendant scene document");
+      const documentId = requiredString(document, "id", "document id");
+      if (
+        scene.kind !== "SCENE" ||
+        scene.documentId === null ||
+        scene.documentId !== documentId
+      ) {
+        throw new Error("The local core returned an inconsistent scene preview");
+      }
+      return {
+        sceneId: scene.id,
+        documentId,
+        plainTextRecovery: requiredText(
+          document,
+          "plain_text_recovery",
+          "scene recovery text"
+        ),
+        sourceContentHash: validateSha256(
+          document.source_content_hash,
+          "scene source content hash"
+        ),
+        updatedAt: requiredString(document, "updated_at")
+      };
+    });
+    const revision = responseRevision(response, "descendant scenes");
+    this.sessions.updateProject(sessionId, { revision });
+    const nextOffsetRaw = response.next_offset;
+    const nextOffset =
+      nextOffsetRaw === null
+        ? null
+        : requiredInteger(response, "next_offset");
+    return {
+      scopeNodeId,
+      scenes,
+      totalScenes: requiredInteger(response, "total_scenes"),
+      offset: requiredInteger(response, "offset"),
+      limit: requiredInteger(response, "limit"),
+      nextOffset,
+      hasMore: requiredBoolean(response, "has_more"),
+      revision
+    };
+  }
+
+  public async searchProject(
+    input: SearchProjectRequest
+  ): Promise<SearchProjectResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const query = validateExactText(input.query, "Search query", 2_000);
+    if (typeof input.caseSensitive !== "boolean") {
+      throw new Error("Search case mode is required");
+    }
+    if (!SEARCH_TARGETS.has(input.target)) {
+      throw new Error("Invalid search target");
+    }
+    const scopeNodeId = input.scopeNodeId
+      ? validateNodeId(input.scopeNodeId, "Search scope node id")
+      : undefined;
+    const offset = validatePageNumber(input.offset, "Search offset", {
+      allowZero: true,
+      maximum: Number.MAX_SAFE_INTEGER
+    });
+    const limit = validatePageNumber(input.limit, "Search limit", {
+      allowZero: false,
+      maximum: 5_000
+    });
+    const response = asRecord(
+      await this.core.request("search_project", {
+        file_path: session.filePath,
+        query,
+        case_sensitive: input.caseSensitive,
+        target: input.target,
+        ...(scopeNodeId ? { scope_node_id: scopeNodeId } : {}),
+        ...(offset === undefined ? {} : { offset }),
+        ...(limit === undefined ? {} : { limit })
+      }),
+      "project search response"
+    );
+    if (!Array.isArray(response.hits)) {
+      throw new Error("The local core returned invalid search hits");
+    }
+    const hits: SearchHit[] = response.hits.map((value) => {
+      const hit = asRecord(value, "search hit");
+      const nodeKind = requiredString(hit, "node_kind") as TreeNodeKind;
+      const field = requiredString(hit, "field") as SearchField;
+      if (!TREE_NODE_KINDS.has(nodeKind) || !SEARCH_FIELDS.has(field)) {
+        throw new Error("The local core returned invalid search hit metadata");
+      }
+      const start = requiredInteger(hit, "start_char");
+      const end = requiredInteger(hit, "end_char");
+      if (end <= start) {
+        throw new Error("The local core returned an invalid search range");
+      }
+      return {
+        occurrenceId: requiredString(hit, "occurrence_id"),
+        nodeId: requiredString(hit, "node_id"),
+        sceneId: nullableString(hit, "scene_id"),
+        documentId: nullableString(hit, "document_id"),
+        nodeKind,
+        nodeTitle: requiredString(hit, "node_title"),
+        field,
+        start,
+        end,
+        contextBefore: requiredText(hit, "context_before"),
+        matchedText: requiredText(hit, "matched_text"),
+        contextAfter: requiredText(hit, "context_after"),
+        sourceContentHash: nullableString(hit, "source_content_hash")
+      };
+    });
+    const target = requiredString(response, "target") as SearchTarget;
+    if (!SEARCH_TARGETS.has(target)) {
+      throw new Error("The local core returned an invalid search target");
+    }
+    const revision = responseRevision(response, "project search");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      query: requiredText(response, "query"),
+      caseSensitive: response.case_sensitive === true,
+      target,
+      scopeNodeId: requiredString(response, "scope_node_id"),
+      totalMatches: requiredInteger(response, "total_matches"),
+      sceneCount: requiredInteger(response, "scene_count"),
+      offset: requiredInteger(response, "offset"),
+      limit: requiredInteger(response, "limit"),
+      hasMore: requiredBoolean(response, "has_more"),
+      hits,
+      revision
+    };
+  }
+
+  public async getTextStatistics(
+    input: ScopeNodeRequest
+  ): Promise<TextStatisticsResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const scopeNodeId = validateNodeId(input.scopeNodeId, "Statistics scope node id");
+    const response = asRecord(
+      await this.core.request("get_text_statistics", {
+        file_path: session.filePath,
+        scope_node_id: scopeNodeId
+      }),
+      "text statistics response"
+    );
+    if (!Array.isArray(response.scenes)) {
+      throw new Error("The local core returned invalid scene statistics");
+    }
+    const revision = responseRevision(response, "text statistics");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      scopeNodeId: requiredString(response, "scope_node_id"),
+      sceneCount: requiredInteger(response, "scene_count"),
+      withSpaces: requiredInteger(response, "with_spaces"),
+      withoutSpaces: requiredInteger(response, "without_spaces"),
+      scenes: response.scenes.map((value) => {
+        const scene = asRecord(value, "scene text statistics");
+        return {
+          sceneId: requiredString(scene, "scene_id"),
+          documentId: requiredString(scene, "document_id"),
+          withSpaces: requiredInteger(scene, "with_spaces"),
+          withoutSpaces: requiredInteger(scene, "without_spaces")
+        };
+      }),
+      revision
+    };
+  }
+
+  public async applyReplacementBatch(
+    input: ApplyReplacementBatchRequest
+  ): Promise<ApplyReplacementBatchResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    if (
+      !Number.isSafeInteger(input.expectedRevision) ||
+      input.expectedRevision !== session.revision
+    ) {
+      throw new Error("Replacement preview is stale; search again before applying");
+    }
+    const query = validateExactText(input.query, "Replacement query", 2_000);
+    const replacement = validateExactText(
+      input.replacement,
+      "Replacement text",
+      32_000,
+      true
+    );
+    if (typeof input.caseSensitive !== "boolean") {
+      throw new Error("Replacement case mode is required");
+    }
+    if (
+      !Array.isArray(input.transformedScenes) ||
+      input.transformedScenes.length === 0 ||
+      input.transformedScenes.length > 10_000
+    ) {
+      throw new Error("Invalid replacement batch");
+    }
+    const sceneIds = new Set<string>();
+    const documentIds = new Set<string>();
+    const transformedScenes = input.transformedScenes.map((scene) => {
+      const sceneId = validateNodeId(scene.sceneId, "Replacement scene id");
+      const documentId = validateNodeId(
+        scene.documentId,
+        "Replacement document id"
+      );
+      if (
+        sceneIds.has(sceneId) ||
+        documentIds.has(documentId) ||
+        scene.editorEngine !== "typie" ||
+        !Number.isSafeInteger(scene.editorSchemaVersion) ||
+        scene.editorSchemaVersion < 0 ||
+        !(scene.snapshot instanceof Uint8Array) ||
+        scene.snapshot.byteLength === 0 ||
+        scene.snapshot.byteLength > MAX_SNAPSHOT_BYTES ||
+        typeof scene.plainTextRecovery !== "string" ||
+        scene.plainTextRecovery.length > MAX_RECOVERY_TEXT_CODE_UNITS ||
+        !Number.isSafeInteger(scene.occurrenceCount) ||
+        scene.occurrenceCount < 1
+      ) {
+        throw new Error("Invalid transformed scene document");
+      }
+      sceneIds.add(sceneId);
+      documentIds.add(documentId);
+      return {
+        scene_id: sceneId,
+        document_id: documentId,
+        editor_engine: "typie",
+        editor_engine_commit: validateShortText(
+          scene.editorEngineCommit,
+          "Editor engine commit",
+          128
+        ),
+        editor_schema_version: scene.editorSchemaVersion,
+        snapshot_base64: encodeSnapshot(scene.snapshot),
+        plain_text_recovery: scene.plainTextRecovery,
+        occurrence_count: scene.occurrenceCount,
+        source_content_hash: validateSha256(
+          scene.sourceContentHash,
+          "replacement source content hash"
+        )
+      };
+    });
+    const response = asRecord(
+      await this.core.request("apply_replacement_batch", {
+        file_path: session.filePath,
+        expected_revision: input.expectedRevision,
+        query,
+        replacement,
+        case_sensitive: input.caseSensitive,
+        transformed_scenes: transformedScenes,
+        saved_by: `madi/${this.appVersion}`,
+        ...(input.autoSnapshotName
+          ? {
+              auto_snapshot_name: validateShortText(
+                input.autoSnapshotName,
+                "Automatic snapshot name",
+                500
+              )
+            }
+          : {})
+      }),
+      "replacement batch response"
+    );
+    const changedSceneIds = Array.isArray(response.changed_scene_ids)
+      ? response.changed_scene_ids.map((value) =>
+          validateNodeId(value, "Changed scene id")
+        )
+      : (() => {
+          throw new Error("The local core returned invalid changed scenes");
+        })();
+    const revision = responseRevision(response, "replacement batch");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      safetySnapshot: parseNamedSnapshot(response.safety_snapshot),
+      changedSceneIds,
+      changedScenes: requiredInteger(response, "changed_scenes"),
+      changedOccurrences: requiredInteger(response, "changed_occurrences"),
+      revision
+    };
+  }
+
+  public async createNamedSnapshot(
+    input: CreateNamedSnapshotRequest
+  ): Promise<NamedSnapshotMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("create_named_snapshot", {
+        file_path: session.filePath,
+        name: validateShortText(input.name, "Snapshot name", 500),
+        note:
+          input.note === undefined
+            ? null
+            : validateExactText(input.note, "Snapshot note", 10_000, true),
+        kind: "MANUAL",
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "create named snapshot response"
+    );
+    const revision = responseRevision(response, "create named snapshot");
+    this.sessions.updateProject(sessionId, { revision });
+    return { snapshot: parseNamedSnapshot(response.snapshot), revision };
+  }
+
+  public async listNamedSnapshots(
+    input: SessionRequest
+  ): Promise<ListNamedSnapshotsResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("list_named_snapshots", {
+        file_path: session.filePath
+      }),
+      "list named snapshots response"
+    );
+    if (!Array.isArray(response.snapshots)) {
+      throw new Error("The local core returned invalid named snapshots");
+    }
+    const revision = responseRevision(response, "list named snapshots");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      snapshots: response.snapshots.map(parseNamedSnapshot),
+      revision
+    };
+  }
+
+  public async renameNamedSnapshot(
+    input: RenameNamedSnapshotRequest
+  ): Promise<NamedSnapshotMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("rename_named_snapshot", {
+        file_path: session.filePath,
+        snapshot_id: validateSnapshotId(input.snapshotId),
+        name: validateShortText(input.name, "Snapshot name", 500),
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "rename named snapshot response"
+    );
+    const revision = responseRevision(response, "rename named snapshot");
+    this.sessions.updateProject(sessionId, { revision });
+    return { snapshot: parseNamedSnapshot(response.snapshot), revision };
+  }
+
+  public async deleteNamedSnapshot(
+    input: DeleteNamedSnapshotRequest
+  ): Promise<DeleteNamedSnapshotResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("delete_named_snapshot", {
+        file_path: session.filePath,
+        snapshot_id: validateSnapshotId(input.snapshotId),
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "delete named snapshot response"
+    );
+    const revision = responseRevision(response, "delete named snapshot");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      deletedSnapshotId: requiredString(response, "deleted_snapshot_id"),
+      revision
+    };
+  }
+
+  public async diffNamedSnapshot(
+    input: DiffNamedSnapshotRequest
+  ): Promise<DiffNamedSnapshotResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("diff_named_snapshot", {
+        file_path: session.filePath,
+        snapshot_id: validateSnapshotId(input.snapshotId)
+      }),
+      "diff named snapshot response"
+    );
+    const revision = responseRevision(response, "diff named snapshot");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      snapshot: parseNamedSnapshot(response.snapshot),
+      summary: parseSnapshotDiff(response.summary),
+      revision
+    };
+  }
+
+  public async restoreNamedSnapshot(
+    input: RestoreNamedSnapshotRequest
+  ): Promise<RestoreNamedSnapshotResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("restore_named_snapshot", {
+        file_path: session.filePath,
+        snapshot_id: validateSnapshotId(input.snapshotId),
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`,
+        ...(input.autoSnapshotName
+          ? {
+              auto_snapshot_name: validateShortText(
+                input.autoSnapshotName,
+                "Automatic snapshot name",
+                500
+              )
+            }
+          : {})
+      }),
+      "restore named snapshot response"
+    );
+    const revision = responseRevision(response, "restore named snapshot");
+    const tree = parseProjectTree(
+      await this.core.request("load_project_tree", {
+        file_path: session.filePath
+      })
+    );
+    const activeScene =
+      tree.nodes.find(
+        (node) => node.kind === "SCENE" && node.id === session.sceneId
+      ) ?? tree.nodes.find((node) => node.kind === "SCENE");
+    this.sessions.clearActiveDocument(sessionId, revision);
+    this.sessions.updateProject(sessionId, {
+      title: tree.project.title,
+      revision,
+      ...(activeScene?.documentId
+        ? { documentId: activeScene.documentId, sceneId: activeScene.id }
+        : {}),
+      ...(tree.nodes.find((node) => node.kind === "WORK")
+        ? {
+            workNodeId: tree.nodes.find((node) => node.kind === "WORK")!.id
+          }
+        : {})
+    });
+    return {
+      restoredSnapshot: parseNamedSnapshot(response.restored_snapshot),
+      safetySnapshot: parseNamedSnapshot(response.safety_snapshot),
+      changesBeforeRestore: parseSnapshotDiff(
+        response.changes_before_restore
+      ),
+      revision
     };
   }
 

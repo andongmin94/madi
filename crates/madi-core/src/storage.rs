@@ -21,7 +21,7 @@ use crate::model::{
 pub const APPLICATION_ID: i64 = 0x4D41_4449;
 pub const FORMAT_NAME: &str = "madi";
 pub const FORMAT_VERSION: i64 = 1;
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 const DEFAULT_EDITOR_ENGINE: &str = "typie";
 const UNINITIALIZED_EDITOR_COMMIT: &str = "uninitialized";
@@ -112,6 +112,68 @@ CREATE TABLE IF NOT EXISTS ui_state (
 );
 "#;
 
+const MIGRATION_V3: &str = r#"
+CREATE TABLE IF NOT EXISTS search_documents (
+    document_id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    plain_text TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS search_documents_project_idx
+    ON search_documents(project_id, document_id);
+
+CREATE TRIGGER IF NOT EXISTS search_documents_after_insert
+AFTER INSERT ON documents
+BEGIN
+    INSERT INTO search_documents (document_id, project_id, plain_text, updated_at)
+    VALUES (NEW.id, NEW.project_id, NEW.plain_text_recovery, NEW.updated_at)
+    ON CONFLICT(document_id) DO UPDATE SET
+        project_id = excluded.project_id,
+        plain_text = excluded.plain_text,
+        updated_at = excluded.updated_at;
+END;
+
+CREATE TRIGGER IF NOT EXISTS search_documents_after_update
+AFTER UPDATE OF project_id, plain_text_recovery, updated_at ON documents
+BEGIN
+    INSERT INTO search_documents (document_id, project_id, plain_text, updated_at)
+    VALUES (NEW.id, NEW.project_id, NEW.plain_text_recovery, NEW.updated_at)
+    ON CONFLICT(document_id) DO UPDATE SET
+        project_id = excluded.project_id,
+        plain_text = excluded.plain_text,
+        updated_at = excluded.updated_at;
+END;
+
+CREATE TRIGGER IF NOT EXISTS search_documents_after_delete
+AFTER DELETE ON documents
+BEGIN
+    DELETE FROM search_documents WHERE document_id = OLD.id;
+END;
+
+CREATE TABLE IF NOT EXISTS named_snapshots (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    note TEXT,
+    kind TEXT NOT NULL CHECK (
+        kind IN ('MANUAL', 'AUTO_BEFORE_REPLACE', 'AUTO_BEFORE_RESTORE')
+    ),
+    payload_format TEXT NOT NULL,
+    payload_version INTEGER NOT NULL CHECK (payload_version > 0),
+    payload_blob BLOB NOT NULL,
+    content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS named_snapshots_project_created_idx
+    ON named_snapshots(project_id, created_at DESC, id);
+"#;
+
 const ORDER_STEP: f64 = 1024.0;
 
 pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult> {
@@ -193,6 +255,12 @@ pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult
             ],
         )?;
         transaction.execute(
+            "INSERT INTO projects (
+                id, title, author_name, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?4)",
+            params![project_id, params.title, params.author_name, now],
+        )?;
+        transaction.execute(
             "INSERT INTO documents (
                 id, project_id, title, editor_engine, editor_engine_commit,
                 editor_schema_version, snapshot_blob, plain_text_recovery,
@@ -208,12 +276,6 @@ pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult
                 Vec::<u8>::new(),
                 now
             ],
-        )?;
-        transaction.execute(
-            "INSERT INTO projects (
-                id, title, author_name, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?4)",
-            params![project_id, params.title, params.author_name, now],
         )?;
         transaction.execute(
             "INSERT INTO tree_nodes (
@@ -568,6 +630,38 @@ fn migrate(connection: &mut Connection) -> Result<()> {
             [],
         )?;
         transaction.pragma_update(None, "user_version", 2_i64)?;
+        transaction.commit()?;
+        current = 2;
+    }
+
+    if current < 3 {
+        let transaction =
+            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute_batch(MIGRATION_V3)?;
+        transaction.execute(
+            "INSERT OR REPLACE INTO search_documents
+                (document_id, project_id, plain_text, updated_at)
+             SELECT id, project_id, plain_text_recovery, updated_at
+             FROM documents",
+            [],
+        )?;
+        let applied_at = database_timestamp(&transaction)?;
+        transaction.execute(
+            "INSERT OR IGNORE INTO schema_migrations
+                (version, applied_at, description)
+             VALUES (3, ?1, ?2)",
+            params![
+                applied_at,
+                "Phase 1B exact search projection and versioned named snapshots"
+            ],
+        )?;
+        transaction.execute(
+            "UPDATE app_meta
+             SET format_version = 1, schema_version = 3
+             WHERE singleton = 1",
+            [],
+        )?;
+        transaction.pragma_update(None, "user_version", 3_i64)?;
         transaction.commit()?;
     }
 

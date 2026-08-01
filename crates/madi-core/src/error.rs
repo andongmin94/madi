@@ -58,8 +58,14 @@ pub enum CoreError {
     #[error("project integrity check failed: {0}")]
     Integrity(String),
 
+    #[error("named snapshot integrity check failed: {0}")]
+    SnapshotIntegrity(String),
+
     #[error("revision conflict: expected {expected}, current revision is {actual}")]
     RevisionConflict { expected: i64, actual: i64 },
+
+    #[error("replacement source content changed for scene {scene_id}")]
+    SourceContentConflict { scene_id: String },
 
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
