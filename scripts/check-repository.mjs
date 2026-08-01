@@ -115,7 +115,9 @@ const buildInfo = JSON.parse(await readFile(buildInfoPath, "utf8"));
 if (
   buildInfo.typieCommit !== expectedCommit ||
   buildInfo.typieRepository !== "https://github.com/penxle/typie" ||
-  buildInfo.typieLicense !== "AGPL-3.0-only"
+  buildInfo.typieLicense !== "AGPL-3.0-only" ||
+  buildInfo.sourcePatch?.path !==
+    "patches/typie/phase1b-semantic-replace.patch"
 ) {
   throw new Error("Typie BUILD_INFO pin is invalid");
 }
@@ -165,12 +167,30 @@ if (nestedHead !== expectedCommit || nestedStatus !== "") {
   );
 }
 
+const sourcePatchPath = resolve(repositoryRoot, buildInfo.sourcePatch.path);
+try {
+  execFileSync(
+    "git",
+    ["-C", "vendor/typie", "apply", "--check", sourcePatchPath],
+    {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      windowsHide: true,
+    },
+  );
+} catch (error) {
+  throw new Error(
+    `Phase 1B Typie patch does not apply to the pinned checkout (${String(error)})`,
+  );
+}
+
 async function sha256(relativePath) {
   const bytes = await readFile(resolve(repositoryRoot, relativePath));
   return createHash("sha256").update(bytes).digest("hex");
 }
 
 const assets = [
+  [buildInfo.sourcePatch.path, buildInfo.sourcePatch.sha256],
   [
     "packages/typie-runtime/browser/editor_ffi_bg.wasm",
     buildInfo.wasmSha256,
@@ -183,6 +203,10 @@ const assets = [
   [
     "packages/typie-runtime/browser/editor_ffi.d.ts",
     buildInfo.bindings.typescriptSha256,
+  ],
+  [
+    "packages/typie-runtime/browser/editor_ffi_bg.wasm.d.ts",
+    buildInfo.bindings.wasmTypescriptSha256,
   ],
   [
     "packages/typie-runtime/assets/NanumGothic-Regular.base.zst",

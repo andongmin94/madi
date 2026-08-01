@@ -71,6 +71,20 @@ const initialize = (editor) =>
     { type: 'selection', op: { type: 'set_flat', start: 1, end: 1 } },
   ]);
 
+const sameBytes = (left, right) =>
+  left.length === right.length && left.every((value, index) => value === right[index]);
+
+const countSemanticSceneBreaks = (entry) => {
+  const own =
+    entry.node.type === 'horizontal_rule' && entry.node.variant === 'three_diamonds' ? 1 : 0;
+  return own + entry.children.reduce((total, child) => total + countSemanticSceneBreaks(child), 0);
+};
+
+const textModifierRuns = (entry) => {
+  const own = entry.node.type === 'text' ? [entry.modifiers] : [];
+  return own.concat(entry.children.flatMap(textModifierRuns));
+};
+
 const editor = host.create_editor_from_doc(emptyDocument, viewport);
 initialize(editor);
 dispatch(editor, [{ type: 'insertion', op: { type: 'text', text: '한국어 검증 문장' } }]);
@@ -127,6 +141,184 @@ if (restored.prose_text_annotated() !== beforeUndo) {
   throw new Error('Typie changeset snapshot restore did not reproduce the document');
 }
 
+const replacementEditor = host.create_editor_from_doc(emptyDocument, viewport);
+initialize(replacementEditor);
+const replacementBefore = '가😀나 가😀나';
+const replacementAfter = '가달빛나 가별무리나';
+dispatch(replacementEditor, [
+  { type: 'insertion', op: { type: 'text', text: replacementBefore } },
+]);
+dispatch(replacementEditor, [
+  { type: 'modifier', op: { type: 'toggle', modifier_type: 'bold' } },
+]);
+
+const selectionBeforeReplacement = replacementEditor.selection();
+const pendingBoldBeforeReplacement = replacementEditor.modifier_state()?.bold;
+if (!selectionBeforeReplacement || pendingBoldBeforeReplacement?.type !== 'uniform') {
+  throw new Error('Typie replacement probe could not establish a caret with pending bold');
+}
+
+const replacementResult = dispatch(replacementEditor, [
+  {
+    type: 'tracked_range',
+    op: {
+      type: 'replace_many_from_prose_annotated',
+      expected_text: replacementBefore,
+      replacements: [
+        {
+          id: 'emoji-second',
+          start: 5,
+          end: 6,
+          expected_text: '😀',
+          replacement: '별무리',
+        },
+        {
+          id: 'emoji-first',
+          start: 1,
+          end: 2,
+          expected_text: '😀',
+          replacement: '달빛',
+        },
+      ],
+    },
+  },
+]);
+
+const replacedEvents = replacementResult.events.filter(
+  (event) => event.type === 'tracked_range_replace_result',
+);
+if (
+  replacedEvents.length !== 2 ||
+  replacedEvents.some((event) => event.outcome !== 'replaced') ||
+  new Set(replacedEvents.map((event) => event.id)).size !== 2
+) {
+  throw new Error(`Typie semantic replacement outcomes were incomplete: ${JSON.stringify(replacedEvents)}`);
+}
+if (replacementEditor.prose_text_annotated() !== replacementAfter) {
+  throw new Error('Typie semantic replacement did not use Unicode-scalar offsets');
+}
+
+const selectionAfterReplacement = replacementEditor.selection();
+const pendingBoldAfterReplacement = replacementEditor.modifier_state()?.bold;
+const expectedCaretOffset = Array.from(replacementAfter).length;
+if (
+  !selectionAfterReplacement ||
+  selectionAfterReplacement.anchor.node !== selectionBeforeReplacement.anchor.node ||
+  selectionAfterReplacement.head.node !== selectionBeforeReplacement.head.node ||
+  selectionAfterReplacement.anchor.offset !== expectedCaretOffset ||
+  selectionAfterReplacement.head.offset !== expectedCaretOffset ||
+  selectionAfterReplacement.anchor.affinity !== selectionBeforeReplacement.anchor.affinity ||
+  selectionAfterReplacement.head.affinity !== selectionBeforeReplacement.head.affinity
+) {
+  throw new Error(
+    `Typie semantic replacement did not preserve the stable caret: ${JSON.stringify(selectionAfterReplacement)}`,
+  );
+}
+if (pendingBoldAfterReplacement?.type !== 'uniform') {
+  throw new Error('Typie semantic replacement did not preserve pending modifiers');
+}
+
+const replacedDocument = replacementEditor.materialize_at(replacementEditor.current_heads(), []);
+if (textModifierRuns(replacedDocument.root).some((modifiers) => modifiers.bold !== undefined)) {
+  throw new Error('Typie pending bold leaked into semantic replacement text');
+}
+
+dispatch(replacementEditor, [{ type: 'history', op: { type: 'undo' } }]);
+const replacementAfterSingleUndo = replacementEditor.prose_text_annotated();
+const selectionAfterSingleUndo = replacementEditor.selection();
+if (
+  replacementAfterSingleUndo !== replacementBefore ||
+  JSON.stringify(selectionAfterSingleUndo) !== JSON.stringify(selectionBeforeReplacement)
+) {
+  throw new Error('Typie semantic replacement was not reverted by exactly one Undo');
+}
+dispatch(replacementEditor, [{ type: 'history', op: { type: 'redo' } }]);
+const replacementAfterSingleRedo = replacementEditor.prose_text_annotated();
+const selectionAfterSingleRedo = replacementEditor.selection();
+if (
+  replacementAfterSingleRedo !== replacementAfter ||
+  JSON.stringify(selectionAfterSingleRedo) !== JSON.stringify(selectionAfterReplacement)
+) {
+  throw new Error('Typie semantic replacement was not restored by exactly one Redo');
+}
+
+const rejectionEditor = host.create_editor_from_doc(emptyDocument, viewport);
+initialize(rejectionEditor);
+dispatch(rejectionEditor, [{ type: 'insertion', op: { type: 'text', text: '앞' } }]);
+dispatch(rejectionEditor, [
+  {
+    type: 'insertion',
+    op: {
+      type: 'fragment',
+      fragment: { node: { type: 'horizontal_rule', variant: 'three_diamonds' } },
+    },
+  },
+]);
+dispatch(rejectionEditor, [
+  {
+    type: 'navigation',
+    op: {
+      type: 'move',
+      movement: { type: 'document', direction: 'forward' },
+      extend: false,
+    },
+  },
+]);
+dispatch(rejectionEditor, [{ type: 'insertion', op: { type: 'text', text: '뒤' } }]);
+
+const rejectionTextBefore = rejectionEditor.prose_text_annotated();
+const rejectionHeadsBefore = rejectionEditor.current_heads();
+const rejectionDocumentBefore = rejectionEditor.materialize_at(rejectionHeadsBefore, []);
+const rejectionChars = Array.from(rejectionTextBefore);
+const markerStart = rejectionChars.findIndex(
+  (_, index) => rejectionChars.slice(index, index + 3).join('') === '***',
+);
+if (markerStart < 0 || countSemanticSceneBreaks(rejectionDocumentBefore.root) !== 1) {
+  throw new Error('Typie replacement rejection probe could not establish a semantic scene break');
+}
+
+const rejectionResult = dispatch(rejectionEditor, [
+  {
+    type: 'tracked_range',
+    op: {
+      type: 'replace_many_from_prose_annotated',
+      expected_text: rejectionTextBefore,
+      replacements: [
+        {
+          id: 'semantic-scene-break',
+          start: markerStart,
+          end: markerStart + 3,
+          expected_text: '***',
+          replacement: '삭제',
+        },
+      ],
+    },
+  },
+]);
+const invalidEvents = rejectionResult.events.filter(
+  (event) => event.type === 'tracked_range_replace_result',
+);
+const rejectionHeadsAfter = rejectionEditor.current_heads();
+const rejectionDocumentAfter = rejectionEditor.materialize_at(rejectionHeadsAfter, []);
+if (
+  invalidEvents.length !== 1 ||
+  invalidEvents[0].id !== 'semantic-scene-break' ||
+  invalidEvents[0].outcome !== 'invalid' ||
+  rejectionEditor.prose_text_annotated() !== rejectionTextBefore ||
+  !sameBytes(rejectionHeadsBefore, rejectionHeadsAfter) ||
+  countSemanticSceneBreaks(rejectionDocumentAfter.root) !== 1
+) {
+  throw new Error(`Typie semantic scene-break rejection was unsafe: ${JSON.stringify(invalidEvents)}`);
+}
+
+// A second request proves that an expected Invalid result does not fail-stop the editor.
+dispatch(rejectionEditor, [
+  { type: 'selection', op: { type: 'set_flat', start: 1, end: 1 } },
+]);
+if (rejectionEditor.prose_text_annotated() !== rejectionTextBefore) {
+  throw new Error('Typie editor was not usable after a nonfatal semantic replacement rejection');
+}
+
 const report = {
   commit: 'fbe5c4bf860d1717a66e66bea2374a2e39f0dd26',
   snapshotBytes: snapshot.byteLength,
@@ -143,10 +335,22 @@ const report = {
     : null,
   undoRedo: true,
   restored: true,
+  semanticReplacement: {
+    unicodeScalarOffsets: true,
+    replacedEvents: replacedEvents.length,
+    oneUndoRedo: true,
+    stableSelection: true,
+    pendingModifiersPreserved: true,
+    pendingModifierBleed: false,
+    semanticSceneBreakRejectedNonfatally: true,
+    editorUsableAfterInvalid: true,
+  },
 };
 
 process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 
 restored.free();
+rejectionEditor.free();
+replacementEditor.free();
 editor.free();
 host.free();

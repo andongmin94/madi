@@ -2,13 +2,19 @@
   "typieRepository": "https://github.com/penxle/typie",
   "typieCommit": "fbe5c4bf860d1717a66e66bea2374a2e39f0dd26",
   "typieLicense": "AGPL-3.0-only",
+  "sourcePatch": {
+    "path": "patches/typie/phase1b-semantic-replace.patch",
+    "sha256": "6f1aa8112a74a307d64912420181bb84cb03cef5f4be47247868f96c58d35d6b",
+    "purpose": "atomic semantic exact-text replacement batch"
+  },
   "cargoProfile": "release-wasm-browser",
   "wasmTarget": "wasm32-unknown-unknown",
-  "wasmSha256": "c6cc7d32cebfe3d3e48b3c79e60de0e28a815761f68779fdec415217425ee939",
+  "wasmSha256": "3fd50f4f92c12595d3f81d585571a1001a24bbfa656bd8bf395119f19494c38a",
   "icuSha256": "050e08ceebfa8d92f583b80bb31fcb6a792a760ffa821deb3f2316c12ad578f0",
   "bindings": {
     "javascriptSha256": "eb8707d22e9d2c1a89bbd132a2ac6d19b47938baa53462c623335a7e0030b745",
-    "typescriptSha256": "41b7e24429e892b2df4f2be0ee07948cae25a2a7f2a8ce672ea60bba94404851"
+    "typescriptSha256": "e177038681c152c508762ba9cbf9081f679e115d04939f02cb04d5a8bc4686ce",
+    "wasmTypescriptSha256": "0e1c17188fac974a59d10589289176adf52e127c497284787c185144dfff3c90"
   },
   "font": {
     "name": "Nanum Gothic Regular",

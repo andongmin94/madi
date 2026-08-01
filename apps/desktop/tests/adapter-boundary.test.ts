@@ -16,6 +16,8 @@ function createPort() {
     restoreSnapshot: vi.fn(async () => undefined),
     exportSnapshot: vi.fn(async () => Uint8Array.from([9, 8, 7])),
     exportPlainText: vi.fn(async () => "복구용 본문"),
+    setInteractionEnabled: vi.fn(),
+    revealTextRange: vi.fn(),
     focus: vi.fn(),
     undo: vi.fn(),
     redo: vi.fn(),
@@ -72,6 +74,9 @@ describe("MadiEditorAdapter boundary", () => {
     const unsubscribe = adapter.onChanged(changed);
 
     adapter.focus();
+    adapter.setInteractionEnabled(false);
+    adapter.setInteractionEnabled(true);
+    adapter.revealTextRange(2, 4, { focus: false });
     adapter.undo();
     adapter.redo();
     adapter.insertSceneBreak();
@@ -84,6 +89,11 @@ describe("MadiEditorAdapter boundary", () => {
     });
 
     expect(port.focus).toHaveBeenCalledTimes(1);
+    expect(port.setInteractionEnabled).toHaveBeenNthCalledWith(1, false);
+    expect(port.setInteractionEnabled).toHaveBeenNthCalledWith(2, true);
+    expect(port.revealTextRange).toHaveBeenCalledWith(2, 4, {
+      focus: false
+    });
     expect(port.undo).toHaveBeenCalledTimes(1);
     expect(port.redo).toHaveBeenCalledTimes(1);
     expect(port.insertSemanticSceneBreak).toHaveBeenCalledTimes(1);

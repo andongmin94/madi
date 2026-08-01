@@ -395,6 +395,14 @@ export interface Position {
     affinity: Affinity;
 }
 
+export interface ProseTextReplacement {
+    id: string;
+    start: number;
+    end: number;
+    expected_text: string;
+    replacement: string;
+}
+
 export interface ProseTrackedRangeRegistration {
     id: string;
     group: string;
@@ -710,7 +718,7 @@ export type TextNodeAttr = void;
 
 export type ThemeVariant = "dark-black" | "dark-charcoal" | "dark-espresso" | "dark-graphite" | "dark-midnight" | "dark-navy" | "dark-obsidian" | "dark-storm" | "light-butter" | "light-latte" | "light-lavender" | "light-mint" | "light-peach" | "light-rose" | "light-snow" | "light-white";
 
-export type TrackedRangeOp = { type: "add"; id: string; group: string; selection: Selection; metadata?: string; invalidate_on_text_change?: boolean } | { type: "add_frozen"; id: string; group: string; selection: StableSelection; metadata?: string } | { type: "remove"; id: string } | { type: "set_group"; id: string; group: string } | { type: "clear_group"; group: string } | { type: "replace_groups_from_prose"; expected_text: string; groups: string[]; ranges: ProseTrackedRangeRegistration[] } | { type: "invalidate"; id: string } | { type: "set_group_decoration"; group: string; style: DecorationStyle; enabled: boolean; z_index?: number } | { type: "remove_group_decoration"; group: string } | { type: "replace_text"; id: string; expected_text?: string | undefined; replacement: string };
+export type TrackedRangeOp = { type: "add"; id: string; group: string; selection: Selection; metadata?: string; invalidate_on_text_change?: boolean } | { type: "add_frozen"; id: string; group: string; selection: StableSelection; metadata?: string } | { type: "remove"; id: string } | { type: "set_group"; id: string; group: string } | { type: "clear_group"; group: string } | { type: "replace_groups_from_prose"; expected_text: string; groups: string[]; ranges: ProseTrackedRangeRegistration[] } | { type: "invalidate"; id: string } | { type: "set_group_decoration"; group: string; style: DecorationStyle; enabled: boolean; z_index?: number } | { type: "remove_group_decoration"; group: string } | { type: "replace_text"; id: string; expected_text?: string | undefined; replacement: string } | { type: "replace_many_from_prose_annotated"; expected_text: string; replacements: ProseTextReplacement[] };
 
 export type TrackedRangeReplaceOutcome = "replaced" | "unknown_id" | "invalid" | "text_mismatch" | "invalid_replacement";
 

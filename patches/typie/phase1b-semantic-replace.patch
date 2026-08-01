@@ -1,0 +1,454 @@
+diff --git a/crates/editor-core/src/handle/tracked_range.rs b/crates/editor-core/src/handle/tracked_range.rs
+index 92ddffefe..e41028ce7 100644
+--- a/crates/editor-core/src/handle/tracked_range.rs
++++ b/crates/editor-core/src/handle/tracked_range.rs
+@@ -153,6 +153,12 @@ pub fn handle_tracked_range_op(editor: &mut Editor, op: TrackedRangeOp) -> Resul
+         } => {
+             handle_replace_text(editor, id, expected_text, replacement)?;
+         }
++        TrackedRangeOp::ReplaceManyFromProseAnnotated {
++            expected_text,
++            replacements,
++        } => {
++            handle_replace_many_from_prose_annotated(editor, expected_text, replacements)?;
++        }
+     }
+     Ok(())
+ }
+@@ -257,6 +263,218 @@ fn handle_replace_text(
+     Ok(())
+ }
+ 
++fn handle_replace_many_from_prose_annotated(
++    editor: &mut Editor,
++    expected_text: String,
++    replacements: Vec<ProseTextReplacement>,
++) -> Result<(), EditorError> {
++    let ids = replacements
++        .iter()
++        .map(|replacement| replacement.id.clone())
++        .collect::<Vec<_>>();
++    let outcome = match try_replace_many_from_prose_annotated(
++        editor,
++        expected_text,
++        replacements,
++    ) {
++        Ok(()) => TrackedRangeReplaceOutcome::Replaced,
++        Err(_) => TrackedRangeReplaceOutcome::Invalid,
++    };
++    for id in ids {
++        editor.push_event(EditorEvent::TrackedRangeReplaceResult {
++            id,
++            outcome: outcome.clone(),
++        });
++    }
++    Ok(())
++}
++
++fn try_replace_many_from_prose_annotated(
++    editor: &mut Editor,
++    expected_text: String,
++    mut replacements: Vec<ProseTextReplacement>,
++) -> Result<(), EditorError> {
++    if editor.state().composition.is_some() {
++        return Err(EditorError::General {
++            msg: "TrackedRange::ReplaceManyFromProseAnnotated: composition is active".into(),
++        });
++    }
++    if replacements.is_empty() {
++        return Err(EditorError::General {
++            msg: "TrackedRange::ReplaceManyFromProseAnnotated: replacements must not be empty"
++                .into(),
++        });
++    }
++    let mut ids = HashSet::new();
++    if replacements
++        .iter()
++        .any(|replacement| !ids.insert(replacement.id.clone()))
++    {
++        return Err(EditorError::General {
++            msg: "TrackedRange::ReplaceManyFromProseAnnotated: ids must be unique".into(),
++        });
++    }
++
++    replacements.sort_by(|left, right| {
++        right
++            .start
++            .cmp(&left.start)
++            .then_with(|| right.end.cmp(&left.end))
++    });
++    let view = editor.state().view();
++    let prose = editor_state::prose_annotated(&view);
++    if prose.text() != expected_text {
++        return Err(EditorError::General {
++            msg: "TrackedRange::ReplaceManyFromProseAnnotated: document text mismatch".into(),
++        });
++    }
++    let prose_chars: Vec<char> = expected_text.chars().collect();
++    let mut next_start = prose_chars.len();
++    let mut prepared = Vec::with_capacity(replacements.len());
++    for replacement in replacements {
++        let start = replacement.start as usize;
++        let end = replacement.end as usize;
++        if start >= end
++            || end > prose_chars.len()
++            || end > next_start
++            || replacement.expected_text.contains(['\r', '\n'])
++            || replacement.replacement.contains(['\r', '\n'])
++            || prose_chars[start..end].iter().collect::<String>() != replacement.expected_text
++        {
++            return Err(EditorError::General {
++                msg: format!(
++                    "TrackedRange::ReplaceManyFromProseAnnotated: invalid range {}",
++                    replacement.id
++                ),
++            });
++        }
++        let selection = prose
++            .to_selection(&view, start..end)
++            .and_then(|selection| selection.resolve(&view).map(|resolved| (selection, resolved)))
++            .ok_or_else(|| EditorError::General {
++                msg: format!(
++                    "TrackedRange::ReplaceManyFromProseAnnotated: unmappable range {}",
++                    replacement.id
++                ),
++            })?;
++        let (selection, resolved) = selection;
++        if resolved.is_collapsed() || resolved.from().node() != resolved.to().node() {
++            return Err(EditorError::General {
++                msg: format!(
++                    "TrackedRange::ReplaceManyFromProseAnnotated: cross-block range {}",
++                    replacement.id
++                ),
++            });
++        }
++        use editor_state::ResolvedPositionFlatExt;
++        let flat_range = resolved.from().to_flat()..resolved.to().to_flat();
++        let segments = editor_state::flat_segments_in_range(&view, flat_range.clone());
++        if editor_state::flat_text(&view, flat_range) != replacement.expected_text
++            || !segments
++                .iter()
++                .all(|segment| matches!(segment, editor_state::FlatSegment::Text { .. }))
++        {
++            return Err(EditorError::General {
++                msg: format!(
++                    "TrackedRange::ReplaceManyFromProseAnnotated: non-text range {}",
++                    replacement.id
++                ),
++            });
++        }
++        let mut first_leaf = None::<editor_crdt::Dot>;
++        let mut mixed_modifiers = false;
++        for segment in &segments {
++            let editor_state::FlatSegment::Text { leaves, .. } = segment else {
++                continue;
++            };
++            for leaf in leaves {
++                let leaf_state = view.leaf_state_by_dot_slow(*leaf).ok_or_else(|| {
++                    EditorError::General {
++                        msg: format!(
++                            "TrackedRange::ReplaceManyFromProseAnnotated: unresolved modifiers {}",
++                            replacement.id
++                        ),
++                    }
++                })?;
++                if let Some(first_leaf) = first_leaf {
++                    let first = view.leaf_state_by_dot_slow(first_leaf).ok_or_else(|| {
++                        EditorError::General {
++                            msg: format!(
++                                "TrackedRange::ReplaceManyFromProseAnnotated: unresolved modifiers {}",
++                                replacement.id
++                            ),
++                        }
++                    })?;
++                    if leaf_state.eff != first.eff || leaf_state.own != first.own {
++                        mixed_modifiers = true;
++                    }
++                } else {
++                    first_leaf = Some(*leaf);
++                }
++            }
++        }
++        if mixed_modifiers || first_leaf.is_none() {
++            return Err(EditorError::General {
++                msg: format!(
++                    "TrackedRange::ReplaceManyFromProseAnnotated: mixed modifiers {}",
++                    replacement.id
++                ),
++            });
++        }
++        next_start = start;
++        prepared.push((replacement, selection));
++    }
++    drop(view);
++
++    let pre_state = editor.state().clone();
++    let pre_selection = pre_state.selection.map(|selection| {
++        StableSelection::capture(&selection, &pre_state.view())
++    });
++    let pre_pending_modifiers = pre_state.pending_modifiers.clone();
++    editor.transact(move |tr| {
++        tr.clear_pending_format()?;
++        for (replacement, selection) in &prepared {
++            let changed =
++                commands::replace_tracked_range(tr, *selection, &replacement.replacement)?;
++            if !changed {
++                return Err(EditorError::General {
++                    msg: format!(
++                        "TrackedRange::ReplaceManyFromProseAnnotated: replacement {} produced no change",
++                        replacement.id
++                    ),
++                });
++            }
++        }
++        match &pre_selection {
++            None => tr.set_selection(None)?,
++            Some(selection) => {
++                tr.projected_clean().map_err(|error| EditorError::General {
++                    msg: format!(
++                        "TrackedRange::ReplaceManyFromProseAnnotated: projection failed: {error}"
++                    ),
++                })?;
++                let remapped = {
++                    let view = tr.view();
++                    let ctx = editor_state::StableResolveCtx::from_live(
++                        &view,
++                        tr.state().projected.seq_checkout(),
++                    );
++                    selection.resolve(&ctx).ok_or_else(|| EditorError::General {
++                        msg: "TrackedRange::ReplaceManyFromProseAnnotated: selection remap failed"
++                            .into(),
++                    })?
++                };
++                tr.set_selection(Some(remapped))?;
++            }
++        }
++        tr.set_pending_modifiers(pre_pending_modifiers)?;
++        tr.keep_pending_modifiers();
++        Ok(())
++    })?;
++
++    Ok(())
++}
++
+ struct ReplaceTextClassification {
+     outcome: TrackedRangeReplaceOutcome,
+     selection: Option<editor_state::Selection>,
+@@ -396,6 +614,24 @@ mod tests {
+         }
+     }
+ 
++    fn replace_many(expected_text: &str, replacements: Vec<(&str, u32, u32, &str, &str)>) -> Message {
++        Message::TrackedRange {
++            op: TrackedRangeOp::ReplaceManyFromProseAnnotated {
++                expected_text: expected_text.into(),
++                replacements: replacements
++                    .into_iter()
++                    .map(|(id, start, end, expected, replacement)| ProseTextReplacement {
++                        id: id.into(),
++                        start,
++                        end,
++                        expected_text: expected.into(),
++                        replacement: replacement.into(),
++                    })
++                    .collect(),
++            },
++        }
++    }
++
+     fn assert_install_outcome(events: &[EditorEvent], expected: ProseRangeInstallOutcome) {
+         assert!(events.iter().any(|event| {
+             matches!(
+@@ -437,6 +673,158 @@ mod tests {
+         )));
+     }
+ 
++    #[test]
++    fn replace_many_is_atomic_and_one_undo_entry() {
++        let (state, p1) = state! {
++            doc { root { p1: paragraph { text("hello hello") [italic] } } }
++            selection: (p1, 0)
++        };
++        let mut editor = Editor::new_test(state);
++        editor.apply(add_op(
++            "second",
++            editor_state::Selection::new(
++                editor_state::Position::new(p1, 6),
++                editor_state::Position::new(p1, 11),
++            ),
++        ));
++        editor.apply(add_op(
++            "first",
++            editor_state::Selection::new(
++                editor_state::Position::new(p1, 0),
++                editor_state::Position::new(p1, 5),
++            ),
++        ));
++
++        let before_undos = editor.history_undos_len();
++        let events = editor.apply(replace_many("hello hello", vec![
++            ("second", 6, 11, "hello", "world"),
++            ("first", 0, 5, "hello", "hi"),
++        ]));
++        assert_eq!(
++            editor_state::prose(&editor.state().view()).text(),
++            "hi world"
++        );
++        assert_eq!(editor.history_undos_len(), before_undos + 1);
++        assert_eq!(
++            events
++                .iter()
++                .filter(|event| matches!(
++                    event,
++                    EditorEvent::TrackedRangeReplaceResult {
++                        outcome: TrackedRangeReplaceOutcome::Replaced,
++                        ..
++                    }
++                ))
++                .count(),
++            2
++        );
++
++        editor.apply(Message::History {
++            op: HistoryOp::Undo,
++        });
++        assert_eq!(
++            editor_state::prose(&editor.state().view()).text(),
++            "hello hello"
++        );
++        editor.apply(Message::History {
++            op: HistoryOp::Redo,
++        });
++        assert_eq!(editor_state::prose(&editor.state().view()).text(), "hi world");
++    }
++
++    #[test]
++    fn replace_many_validation_failure_changes_nothing() {
++        let (state, p1) = state! {
++            doc { root { p1: paragraph { text("hello hello") } } }
++            selection: (p1, 0)
++        };
++        let mut editor = Editor::new_test(state);
++        editor.apply(add_op(
++            "second",
++            editor_state::Selection::new(
++                editor_state::Position::new(p1, 6),
++                editor_state::Position::new(p1, 11),
++            ),
++        ));
++        editor.apply(add_op(
++            "first",
++            editor_state::Selection::new(
++                editor_state::Position::new(p1, 0),
++                editor_state::Position::new(p1, 5),
++            ),
++        ));
++
++        let before_heads = editor.current_heads();
++        let before_undos = editor.history_undos_len();
++        let request = editor.enqueue_request(vec![replace_many(
++            "hello hello",
++            vec![
++                ("second", 6, 11, "stale", "world"),
++                ("first", 0, 5, "hello", "hi"),
++            ],
++        )]).expect("queued replacement request");
++        let result = editor.tick_through(request).expect("invalid batch is nonfatal");
++        assert!(result.events.iter().all(|event| matches!(
++            event,
++            EditorEvent::TrackedRangeReplaceResult {
++                outcome: TrackedRangeReplaceOutcome::Invalid,
++                ..
++            }
++        )));
++        assert_eq!(
++            editor_state::prose(&editor.state().view()).text(),
++            "hello hello"
++        );
++        assert_eq!(editor.current_heads(), before_heads);
++        assert_eq!(editor.history_undos_len(), before_undos);
++    }
++
++    #[test]
++    fn replace_many_uses_unicode_scalar_offsets_and_preserves_unset_selection() {
++        let (mut state, ..) = state! {
++            doc { root { p1: paragraph { text("가😀나 가😀나") } } }
++            selection: (p1, 0)
++        };
++        state.selection = None;
++        let mut editor = Editor::new_test(state);
++
++        editor.apply(replace_many("가😀나 가😀나", vec![
++            ("second", 5, 6, "😀", "별"),
++            ("first", 1, 2, "😀", "달"),
++        ]));
++
++        assert_eq!(editor_state::prose(&editor.state().view()).text(), "가달나 가별나");
++        assert!(editor.state().selection.is_none());
++    }
++
++    #[test]
++    fn replace_many_rejects_mixed_inline_modifier_ownership() {
++        let (state, ..) = state! {
++            doc { root { p1: paragraph { text("hello") [italic] text(" world") } } }
++            selection: (p1, 0)
++        };
++        let mut editor = Editor::new_test(state);
++        let before = editor_state::prose(&editor.state().view()).text().to_string();
++        let before_heads = editor.current_heads();
++        let before_undos = editor.history_undos_len();
++        let request = editor.enqueue_request(vec![replace_many(
++            "hello world",
++            vec![("mixed", 0, 11, "hello world", "safe")],
++        )]).expect("queued mixed-style replacement request");
++
++        let result = editor.tick_through(request).expect("mixed style is nonfatal");
++        assert!(result.events.iter().any(|event| matches!(
++            event,
++            EditorEvent::TrackedRangeReplaceResult {
++                outcome: TrackedRangeReplaceOutcome::Invalid,
++                ..
++            }
++        )));
++        assert_eq!(editor_state::prose(&editor.state().view()).text(), before);
++        assert_eq!(editor.current_heads(), before_heads);
++        assert_eq!(editor.history_undos_len(), before_undos);
++    }
++
+     #[test]
+     fn remove_drops_range_and_emits_state_changed() {
+         let (state, ..) = state! {
+diff --git a/crates/editor-core/src/message.rs b/crates/editor-core/src/message.rs
+index 1a2de9678..f92294a9f 100644
+--- a/crates/editor-core/src/message.rs
++++ b/crates/editor-core/src/message.rs
+@@ -413,6 +413,17 @@ pub struct ProseTrackedRangeRegistration {
+     pub invalidate_on_text_change: bool,
+ }
+ 
++#[ffi]
++#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub struct ProseTextReplacement {
++    pub id: String,
++    pub start: u32,
++    pub end: u32,
++    pub expected_text: String,
++    pub replacement: String,
++}
++
+ #[ffi]
+ #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+ #[serde(tag = "type", rename_all = "snake_case")]
+@@ -467,6 +478,10 @@ pub enum TrackedRangeOp {
+         expected_text: Option<String>,
+         replacement: String,
+     },
++    ReplaceManyFromProseAnnotated {
++        expected_text: String,
++        replacements: Vec<ProseTextReplacement>,
++    },
+ }
+ 
+ #[ffi]
+

@@ -27,6 +27,20 @@ export interface EditorChange {
   readonly isComposing: boolean;
 }
 
+export interface EditorTextReplacement {
+  readonly id: string;
+  readonly start: number;
+  readonly end: number;
+  readonly expectedText: string;
+  readonly replacement: string;
+}
+
+export interface EditorReplacementDocument {
+  readonly snapshot: Uint8Array;
+  readonly plainTextRecovery: string;
+  readonly semanticSceneBreakCount: number;
+}
+
 /**
  * The rest of madi may only depend on this interface. Typie crate/WASM types
  * belong behind the adapter implementation.
@@ -35,6 +49,26 @@ export interface MadiEditorAdapter {
   open(snapshot?: Uint8Array): Promise<void>;
   getSnapshot(): Promise<Uint8Array>;
   getPlainText(): Promise<string>;
+  /** Moves the one live editor surface between workspace blocks. */
+  relocate?(mountElement: HTMLElement): void;
+  /**
+   * Applies validated replacements to Typie's semantic document. Implementors
+   * must restore the original document when any replacement or invariant fails.
+   */
+  replaceTextRanges?(
+    replacements: readonly EditorTextReplacement[]
+  ): Promise<EditorReplacementDocument>;
+  /**
+   * Disables every user-driven editor mutation while madi temporarily uses the
+   * one live engine for a project-wide atomic operation.
+   */
+  setInteractionEnabled?(enabled: boolean): void;
+  /** Selects a range expressed in annotated recovery-text offsets. */
+  revealTextRange?(
+    start: number,
+    end: number,
+    options?: { readonly focus?: boolean }
+  ): void;
   focus(): void;
   undo(): void;
   redo(): void;

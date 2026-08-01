@@ -1,6 +1,8 @@
 import type {
   EditorChange,
   EditorChangeReason,
+  EditorReplacementDocument,
+  EditorTextReplacement,
   MadiEditorAdapter
 } from "../MadiEditorAdapter";
 
@@ -14,6 +16,16 @@ export interface TypieEnginePort {
   restoreSnapshot(snapshot: Uint8Array): Promise<void>;
   exportSnapshot(): Promise<Uint8Array>;
   exportPlainText(): Promise<string>;
+  relocate?(element: HTMLElement): void;
+  replaceTextRanges?(
+    replacements: readonly EditorTextReplacement[]
+  ): Promise<EditorReplacementDocument>;
+  setInteractionEnabled(enabled: boolean): void;
+  revealTextRange?(
+    start: number,
+    end: number,
+    options?: { readonly focus?: boolean }
+  ): void;
   focus(): void;
   undo(): void;
   redo(): void;
@@ -94,6 +106,43 @@ export class TypieEditorAdapter implements MadiEditorAdapter {
   public async getPlainText(): Promise<string> {
     this.requireOpen();
     return this.port.exportPlainText();
+  }
+
+  public relocate(mountElement: HTMLElement): void {
+    this.requireOpen();
+    if (!this.port.relocate) {
+      throw new Error("Typie runtime does not support editor relocation");
+    }
+    this.port.relocate(mountElement);
+  }
+
+  public replaceTextRanges(
+    replacements: readonly EditorTextReplacement[]
+  ): Promise<EditorReplacementDocument> {
+    this.requireOpen();
+    if (!this.port.replaceTextRanges) {
+      return Promise.reject(
+        new Error("Typie runtime does not support semantic replacement")
+      );
+    }
+    return this.port.replaceTextRanges(replacements);
+  }
+
+  public setInteractionEnabled(enabled: boolean): void {
+    this.requireOpen();
+    this.port.setInteractionEnabled(enabled);
+  }
+
+  public revealTextRange(
+    start: number,
+    end: number,
+    options?: { readonly focus?: boolean }
+  ): void {
+    this.requireOpen();
+    if (!this.port.revealTextRange) {
+      throw new Error("Typie runtime does not support search-result reveal");
+    }
+    this.port.revealTextRange(start, end, options);
   }
 
   public focus(): void {

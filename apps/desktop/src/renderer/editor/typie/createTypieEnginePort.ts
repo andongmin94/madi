@@ -16,6 +16,10 @@ import fontBaseUrl from "@madi/typie-runtime/browser/font-base.zst?url";
 import fontManifestUrl from "@madi/typie-runtime/browser/font-manifest.zst?url";
 import fontChunkUrl from "@madi/typie-runtime/browser/font-chunk-0.zst?url";
 import type {
+  EditorReplacementDocument,
+  EditorTextReplacement
+} from "../MadiEditorAdapter";
+import type {
   TypieEnginePort,
   TypieTransactionEvent
 } from "./TypieEditorAdapter";
@@ -76,6 +80,20 @@ function countSemanticSceneBreaks(entry: PlainNodeEntry): number {
 function semanticSceneBreakCount(editor: Editor): number {
   const document = editor.materialize_at(editor.current_heads(), []);
   return countSemanticSceneBreaks(document.root);
+}
+
+function semanticDocumentFingerprint(entry: PlainNodeEntry): string {
+  if (entry.node.type === "text") {
+    return "";
+  }
+  return JSON.stringify({
+    node: entry.node,
+    modifiers: entry.modifiers,
+    carry: entry.carry ?? [],
+    children: entry.children
+      .map(semanticDocumentFingerprint)
+      .filter((child) => child !== "")
+  });
 }
 
 async function fetchBytes(
@@ -163,6 +181,7 @@ class BrowserTypieEnginePort implements TypieEnginePort {
   private undoAvailable = false;
   private redoAvailable = false;
   private compositionActive = false;
+  private interactionEnabled = true;
   private fontDataMissingEvents = 0;
   private dragging = false;
   private dragAnchor:
@@ -182,20 +201,24 @@ class BrowserTypieEnginePort implements TypieEnginePort {
         );
         return ime ? normalizeImeContext(ime) : null;
       },
-      enqueue: (messages) => this.dispatch(messages, "input")
+      enqueue: (messages) => {
+        if (this.interactionEnabled) {
+          this.dispatch(messages, "input");
+        }
+      }
     });
   }
 
   public async mount(element: HTMLElement): Promise<void> {
     if (this.mountElement) {
-      if (this.mountElement !== element) {
-        throw new Error("Typie runtime is already mounted");
-      }
+      this.relocate(element);
       return;
     }
 
     const surface = document.createElement("div");
     surface.className = "typie-runtime";
+    surface.dataset.interactionEnabled = "true";
+    surface.setAttribute("aria-busy", "false");
     const input = document.createElement("textarea");
     input.className = "typie-runtime__ime-input";
     input.setAttribute("aria-label", "Typie 문서 입력");
@@ -236,6 +259,44 @@ class BrowserTypieEnginePort implements TypieEnginePort {
     this.resizeObserver.observe(element);
   }
 
+  public relocate(element: HTMLElement): void {
+    const surface = this.surfaceElement;
+    const previous = this.mountElement;
+    if (!surface || !previous) {
+      throw new Error("Typie runtime must be mounted before relocation");
+    }
+    if (previous === element) {
+      return;
+    }
+
+    previous.classList.remove("typie-editor-mount--active");
+    this.resizeObserver?.disconnect();
+    element.replaceChildren(surface);
+    element.classList.add("typie-editor-mount--active");
+    this.mountElement = element;
+    this.resizeObserver?.observe(element);
+
+    if (this.editor) {
+      const viewport = this.readViewport();
+      this.dispatch(
+        [
+          {
+            type: "system",
+            event: {
+              type: "resize",
+              width: viewport.width,
+              height: viewport.height,
+              scale_factor: viewport.scale_factor
+            }
+          }
+        ],
+        null
+      );
+      this.attachOrResizeSurface();
+      this.scheduleRender();
+    }
+  }
+
   public async createEmptyDocument(): Promise<void> {
     this.installEditor(
       this.host.create_editor_from_doc(EMPTY_DOCUMENT, this.readViewport())
@@ -270,8 +331,178 @@ class BrowserTypieEnginePort implements TypieEnginePort {
     return this.requireEditor().prose_text_annotated();
   }
 
+  public async replaceTextRanges(
+    replacements: readonly EditorTextReplacement[]
+  ): Promise<EditorReplacementDocument> {
+    const editor = this.requireEditor();
+    const originalSnapshot = await this.exportSnapshot();
+    const originalHeads = editor.current_heads();
+    const originalText = editor.prose_text_annotated();
+    const originalBreakCount = semanticSceneBreakCount(editor);
+    const originalStructure = semanticDocumentFingerprint(
+      editor.materialize_at(editor.current_heads(), []).root
+    );
+    const ordered = [...replacements].sort((left, right) => {
+      return right.start - left.start || right.end - left.end;
+    });
+
+    let dispatchAttempted = false;
+    let replacementCommitted = false;
+    try {
+      this.validateReplacementRanges(originalText, ordered);
+      if (ordered.length === 0) {
+        return {
+          snapshot: originalSnapshot,
+          plainTextRecovery: originalText,
+          semanticSceneBreakCount: originalBreakCount
+        };
+      }
+
+      dispatchAttempted = true;
+      const result = this.dispatch(
+        [{
+          type: "tracked_range",
+          op: {
+            type: "replace_many_from_prose_annotated",
+            expected_text: originalText,
+            replacements: ordered.map((replacement) => ({
+              id: replacement.id,
+              start: replacement.start,
+              end: replacement.end,
+              expected_text: replacement.expectedText,
+              replacement: replacement.replacement
+            }))
+          }
+        }],
+        null
+      );
+      const outcomes = new Map(
+        (result?.events ?? [])
+          .filter((event) => event.type === "tracked_range_replace_result")
+          .map((event) => [event.id, event.outcome] as const)
+      );
+      for (const replacement of ordered) {
+        if (outcomes.get(replacement.id) !== "replaced") {
+          throw new Error(
+            `Typie rejected replacement ${replacement.id}: ${outcomes.get(replacement.id) ?? "missing outcome"}`
+          );
+        }
+      }
+      const nextText = editor.prose_text_annotated();
+      const expectedCharacters = Array.from(originalText);
+      for (const replacement of ordered) {
+        expectedCharacters.splice(
+          replacement.start,
+          replacement.end - replacement.start,
+          ...Array.from(replacement.replacement)
+        );
+      }
+      const expectedText = expectedCharacters.join("");
+      const nextBreakCount = semanticSceneBreakCount(editor);
+      const nextStructure = semanticDocumentFingerprint(
+        editor.materialize_at(editor.current_heads(), []).root
+      );
+      if (nextText !== expectedText) {
+        throw new Error("Typie replacement result did not match the preview");
+      }
+      if (nextBreakCount !== originalBreakCount) {
+        throw new Error("Typie replacement changed semantic scene breaks");
+      }
+      if (nextStructure !== originalStructure) {
+        throw new Error("Typie replacement changed semantic document structure");
+      }
+
+      replacementCommitted = true;
+      const snapshot = await this.exportSnapshot();
+      this.undoAvailable = true;
+      this.redoAvailable = false;
+      this.emitTransaction("input");
+      return {
+        snapshot,
+        plainTextRecovery: nextText,
+        semanticSceneBreakCount: nextBreakCount
+      };
+    } catch (error) {
+      // Command validation failures are atomic and leave Typie's history intact.
+      // Restore only after a successful command violates a postcondition.
+      if (replacementCommitted) {
+        await this.restoreSnapshot(originalSnapshot);
+      } else if (dispatchAttempted) {
+        try {
+          editor.prose_text_annotated();
+          const currentHeads = editor.current_heads();
+          if (
+            currentHeads.length !== originalHeads.length ||
+            currentHeads.some((value, index) => value !== originalHeads[index])
+          ) {
+            await this.restoreSnapshot(originalSnapshot);
+          }
+        } catch {
+          await this.restoreSnapshot(originalSnapshot);
+        }
+      }
+      throw error;
+    }
+  }
+
+  public setInteractionEnabled(enabled: boolean): void {
+    if (this.interactionEnabled === enabled) {
+      return;
+    }
+    if (!enabled && this.compositionActive) {
+      throw new Error(
+        "Typie interaction cannot be locked during an active composition"
+      );
+    }
+    this.interactionEnabled = enabled;
+    this.dragging = false;
+    this.dragAnchor = undefined;
+    if (this.input) {
+      if (!enabled) {
+        this.input.blur();
+      }
+      this.input.disabled = !enabled;
+      this.input.setAttribute("aria-disabled", enabled ? "false" : "true");
+    }
+    if (this.surfaceElement) {
+      this.surfaceElement.inert = !enabled;
+      this.surfaceElement.dataset.interactionEnabled = String(enabled);
+      this.surfaceElement.setAttribute(
+        "aria-busy",
+        enabled ? "false" : "true"
+      );
+    }
+  }
+
+  public revealTextRange(
+    start: number,
+    end: number,
+    options?: { readonly focus?: boolean }
+  ): void {
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start >= end) {
+      throw new Error("Invalid search result range");
+    }
+    const selection = this.requireEditor().prose_to_selection_annotated(
+      start,
+      end
+    );
+    if (!selection) {
+      throw new Error("Typie could not map the search result range");
+    }
+    this.dispatch(
+      [{ type: "selection", op: { type: "set", selection } }],
+      null
+    );
+    if (options?.focus !== false) {
+      this.focus();
+    }
+  }
+
   public focus(): void {
     this.requireEditor();
+    if (!this.interactionEnabled) {
+      return;
+    }
     this.input?.focus({ preventScroll: true });
   }
 
@@ -384,12 +615,44 @@ class BrowserTypieEnginePort implements TypieEnginePort {
     }
   }
 
+  private validateReplacementRanges(
+    originalText: string,
+    ordered: readonly EditorTextReplacement[]
+  ): void {
+    const ids = new Set<string>();
+    const originalCharacters = Array.from(originalText);
+    let nextStart = originalCharacters.length;
+    for (const replacement of ordered) {
+      if (
+        !replacement.id ||
+        ids.has(replacement.id) ||
+        !Number.isInteger(replacement.start) ||
+        !Number.isInteger(replacement.end) ||
+        replacement.start < 0 ||
+        replacement.start >= replacement.end ||
+        replacement.end > originalCharacters.length ||
+        replacement.end > nextStart ||
+        originalCharacters
+          .slice(replacement.start, replacement.end)
+          .join("") !==
+          replacement.expectedText
+      ) {
+        throw new Error(`Invalid replacement preview ${replacement.id}`);
+      }
+      if (/\r|\n/u.test(replacement.replacement)) {
+        throw new Error("Phase 1B replacement cannot insert line breaks");
+      }
+      ids.add(replacement.id);
+      nextStart = replacement.start;
+    }
+  }
+
   private dispatch(
     messages: Message[],
     origin: TransactionOrigin | null
-  ): void {
+  ): TickResult | undefined {
     if (messages.length === 0) {
-      return;
+      return undefined;
     }
     const editor = this.requireEditor();
     const requestId = editor.enqueue_request(messages);
@@ -445,6 +708,7 @@ class BrowserTypieEnginePort implements TypieEnginePort {
     if (origin) {
       this.emitTransaction(origin);
     }
+    return result;
   }
 
   private emitTransaction(origin: TransactionOrigin): void {
@@ -591,21 +855,33 @@ class BrowserTypieEnginePort implements TypieEnginePort {
   }
 
   private installInputHandlers(input: HTMLTextAreaElement): void {
-    input.addEventListener("beforeinput", (event) =>
+    input.addEventListener("beforeinput", (event) => {
+      if (!this.interactionEnabled) {
+        event.preventDefault();
+        return;
+      }
       this.imeAdapter.handleBeforeInput(
         event as InputEvent & {
           readonly currentTarget: HTMLTextAreaElement;
         }
-      )
-    );
-    input.addEventListener("input", (event) =>
+      );
+    });
+    input.addEventListener("input", (event) => {
+      if (!this.interactionEnabled) {
+        event.preventDefault();
+        return;
+      }
       this.imeAdapter.handleInput(
         event as Event & {
           readonly currentTarget: HTMLTextAreaElement;
         }
-      )
-    );
+      );
+    });
     input.addEventListener("compositionstart", (event) => {
+      if (!this.interactionEnabled) {
+        event.preventDefault();
+        return;
+      }
       this.compositionActive = true;
       this.imeAdapter.handleCompositionStart(
         event as CompositionEvent & {
@@ -614,10 +890,17 @@ class BrowserTypieEnginePort implements TypieEnginePort {
       );
       this.emitTransaction("composition-state");
     });
-    input.addEventListener("compositionupdate", (event) =>
-      this.imeAdapter.handleCompositionUpdate(event)
-    );
+    input.addEventListener("compositionupdate", (event) => {
+      if (!this.interactionEnabled) {
+        event.preventDefault();
+        return;
+      }
+      this.imeAdapter.handleCompositionUpdate(event);
+    });
     input.addEventListener("compositionend", () => {
+      if (!this.interactionEnabled) {
+        return;
+      }
       this.compositionActive = false;
       this.imeAdapter.handleCompositionEnd();
       // A cancelled/resynced composition may have no content operation to
@@ -630,6 +913,10 @@ class BrowserTypieEnginePort implements TypieEnginePort {
     );
     input.addEventListener("copy", (event) => this.handleCopy(event));
     input.addEventListener("cut", (event) => {
+      if (!this.interactionEnabled) {
+        event.preventDefault();
+        return;
+      }
       if (this.handleCopy(event)) {
         this.dispatch(
           [{ type: "clipboard", op: { type: "cut" } }],
@@ -638,6 +925,10 @@ class BrowserTypieEnginePort implements TypieEnginePort {
       }
     });
     input.addEventListener("paste", (event) => {
+      if (!this.interactionEnabled) {
+        event.preventDefault();
+        return;
+      }
       const clipboard = event.clipboardData;
       if (!clipboard) {
         return;
@@ -685,6 +976,10 @@ class BrowserTypieEnginePort implements TypieEnginePort {
   }
 
   private handleKeyDown(event: KeyboardEvent): void {
+    if (!this.interactionEnabled) {
+      event.preventDefault();
+      return;
+    }
     if (event.isComposing || event.keyCode === 229) {
       return;
     }
@@ -808,7 +1103,14 @@ class BrowserTypieEnginePort implements TypieEnginePort {
 
   private installPointerHandlers(canvas: HTMLCanvasElement): void {
     canvas.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0 || !event.isPrimary) {
+      if (
+        !this.interactionEnabled ||
+        event.button !== 0 ||
+        !event.isPrimary
+      ) {
+        if (!this.interactionEnabled) {
+          event.preventDefault();
+        }
         return;
       }
       event.preventDefault();
@@ -856,7 +1158,11 @@ class BrowserTypieEnginePort implements TypieEnginePort {
     });
 
     canvas.addEventListener("pointermove", (event) => {
-      if (!this.dragging || !this.dragAnchor) {
+      if (
+        !this.interactionEnabled ||
+        !this.dragging ||
+        !this.dragAnchor
+      ) {
         return;
       }
       const point = this.localPoint(event);
