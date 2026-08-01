@@ -1,0 +1,23 @@
+{
+  "typieRepository": "https://github.com/penxle/typie",
+  "typieCommit": "fbe5c4bf860d1717a66e66bea2374a2e39f0dd26",
+  "typieLicense": "AGPL-3.0-only",
+  "cargoProfile": "release-wasm-browser",
+  "wasmTarget": "wasm32-unknown-unknown",
+  "wasmSha256": "c6cc7d32cebfe3d3e48b3c79e60de0e28a815761f68779fdec415217425ee939",
+  "icuSha256": "050e08ceebfa8d92f583b80bb31fcb6a792a760ffa821deb3f2316c12ad578f0",
+  "bindings": {
+    "javascriptSha256": "eb8707d22e9d2c1a89bbd132a2ac6d19b47938baa53462c623335a7e0030b745",
+    "typescriptSha256": "41b7e24429e892b2df4f2be0ee07948cae25a2a7f2a8ce672ea60bba94404851"
+  },
+  "font": {
+    "name": "Nanum Gothic Regular",
+    "source": "https://github.com/google/fonts/tree/main/ofl/nanumgothic",
+    "license": "OFL-1.1",
+    "sourceSha256": "76f45ef4a6bcff344c837c95a7dcc26e017e38b5846d5ae0cdcb5b86be2e2d31",
+    "engineHash": "a178cbd6767300e8",
+    "baseSha256": "54418892219582d1d1334f79ad5fc7fdc74d646464beb0d9bcb600ebacb08517",
+    "manifestSha256": "81424decc8cebe05ac5c4597248648d0f5416742acfcc25c22990e75537e3ca5",
+    "chunk0Sha256": "489e66dc686591b671f3b14c00cde16922b62b63e06f0563ca5695c6c5101502"
+  }
+}

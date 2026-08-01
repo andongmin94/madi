@@ -1,0 +1,25 @@
+.tools/
+.pnpm-store/
+node_modules/
+**/node_modules/
+target/
+**/target/
+dist/
+**/dist/
+coverage/
+**/coverage/
+
+# Runtime and test artifacts
+*.madi
+*.madi.bak
+*.madi.bak.previous
+*.recovered.txt
+test-results/
+playwright-report/
+output/playwright/
+output/madi-win32-x64/
+
+# Local editor and OS files
+.DS_Store
+Thumbs.db
+*.log

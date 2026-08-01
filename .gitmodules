@@ -1,0 +1,3 @@
+[submodule "vendor/typie"]
+	path = vendor/typie
+	url = https://github.com/penxle/typie.git

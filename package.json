@@ -1,0 +1,39 @@
+{
+  "name": "madi",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Local-first Windows authoring tool phase-0 Typie feasibility prototype",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=20.19.0",
+    "pnpm": ">=9"
+  },
+  "devDependencies": {
+    "playwright-core": "1.54.2"
+  },
+  "scripts": {
+    "preinstall": "node scripts/check-toolchain.mjs",
+    "build": "pnpm run build:core && pnpm --filter @madi/desktop build",
+    "build:core": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 build --manifest-path crates/madi-core/Cargo.toml",
+    "build:core:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 build --release --manifest-path crates/madi-core/Cargo.toml",
+    "check:repository": "node scripts/check-repository.mjs",
+    "check:toolchain": "node scripts/check-toolchain.mjs",
+    "format:check": "node scripts/check-format.mjs",
+    "dev": "pnpm run build:core && pnpm --filter @madi/desktop dev",
+    "start": "pnpm --filter @madi/desktop start",
+    "test": "pnpm run build:core && pnpm run typecheck && pnpm run test:typie && pnpm run test:core && pnpm run test:desktop && pnpm run test:integration && pnpm run test:electron",
+    "test:typie": "node scripts/probe-typie.mjs",
+    "test:core": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 test --manifest-path crates/madi-core/Cargo.toml",
+    "test:desktop": "pnpm --filter @madi/desktop test",
+    "test:integration": "node scripts/test-madi-roundtrip.mjs && node scripts/test-madi-endurance.mjs && node scripts/test-scene-break.mjs && node scripts/test-recovery-cli.mjs",
+    "pretest:electron": "pnpm --filter @madi/desktop build",
+    "test:electron": "node scripts/electron-smoke.mjs",
+    "package:unpacked": "pnpm run build:core:release && pnpm --filter @madi/desktop build && node scripts/package-unpacked.mjs",
+    "postinstall": "node scripts/ensure-electron.mjs",
+    "pretest:package": "pnpm run package:unpacked",
+    "test:package": "node scripts/electron-packaged-smoke.mjs",
+    "test:dev": "node scripts/test-dev-startup.mjs",
+    "typecheck": "pnpm --filter @madi/desktop typecheck",
+    "verify": "pnpm run check:toolchain && pnpm run check:repository && pnpm run format:check && pnpm run typecheck && pnpm run test:desktop && pnpm run test:core && pnpm run build:core && pnpm run test:typie && pnpm run test:integration && pnpm run build && pnpm run test:electron && pnpm run test:package"
+  }
+}

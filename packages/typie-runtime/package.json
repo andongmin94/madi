@@ -1,0 +1,26 @@
+{
+  "name": "@madi/typie-runtime",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "exports": {
+    "./browser": {
+      "types": "./browser/editor_ffi.d.ts",
+      "default": "./browser/editor_ffi.js"
+    },
+    "./browser/wasm": "./browser/editor_ffi_bg.wasm",
+    "./browser/icu.zst": "./browser/icu.zst",
+    "./browser/font-base.zst": "./assets/NanumGothic-Regular.base.zst",
+    "./browser/font-manifest.zst": "./assets/NanumGothic-Regular.manifest.zst",
+    "./browser/font-chunk-0.zst": "./assets/NanumGothic-Regular.chunk-0.zst",
+    "./build-info": "./BUILD_INFO.json"
+  },
+  "files": [
+    "assets",
+    "browser",
+    "BUILD_INFO.json",
+    "LICENSE",
+    "NANUM_GOTHIC_LICENSE.txt"
+  ]
+}
