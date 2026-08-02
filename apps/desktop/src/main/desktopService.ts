@@ -53,6 +53,74 @@ import type {
   TreeNodeKind,
   TreeNodeRecord
 } from "../shared/contracts";
+import type {
+  CreateEntityAliasRequest,
+  CreateEntityRelationRequest,
+  CreateEntityRequest,
+  CreateRelationTypeRequest,
+  CreateSceneEntityLinkRequest,
+  CreateTagRequest,
+  DeleteEntityAliasRequest,
+  DeleteEntityAliasResult,
+  DeleteEntityRelationRequest,
+  DeleteEntityRelationResult,
+  DeleteEntityRequest,
+  DeleteEntityResult,
+  DeleteRelationTypeRequest,
+  DeleteRelationTypeResult,
+  DeleteSceneEntityLinkRequest,
+  DeleteSceneEntityLinkResult,
+  DeleteTagRequest,
+  DeleteTagResult,
+  DiscoverEntityMentionsRequest,
+  DiscoverEntityMentionsResult,
+  EntityAliasMutationResult,
+  EntityAliasRecord,
+  EntityDeleteImpact,
+  EntityDeleteImpactRequest,
+  EntityDeleteImpactResult,
+  EntityKind,
+  EntityMutationResult,
+  EntityRecord,
+  EntityRelationMutationResult,
+  EntityRelationRecord,
+  EntitySearchHit,
+  EntitySort,
+  EntityStatus,
+  JsonObject,
+  ListEntitiesRequest,
+  ListEntitiesResult,
+  ListEntityAliasesRequest,
+  ListEntityAliasesResult,
+  ListEntityRelationsRequest,
+  ListEntityRelationsResult,
+  ListEntityTagsRequest,
+  ListEntityTagsResult,
+  ListRelationTypesResult,
+  ListSceneEntityLinksRequest,
+  ListSceneEntityLinksResult,
+  ListTagsResult,
+  LoadedEntityNote,
+  LoadEntityNoteRequest,
+  PromoteEntityMentionRequest,
+  RelationTypeMutationResult,
+  RelationTypeRecord,
+  SaveEntityNoteRequest,
+  SaveEntityNoteResult,
+  SceneEntityLinkMutationResult,
+  SceneEntityLinkRecord,
+  SceneEntityRole,
+  SearchEntitiesRequest,
+  SearchEntitiesResult,
+  SetEntityTagsRequest,
+  SetEntityTagsResult,
+  TagMutationResult,
+  TagRecord,
+  UpdateEntityRelationRequest,
+  UpdateEntityRequest,
+  UpdateRelationTypeRequest,
+  UpdateTagRequest
+} from "../shared/contracts";
 import type { CoreClient } from "./coreClient";
 import { ProjectSessionRegistry } from "./projectSessions";
 
@@ -72,6 +140,36 @@ const SNAPSHOT_KINDS = new Set<NamedSnapshotKind>([
   "AUTO_BEFORE_REPLACE",
   "AUTO_BEFORE_RESTORE"
 ]);
+const ENTITY_KINDS = new Set<EntityKind>([
+  "CHARACTER",
+  "LOCATION",
+  "ORGANIZATION",
+  "ITEM",
+  "EVENT",
+  "WORLD_RULE",
+  "FORESHADOWING",
+  "OTHER"
+]);
+const ENTITY_STATUSES = new Set<EntityStatus>([
+  "ACTIVE",
+  "DRAFT",
+  "ARCHIVED"
+]);
+const ENTITY_SORTS = new Set<EntitySort>(["NAME_ASC", "UPDATED_DESC"]);
+const SCENE_ENTITY_ROLES = new Set<SceneEntityRole>([
+  "APPEARS",
+  "POV",
+  "MENTIONED",
+  "RELATED"
+]);
+const ENTITY_SEARCH_FIELDS = new Set<EntitySearchHit["matchedFields"][number]>([
+  "NAME",
+  "ALIAS",
+  "SUMMARY",
+  "TAG",
+  "NOTE"
+]);
+const MAX_ATTRIBUTES_JSON_BYTES = 1024 * 1024;
 
 export interface DialogPort {
   showSaveDialog(
@@ -426,13 +524,319 @@ function parseSnapshotNodeCounts(value: unknown): SnapshotNodeCounts {
 
 function parseSnapshotDiff(value: unknown): SnapshotDiffSummary {
   const summary = asRecord(value, "snapshot diff summary");
+  const optionalCount = (key: string): number =>
+    summary[key] === undefined ? 0 : requiredInteger(summary, key);
   return {
     added: parseSnapshotNodeCounts(summary.added),
     deleted: parseSnapshotNodeCounts(summary.deleted),
     renamedNodes: requiredInteger(summary, "renamed_nodes"),
     reorderedNodes: requiredInteger(summary, "reordered_nodes"),
     changedSceneBodies: requiredInteger(summary, "changed_scene_bodies"),
-    characterCountDelta: requiredNumber(summary, "character_count_delta")
+    characterCountDelta: requiredNumber(summary, "character_count_delta"),
+    addedEntities: optionalCount("added_entities"),
+    deletedEntities: optionalCount("deleted_entities"),
+    changedEntities: optionalCount("changed_entities"),
+    addedRelations: optionalCount("added_relations"),
+    deletedRelations: optionalCount("deleted_relations"),
+    changedRelations: optionalCount("changed_relations"),
+    changedSceneLinks: optionalCount("changed_scene_links"),
+    changedEntityNotes: optionalCount("changed_entity_notes")
+  };
+}
+
+function validateEnum<T extends string>(
+  value: unknown,
+  allowed: ReadonlySet<T>,
+  label: string
+): T {
+  if (typeof value !== "string" || !allowed.has(value as T)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value as T;
+}
+
+function parseEnum<T extends string>(
+  value: unknown,
+  allowed: ReadonlySet<T>,
+  label: string
+): T {
+  if (typeof value !== "string" || !allowed.has(value as T)) {
+    throw new Error(`The local core returned invalid ${label}`);
+  }
+  return value as T;
+}
+
+function validateNullableInputText(
+  value: unknown,
+  label: string,
+  maximumLength: number,
+  allowEmpty = true
+): string | null | undefined {
+  if (value === undefined || value === null) {
+    return value;
+  }
+  return validateExactText(value, label, maximumLength, allowEmpty);
+}
+
+function validateStringArray(
+  value: unknown,
+  label: string,
+  maximumItems: number
+): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value) || value.length > maximumItems) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const identifiers = value.map((item) =>
+    validateNodeId(item, `${label} item`)
+  );
+  if (new Set(identifiers).size !== identifiers.length) {
+    throw new Error(`Invalid duplicate ${label}`);
+  }
+  return identifiers;
+}
+
+function validateEnumArray<T extends string>(
+  value: unknown,
+  allowed: ReadonlySet<T>,
+  label: string
+): T[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value) || value.length > allowed.size) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const items = value.map((item) => validateEnum(item, allowed, label));
+  if (new Set(items).size !== items.length) {
+    throw new Error(`Invalid duplicate ${label}`);
+  }
+  return items;
+}
+
+function validateJsonObject(value: unknown, label: string): JsonObject {
+  if (!isRecord(value)) {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    throw new Error(`${label} must be valid JSON`);
+  }
+  if (
+    serialized.length === 0 ||
+    Buffer.byteLength(serialized, "utf8") > MAX_ATTRIBUTES_JSON_BYTES
+  ) {
+    throw new Error(`${label} is too large`);
+  }
+  const parsed: unknown = JSON.parse(serialized);
+  if (!isRecord(parsed)) {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  return parsed as JsonObject;
+}
+
+function parseJsonObject(value: unknown, label: string): JsonObject {
+  let parsed: unknown = value;
+  if (typeof value === "string") {
+    if (Buffer.byteLength(value, "utf8") > MAX_ATTRIBUTES_JSON_BYTES) {
+      throw new Error(`The local core returned oversized ${label}`);
+    }
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      throw new Error(`The local core returned invalid ${label}`);
+    }
+  }
+  try {
+    return validateJsonObject(parsed, `Core ${label}`);
+  } catch {
+    throw new Error(`The local core returned invalid ${label}`);
+  }
+}
+
+function parseEntity(value: unknown): EntityRecord {
+  const entity = asRecord(value, "entity");
+  return {
+    id: requiredString(entity, "id", "entity id"),
+    projectId: requiredString(entity, "project_id", "entity project id"),
+    kind: parseEnum(entity.kind, ENTITY_KINDS, "entity kind"),
+    name: requiredString(entity, "name", "entity name"),
+    summary: optionalNullableText(entity, "summary"),
+    documentId: requiredString(entity, "document_id", "entity document id"),
+    status: parseEnum(entity.status, ENTITY_STATUSES, "entity status"),
+    colorToken: optionalNullableText(entity, "color_token"),
+    iconKey: optionalNullableText(entity, "icon_key"),
+    attributes: parseJsonObject(
+      entity.attributes ?? entity.attributes_json,
+      "entity attributes"
+    ),
+    duplicateName:
+      entity.duplicate_name === undefined
+        ? false
+        : requiredBoolean(entity, "duplicate_name"),
+    createdAt: requiredString(entity, "created_at"),
+    updatedAt: requiredString(entity, "updated_at")
+  };
+}
+
+function parseEntityAlias(value: unknown): EntityAliasRecord {
+  const alias = asRecord(value, "entity alias");
+  return {
+    id: requiredString(alias, "id", "entity alias id"),
+    entityId: requiredString(alias, "entity_id"),
+    alias: requiredString(alias, "alias"),
+    normalizedAlias: requiredString(alias, "normalized_alias"),
+    createdAt: requiredString(alias, "created_at")
+  };
+}
+
+function parseTag(value: unknown): TagRecord {
+  const tag = asRecord(value, "tag");
+  return {
+    id: requiredString(tag, "id", "tag id"),
+    projectId: requiredString(tag, "project_id", "tag project id"),
+    name: requiredString(tag, "name", "tag name"),
+    colorToken: optionalNullableText(tag, "color_token"),
+    createdAt: requiredString(tag, "created_at"),
+    updatedAt:
+      tag.updated_at === undefined
+        ? null
+        : optionalNullableText(tag, "updated_at")
+  };
+}
+
+function parseRelationType(value: unknown): RelationTypeRecord {
+  const relationType = asRecord(value, "relation type");
+  return {
+    id: requiredString(relationType, "id", "relation type id"),
+    projectId: requiredString(relationType, "project_id"),
+    name: requiredString(relationType, "name"),
+    inverseName: optionalNullableText(relationType, "inverse_name"),
+    directed: requiredBoolean(relationType, "directed"),
+    colorToken: optionalNullableText(relationType, "color_token"),
+    isBuiltin: requiredBoolean(relationType, "is_builtin"),
+    createdAt: requiredString(relationType, "created_at"),
+    updatedAt: requiredString(relationType, "updated_at")
+  };
+}
+
+function parseEntityRelation(value: unknown): EntityRelationRecord {
+  const relation = asRecord(value, "entity relation");
+  return {
+    id: requiredString(relation, "id", "entity relation id"),
+    projectId: requiredString(relation, "project_id"),
+    sourceEntityId: requiredString(relation, "source_entity_id"),
+    relationTypeId: requiredString(relation, "relation_type_id"),
+    targetEntityId: requiredString(relation, "target_entity_id"),
+    note: optionalNullableText(relation, "note"),
+    createdAt: requiredString(relation, "created_at"),
+    updatedAt: requiredString(relation, "updated_at")
+  };
+}
+
+function parseSceneEntityLink(value: unknown): SceneEntityLinkRecord {
+  const link = asRecord(value, "scene entity link");
+  return {
+    sceneNodeId: requiredString(link, "scene_node_id"),
+    entityId: requiredString(link, "entity_id"),
+    role: parseEnum(link.role, SCENE_ENTITY_ROLES, "scene entity role"),
+    note: optionalNullableText(link, "note"),
+    createdAt: requiredString(link, "created_at")
+  };
+}
+
+function parseEntityDeleteImpact(
+  value: unknown,
+  expectedEntityId?: string
+): EntityDeleteImpact {
+  const impact = asRecord(value, "entity delete impact");
+  const entityId = requiredString(impact, "entity_id");
+  if (expectedEntityId && entityId !== expectedEntityId) {
+    throw new Error("The local core returned delete impact for another entity");
+  }
+  return {
+    entityId,
+    relationCount: requiredInteger(impact, "relation_count"),
+    sceneLinkCount: requiredInteger(impact, "scene_link_count"),
+    mentionSceneCount: requiredInteger(impact, "mention_scene_count"),
+    aliasCount: requiredInteger(impact, "alias_count"),
+    tagCount: requiredInteger(impact, "tag_count"),
+    noteCharacterCount: requiredInteger(impact, "note_character_count")
+  };
+}
+
+function requiredArray(
+  record: Readonly<Record<string, unknown>>,
+  key: string,
+  maximumItems: number,
+  label: string
+): readonly unknown[] {
+  const value = record[key];
+  if (!Array.isArray(value) || value.length > maximumItems) {
+    throw new Error(`The local core returned invalid ${label}`);
+  }
+  return value;
+}
+
+function validateRequiredNullableInputText(
+  value: unknown,
+  label: string,
+  maximumLength: number,
+  allowEmpty = true
+): string | null {
+  const validated = validateNullableInputText(
+    value,
+    label,
+    maximumLength,
+    allowEmpty
+  );
+  if (validated === undefined) {
+    throw new Error(`${label} is required`);
+  }
+  return validated;
+}
+
+function validateEditorPayload(
+  input: {
+    readonly editorEngine: unknown;
+    readonly editorEngineCommit: unknown;
+    readonly editorSchemaVersion: unknown;
+    readonly snapshot: unknown;
+    readonly plainTextRecovery: unknown;
+  },
+  label: string
+): {
+  readonly editorEngineCommit: string;
+  readonly editorSchemaVersion: number;
+  readonly snapshotBase64: string;
+  readonly plainTextRecovery: string;
+} {
+  if (input.editorEngine !== "typie") {
+    throw new Error("Unsupported editor engine");
+  }
+  if (
+    !Number.isSafeInteger(input.editorSchemaVersion) ||
+    (input.editorSchemaVersion as number) < 0 ||
+    !(input.snapshot instanceof Uint8Array) ||
+    input.snapshot.byteLength > MAX_SNAPSHOT_BYTES ||
+    typeof input.plainTextRecovery !== "string" ||
+    input.plainTextRecovery.length > MAX_RECOVERY_TEXT_CODE_UNITS
+  ) {
+    throw new Error(`Invalid ${label} payload`);
+  }
+  return {
+    editorEngineCommit: validateShortText(
+      input.editorEngineCommit,
+      "Editor engine commit",
+      128
+    ),
+    editorSchemaVersion: input.editorSchemaVersion as number,
+    snapshotBase64: encodeSnapshot(input.snapshot),
+    plainTextRecovery: input.plainTextRecovery
   };
 }
 
@@ -1417,6 +1821,1081 @@ export class DesktopService {
     };
   }
 
+  public async listEntities(
+    input: ListEntitiesRequest
+  ): Promise<ListEntitiesResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const query =
+      input.query === undefined
+        ? undefined
+        : validateExactText(input.query, "Entity query", 2_000, true);
+    const kinds = validateEnumArray(input.kinds, ENTITY_KINDS, "entity kind");
+    const statuses = validateEnumArray(
+      input.statuses,
+      ENTITY_STATUSES,
+      "entity status"
+    );
+    const tagIds = validateStringArray(input.tagIds, "entity tag ids", 500);
+    const sort =
+      input.sort === undefined
+        ? undefined
+        : validateEnum(input.sort, ENTITY_SORTS, "entity sort");
+    const response = asRecord(
+      await this.core.request("list_entities", {
+        file_path: session.filePath,
+        ...(query === undefined ? {} : { query }),
+        ...(kinds === undefined ? {} : { kinds }),
+        ...(statuses === undefined ? {} : { statuses }),
+        ...(tagIds === undefined ? {} : { tag_ids: tagIds }),
+        ...(sort === undefined ? {} : { sort })
+      }),
+      "entity list response"
+    );
+    const entities = requiredArray(
+      response,
+      "entities",
+      50_000,
+      "entity list"
+    ).map(parseEntity);
+    if (entities.some((entity) => entity.projectId !== session.projectId)) {
+      throw new Error("The local core returned a cross-project entity");
+    }
+    const revision = responseRevision(response, "entity list");
+    this.sessions.updateProject(sessionId, { revision });
+    return { entities, revision };
+  }
+
+  public async searchEntities(
+    input: SearchEntitiesRequest
+  ): Promise<SearchEntitiesResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const query = validateExactText(input.query, "Entity search query", 2_000);
+    const offset = validatePageNumber(input.offset, "Entity search offset", {
+      allowZero: true,
+      maximum: Number.MAX_SAFE_INTEGER
+    });
+    const limit = validatePageNumber(input.limit, "Entity search limit", {
+      allowZero: false,
+      maximum: 2_000
+    });
+    const response = asRecord(
+      await this.core.request("search_entities", {
+        file_path: session.filePath,
+        query,
+        ...(offset === undefined ? {} : { offset }),
+        ...(limit === undefined ? {} : { limit })
+      }),
+      "entity search response"
+    );
+    const hits: EntitySearchHit[] = requiredArray(
+      response,
+      "hits",
+      2_000,
+      "entity search hits"
+    ).map((value) => {
+      const hit = asRecord(value, "entity search hit");
+      const entity = parseEntity(hit.entity);
+      if (entity.projectId !== session.projectId) {
+        throw new Error("The local core returned a cross-project entity hit");
+      }
+      const matchedFields = requiredArray(
+        hit,
+        "matched_fields",
+        ENTITY_SEARCH_FIELDS.size,
+        "entity search fields"
+      ).map((field) =>
+        parseEnum(field, ENTITY_SEARCH_FIELDS, "entity search field")
+      );
+      if (new Set(matchedFields).size !== matchedFields.length) {
+        throw new Error("The local core returned duplicate entity search fields");
+      }
+      return {
+        entity,
+        matchedFields,
+        matchedText: requiredText(hit, "matched_text")
+      };
+    });
+    const revision = responseRevision(response, "entity search");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      query: requiredText(response, "query"),
+      hits,
+      totalMatches: requiredInteger(response, "total_matches"),
+      offset: requiredInteger(response, "offset"),
+      limit: requiredInteger(response, "limit"),
+      hasMore: requiredBoolean(response, "has_more"),
+      revision
+    };
+  }
+
+  public async createEntity(
+    input: CreateEntityRequest
+  ): Promise<EntityMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const kind = validateEnum(input.kind, ENTITY_KINDS, "entity kind");
+    const name = validateShortText(input.name, "Entity name", 500);
+    const status =
+      input.status === undefined
+        ? undefined
+        : validateEnum(input.status, ENTITY_STATUSES, "entity status");
+    if (input.editorEngine !== "typie") {
+      throw new Error("Unsupported editor engine");
+    }
+    if (
+      !Number.isSafeInteger(input.editorSchemaVersion) ||
+      input.editorSchemaVersion < 0
+    ) {
+      throw new Error("Invalid entity editor schema version");
+    }
+    const response = asRecord(
+      await this.core.request("create_entity", {
+        file_path: session.filePath,
+        kind,
+        name,
+        summary:
+          validateNullableInputText(input.summary, "Entity summary", 10_000) ??
+          null,
+        ...(status === undefined ? {} : { status }),
+        color_token:
+          validateNullableInputText(
+            input.colorToken,
+            "Entity color token",
+            128,
+            false
+          ) ?? null,
+        icon_key:
+          validateNullableInputText(
+            input.iconKey,
+            "Entity icon key",
+            128,
+            false
+          ) ?? null,
+        attributes:
+          input.attributes === undefined
+            ? {}
+            : validateJsonObject(input.attributes, "Entity attributes"),
+        editor_engine: "typie",
+        editor_engine_commit: validateShortText(
+          input.editorEngineCommit,
+          "Editor engine commit",
+          128
+        ),
+        editor_schema_version: input.editorSchemaVersion,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "create entity response"
+    );
+    const entity = parseEntity(response.entity);
+    const document = asRecord(response.document, "created entity document");
+    if (
+      entity.projectId !== session.projectId ||
+      requiredString(document, "id", "entity document id") !==
+        entity.documentId ||
+      requiredString(document, "project_id", "entity document project id") !==
+        session.projectId
+    ) {
+      throw new Error("The local core returned an inconsistent entity document");
+    }
+    const revision = responseRevision(response, "create entity");
+    this.sessions.updateProject(sessionId, { revision });
+    return { entity, revision };
+  }
+
+  public async updateEntity(
+    input: UpdateEntityRequest
+  ): Promise<EntityMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("update_entity", {
+        file_path: session.filePath,
+        entity_id: validateNodeId(input.entityId, "Entity id"),
+        kind: validateEnum(input.kind, ENTITY_KINDS, "entity kind"),
+        name: validateShortText(input.name, "Entity name", 500),
+        summary: validateRequiredNullableInputText(
+          input.summary,
+          "Entity summary",
+          10_000
+        ),
+        status: validateEnum(input.status, ENTITY_STATUSES, "entity status"),
+        color_token: validateRequiredNullableInputText(
+          input.colorToken,
+          "Entity color token",
+          128,
+          false
+        ),
+        icon_key: validateRequiredNullableInputText(
+          input.iconKey,
+          "Entity icon key",
+          128,
+          false
+        ),
+        attributes: validateJsonObject(input.attributes, "Entity attributes"),
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "update entity response"
+    );
+    const entity = parseEntity(response.entity);
+    if (entity.projectId !== session.projectId || entity.id !== input.entityId) {
+      throw new Error("The local core updated another entity");
+    }
+    const revision = responseRevision(response, "update entity");
+    this.sessions.updateProject(sessionId, { revision });
+    return { entity, revision };
+  }
+
+  public async getEntityDeleteImpact(
+    input: EntityDeleteImpactRequest
+  ): Promise<EntityDeleteImpactResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const entityId = validateNodeId(input.entityId, "Entity id");
+    const response = asRecord(
+      await this.core.request("get_entity_delete_impact", {
+        file_path: session.filePath,
+        entity_id: entityId
+      }),
+      "entity delete impact response"
+    );
+    const impact = parseEntityDeleteImpact(response.impact ?? response, entityId);
+    const revision = response.metadata
+      ? responseRevision(response, "entity delete impact")
+      : session.revision;
+    this.sessions.updateProject(sessionId, { revision });
+    return { impact, revision };
+  }
+
+  public async deleteEntity(
+    input: DeleteEntityRequest
+  ): Promise<DeleteEntityResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const entityId = validateNodeId(input.entityId, "Entity id");
+    if (input.confirmed !== true) {
+      throw new Error("Entity deletion requires explicit confirmation");
+    }
+    const response = asRecord(
+      await this.core.request("delete_entity", {
+        file_path: session.filePath,
+        entity_id: entityId,
+        confirmed: true,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "delete entity response"
+    );
+    const deletedEntityId = requiredString(response, "deleted_entity_id");
+    if (deletedEntityId !== entityId) {
+      throw new Error("The local core deleted another entity");
+    }
+    requiredString(response, "deleted_document_id");
+    const impact = parseEntityDeleteImpact(response.impact, entityId);
+    const revision = responseRevision(response, "delete entity");
+    this.sessions.updateProject(sessionId, { revision });
+    return { deletedEntityId, impact, revision };
+  }
+
+  public async loadEntityNote(
+    input: LoadEntityNoteRequest
+  ): Promise<LoadedEntityNote> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    if (input.ownerKind !== "ENTITY") {
+      throw new Error("Invalid entity note owner kind");
+    }
+    const ownerId = validateNodeId(input.ownerId, "Entity note owner id");
+    const response = asRecord(
+      await this.core.request("load_entity_note", {
+        file_path: session.filePath,
+        owner_kind: "ENTITY",
+        owner_id: ownerId
+      }),
+      "load entity note response"
+    );
+    if (
+      response.owner_kind !== "ENTITY" ||
+      requiredString(response, "owner_id") !== ownerId
+    ) {
+      throw new Error("The local core returned another entity note owner");
+    }
+    const document = asRecord(response.document, "entity note document");
+    const documentId = requiredString(response, "document_id");
+    const projectId = requiredString(document, "project_id");
+    if (
+      requiredString(document, "id") !== documentId ||
+      projectId !== session.projectId
+    ) {
+      throw new Error("Entity note document relation is inconsistent");
+    }
+    const revision = requiredInteger(response, "project_revision");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      ownerKind: "ENTITY",
+      ownerId,
+      id: documentId,
+      projectId,
+      title: requiredString(document, "title"),
+      editorEngine: requiredString(document, "editor_engine"),
+      editorEngineCommit: requiredString(document, "editor_engine_commit"),
+      editorSchemaVersion: requiredInteger(document, "editor_schema_version"),
+      snapshot: decodeSnapshot(requiredText(document, "snapshot_base64")),
+      plainTextRecovery: requiredText(document, "plain_text_recovery"),
+      revision,
+      updatedAt: requiredString(document, "updated_at")
+    };
+  }
+
+  public async saveEntityNote(
+    input: SaveEntityNoteRequest
+  ): Promise<SaveEntityNoteResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    if (input.ownerKind !== "ENTITY") {
+      throw new Error("Invalid entity note owner kind");
+    }
+    const ownerId = validateNodeId(input.ownerId, "Entity note owner id");
+    const documentId = validateNodeId(input.documentId, "Entity note document id");
+    if (
+      !Number.isSafeInteger(input.generation) ||
+      input.generation < 0 ||
+      !Number.isSafeInteger(input.saveSequence) ||
+      input.saveSequence < 1
+    ) {
+      throw new Error("Invalid entity note save token");
+    }
+    const editor = validateEditorPayload(input, "entity note");
+    const response = asRecord(
+      await this.core.request("save_entity_note", {
+        file_path: session.filePath,
+        owner_kind: "ENTITY",
+        owner_id: ownerId,
+        document_id: documentId,
+        generation: input.generation,
+        save_sequence: input.saveSequence,
+        editor_engine: "typie",
+        editor_engine_commit: editor.editorEngineCommit,
+        editor_schema_version: editor.editorSchemaVersion,
+        snapshot_base64: editor.snapshotBase64,
+        plain_text_recovery: editor.plainTextRecovery,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "save entity note response"
+    );
+    const document = asRecord(response.document, "saved entity note document");
+    if (
+      response.owner_kind !== "ENTITY" ||
+      requiredString(response, "owner_id") !== ownerId ||
+      requiredString(document, "id") !== documentId ||
+      requiredString(document, "project_id") !== session.projectId ||
+      requiredInteger(response, "generation") !== input.generation ||
+      requiredInteger(response, "save_sequence") !== input.saveSequence
+    ) {
+      throw new Error("The local core returned a stale entity note save");
+    }
+    const metadata = asRecord(response.metadata, "save entity note metadata");
+    const revision = requiredInteger(metadata, "revision");
+    const updatedAt = requiredString(metadata, "updated_at");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      ownerKind: "ENTITY",
+      ownerId,
+      documentId,
+      generation: input.generation,
+      saveSequence: input.saveSequence,
+      revision,
+      updatedAt
+    };
+  }
+
+  public async listEntityAliases(
+    input: ListEntityAliasesRequest
+  ): Promise<ListEntityAliasesResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const entityId = validateNodeId(input.entityId, "Entity id");
+    const response = asRecord(
+      await this.core.request("list_entity_aliases", {
+        file_path: session.filePath,
+        entity_id: entityId
+      }),
+      "entity alias list response"
+    );
+    const aliases = requiredArray(
+      response,
+      "aliases",
+      100_000,
+      "entity aliases"
+    ).map(parseEntityAlias);
+    if (aliases.some((alias) => alias.entityId !== entityId)) {
+      throw new Error("The local core returned an alias for another entity");
+    }
+    const revision = responseRevision(response, "entity alias list");
+    this.sessions.updateProject(sessionId, { revision });
+    return { aliases, revision };
+  }
+
+  public async createEntityAlias(
+    input: CreateEntityAliasRequest
+  ): Promise<EntityAliasMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const entityId = validateNodeId(input.entityId, "Entity id");
+    const response = asRecord(
+      await this.core.request("create_entity_alias", {
+        file_path: session.filePath,
+        entity_id: entityId,
+        alias: validateShortText(input.alias, "Entity alias", 500),
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "create entity alias response"
+    );
+    const alias = parseEntityAlias(response.alias);
+    if (alias.entityId !== entityId) {
+      throw new Error("The local core created an alias for another entity");
+    }
+    const revision = responseRevision(response, "create entity alias");
+    this.sessions.updateProject(sessionId, { revision });
+    return { alias, revision };
+  }
+
+  public async deleteEntityAlias(
+    input: DeleteEntityAliasRequest
+  ): Promise<DeleteEntityAliasResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const aliasId = validateNodeId(input.aliasId, "Entity alias id");
+    const response = asRecord(
+      await this.core.request("delete_entity_alias", {
+        file_path: session.filePath,
+        alias_id: aliasId,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "delete entity alias response"
+    );
+    const deletedAliasId = requiredString(response, "deleted_alias_id");
+    if (deletedAliasId !== aliasId) {
+      throw new Error("The local core deleted another entity alias");
+    }
+    const revision = responseRevision(response, "delete entity alias");
+    this.sessions.updateProject(sessionId, { revision });
+    return { deletedAliasId, revision };
+  }
+
+  public async listTags(input: SessionRequest): Promise<ListTagsResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("list_tags", { file_path: session.filePath }),
+      "tag list response"
+    );
+    const tags = requiredArray(response, "tags", 50_000, "tags").map(parseTag);
+    if (tags.some((tag) => tag.projectId !== session.projectId)) {
+      throw new Error("The local core returned a cross-project tag");
+    }
+    const revision = responseRevision(response, "tag list");
+    this.sessions.updateProject(sessionId, { revision });
+    return { tags, revision };
+  }
+
+  public async createTag(input: CreateTagRequest): Promise<TagMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("create_tag", {
+        file_path: session.filePath,
+        name: validateShortText(input.name, "Tag name", 200),
+        color_token:
+          validateNullableInputText(
+            input.colorToken,
+            "Tag color token",
+            128,
+            false
+          ) ?? null,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "create tag response"
+    );
+    const tag = parseTag(response.tag);
+    if (tag.projectId !== session.projectId) {
+      throw new Error("The local core created a cross-project tag");
+    }
+    const revision = responseRevision(response, "create tag");
+    this.sessions.updateProject(sessionId, { revision });
+    return { tag, revision };
+  }
+
+  public async updateTag(input: UpdateTagRequest): Promise<TagMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const tagId = validateNodeId(input.tagId, "Tag id");
+    const response = asRecord(
+      await this.core.request("update_tag", {
+        file_path: session.filePath,
+        tag_id: tagId,
+        name: validateShortText(input.name, "Tag name", 200),
+        color_token: validateRequiredNullableInputText(
+          input.colorToken,
+          "Tag color token",
+          128,
+          false
+        ),
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "update tag response"
+    );
+    const tag = parseTag(response.tag);
+    if (tag.id !== tagId || tag.projectId !== session.projectId) {
+      throw new Error("The local core updated another tag");
+    }
+    const revision = responseRevision(response, "update tag");
+    this.sessions.updateProject(sessionId, { revision });
+    return { tag, revision };
+  }
+
+  public async deleteTag(input: DeleteTagRequest): Promise<DeleteTagResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const tagId = validateNodeId(input.tagId, "Tag id");
+    const response = asRecord(
+      await this.core.request("delete_tag", {
+        file_path: session.filePath,
+        tag_id: tagId,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "delete tag response"
+    );
+    const deletedTagId = requiredString(response, "deleted_tag_id");
+    if (deletedTagId !== tagId) {
+      throw new Error("The local core deleted another tag");
+    }
+    const revision = responseRevision(response, "delete tag");
+    this.sessions.updateProject(sessionId, { revision });
+    return { deletedTagId, revision };
+  }
+
+  public async listEntityTags(
+    input: ListEntityTagsRequest
+  ): Promise<ListEntityTagsResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const entityId = validateNodeId(input.entityId, "Entity id");
+    const response = asRecord(
+      await this.core.request("list_entity_tags", {
+        file_path: session.filePath,
+        entity_id: entityId
+      }),
+      "entity tag list response"
+    );
+    if (requiredString(response, "entity_id") !== entityId) {
+      throw new Error("The local core returned tags for another entity");
+    }
+    const tags = requiredArray(response, "tags", 500, "entity tags").map(
+      parseTag
+    );
+    if (
+      tags.some((tag) => tag.projectId !== session.projectId) ||
+      new Set(tags.map((tag) => tag.id)).size !== tags.length
+    ) {
+      throw new Error("The local core returned invalid entity tags");
+    }
+    const revision = responseRevision(response, "entity tag list");
+    this.sessions.updateProject(sessionId, { revision });
+    return { entityId, tags, revision };
+  }
+
+  public async setEntityTags(
+    input: SetEntityTagsRequest
+  ): Promise<SetEntityTagsResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const entityId = validateNodeId(input.entityId, "Entity id");
+    const tagIds = validateStringArray(input.tagIds, "entity tag ids", 500);
+    if (!tagIds) {
+      throw new Error("Entity tag ids are required");
+    }
+    const response = asRecord(
+      await this.core.request("set_entity_tags", {
+        file_path: session.filePath,
+        entity_id: entityId,
+        tag_ids: tagIds,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "set entity tags response"
+    );
+    if (requiredString(response, "entity_id") !== entityId) {
+      throw new Error("The local core tagged another entity");
+    }
+    const tags = requiredArray(response, "tags", 500, "entity tags").map(
+      parseTag
+    );
+    if (
+      tags.some((tag) => tag.projectId !== session.projectId) ||
+      new Set(tags.map((tag) => tag.id)).size !== tags.length
+    ) {
+      throw new Error("The local core returned invalid entity tags");
+    }
+    const revision = responseRevision(response, "set entity tags");
+    this.sessions.updateProject(sessionId, { revision });
+    return { entityId, tags, revision };
+  }
+
+  public async listRelationTypes(
+    input: SessionRequest
+  ): Promise<ListRelationTypesResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("list_relation_types", {
+        file_path: session.filePath
+      }),
+      "relation type list response"
+    );
+    const relationTypes = requiredArray(
+      response,
+      "relation_types",
+      50_000,
+      "relation types"
+    ).map(parseRelationType);
+    if (relationTypes.some((value) => value.projectId !== session.projectId)) {
+      throw new Error("The local core returned a cross-project relation type");
+    }
+    const revision = responseRevision(response, "relation type list");
+    this.sessions.updateProject(sessionId, { revision });
+    return { relationTypes, revision };
+  }
+
+  public async createRelationType(
+    input: CreateRelationTypeRequest
+  ): Promise<RelationTypeMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    if (typeof input.directed !== "boolean") {
+      throw new Error("Relation type direction is required");
+    }
+    const response = asRecord(
+      await this.core.request("create_relation_type", {
+        file_path: session.filePath,
+        name: validateShortText(input.name, "Relation type name", 200),
+        inverse_name:
+          validateNullableInputText(
+            input.inverseName,
+            "Relation inverse name",
+            200,
+            false
+          ) ?? null,
+        directed: input.directed,
+        color_token:
+          validateNullableInputText(
+            input.colorToken,
+            "Relation color token",
+            128,
+            false
+          ) ?? null,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "create relation type response"
+    );
+    const relationType = parseRelationType(response.relation_type);
+    if (relationType.projectId !== session.projectId) {
+      throw new Error("The local core created a cross-project relation type");
+    }
+    const revision = responseRevision(response, "create relation type");
+    this.sessions.updateProject(sessionId, { revision });
+    return { relationType, revision };
+  }
+
+  public async updateRelationType(
+    input: UpdateRelationTypeRequest
+  ): Promise<RelationTypeMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const relationTypeId = validateNodeId(
+      input.relationTypeId,
+      "Relation type id"
+    );
+    if (typeof input.directed !== "boolean") {
+      throw new Error("Relation type direction is required");
+    }
+    const response = asRecord(
+      await this.core.request("update_relation_type", {
+        file_path: session.filePath,
+        relation_type_id: relationTypeId,
+        name: validateShortText(input.name, "Relation type name", 200),
+        inverse_name: validateRequiredNullableInputText(
+          input.inverseName,
+          "Relation inverse name",
+          200,
+          false
+        ),
+        directed: input.directed,
+        color_token: validateRequiredNullableInputText(
+          input.colorToken,
+          "Relation color token",
+          128,
+          false
+        ),
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "update relation type response"
+    );
+    const relationType = parseRelationType(response.relation_type);
+    if (
+      relationType.id !== relationTypeId ||
+      relationType.projectId !== session.projectId
+    ) {
+      throw new Error("The local core updated another relation type");
+    }
+    const revision = responseRevision(response, "update relation type");
+    this.sessions.updateProject(sessionId, { revision });
+    return { relationType, revision };
+  }
+
+  public async deleteRelationType(
+    input: DeleteRelationTypeRequest
+  ): Promise<DeleteRelationTypeResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const relationTypeId = validateNodeId(
+      input.relationTypeId,
+      "Relation type id"
+    );
+    const response = asRecord(
+      await this.core.request("delete_relation_type", {
+        file_path: session.filePath,
+        relation_type_id: relationTypeId,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "delete relation type response"
+    );
+    const deletedRelationTypeId = requiredString(
+      response,
+      "deleted_relation_type_id"
+    );
+    if (deletedRelationTypeId !== relationTypeId) {
+      throw new Error("The local core deleted another relation type");
+    }
+    const revision = responseRevision(response, "delete relation type");
+    this.sessions.updateProject(sessionId, { revision });
+    return { deletedRelationTypeId, revision };
+  }
+
+  public async listEntityRelations(
+    input: ListEntityRelationsRequest
+  ): Promise<ListEntityRelationsResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const entityId =
+      input.entityId === undefined
+        ? undefined
+        : validateNodeId(input.entityId, "Entity id");
+    const response = asRecord(
+      await this.core.request("list_entity_relations", {
+        file_path: session.filePath,
+        ...(entityId === undefined ? {} : { entity_id: entityId })
+      }),
+      "entity relation list response"
+    );
+    const relations = requiredArray(
+      response,
+      "relations",
+      200_000,
+      "entity relations"
+    ).map(parseEntityRelation);
+    if (
+      relations.some(
+        (relation) =>
+          relation.projectId !== session.projectId ||
+          (entityId !== undefined &&
+            relation.sourceEntityId !== entityId &&
+            relation.targetEntityId !== entityId)
+      )
+    ) {
+      throw new Error("The local core returned an invalid entity relation");
+    }
+    const revision = responseRevision(response, "entity relation list");
+    this.sessions.updateProject(sessionId, { revision });
+    return { relations, revision };
+  }
+
+  public async createEntityRelation(
+    input: CreateEntityRelationRequest
+  ): Promise<EntityRelationMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const sourceEntityId = validateNodeId(
+      input.sourceEntityId,
+      "Source entity id"
+    );
+    const targetEntityId = validateNodeId(
+      input.targetEntityId,
+      "Target entity id"
+    );
+    if (sourceEntityId === targetEntityId) {
+      throw new Error("Self relations are not supported");
+    }
+    const relationTypeId = validateNodeId(
+      input.relationTypeId,
+      "Relation type id"
+    );
+    const response = asRecord(
+      await this.core.request("create_entity_relation", {
+        file_path: session.filePath,
+        source_entity_id: sourceEntityId,
+        relation_type_id: relationTypeId,
+        target_entity_id: targetEntityId,
+        note:
+          validateNullableInputText(input.note, "Relation note", 10_000) ?? null,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "create entity relation response"
+    );
+    const relation = parseEntityRelation(response.relation);
+    if (
+      relation.projectId !== session.projectId ||
+      relation.sourceEntityId !== sourceEntityId ||
+      relation.targetEntityId !== targetEntityId ||
+      relation.relationTypeId !== relationTypeId
+    ) {
+      throw new Error("The local core created another entity relation");
+    }
+    const revision = responseRevision(response, "create entity relation");
+    this.sessions.updateProject(sessionId, { revision });
+    return { relation, revision };
+  }
+
+  public async updateEntityRelation(
+    input: UpdateEntityRelationRequest
+  ): Promise<EntityRelationMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const relationId = validateNodeId(input.relationId, "Entity relation id");
+    const response = asRecord(
+      await this.core.request("update_entity_relation", {
+        file_path: session.filePath,
+        relation_id: relationId,
+        relation_type_id: validateNodeId(
+          input.relationTypeId,
+          "Relation type id"
+        ),
+        target_entity_id: validateNodeId(
+          input.targetEntityId,
+          "Target entity id"
+        ),
+        note: validateRequiredNullableInputText(
+          input.note,
+          "Relation note",
+          10_000
+        ),
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "update entity relation response"
+    );
+    const relation = parseEntityRelation(response.relation);
+    if (relation.id !== relationId || relation.projectId !== session.projectId) {
+      throw new Error("The local core updated another entity relation");
+    }
+    const revision = responseRevision(response, "update entity relation");
+    this.sessions.updateProject(sessionId, { revision });
+    return { relation, revision };
+  }
+
+  public async deleteEntityRelation(
+    input: DeleteEntityRelationRequest
+  ): Promise<DeleteEntityRelationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const relationId = validateNodeId(input.relationId, "Entity relation id");
+    const response = asRecord(
+      await this.core.request("delete_entity_relation", {
+        file_path: session.filePath,
+        relation_id: relationId,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "delete entity relation response"
+    );
+    const deletedRelationId = requiredString(response, "deleted_relation_id");
+    if (deletedRelationId !== relationId) {
+      throw new Error("The local core deleted another entity relation");
+    }
+    const revision = responseRevision(response, "delete entity relation");
+    this.sessions.updateProject(sessionId, { revision });
+    return { deletedRelationId, revision };
+  }
+
+  public async listSceneEntityLinks(
+    input: ListSceneEntityLinksRequest
+  ): Promise<ListSceneEntityLinksResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const sceneNodeId =
+      input.sceneNodeId === undefined
+        ? undefined
+        : validateNodeId(input.sceneNodeId, "Scene node id");
+    const entityId =
+      input.entityId === undefined
+        ? undefined
+        : validateNodeId(input.entityId, "Entity id");
+    const response = asRecord(
+      await this.core.request("list_scene_entity_links", {
+        file_path: session.filePath,
+        ...(sceneNodeId === undefined ? {} : { scene_node_id: sceneNodeId }),
+        ...(entityId === undefined ? {} : { entity_id: entityId })
+      }),
+      "scene entity link list response"
+    );
+    const links = requiredArray(
+      response,
+      "links",
+      200_000,
+      "scene entity links"
+    ).map(parseSceneEntityLink);
+    if (
+      links.some(
+        (link) =>
+          (sceneNodeId !== undefined && link.sceneNodeId !== sceneNodeId) ||
+          (entityId !== undefined && link.entityId !== entityId)
+      )
+    ) {
+      throw new Error("The local core returned an out-of-scope scene link");
+    }
+    const revision = responseRevision(response, "scene entity link list");
+    this.sessions.updateProject(sessionId, { revision });
+    return { links, revision };
+  }
+
+  public async createSceneEntityLink(
+    input: CreateSceneEntityLinkRequest
+  ): Promise<SceneEntityLinkMutationResult> {
+    return this.mutateSceneEntityLink("create_scene_entity_link", input);
+  }
+
+  public async deleteSceneEntityLink(
+    input: DeleteSceneEntityLinkRequest
+  ): Promise<DeleteSceneEntityLinkResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const sceneNodeId = validateNodeId(input.sceneNodeId, "Scene node id");
+    const entityId = validateNodeId(input.entityId, "Entity id");
+    const role = validateEnum(input.role, SCENE_ENTITY_ROLES, "scene entity role");
+    const response = asRecord(
+      await this.core.request("delete_scene_entity_link", {
+        file_path: session.filePath,
+        scene_node_id: sceneNodeId,
+        entity_id: entityId,
+        role,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "delete scene entity link response"
+    );
+    const deleted = asRecord(response.deleted_link, "deleted scene entity link");
+    const deletedLink = {
+      sceneNodeId: requiredString(deleted, "scene_node_id"),
+      entityId: requiredString(deleted, "entity_id"),
+      role: parseEnum(deleted.role, SCENE_ENTITY_ROLES, "scene entity role")
+    };
+    if (
+      deletedLink.sceneNodeId !== sceneNodeId ||
+      deletedLink.entityId !== entityId ||
+      deletedLink.role !== role
+    ) {
+      throw new Error("The local core deleted another scene entity link");
+    }
+    const revision = responseRevision(response, "delete scene entity link");
+    this.sessions.updateProject(sessionId, { revision });
+    return { deletedLink, revision };
+  }
+
+  public async discoverEntityMentions(
+    input: DiscoverEntityMentionsRequest
+  ): Promise<DiscoverEntityMentionsResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const entityId = validateNodeId(input.entityId, "Entity id");
+    const offset = validatePageNumber(input.offset, "Mention offset", {
+      allowZero: true,
+      maximum: Number.MAX_SAFE_INTEGER
+    });
+    const limit = validatePageNumber(input.limit, "Mention limit", {
+      allowZero: false,
+      maximum: 2_000
+    });
+    const response = asRecord(
+      await this.core.request("discover_entity_mentions", {
+        file_path: session.filePath,
+        entity_id: entityId,
+        ...(offset === undefined ? {} : { offset }),
+        ...(limit === undefined ? {} : { limit })
+      }),
+      "entity mention response"
+    );
+    if (requiredString(response, "entity_id") !== entityId) {
+      throw new Error("The local core discovered mentions for another entity");
+    }
+    const candidates = requiredArray(
+      response,
+      "candidates",
+      2_000,
+      "entity mention candidates"
+    ).map((value) => {
+      const candidate = asRecord(value, "entity mention candidate");
+      const start = requiredInteger(candidate, "start");
+      const end = requiredInteger(candidate, "end");
+      if (end <= start || requiredString(candidate, "entity_id") !== entityId) {
+        throw new Error("The local core returned an invalid mention candidate");
+      }
+      return {
+        occurrenceId: requiredString(candidate, "occurrence_id"),
+        entityId,
+        sceneNodeId: requiredString(candidate, "scene_node_id"),
+        documentId: requiredString(candidate, "document_id"),
+        sceneTitle: requiredString(candidate, "scene_title"),
+        matchedAlias: requiredString(candidate, "matched_alias"),
+        start,
+        end,
+        contextBefore: requiredText(candidate, "context_before"),
+        matchedText: requiredString(candidate, "matched_text"),
+        contextAfter: requiredText(candidate, "context_after"),
+        alreadyLinked: requiredBoolean(candidate, "already_linked")
+      };
+    });
+    const revision = responseRevision(response, "entity mentions");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      entityId,
+      candidates,
+      totalScenes: requiredInteger(response, "total_scenes"),
+      offset: requiredInteger(response, "offset"),
+      limit: requiredInteger(response, "limit"),
+      hasMore: requiredBoolean(response, "has_more"),
+      revision
+    };
+  }
+
+  public async promoteEntityMention(
+    input: PromoteEntityMentionRequest
+  ): Promise<SceneEntityLinkMutationResult> {
+    return this.mutateSceneEntityLink("promote_entity_mention", input);
+  }
+
   public async createNamedSnapshot(
     input: CreateNamedSnapshotRequest
   ): Promise<NamedSnapshotMutationResult> {
@@ -1580,6 +3059,44 @@ export class DesktopService {
       ),
       revision
     };
+  }
+
+  private async mutateSceneEntityLink(
+    method: "create_scene_entity_link" | "promote_entity_mention",
+    input: CreateSceneEntityLinkRequest | PromoteEntityMentionRequest
+  ): Promise<SceneEntityLinkMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const sceneNodeId = validateNodeId(input.sceneNodeId, "Scene node id");
+    const entityId = validateNodeId(input.entityId, "Entity id");
+    const role = validateEnum(input.role, SCENE_ENTITY_ROLES, "scene entity role");
+    const response = asRecord(
+      await this.core.request(method, {
+        file_path: session.filePath,
+        scene_node_id: sceneNodeId,
+        entity_id: entityId,
+        role,
+        note:
+          validateNullableInputText(input.note, "Scene link note", 10_000) ??
+          null,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      method === "promote_entity_mention"
+        ? "promote entity mention response"
+        : "create scene entity link response"
+    );
+    const link = parseSceneEntityLink(response.link);
+    if (
+      link.sceneNodeId !== sceneNodeId ||
+      link.entityId !== entityId ||
+      link.role !== role
+    ) {
+      throw new Error("The local core created another scene entity link");
+    }
+    const revision = responseRevision(response, "scene entity link mutation");
+    this.sessions.updateProject(sessionId, { revision });
+    return { link, revision };
   }
 
   private updateSessionFromTree(

@@ -30,6 +30,36 @@ import {
   type RestoreNamedSnapshotRequest,
   type SessionRequest
 } from "../shared/contracts";
+import type {
+  CreateEntityAliasRequest,
+  CreateEntityRelationRequest,
+  CreateEntityRequest,
+  CreateRelationTypeRequest,
+  CreateSceneEntityLinkRequest,
+  CreateTagRequest,
+  DeleteEntityAliasRequest,
+  DeleteEntityRelationRequest,
+  DeleteEntityRequest,
+  DeleteRelationTypeRequest,
+  DeleteSceneEntityLinkRequest,
+  DeleteTagRequest,
+  DiscoverEntityMentionsRequest,
+  EntityDeleteImpactRequest,
+  ListEntitiesRequest,
+  ListEntityAliasesRequest,
+  ListEntityRelationsRequest,
+  ListEntityTagsRequest,
+  ListSceneEntityLinksRequest,
+  LoadEntityNoteRequest,
+  PromoteEntityMentionRequest,
+  SaveEntityNoteRequest,
+  SearchEntitiesRequest,
+  SetEntityTagsRequest,
+  UpdateEntityRelationRequest,
+  UpdateEntityRequest,
+  UpdateRelationTypeRequest,
+  UpdateTagRequest
+} from "../shared/contracts";
 import type { DesktopService } from "./desktopService";
 
 function requireObject(value: unknown): Record<string, unknown> {
@@ -349,6 +379,264 @@ export function registerMadiIpc({
       authorize(event);
       return service.restoreNamedSnapshot(
         requireObject(rawRequest) as unknown as RestoreNamedSnapshotRequest
+      );
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.listEntities, async (event, rawRequest) => {
+    authorize(event);
+    return service.listEntities(
+      requireObject(rawRequest) as unknown as ListEntitiesRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.searchEntities, async (event, rawRequest) => {
+    authorize(event);
+    return service.searchEntities(
+      requireObject(rawRequest) as unknown as SearchEntitiesRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.createEntity, async (event, rawRequest) => {
+    authorize(event);
+    return service.createEntity(
+      requireObject(rawRequest) as unknown as CreateEntityRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.updateEntity, async (event, rawRequest) => {
+    authorize(event);
+    return service.updateEntity(
+      requireObject(rawRequest) as unknown as UpdateEntityRequest
+    );
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.getEntityDeleteImpact,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.getEntityDeleteImpact(
+        requireObject(rawRequest) as unknown as EntityDeleteImpactRequest
+      );
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.deleteEntity, async (event, rawRequest) => {
+    authorize(event);
+    return service.deleteEntity(
+      requireObject(rawRequest) as unknown as DeleteEntityRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.loadEntityNote, async (event, rawRequest) => {
+    authorize(event);
+    return service.loadEntityNote(
+      requireObject(rawRequest) as unknown as LoadEntityNoteRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.saveEntityNote, async (event, rawRequest) => {
+    authorize(event);
+    return service.saveEntityNote(
+      requireObject(rawRequest) as unknown as SaveEntityNoteRequest
+    );
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.listEntityAliases,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.listEntityAliases(
+        requireObject(rawRequest) as unknown as ListEntityAliasesRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.createEntityAlias,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.createEntityAlias(
+        requireObject(rawRequest) as unknown as CreateEntityAliasRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.deleteEntityAlias,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.deleteEntityAlias(
+        requireObject(rawRequest) as unknown as DeleteEntityAliasRequest
+      );
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.listTags, async (event, rawRequest) => {
+    authorize(event);
+    return service.listTags(
+      requireObject(rawRequest) as unknown as SessionRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.createTag, async (event, rawRequest) => {
+    authorize(event);
+    return service.createTag(
+      requireObject(rawRequest) as unknown as CreateTagRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.updateTag, async (event, rawRequest) => {
+    authorize(event);
+    return service.updateTag(
+      requireObject(rawRequest) as unknown as UpdateTagRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.deleteTag, async (event, rawRequest) => {
+    authorize(event);
+    return service.deleteTag(
+      requireObject(rawRequest) as unknown as DeleteTagRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.listEntityTags, async (event, rawRequest) => {
+    authorize(event);
+    return service.listEntityTags(
+      requireObject(rawRequest) as unknown as ListEntityTagsRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.setEntityTags, async (event, rawRequest) => {
+    authorize(event);
+    return service.setEntityTags(
+      requireObject(rawRequest) as unknown as SetEntityTagsRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.listRelationTypes, async (event, rawRequest) => {
+    authorize(event);
+    return service.listRelationTypes(
+      requireObject(rawRequest) as unknown as SessionRequest
+    );
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.createRelationType,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.createRelationType(
+        requireObject(rawRequest) as unknown as CreateRelationTypeRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.updateRelationType,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.updateRelationType(
+        requireObject(rawRequest) as unknown as UpdateRelationTypeRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.deleteRelationType,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.deleteRelationType(
+        requireObject(rawRequest) as unknown as DeleteRelationTypeRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.listEntityRelations,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.listEntityRelations(
+        requireObject(rawRequest) as unknown as ListEntityRelationsRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.createEntityRelation,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.createEntityRelation(
+        requireObject(rawRequest) as unknown as CreateEntityRelationRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.updateEntityRelation,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.updateEntityRelation(
+        requireObject(rawRequest) as unknown as UpdateEntityRelationRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.deleteEntityRelation,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.deleteEntityRelation(
+        requireObject(rawRequest) as unknown as DeleteEntityRelationRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.listSceneEntityLinks,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.listSceneEntityLinks(
+        requireObject(rawRequest) as unknown as ListSceneEntityLinksRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.createSceneEntityLink,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.createSceneEntityLink(
+        requireObject(rawRequest) as unknown as CreateSceneEntityLinkRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.deleteSceneEntityLink,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.deleteSceneEntityLink(
+        requireObject(rawRequest) as unknown as DeleteSceneEntityLinkRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.discoverEntityMentions,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.discoverEntityMentions(
+        requireObject(rawRequest) as unknown as DiscoverEntityMentionsRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.promoteEntityMention,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.promoteEntityMention(
+        requireObject(rawRequest) as unknown as PromoteEntityMentionRequest
       );
     }
   );

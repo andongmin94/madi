@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import type { MadiDesktopApi } from "../src/shared/contracts";
+import { phase1cApiStubs, type Phase1cApi } from "./phase1c-api-stubs";
 
 type Phase1bApi = Pick<
   MadiDesktopApi,
@@ -13,10 +14,11 @@ type Phase1bApi = Pick<
   | "deleteNamedSnapshot"
   | "diffNamedSnapshot"
   | "restoreNamedSnapshot"
->;
+> & Phase1cApi;
 
 export function phase1bApiStubs(): Phase1bApi {
   return {
+    ...phase1cApiStubs(),
     listDescendantScenes: vi.fn(async (request) => ({
       scopeNodeId: request.scopeNodeId,
       scenes: [],

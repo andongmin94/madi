@@ -65,7 +65,15 @@ const coreDiff = {
   renamed_nodes: 4,
   reordered_nodes: 5,
   changed_scene_bodies: 6,
-  character_count_delta: -127
+  character_count_delta: -127,
+  added_entities: 7,
+  deleted_entities: 8,
+  changed_entities: 9,
+  added_relations: 10,
+  deleted_relations: 11,
+  changed_relations: 12,
+  changed_scene_links: 13,
+  changed_entity_notes: 14
 };
 
 function createHarness(
@@ -440,7 +448,15 @@ describe("Phase 1B DesktopService RPC contract", () => {
       renamedNodes: 4,
       reorderedNodes: 5,
       changedSceneBodies: 6,
-      characterCountDelta: -127
+      characterCountDelta: -127,
+      addedEntities: 7,
+      deletedEntities: 8,
+      changedEntities: 9,
+      addedRelations: 10,
+      deletedRelations: 11,
+      changedRelations: 12,
+      changedSceneLinks: 13,
+      changedEntityNotes: 14
     });
     expect(request.mock.calls).toEqual([
       [

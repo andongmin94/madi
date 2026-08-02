@@ -44,6 +44,61 @@ import {
   type RestoreNamedSnapshotResult,
   type TextStatisticsResult
 } from "../shared/contracts";
+import type {
+  CreateEntityAliasRequest,
+  CreateEntityRelationRequest,
+  CreateEntityRequest,
+  CreateRelationTypeRequest,
+  CreateSceneEntityLinkRequest,
+  CreateTagRequest,
+  DeleteEntityAliasRequest,
+  DeleteEntityAliasResult,
+  DeleteEntityRelationRequest,
+  DeleteEntityRelationResult,
+  DeleteEntityRequest,
+  DeleteEntityResult,
+  DeleteRelationTypeRequest,
+  DeleteRelationTypeResult,
+  DeleteSceneEntityLinkRequest,
+  DeleteSceneEntityLinkResult,
+  DeleteTagRequest,
+  DeleteTagResult,
+  DiscoverEntityMentionsRequest,
+  DiscoverEntityMentionsResult,
+  EntityAliasMutationResult,
+  EntityDeleteImpactRequest,
+  EntityDeleteImpactResult,
+  EntityMutationResult,
+  EntityRelationMutationResult,
+  ListEntitiesRequest,
+  ListEntitiesResult,
+  ListEntityAliasesRequest,
+  ListEntityAliasesResult,
+  ListEntityRelationsRequest,
+  ListEntityRelationsResult,
+  ListEntityTagsRequest,
+  ListEntityTagsResult,
+  ListRelationTypesResult,
+  ListSceneEntityLinksRequest,
+  ListSceneEntityLinksResult,
+  ListTagsResult,
+  LoadedEntityNote,
+  LoadEntityNoteRequest,
+  PromoteEntityMentionRequest,
+  RelationTypeMutationResult,
+  SaveEntityNoteRequest,
+  SaveEntityNoteResult,
+  SceneEntityLinkMutationResult,
+  SearchEntitiesRequest,
+  SearchEntitiesResult,
+  SetEntityTagsRequest,
+  SetEntityTagsResult,
+  TagMutationResult,
+  UpdateEntityRelationRequest,
+  UpdateEntityRequest,
+  UpdateRelationTypeRequest,
+  UpdateTagRequest
+} from "../shared/contracts";
 
 export type Invoke = (
   channel: string,
@@ -279,6 +334,254 @@ export function createMadiDesktopApi(
         IPC_CHANNELS.restoreNamedSnapshot,
         request
       )) as RestoreNamedSnapshotResult;
+    },
+
+    async listEntities(
+      request: ListEntitiesRequest
+    ): Promise<ListEntitiesResult> {
+      return (await invoke(IPC_CHANNELS.listEntities, request)) as ListEntitiesResult;
+    },
+
+    async searchEntities(
+      request: SearchEntitiesRequest
+    ): Promise<SearchEntitiesResult> {
+      return (await invoke(
+        IPC_CHANNELS.searchEntities,
+        request
+      )) as SearchEntitiesResult;
+    },
+
+    async createEntity(
+      request: CreateEntityRequest
+    ): Promise<EntityMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.createEntity,
+        request
+      )) as EntityMutationResult;
+    },
+
+    async updateEntity(
+      request: UpdateEntityRequest
+    ): Promise<EntityMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.updateEntity,
+        request
+      )) as EntityMutationResult;
+    },
+
+    async getEntityDeleteImpact(
+      request: EntityDeleteImpactRequest
+    ): Promise<EntityDeleteImpactResult> {
+      return (await invoke(
+        IPC_CHANNELS.getEntityDeleteImpact,
+        request
+      )) as EntityDeleteImpactResult;
+    },
+
+    async deleteEntity(
+      request: DeleteEntityRequest
+    ): Promise<DeleteEntityResult> {
+      return (await invoke(
+        IPC_CHANNELS.deleteEntity,
+        request
+      )) as DeleteEntityResult;
+    },
+
+    async loadEntityNote(
+      request: LoadEntityNoteRequest
+    ): Promise<LoadedEntityNote> {
+      const note = (await invoke(
+        IPC_CHANNELS.loadEntityNote,
+        request
+      )) as LoadedEntityNote;
+      return { ...note, snapshot: copyBytes(note.snapshot) };
+    },
+
+    async saveEntityNote(
+      request: SaveEntityNoteRequest
+    ): Promise<SaveEntityNoteResult> {
+      return (await invoke(IPC_CHANNELS.saveEntityNote, {
+        ...request,
+        snapshot: copyBytes(request.snapshot)
+      })) as SaveEntityNoteResult;
+    },
+
+    async listEntityAliases(
+      request: ListEntityAliasesRequest
+    ): Promise<ListEntityAliasesResult> {
+      return (await invoke(
+        IPC_CHANNELS.listEntityAliases,
+        request
+      )) as ListEntityAliasesResult;
+    },
+
+    async createEntityAlias(
+      request: CreateEntityAliasRequest
+    ): Promise<EntityAliasMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.createEntityAlias,
+        request
+      )) as EntityAliasMutationResult;
+    },
+
+    async deleteEntityAlias(
+      request: DeleteEntityAliasRequest
+    ): Promise<DeleteEntityAliasResult> {
+      return (await invoke(
+        IPC_CHANNELS.deleteEntityAlias,
+        request
+      )) as DeleteEntityAliasResult;
+    },
+
+    async listTags(request: SessionRequest): Promise<ListTagsResult> {
+      return (await invoke(IPC_CHANNELS.listTags, request)) as ListTagsResult;
+    },
+
+    async createTag(request: CreateTagRequest): Promise<TagMutationResult> {
+      return (await invoke(IPC_CHANNELS.createTag, request)) as TagMutationResult;
+    },
+
+    async updateTag(request: UpdateTagRequest): Promise<TagMutationResult> {
+      return (await invoke(IPC_CHANNELS.updateTag, request)) as TagMutationResult;
+    },
+
+    async deleteTag(request: DeleteTagRequest): Promise<DeleteTagResult> {
+      return (await invoke(IPC_CHANNELS.deleteTag, request)) as DeleteTagResult;
+    },
+
+    async listEntityTags(
+      request: ListEntityTagsRequest
+    ): Promise<ListEntityTagsResult> {
+      return (await invoke(
+        IPC_CHANNELS.listEntityTags,
+        request
+      )) as ListEntityTagsResult;
+    },
+
+    async setEntityTags(
+      request: SetEntityTagsRequest
+    ): Promise<SetEntityTagsResult> {
+      return (await invoke(
+        IPC_CHANNELS.setEntityTags,
+        request
+      )) as SetEntityTagsResult;
+    },
+
+    async listRelationTypes(
+      request: SessionRequest
+    ): Promise<ListRelationTypesResult> {
+      return (await invoke(
+        IPC_CHANNELS.listRelationTypes,
+        request
+      )) as ListRelationTypesResult;
+    },
+
+    async createRelationType(
+      request: CreateRelationTypeRequest
+    ): Promise<RelationTypeMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.createRelationType,
+        request
+      )) as RelationTypeMutationResult;
+    },
+
+    async updateRelationType(
+      request: UpdateRelationTypeRequest
+    ): Promise<RelationTypeMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.updateRelationType,
+        request
+      )) as RelationTypeMutationResult;
+    },
+
+    async deleteRelationType(
+      request: DeleteRelationTypeRequest
+    ): Promise<DeleteRelationTypeResult> {
+      return (await invoke(
+        IPC_CHANNELS.deleteRelationType,
+        request
+      )) as DeleteRelationTypeResult;
+    },
+
+    async listEntityRelations(
+      request: ListEntityRelationsRequest
+    ): Promise<ListEntityRelationsResult> {
+      return (await invoke(
+        IPC_CHANNELS.listEntityRelations,
+        request
+      )) as ListEntityRelationsResult;
+    },
+
+    async createEntityRelation(
+      request: CreateEntityRelationRequest
+    ): Promise<EntityRelationMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.createEntityRelation,
+        request
+      )) as EntityRelationMutationResult;
+    },
+
+    async updateEntityRelation(
+      request: UpdateEntityRelationRequest
+    ): Promise<EntityRelationMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.updateEntityRelation,
+        request
+      )) as EntityRelationMutationResult;
+    },
+
+    async deleteEntityRelation(
+      request: DeleteEntityRelationRequest
+    ): Promise<DeleteEntityRelationResult> {
+      return (await invoke(
+        IPC_CHANNELS.deleteEntityRelation,
+        request
+      )) as DeleteEntityRelationResult;
+    },
+
+    async listSceneEntityLinks(
+      request: ListSceneEntityLinksRequest
+    ): Promise<ListSceneEntityLinksResult> {
+      return (await invoke(
+        IPC_CHANNELS.listSceneEntityLinks,
+        request
+      )) as ListSceneEntityLinksResult;
+    },
+
+    async createSceneEntityLink(
+      request: CreateSceneEntityLinkRequest
+    ): Promise<SceneEntityLinkMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.createSceneEntityLink,
+        request
+      )) as SceneEntityLinkMutationResult;
+    },
+
+    async deleteSceneEntityLink(
+      request: DeleteSceneEntityLinkRequest
+    ): Promise<DeleteSceneEntityLinkResult> {
+      return (await invoke(
+        IPC_CHANNELS.deleteSceneEntityLink,
+        request
+      )) as DeleteSceneEntityLinkResult;
+    },
+
+    async discoverEntityMentions(
+      request: DiscoverEntityMentionsRequest
+    ): Promise<DiscoverEntityMentionsResult> {
+      return (await invoke(
+        IPC_CHANNELS.discoverEntityMentions,
+        request
+      )) as DiscoverEntityMentionsResult;
+    },
+
+    async promoteEntityMention(
+      request: PromoteEntityMentionRequest
+    ): Promise<SceneEntityLinkMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.promoteEntityMention,
+        request
+      )) as SceneEntityLinkMutationResult;
     },
 
     async getAppVersion(): Promise<string> {
