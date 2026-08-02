@@ -10,27 +10,26 @@ use uuid::Uuid;
 
 use crate::error::{CoreError, Result};
 use crate::model::{
-    AppMeta, ApplyReplacementBatchParams, ApplyReplacementBatchResult,
-    CreateNamedSnapshotParams, CreateNamedSnapshotResult, DeleteNamedSnapshotParams,
-    DeleteNamedSnapshotResult, DiffNamedSnapshotParams, DiffNamedSnapshotResult,
-    GetTextStatisticsParams, ListDescendantScenesParams,
-    ListDescendantScenesResult, ListNamedSnapshotsParams, ListNamedSnapshotsResult,
-    NamedSnapshotKind, NamedSnapshotSummary, NodeKind, RenameNamedSnapshotParams,
-    RenameNamedSnapshotResult, RestoreNamedSnapshotParams,
-    RestoreNamedSnapshotResult, SceneDocumentPreview, SceneTextStatistics,
-    SceneWorkspaceRecord, SearchField, SearchHit, SearchProjectParams,
-    SearchProjectResult, SearchTarget,
+    AppMeta, ApplyReplacementBatchParams, ApplyReplacementBatchResult, CreateNamedSnapshotParams,
+    CreateNamedSnapshotResult, DeleteNamedSnapshotParams, DeleteNamedSnapshotResult,
+    DiffNamedSnapshotParams, DiffNamedSnapshotResult, GetTextStatisticsParams,
+    ListDescendantScenesParams, ListDescendantScenesResult, ListNamedSnapshotsParams,
+    ListNamedSnapshotsResult, NamedSnapshotKind, NamedSnapshotSummary, NodeKind,
+    RenameNamedSnapshotParams, RenameNamedSnapshotResult, RestoreNamedSnapshotParams,
+    RestoreNamedSnapshotResult, SceneDocumentPreview, SceneTextStatistics, SceneWorkspaceRecord,
+    SearchField, SearchHit, SearchProjectParams, SearchProjectResult, SearchTarget,
     SnapshotDiffSummary, SnapshotNodeCounts, TextStatisticsResult, TransformedSceneDocument,
     TreeNode,
 };
 use crate::storage::{
-    create_consistent_backup, database_timestamp, default_client_identifier,
-    load_app_meta, open_existing, sync_file, validate_editor_metadata,
+    create_consistent_backup, database_timestamp, default_client_identifier, load_app_meta,
+    open_existing, seed_builtin_relation_types, sync_file, validate_editor_metadata,
     validate_non_empty,
 };
 
 const SNAPSHOT_PAYLOAD_FORMAT: &str = "MADI_LOGICAL_JSON";
-const SNAPSHOT_PAYLOAD_VERSION: i64 = 1;
+const SNAPSHOT_PAYLOAD_VERSION: i64 = 2;
+const MIN_SNAPSHOT_PAYLOAD_VERSION: i64 = 1;
 const SNAPSHOT_DOCUMENT_FORMAT: &str = "madi.logical-snapshot";
 const SNAPSHOT_UI_STATE_KEY: &str = "workspace.v1";
 const SEARCH_CONTEXT_CHARS: usize = 32;
@@ -90,8 +89,7 @@ pub fn list_descendant_scenes(
                 .ok_or_else(|| {
                     CoreError::Integrity(format!("document {document_id} is missing"))
                 })?;
-            let next_text_bytes =
-                text_bytes.saturating_add(estimated_json_string_bytes(&stored.3));
+            let next_text_bytes = text_bytes.saturating_add(estimated_json_string_bytes(&stored.3));
             if next_text_bytes > MAX_DESCENDANT_ENCODED_TEXT_BYTES {
                 if scenes.is_empty() {
                     return Err(CoreError::InvalidInput(format!(
@@ -197,10 +195,7 @@ pub fn search_project(params: SearchProjectParams) -> Result<SearchProjectResult
 
         let total_matches = accumulator.total_matches;
         let scene_count = accumulator.matched_scene_ids.len() as u64;
-        let has_more = total_matches
-            > params
-                .offset
-                .saturating_add(accumulator.hits.len() as u64);
+        let has_more = total_matches > params.offset.saturating_add(accumulator.hits.len() as u64);
         let hits = accumulator.hits;
         transaction.commit()?;
         SearchProjectResult {
@@ -235,7 +230,10 @@ pub fn get_text_statistics(params: GetTextStatisticsParams) -> Result<TextStatis
         let mut scenes = Vec::new();
         let mut with_spaces = 0_u64;
         let mut without_spaces = 0_u64;
-        for scene in nodes.into_iter().filter(|node| node.kind == NodeKind::Scene) {
+        for scene in nodes
+            .into_iter()
+            .filter(|node| node.kind == NodeKind::Scene)
+        {
             let document_id = scene.document_id.ok_or_else(|| {
                 CoreError::Integrity("SCENE is missing its document link".to_owned())
             })?;
@@ -329,16 +327,17 @@ pub fn create_named_snapshot(
     })
 }
 
-pub fn list_named_snapshots(
-    params: ListNamedSnapshotsParams,
-) -> Result<ListNamedSnapshotsResult> {
+pub fn list_named_snapshots(params: ListNamedSnapshotsParams) -> Result<ListNamedSnapshotsResult> {
     let mut connection = open_existing(&params.file_path)?;
     let result = {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
         let metadata = load_app_meta(&transaction)?;
         let snapshots = load_snapshot_summaries(&transaction, &metadata.project_id)?;
         transaction.commit()?;
-        ListNamedSnapshotsResult { metadata, snapshots }
+        ListNamedSnapshotsResult {
+            metadata,
+            snapshots,
+        }
     };
     connection.close().map_err(|(_, error)| error)?;
     Ok(result)
@@ -463,9 +462,10 @@ pub fn restore_named_snapshot(
         }
         let current_payload = capture_snapshot_payload(&transaction)?;
         let now = database_timestamp(&transaction)?;
-        let safety_name = params.auto_snapshot_name.clone().unwrap_or_else(|| {
-            format!("복원 전 자동 저장 — {}", display_timestamp(&now))
-        });
+        let safety_name = params
+            .auto_snapshot_name
+            .clone()
+            .unwrap_or_else(|| format!("복원 전 자동 저장 — {}", display_timestamp(&now)));
         insert_snapshot_payload(
             &transaction,
             &safety_snapshot_id,
@@ -519,14 +519,15 @@ pub fn apply_replacement_batch(
         validate_non_empty("auto_snapshot_name", name)?;
     }
     let prepared = prepare_transformed_scenes(&params.transformed_scenes)?;
-    let changed_occurrences = params
-        .transformed_scenes
-        .iter()
-        .try_fold(0_u64, |total, scene| {
-            total.checked_add(scene.occurrence_count).ok_or_else(|| {
-                CoreError::InvalidInput("replacement occurrence count overflow".to_owned())
-            })
-        })?;
+    let changed_occurrences =
+        params
+            .transformed_scenes
+            .iter()
+            .try_fold(0_u64, |total, scene| {
+                total.checked_add(scene.occurrence_count).ok_or_else(|| {
+                    CoreError::InvalidInput("replacement occurrence count overflow".to_owned())
+                })
+            })?;
     let saved_by = validated_saved_by(params.saved_by.as_deref())?;
     let mut connection = open_existing(&params.file_path)?;
     let before = load_app_meta(&connection)?;
@@ -550,9 +551,10 @@ pub fn apply_replacement_batch(
             params.case_sensitive,
         )?;
         let now = database_timestamp(&transaction)?;
-        let safety_name = params.auto_snapshot_name.clone().unwrap_or_else(|| {
-            format!("전체 치환 전 — {}", display_timestamp(&now))
-        });
+        let safety_name = params
+            .auto_snapshot_name
+            .clone()
+            .unwrap_or_else(|| format!("전체 치환 전 — {}", display_timestamp(&now)));
         insert_snapshot(
             &transaction,
             &safety_snapshot_id,
@@ -935,10 +937,7 @@ impl SearchAccumulator {
                 let (context_before, matched_text, context_after) =
                     search_context(haystack, start_byte, end_byte);
                 self.hits.push(SearchHit {
-                    occurrence_id: format!(
-                        "{}:{field_name}:{start_char}:{end_char}",
-                        node.id
-                    ),
+                    occurrence_id: format!("{}:{field_name}:{start_char}:{end_char}", node.id),
                     node_id: node.id.clone(),
                     scene_id: (node.kind == NodeKind::Scene).then(|| node.id.clone()),
                     document_id: document_id.map(str::to_owned),
@@ -1078,6 +1077,20 @@ struct LogicalSnapshotPayload {
     nodes: Vec<SnapshotNode>,
     documents: Vec<SnapshotDocument>,
     ui_state: Vec<SnapshotUiState>,
+    #[serde(default)]
+    entities: Vec<SnapshotEntity>,
+    #[serde(default)]
+    entity_aliases: Vec<SnapshotEntityAlias>,
+    #[serde(default)]
+    tags: Vec<SnapshotTag>,
+    #[serde(default)]
+    entity_tags: Vec<SnapshotEntityTag>,
+    #[serde(default)]
+    relation_types: Vec<SnapshotRelationType>,
+    #[serde(default)]
+    entity_relations: Vec<SnapshotEntityRelation>,
+    #[serde(default)]
+    scene_entity_links: Vec<SnapshotSceneEntityLink>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1132,6 +1145,81 @@ struct SnapshotUiState {
     updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct SnapshotEntity {
+    id: String,
+    project_id: String,
+    kind: String,
+    name: String,
+    summary: Option<String>,
+    document_id: String,
+    status: String,
+    color_token: Option<String>,
+    icon_key: Option<String>,
+    attributes_json: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct SnapshotEntityAlias {
+    id: String,
+    entity_id: String,
+    alias: String,
+    normalized_alias: String,
+    created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct SnapshotTag {
+    id: String,
+    project_id: String,
+    name: String,
+    color_token: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+struct SnapshotEntityTag {
+    entity_id: String,
+    tag_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct SnapshotRelationType {
+    id: String,
+    project_id: String,
+    name: String,
+    inverse_name: Option<String>,
+    directed: bool,
+    color_token: Option<String>,
+    is_builtin: bool,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct SnapshotEntityRelation {
+    id: String,
+    project_id: String,
+    source_entity_id: String,
+    relation_type_id: String,
+    target_entity_id: String,
+    note: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+struct SnapshotSceneEntityLink {
+    scene_node_id: String,
+    entity_id: String,
+    role: String,
+    note: Option<String>,
+    created_at: String,
+}
+
 fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPayload> {
     let metadata = load_app_meta(connection)?;
     let project = connection
@@ -1172,18 +1260,57 @@ fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPa
         })
         .collect::<Vec<_>>();
 
-    let mut documents = Vec::new();
-    for node in nodes.iter().filter(|node| node.kind == NodeKind::Scene) {
-        let document_id = node.document_id.as_deref().ok_or_else(|| {
-            CoreError::Integrity("SCENE is missing its document link".to_owned())
+    let entities = {
+        let mut statement = connection.prepare(
+            "SELECT id, project_id, kind, name, summary, document_id, status,
+                    color_token, icon_key, attributes_json, created_at, updated_at
+             FROM entities WHERE project_id = ?1 ORDER BY id",
+        )?;
+        let rows = statement.query_map([&metadata.project_id], |row| {
+            Ok(SnapshotEntity {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                kind: row.get(2)?,
+                name: row.get(3)?,
+                summary: row.get(4)?,
+                document_id: row.get(5)?,
+                status: row.get(6)?,
+                color_token: row.get(7)?,
+                icon_key: row.get(8)?,
+                attributes_json: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
+            })
         })?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row?);
+        }
+        values
+    };
+
+    let mut document_ids = nodes
+        .iter()
+        .filter(|node| node.kind == NodeKind::Scene)
+        .map(|node| {
+            node.document_id.clone().ok_or_else(|| {
+                CoreError::Integrity("SCENE is missing its document link".to_owned())
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    document_ids.extend(entities.iter().map(|entity| entity.document_id.clone()));
+    document_ids.sort();
+    document_ids.dedup();
+
+    let mut documents = Vec::new();
+    for document_id in document_ids {
         let stored = connection
             .query_row(
                 "SELECT id, project_id, title, editor_engine, editor_engine_commit,
                         editor_schema_version, snapshot_blob, plain_text_recovery,
                         created_at, updated_at
                  FROM documents WHERE id = ?1",
-                [document_id],
+                [&document_id],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -1200,9 +1327,7 @@ fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPa
                 },
             )
             .optional()?
-            .ok_or_else(|| {
-                CoreError::Integrity(format!("document {document_id} is missing"))
-            })?;
+            .ok_or_else(|| CoreError::Integrity(format!("document {document_id} is missing")))?;
         documents.push(SnapshotDocument {
             id: stored.0,
             project_id: stored.1,
@@ -1217,6 +1342,144 @@ fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPa
         });
     }
 
+    let entity_aliases = {
+        let mut statement = connection.prepare(
+            "SELECT a.id, a.entity_id, a.alias, a.normalized_alias, a.created_at
+             FROM entity_aliases a JOIN entities e ON e.id = a.entity_id
+             WHERE e.project_id = ?1 ORDER BY a.id",
+        )?;
+        let rows = statement.query_map([&metadata.project_id], |row| {
+            Ok(SnapshotEntityAlias {
+                id: row.get(0)?,
+                entity_id: row.get(1)?,
+                alias: row.get(2)?,
+                normalized_alias: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row?);
+        }
+        values
+    };
+
+    let tags = {
+        let mut statement = connection.prepare(
+            "SELECT id, project_id, name, color_token, created_at, updated_at
+             FROM tags WHERE project_id = ?1 ORDER BY id",
+        )?;
+        let rows = statement.query_map([&metadata.project_id], |row| {
+            Ok(SnapshotTag {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                name: row.get(2)?,
+                color_token: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        })?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row?);
+        }
+        values
+    };
+
+    let entity_tags = {
+        let mut statement = connection.prepare(
+            "SELECT et.entity_id, et.tag_id FROM entity_tags et
+             JOIN entities e ON e.id = et.entity_id
+             WHERE e.project_id = ?1 ORDER BY et.entity_id, et.tag_id",
+        )?;
+        let rows = statement.query_map([&metadata.project_id], |row| {
+            Ok(SnapshotEntityTag {
+                entity_id: row.get(0)?,
+                tag_id: row.get(1)?,
+            })
+        })?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row?);
+        }
+        values
+    };
+
+    let relation_types = {
+        let mut statement = connection.prepare(
+            "SELECT id, project_id, name, inverse_name, directed, color_token,
+                    is_builtin, created_at, updated_at
+             FROM relation_types WHERE project_id = ?1 ORDER BY id",
+        )?;
+        let rows = statement.query_map([&metadata.project_id], |row| {
+            Ok(SnapshotRelationType {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                name: row.get(2)?,
+                inverse_name: row.get(3)?,
+                directed: row.get(4)?,
+                color_token: row.get(5)?,
+                is_builtin: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        })?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row?);
+        }
+        values
+    };
+
+    let entity_relations = {
+        let mut statement = connection.prepare(
+            "SELECT id, project_id, source_entity_id, relation_type_id,
+                    target_entity_id, note, created_at, updated_at
+             FROM entity_relations WHERE project_id = ?1 ORDER BY id",
+        )?;
+        let rows = statement.query_map([&metadata.project_id], |row| {
+            Ok(SnapshotEntityRelation {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                source_entity_id: row.get(2)?,
+                relation_type_id: row.get(3)?,
+                target_entity_id: row.get(4)?,
+                note: row.get(5)?,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
+        })?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row?);
+        }
+        values
+    };
+
+    let scene_entity_links = {
+        let mut statement = connection.prepare(
+            "SELECT l.scene_node_id, l.entity_id, l.role, l.note, l.created_at
+             FROM scene_entity_links l
+             JOIN entities e ON e.id = l.entity_id
+             WHERE e.project_id = ?1
+             ORDER BY l.scene_node_id, l.entity_id, l.role",
+        )?;
+        let rows = statement.query_map([&metadata.project_id], |row| {
+            Ok(SnapshotSceneEntityLink {
+                scene_node_id: row.get(0)?,
+                entity_id: row.get(1)?,
+                role: row.get(2)?,
+                note: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row?);
+        }
+        values
+    };
+
     let ui_state = {
         let mut statement = connection.prepare(
             "SELECT project_id, key, value_json, updated_at
@@ -1224,14 +1487,15 @@ fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPa
              WHERE project_id = ?1 AND key = ?2
              ORDER BY key",
         )?;
-        let rows = statement.query_map(params![metadata.project_id, SNAPSHOT_UI_STATE_KEY], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-            ))
-        })?;
+        let rows =
+            statement.query_map(params![metadata.project_id, SNAPSHOT_UI_STATE_KEY], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })?;
         let mut states = Vec::new();
         for row in rows {
             let stored = row?;
@@ -1258,6 +1522,13 @@ fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPa
         nodes,
         documents,
         ui_state,
+        entities,
+        entity_aliases,
+        tags,
+        entity_tags,
+        relation_types,
+        entity_relations,
+        scene_entity_links,
     })
 }
 
@@ -1298,7 +1569,7 @@ fn insert_snapshot_payload(
             note,
             kind.as_str(),
             SNAPSHOT_PAYLOAD_FORMAT,
-            SNAPSHOT_PAYLOAD_VERSION,
+            payload.version,
             payload_blob,
             content_hash,
             now
@@ -1387,8 +1658,7 @@ type StoredSnapshotSummary = (
 );
 
 fn snapshot_summary_from_stored(stored: StoredSnapshotSummary) -> Result<NamedSnapshotSummary> {
-    let kind = NamedSnapshotKind::from_str(&stored.4)
-        .map_err(CoreError::SnapshotIntegrity)?;
+    let kind = NamedSnapshotKind::from_str(&stored.4).map_err(CoreError::SnapshotIntegrity)?;
     Ok(NamedSnapshotSummary {
         id: stored.0,
         project_id: stored.1,
@@ -1427,7 +1697,9 @@ fn decode_snapshot_payload(
             summary.payload_format
         )));
     }
-    if summary.payload_version != SNAPSHOT_PAYLOAD_VERSION {
+    if summary.payload_version < MIN_SNAPSHOT_PAYLOAD_VERSION
+        || summary.payload_version > SNAPSHOT_PAYLOAD_VERSION
+    {
         return Err(CoreError::SnapshotIntegrity(format!(
             "unsupported payload version {}",
             summary.payload_version
@@ -1441,7 +1713,9 @@ fn decode_snapshot_payload(
     let payload: LogicalSnapshotPayload = serde_json::from_slice(payload_blob)
         .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
     if payload.format != SNAPSHOT_DOCUMENT_FORMAT
-        || payload.version != SNAPSHOT_PAYLOAD_VERSION
+        || payload.version != summary.payload_version
+        || payload.version < MIN_SNAPSHOT_PAYLOAD_VERSION
+        || payload.version > SNAPSHOT_PAYLOAD_VERSION
     {
         return Err(CoreError::SnapshotIntegrity(
             "embedded payload identity is unsupported".to_owned(),
@@ -1530,11 +1804,25 @@ fn diff_payloads(
         .iter()
         .map(|document| (document.id.as_str(), document))
         .collect::<HashMap<_, _>>();
-    for (document_id, target_document) in target_documents {
+    let target_scene_document_ids = target
+        .nodes
+        .iter()
+        .filter(|node| node.kind == NodeKind::Scene)
+        .filter_map(|node| node.document_id.as_deref())
+        .collect::<HashSet<_>>();
+    let current_scene_document_ids = current
+        .nodes
+        .iter()
+        .filter(|node| node.kind == NodeKind::Scene)
+        .filter_map(|node| node.document_id.as_deref())
+        .collect::<HashSet<_>>();
+    for document_id in &target_scene_document_ids {
+        let Some(target_document) = target_documents.get(document_id) else {
+            continue;
+        };
         if let Some(current_document) = current_documents.get(document_id) {
             if target_document.snapshot_base64 != current_document.snapshot_base64
-                || target_document.plain_text_recovery
-                    != current_document.plain_text_recovery
+                || target_document.plain_text_recovery != current_document.plain_text_recovery
             {
                 summary.changed_scene_bodies += 1;
             }
@@ -1543,16 +1831,161 @@ fn diff_payloads(
     let target_characters = target
         .documents
         .iter()
+        .filter(|document| target_scene_document_ids.contains(document.id.as_str()))
         .map(|document| document.plain_text_recovery.chars().count() as i128)
         .sum::<i128>();
     let current_characters = current
         .documents
         .iter()
+        .filter(|document| current_scene_document_ids.contains(document.id.as_str()))
         .map(|document| document.plain_text_recovery.chars().count() as i128)
         .sum::<i128>();
-    summary.character_count_delta = (current_characters - target_characters)
-        .clamp(i64::MIN as i128, i64::MAX as i128) as i64;
+    summary.character_count_delta =
+        (current_characters - target_characters).clamp(i64::MIN as i128, i64::MAX as i128) as i64;
+
+    let target_entities = target
+        .entities
+        .iter()
+        .map(|entity| (entity.id.as_str(), entity))
+        .collect::<HashMap<_, _>>();
+    let current_entities = current
+        .entities
+        .iter()
+        .map(|entity| (entity.id.as_str(), entity))
+        .collect::<HashMap<_, _>>();
+    summary.added_entities = current_entities
+        .keys()
+        .filter(|entity_id| !target_entities.contains_key(**entity_id))
+        .count() as u64;
+    summary.deleted_entities = target_entities
+        .keys()
+        .filter(|entity_id| !current_entities.contains_key(**entity_id))
+        .count() as u64;
+    for (entity_id, target_entity) in &target_entities {
+        let Some(current_entity) = current_entities.get(entity_id) else {
+            continue;
+        };
+        let target_aliases = target
+            .entity_aliases
+            .iter()
+            .filter(|alias| alias.entity_id == **entity_id)
+            .collect::<Vec<_>>();
+        let current_aliases = current
+            .entity_aliases
+            .iter()
+            .filter(|alias| alias.entity_id == **entity_id)
+            .collect::<Vec<_>>();
+        let target_tags = target
+            .entity_tags
+            .iter()
+            .filter(|tag| tag.entity_id == **entity_id)
+            .collect::<Vec<_>>();
+        let current_tags = current
+            .entity_tags
+            .iter()
+            .filter(|tag| tag.entity_id == **entity_id)
+            .collect::<Vec<_>>();
+        if !snapshot_entities_semantically_equal(target_entity, current_entity)
+            || target_aliases != current_aliases
+            || target_tags != current_tags
+        {
+            summary.changed_entities += 1;
+        }
+        if let (Some(target_note), Some(current_note)) = (
+            target_documents.get(target_entity.document_id.as_str()),
+            current_documents.get(current_entity.document_id.as_str()),
+        ) {
+            if target_entity.document_id != current_entity.document_id
+                || target_note.snapshot_base64 != current_note.snapshot_base64
+                || target_note.plain_text_recovery != current_note.plain_text_recovery
+            {
+                summary.changed_entity_notes += 1;
+            }
+        }
+    }
+
+    let target_relations = target
+        .entity_relations
+        .iter()
+        .map(|relation| (relation.id.as_str(), relation))
+        .collect::<HashMap<_, _>>();
+    let current_relations = current
+        .entity_relations
+        .iter()
+        .map(|relation| (relation.id.as_str(), relation))
+        .collect::<HashMap<_, _>>();
+    summary.added_relations = current_relations
+        .keys()
+        .filter(|relation_id| !target_relations.contains_key(**relation_id))
+        .count() as u64;
+    summary.deleted_relations = target_relations
+        .keys()
+        .filter(|relation_id| !current_relations.contains_key(**relation_id))
+        .count() as u64;
+    summary.changed_relations = target_relations
+        .iter()
+        .filter(|(relation_id, relation)| {
+            current_relations
+                .get(**relation_id)
+                .is_some_and(|current_relation| *relation != current_relation)
+        })
+        .count() as u64;
+
+    let target_links = target
+        .scene_entity_links
+        .iter()
+        .map(|link| {
+            (
+                (
+                    link.scene_node_id.as_str(),
+                    link.entity_id.as_str(),
+                    link.role.as_str(),
+                ),
+                link,
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let current_links = current
+        .scene_entity_links
+        .iter()
+        .map(|link| {
+            (
+                (
+                    link.scene_node_id.as_str(),
+                    link.entity_id.as_str(),
+                    link.role.as_str(),
+                ),
+                link,
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    summary.changed_scene_links = target_links
+        .iter()
+        .filter(|(key, target_link)| {
+            current_links
+                .get(key)
+                .is_none_or(|link| link != *target_link)
+        })
+        .count() as u64
+        + current_links
+            .keys()
+            .filter(|key| !target_links.contains_key(*key))
+            .count() as u64;
     summary
+}
+
+fn snapshot_entities_semantically_equal(left: &SnapshotEntity, right: &SnapshotEntity) -> bool {
+    left.id == right.id
+        && left.project_id == right.project_id
+        && left.kind == right.kind
+        && left.name == right.name
+        && left.summary == right.summary
+        && left.document_id == right.document_id
+        && left.status == right.status
+        && left.color_token == right.color_token
+        && left.icon_key == right.icon_key
+        && left.attributes_json == right.attributes_json
+        && left.created_at == right.created_at
 }
 
 fn increment_node_count(counts: &mut SnapshotNodeCounts, kind: NodeKind) {
@@ -1632,9 +2065,10 @@ fn validate_snapshot_payload(payload: &LogicalSnapshotPayload, project_id: &str)
             ));
         }
         if node.kind == NodeKind::Scene {
-            let document_id = node.document_id.as_deref().ok_or_else(|| {
-                CoreError::SnapshotIntegrity("SCENE has no document".to_owned())
-            })?;
+            let document_id = node
+                .document_id
+                .as_deref()
+                .ok_or_else(|| CoreError::SnapshotIntegrity("SCENE has no document".to_owned()))?;
             if !document_ids.insert(document_id) {
                 return Err(CoreError::SnapshotIntegrity(
                     "multiple scenes reference one document".to_owned(),
@@ -1672,6 +2106,175 @@ fn validate_snapshot_payload(payload: &LogicalSnapshotPayload, project_id: &str)
             ));
         }
     }
+    if payload.version == 1
+        && (!payload.entities.is_empty()
+            || !payload.entity_aliases.is_empty()
+            || !payload.tags.is_empty()
+            || !payload.entity_tags.is_empty()
+            || !payload.relation_types.is_empty()
+            || !payload.entity_relations.is_empty()
+            || !payload.scene_entity_links.is_empty())
+    {
+        return Err(CoreError::SnapshotIntegrity(
+            "version 1 payload must not contain Story Bible data".to_owned(),
+        ));
+    }
+
+    let mut entity_ids = HashSet::new();
+    let mut entity_document_ids = HashSet::new();
+    for entity in &payload.entities {
+        if entity.project_id != project_id
+            || !matches!(
+                entity.kind.as_str(),
+                "CHARACTER"
+                    | "LOCATION"
+                    | "ORGANIZATION"
+                    | "ITEM"
+                    | "EVENT"
+                    | "WORLD_RULE"
+                    | "FORESHADOWING"
+                    | "OTHER"
+            )
+            || !matches!(entity.status.as_str(), "ACTIVE" | "DRAFT" | "ARCHIVED")
+            || serde_json::from_str::<serde_json::Value>(&entity.attributes_json)
+                .ok()
+                .is_none_or(|value| !value.is_object())
+        {
+            return Err(CoreError::SnapshotIntegrity(
+                "payload entity kind, status, project, or attributes are invalid".to_owned(),
+            ));
+        }
+        validate_non_empty("snapshot entity id", &entity.id)
+            .and_then(|_| validate_non_empty("snapshot entity name", &entity.name))
+            .and_then(|_| validate_non_empty("snapshot entity document", &entity.document_id))
+            .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+        if !entity_ids.insert(entity.id.as_str())
+            || !entity_document_ids.insert(entity.document_id.as_str())
+            || document_ids.contains(entity.document_id.as_str())
+        {
+            return Err(CoreError::SnapshotIntegrity(
+                "payload entity or entity note ownership is duplicated".to_owned(),
+            ));
+        }
+    }
+
+    let mut alias_ids = HashSet::new();
+    let mut normalized_aliases = HashSet::new();
+    for alias in &payload.entity_aliases {
+        if !entity_ids.contains(alias.entity_id.as_str())
+            || !alias_ids.insert(alias.id.as_str())
+            || !normalized_aliases
+                .insert((alias.entity_id.as_str(), alias.normalized_alias.as_str()))
+        {
+            return Err(CoreError::SnapshotIntegrity(
+                "payload alias ownership or uniqueness is invalid".to_owned(),
+            ));
+        }
+        validate_non_empty("snapshot alias", &alias.alias)
+            .and_then(|_| validate_non_empty("snapshot normalized alias", &alias.normalized_alias))
+            .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+    }
+
+    let mut tag_ids = HashSet::new();
+    for tag in &payload.tags {
+        if tag.project_id != project_id || !tag_ids.insert(tag.id.as_str()) {
+            return Err(CoreError::SnapshotIntegrity(
+                "payload tag project or identifier is invalid".to_owned(),
+            ));
+        }
+        validate_non_empty("snapshot tag name", &tag.name)
+            .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+    }
+    let mut entity_tag_pairs = HashSet::new();
+    for entity_tag in &payload.entity_tags {
+        if !entity_ids.contains(entity_tag.entity_id.as_str())
+            || !tag_ids.contains(entity_tag.tag_id.as_str())
+            || !entity_tag_pairs.insert((entity_tag.entity_id.as_str(), entity_tag.tag_id.as_str()))
+        {
+            return Err(CoreError::SnapshotIntegrity(
+                "payload entity tag ownership or uniqueness is invalid".to_owned(),
+            ));
+        }
+    }
+
+    let mut relation_type_ids = HashSet::new();
+    let mut relation_type_directions = HashMap::new();
+    let mut builtin_relation_types = 0_u64;
+    for relation_type in &payload.relation_types {
+        if relation_type.project_id != project_id
+            || !relation_type_ids.insert(relation_type.id.as_str())
+        {
+            return Err(CoreError::SnapshotIntegrity(
+                "payload relation type project or identifier is invalid".to_owned(),
+            ));
+        }
+        validate_non_empty("snapshot relation type name", &relation_type.name)
+            .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+        relation_type_directions.insert(relation_type.id.as_str(), relation_type.directed);
+        builtin_relation_types += u64::from(relation_type.is_builtin);
+    }
+    if payload.version == 2 && builtin_relation_types < 10 {
+        return Err(CoreError::SnapshotIntegrity(
+            "version 2 payload is missing built-in relation types".to_owned(),
+        ));
+    }
+
+    let mut relation_ids = HashSet::new();
+    let mut logical_relations = HashSet::new();
+    for relation in &payload.entity_relations {
+        if relation.project_id != project_id
+            || relation.source_entity_id == relation.target_entity_id
+            || !entity_ids.contains(relation.source_entity_id.as_str())
+            || !entity_ids.contains(relation.target_entity_id.as_str())
+            || !relation_type_ids.contains(relation.relation_type_id.as_str())
+            || !relation_ids.insert(relation.id.as_str())
+        {
+            return Err(CoreError::SnapshotIntegrity(
+                "payload entity relation ownership is invalid".to_owned(),
+            ));
+        }
+        let directed = relation_type_directions[relation.relation_type_id.as_str()];
+        let (source, target) = if directed
+            || relation.source_entity_id.as_str() <= relation.target_entity_id.as_str()
+        {
+            (
+                relation.source_entity_id.as_str(),
+                relation.target_entity_id.as_str(),
+            )
+        } else {
+            (
+                relation.target_entity_id.as_str(),
+                relation.source_entity_id.as_str(),
+            )
+        };
+        if !logical_relations.insert((relation.relation_type_id.as_str(), source, target)) {
+            return Err(CoreError::SnapshotIntegrity(
+                "payload contains a duplicate logical entity relation".to_owned(),
+            ));
+        }
+    }
+
+    let mut scene_link_keys = HashSet::new();
+    for link in &payload.scene_entity_links {
+        if known_kinds.get(link.scene_node_id.as_str()) != Some(&NodeKind::Scene)
+            || !entity_ids.contains(link.entity_id.as_str())
+            || !matches!(
+                link.role.as_str(),
+                "APPEARS" | "POV" | "MENTIONED" | "RELATED"
+            )
+            || !scene_link_keys.insert((
+                link.scene_node_id.as_str(),
+                link.entity_id.as_str(),
+                link.role.as_str(),
+            ))
+        {
+            return Err(CoreError::SnapshotIntegrity(
+                "payload scene entity link is invalid".to_owned(),
+            ));
+        }
+    }
+
+    document_ids.extend(entity_document_ids);
     let stored_documents = payload
         .documents
         .iter()
@@ -1739,13 +2342,11 @@ fn validate_plain_text_replacement(
         )));
     }
 
-    let (minimum_removed, maximum_removed) =
-        selected_character_bounds(&lengths, selected_count)?;
+    let (minimum_removed, maximum_removed) = selected_character_bounds(&lengths, selected_count)?;
     let source_characters = source.chars().count() as i128;
     let transformed_characters = transformed.chars().count() as i128;
     let replacement_characters = replacement.chars().count() as i128;
-    let implied_removed = source_characters
-        + replacement_characters * selected_count as i128
+    let implied_removed = source_characters + replacement_characters * selected_count as i128
         - transformed_characters;
     if implied_removed < minimum_removed as i128 || implied_removed > maximum_removed as i128 {
         return Err(CoreError::InvalidInput(format!(
@@ -1805,7 +2406,8 @@ fn validate_replacement_transduction(
                 if replacements_applied < selected_count
                     && transformed[after_literal..].starts_with(replacement)
                 {
-                    next_states.insert((after_literal + replacement.len(), replacements_applied + 1));
+                    next_states
+                        .insert((after_literal + replacement.len(), replacements_applied + 1));
                 }
                 if next_states.len() > MAX_REPLACEMENT_VALIDATION_STATES {
                     validation_error = Some(CoreError::InvalidInput(format!(
@@ -1822,12 +2424,14 @@ fn validate_replacement_transduction(
         return Err(error);
     }
     let tail = &source[source_cursor..];
-    let valid = states.into_iter().any(|(transformed_cursor, replacements_applied)| {
-        replacements_applied == selected_count
-            && transformed
-                .get(transformed_cursor..)
-                .is_some_and(|candidate| candidate == tail)
-    });
+    let valid = states
+        .into_iter()
+        .any(|(transformed_cursor, replacements_applied)| {
+            replacements_applied == selected_count
+                && transformed
+                    .get(transformed_cursor..)
+                    .is_some_and(|candidate| candidate == tail)
+        });
     if !valid {
         return Err(CoreError::InvalidInput(format!(
             "replacement target {scene_id} is not a deterministic selected-occurrence transformation"
@@ -1874,6 +2478,18 @@ fn take_character_lengths(lengths: &[(u64, u64)], selected_count: u64) -> Result
 }
 
 fn restore_payload(transaction: &Transaction<'_>, payload: &LogicalSnapshotPayload) -> Result<()> {
+    transaction.execute(
+        "DELETE FROM entities WHERE project_id = ?1",
+        [&payload.project.id],
+    )?;
+    transaction.execute(
+        "DELETE FROM relation_types WHERE project_id = ?1",
+        [&payload.project.id],
+    )?;
+    transaction.execute(
+        "DELETE FROM tags WHERE project_id = ?1",
+        [&payload.project.id],
+    )?;
     transaction.execute(
         "DELETE FROM tree_nodes WHERE project_id = ?1",
         [&payload.project.id],
@@ -1954,6 +2570,118 @@ fn restore_payload(transaction: &Transaction<'_>, payload: &LogicalSnapshotPaylo
                 node.updated_at
             ],
         )?;
+    }
+    for tag in &payload.tags {
+        transaction.execute(
+            "INSERT INTO tags (
+                id, project_id, name, color_token, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                tag.id,
+                tag.project_id,
+                tag.name,
+                tag.color_token,
+                tag.created_at,
+                tag.updated_at
+            ],
+        )?;
+    }
+    for relation_type in &payload.relation_types {
+        transaction.execute(
+            "INSERT INTO relation_types (
+                id, project_id, name, inverse_name, directed, color_token,
+                is_builtin, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                relation_type.id,
+                relation_type.project_id,
+                relation_type.name,
+                relation_type.inverse_name,
+                relation_type.directed,
+                relation_type.color_token,
+                relation_type.is_builtin,
+                relation_type.created_at,
+                relation_type.updated_at
+            ],
+        )?;
+    }
+    for entity in &payload.entities {
+        transaction.execute(
+            "INSERT INTO entities (
+                id, project_id, kind, name, summary, document_id, status,
+                color_token, icon_key, attributes_json, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                entity.id,
+                entity.project_id,
+                entity.kind,
+                entity.name,
+                entity.summary,
+                entity.document_id,
+                entity.status,
+                entity.color_token,
+                entity.icon_key,
+                entity.attributes_json,
+                entity.created_at,
+                entity.updated_at
+            ],
+        )?;
+    }
+    for alias in &payload.entity_aliases {
+        transaction.execute(
+            "INSERT INTO entity_aliases (
+                id, entity_id, alias, normalized_alias, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                alias.id,
+                alias.entity_id,
+                alias.alias,
+                alias.normalized_alias,
+                alias.created_at
+            ],
+        )?;
+    }
+    for entity_tag in &payload.entity_tags {
+        transaction.execute(
+            "INSERT INTO entity_tags (entity_id, tag_id) VALUES (?1, ?2)",
+            params![entity_tag.entity_id, entity_tag.tag_id],
+        )?;
+    }
+    for relation in &payload.entity_relations {
+        transaction.execute(
+            "INSERT INTO entity_relations (
+                id, project_id, source_entity_id, relation_type_id,
+                target_entity_id, note, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                relation.id,
+                relation.project_id,
+                relation.source_entity_id,
+                relation.relation_type_id,
+                relation.target_entity_id,
+                relation.note,
+                relation.created_at,
+                relation.updated_at
+            ],
+        )?;
+    }
+    for link in &payload.scene_entity_links {
+        transaction.execute(
+            "INSERT INTO scene_entity_links (
+                scene_node_id, entity_id, role, note, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                link.scene_node_id,
+                link.entity_id,
+                link.role,
+                link.note,
+                link.created_at
+            ],
+        )?;
+    }
+    if payload.version == 1 {
+        let now = database_timestamp(transaction)?;
+        seed_builtin_relation_types(transaction, &payload.project.id, &now)?;
     }
     for state in &payload.ui_state {
         transaction.execute(
@@ -2047,9 +2775,7 @@ fn validated_saved_by(requested: Option<&str>) -> Result<String> {
 }
 
 fn display_timestamp(timestamp: &str) -> String {
-    timestamp
-        .trim_end_matches('Z')
-        .replace('T', " ")
+    timestamp.trim_end_matches('Z').replace('T', " ")
 }
 
 #[cfg(test)]

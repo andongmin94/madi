@@ -688,6 +688,14 @@ pub struct SnapshotDiffSummary {
     pub reordered_nodes: u64,
     pub changed_scene_bodies: u64,
     pub character_count_delta: i64,
+    pub added_entities: u64,
+    pub deleted_entities: u64,
+    pub changed_entities: u64,
+    pub added_relations: u64,
+    pub deleted_relations: u64,
+    pub changed_relations: u64,
+    pub changed_scene_links: u64,
+    pub changed_entity_notes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -757,4 +765,840 @@ pub struct ApplyReplacementBatchResult {
     pub changed_scenes: u64,
     pub changed_occurrences: u64,
     pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum EntityKind {
+    Character,
+    Location,
+    Organization,
+    Item,
+    Event,
+    WorldRule,
+    Foreshadowing,
+    Other,
+}
+
+impl EntityKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Character => "CHARACTER",
+            Self::Location => "LOCATION",
+            Self::Organization => "ORGANIZATION",
+            Self::Item => "ITEM",
+            Self::Event => "EVENT",
+            Self::WorldRule => "WORLD_RULE",
+            Self::Foreshadowing => "FORESHADOWING",
+            Self::Other => "OTHER",
+        }
+    }
+}
+
+impl FromStr for EntityKind {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value {
+            "CHARACTER" => Ok(Self::Character),
+            "LOCATION" => Ok(Self::Location),
+            "ORGANIZATION" => Ok(Self::Organization),
+            "ITEM" => Ok(Self::Item),
+            "EVENT" => Ok(Self::Event),
+            "WORLD_RULE" => Ok(Self::WorldRule),
+            "FORESHADOWING" => Ok(Self::Foreshadowing),
+            "OTHER" => Ok(Self::Other),
+            _ => Err(format!("unsupported entity kind {value}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum EntityStatus {
+    #[default]
+    Active,
+    Draft,
+    Archived,
+}
+
+impl EntityStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "ACTIVE",
+            Self::Draft => "DRAFT",
+            Self::Archived => "ARCHIVED",
+        }
+    }
+}
+
+impl FromStr for EntityStatus {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value {
+            "ACTIVE" => Ok(Self::Active),
+            "DRAFT" => Ok(Self::Draft),
+            "ARCHIVED" => Ok(Self::Archived),
+            _ => Err(format!("unsupported entity status {value}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum EntitySort {
+    #[default]
+    NameAsc,
+    UpdatedDesc,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum SceneEntityRole {
+    Appears,
+    Pov,
+    Mentioned,
+    Related,
+}
+
+impl SceneEntityRole {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Appears => "APPEARS",
+            Self::Pov => "POV",
+            Self::Mentioned => "MENTIONED",
+            Self::Related => "RELATED",
+        }
+    }
+}
+
+impl FromStr for SceneEntityRole {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value {
+            "APPEARS" => Ok(Self::Appears),
+            "POV" => Ok(Self::Pov),
+            "MENTIONED" => Ok(Self::Mentioned),
+            "RELATED" => Ok(Self::Related),
+            _ => Err(format!("unsupported scene entity role {value}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DocumentOwnerKind {
+    Scene,
+    Entity,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntityAliasRecord {
+    pub id: String,
+    pub entity_id: String,
+    pub alias: String,
+    pub normalized_alias: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TagRecord {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub color_token: Option<String>,
+    pub created_at: String,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EntityRecord {
+    pub id: String,
+    pub project_id: String,
+    pub kind: EntityKind,
+    pub name: String,
+    pub summary: Option<String>,
+    pub document_id: String,
+    pub status: EntityStatus,
+    pub color_token: Option<String>,
+    pub icon_key: Option<String>,
+    pub attributes: serde_json::Value,
+    pub duplicate_name: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListEntitiesParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    #[serde(default)]
+    pub query: Option<String>,
+    #[serde(default)]
+    pub kinds: Vec<EntityKind>,
+    #[serde(default)]
+    pub statuses: Vec<EntityStatus>,
+    #[serde(default)]
+    pub tag_ids: Vec<String>,
+    #[serde(default)]
+    pub sort: EntitySort,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ListEntitiesResult {
+    pub metadata: AppMeta,
+    pub entities: Vec<EntityRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CreateEntityParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub kind: EntityKind,
+    pub name: String,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub status: EntityStatus,
+    #[serde(default)]
+    pub color_token: Option<String>,
+    #[serde(default)]
+    pub icon_key: Option<String>,
+    #[serde(default = "default_attributes")]
+    pub attributes: serde_json::Value,
+    #[serde(default)]
+    pub entity_id: Option<String>,
+    #[serde(default)]
+    pub document_id: Option<String>,
+    #[serde(default)]
+    pub editor_engine: Option<String>,
+    #[serde(default)]
+    pub editor_engine_commit: Option<String>,
+    #[serde(default)]
+    pub editor_schema_version: Option<i64>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+fn default_attributes() -> serde_json::Value {
+    serde_json::json!({})
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CreateEntityResult {
+    pub metadata: AppMeta,
+    pub entity: EntityRecord,
+    pub document: DocumentSummary,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UpdateEntityParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub entity_id: String,
+    pub kind: EntityKind,
+    pub name: String,
+    pub summary: Option<String>,
+    pub status: EntityStatus,
+    pub color_token: Option<String>,
+    pub icon_key: Option<String>,
+    pub attributes: serde_json::Value,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UpdateEntityResult {
+    pub metadata: AppMeta,
+    pub entity: EntityRecord,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntityDeleteImpact {
+    pub entity_id: String,
+    pub relation_count: u64,
+    pub scene_link_count: u64,
+    pub mention_scene_count: u64,
+    pub alias_count: u64,
+    pub tag_count: u64,
+    pub note_character_count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GetEntityDeleteImpactParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub entity_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntityDeleteImpactResult {
+    pub metadata: AppMeta,
+    pub impact: EntityDeleteImpact,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteEntityParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub entity_id: String,
+    pub confirmed: bool,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteEntityResult {
+    pub metadata: AppMeta,
+    pub deleted_entity_id: String,
+    pub deleted_document_id: String,
+    pub impact: EntityDeleteImpact,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LoadEntityNoteParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub owner_kind: DocumentOwnerKind,
+    pub owner_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntityNoteRecord {
+    pub owner_kind: DocumentOwnerKind,
+    pub owner_id: String,
+    pub document_id: String,
+    pub document: DocumentRecord,
+    pub project_revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SaveEntityNoteParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub owner_kind: DocumentOwnerKind,
+    pub owner_id: String,
+    pub document_id: String,
+    pub generation: u64,
+    pub save_sequence: u64,
+    pub editor_engine: String,
+    pub editor_engine_commit: String,
+    pub editor_schema_version: i64,
+    pub snapshot_base64: String,
+    pub plain_text_recovery: String,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SaveEntityNoteResult {
+    pub metadata: AppMeta,
+    pub owner_kind: DocumentOwnerKind,
+    pub owner_id: String,
+    pub generation: u64,
+    pub save_sequence: u64,
+    pub document: DocumentSummary,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListEntityAliasesParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub entity_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListEntityAliasesResult {
+    pub metadata: AppMeta,
+    pub aliases: Vec<EntityAliasRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreateEntityAliasParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub entity_id: String,
+    pub alias: String,
+    #[serde(default)]
+    pub alias_id: Option<String>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreateEntityAliasResult {
+    pub metadata: AppMeta,
+    pub alias: EntityAliasRecord,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteEntityAliasParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub alias_id: String,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteEntityAliasResult {
+    pub metadata: AppMeta,
+    pub deleted_alias_id: String,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListTagsParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListTagsResult {
+    pub metadata: AppMeta,
+    pub tags: Vec<TagRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListEntityTagsParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub entity_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListEntityTagsResult {
+    pub metadata: AppMeta,
+    pub entity_id: String,
+    pub tags: Vec<TagRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreateTagParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub name: String,
+    #[serde(default)]
+    pub color_token: Option<String>,
+    #[serde(default)]
+    pub tag_id: Option<String>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TagMutationResult {
+    pub metadata: AppMeta,
+    pub tag: TagRecord,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateTagParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub tag_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub color_token: Option<String>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteTagParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub tag_id: String,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteTagResult {
+    pub metadata: AppMeta,
+    pub deleted_tag_id: String,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SetEntityTagsParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub entity_id: String,
+    pub tag_ids: Vec<String>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SetEntityTagsResult {
+    pub metadata: AppMeta,
+    pub entity_id: String,
+    pub tags: Vec<TagRecord>,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RelationTypeRecord {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub inverse_name: Option<String>,
+    pub directed: bool,
+    pub color_token: Option<String>,
+    pub is_builtin: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListRelationTypesParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListRelationTypesResult {
+    pub metadata: AppMeta,
+    pub relation_types: Vec<RelationTypeRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreateRelationTypeParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub name: String,
+    #[serde(default)]
+    pub inverse_name: Option<String>,
+    pub directed: bool,
+    #[serde(default)]
+    pub color_token: Option<String>,
+    #[serde(default)]
+    pub relation_type_id: Option<String>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RelationTypeMutationResult {
+    pub metadata: AppMeta,
+    pub relation_type: RelationTypeRecord,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateRelationTypeParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub relation_type_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub inverse_name: Option<String>,
+    pub directed: bool,
+    #[serde(default)]
+    pub color_token: Option<String>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteRelationTypeParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub relation_type_id: String,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteRelationTypeResult {
+    pub metadata: AppMeta,
+    pub deleted_relation_type_id: String,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntityRelationRecord {
+    pub id: String,
+    pub project_id: String,
+    pub source_entity_id: String,
+    pub relation_type_id: String,
+    pub target_entity_id: String,
+    pub note: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListEntityRelationsParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    #[serde(default)]
+    pub entity_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListEntityRelationsResult {
+    pub metadata: AppMeta,
+    pub relations: Vec<EntityRelationRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreateEntityRelationParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub source_entity_id: String,
+    pub relation_type_id: String,
+    pub target_entity_id: String,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub relation_id: Option<String>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntityRelationMutationResult {
+    pub metadata: AppMeta,
+    pub relation: EntityRelationRecord,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateEntityRelationParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub relation_id: String,
+    pub relation_type_id: String,
+    pub target_entity_id: String,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteEntityRelationParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub relation_id: String,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteEntityRelationResult {
+    pub metadata: AppMeta,
+    pub deleted_relation_id: String,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SceneEntityLinkRecord {
+    pub scene_node_id: String,
+    pub entity_id: String,
+    pub role: SceneEntityRole,
+    pub note: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListSceneEntityLinksParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    #[serde(default)]
+    pub scene_node_id: Option<String>,
+    #[serde(default)]
+    pub entity_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ListSceneEntityLinksResult {
+    pub metadata: AppMeta,
+    pub links: Vec<SceneEntityLinkRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CreateSceneEntityLinkParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub scene_node_id: String,
+    pub entity_id: String,
+    pub role: SceneEntityRole,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SceneEntityLinkMutationResult {
+    pub metadata: AppMeta,
+    pub link: SceneEntityLinkRecord,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteSceneEntityLinkParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub scene_node_id: String,
+    pub entity_id: String,
+    pub role: SceneEntityRole,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeleteSceneEntityLinkResult {
+    pub metadata: AppMeta,
+    pub deleted_link: DeletedSceneEntityLink,
+    pub backup_file_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeletedSceneEntityLink {
+    pub scene_node_id: String,
+    pub entity_id: String,
+    pub role: SceneEntityRole,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntityMentionMatch {
+    pub matched_term: String,
+    pub alias_id: Option<String>,
+    pub start_char: u64,
+    pub end_char: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntityMentionCandidate {
+    pub occurrence_id: String,
+    pub entity_id: String,
+    pub scene_node_id: String,
+    pub scene_title: String,
+    pub document_id: String,
+    pub matched_alias: String,
+    pub context_before: String,
+    pub matched_text: String,
+    pub context_after: String,
+    pub start: u64,
+    pub end: u64,
+    pub already_linked: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DiscoverEntityMentionsParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub entity_id: String,
+    #[serde(default)]
+    pub offset: u64,
+    #[serde(default)]
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DiscoverEntityMentionsResult {
+    pub metadata: AppMeta,
+    pub entity_id: String,
+    pub total_scenes: u64,
+    pub offset: u64,
+    pub limit: u64,
+    pub has_more: bool,
+    pub candidates: Vec<EntityMentionCandidate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PromoteEntityMentionParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub entity_id: String,
+    pub scene_node_id: String,
+    #[serde(default = "default_mentioned_role")]
+    pub role: SceneEntityRole,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub saved_by: Option<String>,
+}
+
+fn default_mentioned_role() -> SceneEntityRole {
+    SceneEntityRole::Mentioned
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SearchEntitiesParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub query: String,
+    #[serde(default)]
+    pub offset: u64,
+    #[serde(default)]
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EntitySearchHit {
+    pub entity: EntityRecord,
+    pub matched_fields: Vec<String>,
+    pub matched_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SearchEntitiesResult {
+    pub metadata: AppMeta,
+    pub query: String,
+    pub total_matches: u64,
+    pub offset: u64,
+    pub limit: u64,
+    pub has_more: bool,
+    pub hits: Vec<EntitySearchHit>,
 }

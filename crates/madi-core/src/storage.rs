@@ -4,24 +4,22 @@ use std::path::{Path, PathBuf};
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use rusqlite::{
-    params, Connection, OpenFlags, OptionalExtension, Transaction,
-    TransactionBehavior,
+    params, Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior,
 };
 use uuid::Uuid;
 
 use crate::error::{CoreError, Result};
 use crate::model::{
-    AppMeta, CreateProjectParams, CreateProjectResult, DocumentRecord,
-    DocumentSummary, LoadDocumentParams, MigrationRecord, OpenProjectParams,
-    ProjectInspection, RecoverPlainTextParams, RecoverPlainTextResult,
-    SaveDocumentParams, SaveDocumentResult,
+    AppMeta, CreateProjectParams, CreateProjectResult, DocumentRecord, DocumentSummary,
+    LoadDocumentParams, MigrationRecord, OpenProjectParams, ProjectInspection,
+    RecoverPlainTextParams, RecoverPlainTextResult, SaveDocumentParams, SaveDocumentResult,
 };
 
 /// ASCII `MADI` encoded as a big-endian integer.
 pub const APPLICATION_ID: i64 = 0x4D41_4449;
 pub const FORMAT_NAME: &str = "madi";
 pub const FORMAT_VERSION: i64 = 1;
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 
 const DEFAULT_EDITOR_ENGINE: &str = "typie";
 const UNINITIALIZED_EDITOR_COMMIT: &str = "uninitialized";
@@ -174,6 +172,201 @@ CREATE INDEX IF NOT EXISTS named_snapshots_project_created_idx
     ON named_snapshots(project_id, created_at DESC, id);
 "#;
 
+const MIGRATION_V4: &str = r#"
+CREATE TABLE IF NOT EXISTS entities (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN (
+        'CHARACTER', 'LOCATION', 'ORGANIZATION', 'ITEM', 'EVENT',
+        'WORLD_RULE', 'FORESHADOWING', 'OTHER'
+    )),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    summary TEXT,
+    document_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'DRAFT', 'ARCHIVED')),
+    color_token TEXT,
+    icon_key TEXT,
+    attributes_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(attributes_json)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS entities_project_kind_name_idx
+    ON entities(project_id, kind, name, id);
+CREATE INDEX IF NOT EXISTS entities_project_status_updated_idx
+    ON entities(project_id, status, updated_at DESC, id);
+
+CREATE TABLE IF NOT EXISTS entity_aliases (
+    id TEXT NOT NULL PRIMARY KEY,
+    entity_id TEXT NOT NULL,
+    alias TEXT NOT NULL CHECK (length(trim(alias)) > 0),
+    normalized_alias TEXT NOT NULL CHECK (length(trim(normalized_alias)) > 0),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+    UNIQUE (entity_id, normalized_alias)
+);
+
+CREATE INDEX IF NOT EXISTS entity_aliases_entity_idx
+    ON entity_aliases(entity_id, alias, id);
+
+CREATE TABLE IF NOT EXISTS tags (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    color_token TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE (project_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS tags_project_name_idx
+    ON tags(project_id, name, id);
+
+CREATE TABLE IF NOT EXISTS entity_tags (
+    entity_id TEXT NOT NULL,
+    tag_id TEXT NOT NULL,
+    PRIMARY KEY (entity_id, tag_id),
+    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS relation_types (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    inverse_name TEXT,
+    directed INTEGER NOT NULL CHECK (directed IN (0, 1)),
+    color_token TEXT,
+    is_builtin INTEGER NOT NULL CHECK (is_builtin IN (0, 1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE (project_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS relation_types_project_idx
+    ON relation_types(project_id, is_builtin DESC, name, id);
+
+CREATE TABLE IF NOT EXISTS entity_relations (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    source_entity_id TEXT NOT NULL,
+    relation_type_id TEXT NOT NULL,
+    target_entity_id TEXT NOT NULL,
+    note TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+    FOREIGN KEY (relation_type_id) REFERENCES relation_types(id) ON DELETE RESTRICT,
+    FOREIGN KEY (target_entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+    CHECK (source_entity_id <> target_entity_id),
+    UNIQUE (project_id, source_entity_id, relation_type_id, target_entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS entity_relations_source_idx
+    ON entity_relations(project_id, source_entity_id, relation_type_id, target_entity_id);
+CREATE INDEX IF NOT EXISTS entity_relations_target_idx
+    ON entity_relations(project_id, target_entity_id, relation_type_id, source_entity_id);
+
+CREATE TABLE IF NOT EXISTS scene_entity_links (
+    scene_node_id TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('APPEARS', 'POV', 'MENTIONED', 'RELATED')),
+    note TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (scene_node_id, entity_id, role),
+    FOREIGN KEY (scene_node_id) REFERENCES tree_nodes(id) ON DELETE CASCADE,
+    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS scene_entity_links_entity_idx
+    ON scene_entity_links(entity_id, scene_node_id, role);
+
+CREATE TRIGGER IF NOT EXISTS entities_validate_document_insert
+BEFORE INSERT ON entities
+BEGIN
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM documents d
+        WHERE d.id = NEW.document_id AND d.project_id = NEW.project_id
+    ) THEN RAISE(ABORT, 'entity document must exist in the same project') END;
+    SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM tree_nodes n WHERE n.document_id = NEW.document_id
+    ) THEN RAISE(ABORT, 'entity document is already owned by a scene') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS entities_validate_document_update
+BEFORE UPDATE OF project_id, document_id ON entities
+BEGIN
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM documents d
+        WHERE d.id = NEW.document_id AND d.project_id = NEW.project_id
+    ) THEN RAISE(ABORT, 'entity document must exist in the same project') END;
+    SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM tree_nodes n WHERE n.document_id = NEW.document_id
+    ) THEN RAISE(ABORT, 'entity document is already owned by a scene') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS entity_tags_validate_project_insert
+BEFORE INSERT ON entity_tags
+BEGIN
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM entities e JOIN tags t ON t.id = NEW.tag_id
+        WHERE e.id = NEW.entity_id AND e.project_id = t.project_id
+    ) THEN RAISE(ABORT, 'entity and tag must belong to the same project') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS entity_relations_validate_insert
+BEFORE INSERT ON entity_relations
+BEGIN
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM entities s, entities t, relation_types rt
+        WHERE s.id = NEW.source_entity_id AND t.id = NEW.target_entity_id
+          AND rt.id = NEW.relation_type_id
+          AND s.project_id = NEW.project_id
+          AND t.project_id = NEW.project_id
+          AND rt.project_id = NEW.project_id
+    ) THEN RAISE(ABORT, 'relation members must belong to the same project') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS entity_relations_validate_update
+BEFORE UPDATE OF project_id, source_entity_id, relation_type_id, target_entity_id
+ON entity_relations
+BEGIN
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM entities s, entities t, relation_types rt
+        WHERE s.id = NEW.source_entity_id AND t.id = NEW.target_entity_id
+          AND rt.id = NEW.relation_type_id
+          AND s.project_id = NEW.project_id
+          AND t.project_id = NEW.project_id
+          AND rt.project_id = NEW.project_id
+    ) THEN RAISE(ABORT, 'relation members must belong to the same project') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS scene_entity_links_validate_insert
+BEFORE INSERT ON scene_entity_links
+BEGIN
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM tree_nodes n JOIN entities e
+          ON e.id = NEW.entity_id AND e.project_id = n.project_id
+        WHERE n.id = NEW.scene_node_id AND n.kind = 'SCENE'
+    ) THEN RAISE(ABORT, 'scene link requires a SCENE and entity in the same project') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS scene_entity_links_validate_update
+BEFORE UPDATE OF scene_node_id, entity_id ON scene_entity_links
+BEGIN
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM tree_nodes n JOIN entities e
+          ON e.id = NEW.entity_id AND e.project_id = n.project_id
+        WHERE n.id = NEW.scene_node_id AND n.kind = 'SCENE'
+    ) THEN RAISE(ABORT, 'scene link requires a SCENE and entity in the same project') END;
+END;
+"#;
+
 const ORDER_STEP: f64 = 1024.0;
 
 pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult> {
@@ -196,9 +389,7 @@ pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult
         .unwrap_or_else(|| params.title.clone());
     validate_non_empty("document_title", &document_title)?;
 
-    let created_by = params
-        .created_by
-        .unwrap_or_else(default_client_identifier);
+    let created_by = params.created_by.unwrap_or_else(default_client_identifier);
     validate_non_empty("created_by", &created_by)?;
     if let Some(author_name) = params.author_name.as_deref() {
         validate_non_empty("author_name", author_name)?;
@@ -211,11 +402,7 @@ pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult
         .editor_engine_commit
         .unwrap_or_else(|| UNINITIALIZED_EDITOR_COMMIT.to_owned());
     let editor_schema_version = params.editor_schema_version.unwrap_or(0);
-    validate_editor_metadata(
-        &editor_engine,
-        &editor_engine_commit,
-        editor_schema_version,
-    )?;
+    validate_editor_metadata(&editor_engine, &editor_engine_commit, editor_schema_version)?;
 
     let temporary_path = unique_sibling_path(&params.file_path, "create.tmp");
     let mut temporary_guard = TemporaryPathGuard::new(temporary_path.clone());
@@ -236,8 +423,7 @@ pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult
         migrate(&mut connection)?;
 
         let now = database_timestamp(&connection)?;
-        let transaction =
-            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute(
             "INSERT INTO app_meta (
                 singleton, format_name, format_version, schema_version,
@@ -260,6 +446,7 @@ pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult
              ) VALUES (?1, ?2, ?3, ?4, ?4)",
             params![project_id, params.title, params.author_name, now],
         )?;
+        seed_builtin_relation_types(&transaction, &project_id, &now)?;
         transaction.execute(
             "INSERT INTO documents (
                 id, project_id, title, editor_engine, editor_engine_commit,
@@ -282,13 +469,7 @@ pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult
                 id, project_id, parent_id, kind, title, order_key,
                 document_id, created_at, updated_at
              ) VALUES (?1, ?2, NULL, 'WORK', ?3, ?4, NULL, ?5, ?5)",
-            params![
-                work_node_id,
-                project_id,
-                params.title,
-                ORDER_STEP,
-                now
-            ],
+            params![work_node_id, project_id, params.title, ORDER_STEP, now],
         )?;
         transaction.execute(
             "INSERT INTO tree_nodes (
@@ -360,7 +541,10 @@ pub fn save_document(params: SaveDocumentParams) -> Result<SaveDocumentResult> {
         &params.document.editor_engine_commit,
         params.document.editor_schema_version,
     )?;
-    if params.expected_revision.is_some_and(|revision| revision < 0) {
+    if params
+        .expected_revision
+        .is_some_and(|revision| revision < 0)
+    {
         return Err(CoreError::InvalidInput(
             "expected_revision must be non-negative".to_owned(),
         ));
@@ -373,9 +557,7 @@ pub fn save_document(params: SaveDocumentParams) -> Result<SaveDocumentResult> {
                 "document.snapshot_base64 is not valid standard base64".to_owned(),
             )
         })?;
-    let saved_by = params
-        .saved_by
-        .unwrap_or_else(default_client_identifier);
+    let saved_by = params.saved_by.unwrap_or_else(default_client_identifier);
     validate_non_empty("saved_by", &saved_by)?;
 
     let mut connection = open_existing(&params.file_path)?;
@@ -400,13 +582,10 @@ pub fn save_document(params: SaveDocumentParams) -> Result<SaveDocumentResult> {
     // VACUUM INTO produces a transactionally consistent copy without copying a
     // live journal file. It is completed and fsynced before the write starts.
     let backup_file_path = create_consistent_backup(&connection, &params.file_path)?;
-    let expected_revision = params
-        .expected_revision
-        .unwrap_or(metadata_before.revision);
+    let expected_revision = params.expected_revision.unwrap_or(metadata_before.revision);
 
     let now = database_timestamp(&connection)?;
-    let transaction =
-        connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let current_revision: i64 = transaction.query_row(
         "SELECT revision FROM app_meta WHERE singleton = 1",
         [],
@@ -487,9 +666,7 @@ pub fn load_document(params: LoadDocumentParams) -> Result<DocumentRecord> {
     Ok(result)
 }
 
-pub fn recover_plain_text(
-    params: RecoverPlainTextParams,
-) -> Result<RecoverPlainTextResult> {
+pub fn recover_plain_text(params: RecoverPlainTextParams) -> Result<RecoverPlainTextResult> {
     let connection = open_existing(&params.file_path)?;
     let document_id = resolve_document_id(&connection, params.document_id.as_deref())?;
     let (id, title, plain_text_recovery) = connection
@@ -501,9 +678,7 @@ pub fn recover_plain_text(
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()?
-        .ok_or_else(|| {
-            CoreError::NotFound(format!("document id {document_id}"))
-        })?;
+        .ok_or_else(|| CoreError::NotFound(format!("document id {document_id}")))?;
     let project_revision: i64 = connection.query_row(
         "SELECT revision FROM app_meta WHERE singleton = 1",
         [],
@@ -580,8 +755,7 @@ fn configure_connection(connection: &Connection) -> Result<()> {
 }
 
 fn migrate(connection: &mut Connection) -> Result<()> {
-    let mut current: i64 =
-        connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let mut current: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if current > SCHEMA_VERSION {
         return Err(CoreError::UnsupportedSchema {
             found: current,
@@ -590,8 +764,7 @@ fn migrate(connection: &mut Connection) -> Result<()> {
     }
 
     if current < 1 {
-        let transaction =
-            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute_batch(MIGRATION_V1)?;
         let applied_at = database_timestamp(&transaction)?;
         transaction.execute(
@@ -609,8 +782,7 @@ fn migrate(connection: &mut Connection) -> Result<()> {
     }
 
     if current < 2 {
-        let transaction =
-            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute_batch(MIGRATION_V2)?;
         backfill_phase_1a_hierarchy(&transaction)?;
         let applied_at = database_timestamp(&transaction)?;
@@ -635,8 +807,7 @@ fn migrate(connection: &mut Connection) -> Result<()> {
     }
 
     if current < 3 {
-        let transaction =
-            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         transaction.execute_batch(MIGRATION_V3)?;
         transaction.execute(
             "INSERT OR REPLACE INTO search_documents
@@ -663,8 +834,74 @@ fn migrate(connection: &mut Connection) -> Result<()> {
         )?;
         transaction.pragma_update(None, "user_version", 3_i64)?;
         transaction.commit()?;
+        current = 3;
     }
 
+    if current < 4 {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute_batch(MIGRATION_V4)?;
+        let applied_at = database_timestamp(&transaction)?;
+        let project_ids = {
+            let mut statement = transaction.prepare("SELECT id FROM projects ORDER BY id")?;
+            let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+            let mut project_ids = Vec::new();
+            for row in rows {
+                project_ids.push(row?);
+            }
+            project_ids
+        };
+        for project_id in project_ids {
+            seed_builtin_relation_types(&transaction, &project_id, &applied_at)?;
+        }
+        transaction.execute(
+            "INSERT OR IGNORE INTO schema_migrations
+                (version, applied_at, description)
+             VALUES (4, ?1, ?2)",
+            params![
+                applied_at,
+                "Phase 1C Story Bible entities, aliases, tags, relations, and scene links"
+            ],
+        )?;
+        transaction.execute(
+            "UPDATE app_meta
+             SET format_version = 1, schema_version = 4
+             WHERE singleton = 1",
+            [],
+        )?;
+        transaction.pragma_update(None, "user_version", 4_i64)?;
+        transaction.commit()?;
+    }
+
+    Ok(())
+}
+
+pub(crate) fn seed_builtin_relation_types(
+    transaction: &Transaction<'_>,
+    project_id: &str,
+    now: &str,
+) -> Result<()> {
+    const BUILTINS: [(&str, &str, &str, bool); 10] = [
+        ("builtin-related", "관련됨", "관련됨", false),
+        ("builtin-alliance", "동맹", "동맹", false),
+        ("builtin-hostility", "적대", "적대", false),
+        ("builtin-family", "가족", "가족", false),
+        ("builtin-membership", "소속", "구성원을 가짐", true),
+        ("builtin-location", "위치함", "포함함", true),
+        ("builtin-ownership", "소유함", "소유됨", true),
+        ("builtin-causality", "원인", "결과", true),
+        ("builtin-foreshadows", "암시함", "암시됨", true),
+        ("builtin-resolves", "회수함", "회수됨", true),
+    ];
+    for (suffix, name, inverse_name, directed) in BUILTINS {
+        let id = format!("{project_id}:{suffix}");
+        transaction.execute(
+            "INSERT OR IGNORE INTO relation_types (
+                id, project_id, name, inverse_name, directed, color_token,
+                is_builtin, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 1, ?6, ?6)",
+            params![id, project_id, name, inverse_name, directed, now],
+        )?;
+    }
     Ok(())
 }
 
@@ -795,19 +1032,15 @@ fn backfill_phase_1a_hierarchy(transaction: &Transaction<'_>) -> Result<()> {
 }
 
 fn application_id(connection: &Connection) -> Result<i64> {
-    Ok(connection.pragma_query_value(
-        None,
-        "application_id",
-        |row| row.get(0),
-    )?)
+    Ok(connection.pragma_query_value(None, "application_id", |row| row.get(0))?)
 }
 
 pub(crate) fn database_timestamp(connection: &Connection) -> Result<String> {
-    Ok(connection.query_row(
-        "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
-        [],
-        |row| row.get(0),
-    )?)
+    Ok(
+        connection.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", [], |row| {
+            row.get(0)
+        })?,
+    )
 }
 
 pub(crate) fn load_app_meta(connection: &Connection) -> Result<AppMeta> {
@@ -836,9 +1069,7 @@ pub(crate) fn load_app_meta(connection: &Connection) -> Result<AppMeta> {
             },
         )
         .optional()?
-        .ok_or_else(|| {
-            CoreError::Integrity("app_meta singleton row is missing".to_owned())
-        })
+        .ok_or_else(|| CoreError::Integrity("app_meta singleton row is missing".to_owned()))
 }
 
 fn load_document_summaries(connection: &Connection) -> Result<Vec<DocumentSummary>> {
@@ -874,9 +1105,7 @@ pub(crate) fn load_document_summary(
             document_summary_from_row,
         )
         .optional()?
-        .ok_or_else(|| {
-            CoreError::NotFound(format!("document id {document_id}"))
-        })
+        .ok_or_else(|| CoreError::NotFound(format!("document id {document_id}")))
 }
 
 fn document_summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentSummary> {
@@ -925,9 +1154,7 @@ pub(crate) fn load_document_record(
             },
         )
         .optional()?
-        .ok_or_else(|| {
-            CoreError::NotFound(format!("document id {document_id}"))
-        })?;
+        .ok_or_else(|| CoreError::NotFound(format!("document id {document_id}")))?;
 
     Ok(DocumentRecord {
         id: stored.0,
@@ -963,10 +1190,7 @@ fn load_migrations(connection: &Connection) -> Result<Vec<MigrationRecord>> {
     Ok(migrations)
 }
 
-fn resolve_document_id(
-    connection: &Connection,
-    requested: Option<&str>,
-) -> Result<String> {
+fn resolve_document_id(connection: &Connection, requested: Option<&str>) -> Result<String> {
     if let Some(document_id) = requested {
         validate_non_empty("document_id", document_id)?;
         return Ok(document_id.to_owned());
@@ -1010,10 +1234,7 @@ fn validate_metadata(metadata: &AppMeta) -> Result<()> {
     Ok(())
 }
 
-fn validate_phase_1a_structure(
-    connection: &Connection,
-    metadata: &AppMeta,
-) -> Result<()> {
+fn validate_phase_1a_structure(connection: &Connection, metadata: &AppMeta) -> Result<()> {
     let project_count: i64 = connection.query_row(
         "SELECT count(*) FROM projects WHERE id = ?1",
         [&metadata.project_id],
@@ -1068,8 +1289,7 @@ fn validate_phase_1a_structure(
 }
 
 fn quick_check(connection: &Connection) -> Result<String> {
-    let result: String =
-        connection.query_row("PRAGMA quick_check(1)", [], |row| row.get(0))?;
+    let result: String = connection.query_row("PRAGMA quick_check(1)", [], |row| row.get(0))?;
     if result != "ok" {
         return Err(CoreError::Integrity(result));
     }
@@ -1085,9 +1305,7 @@ pub(crate) fn create_consistent_backup(
     let temporary_path = unique_sibling_path(project_path, "backup.tmp");
     let mut temporary_guard = TemporaryPathGuard::new(temporary_path.clone());
     let temporary_text = temporary_path.to_str().ok_or_else(|| {
-        CoreError::InvalidInput(
-            "backup path cannot be represented as Unicode".to_owned(),
-        )
+        CoreError::InvalidInput("backup path cannot be represented as Unicode".to_owned())
     })?;
 
     connection.execute("VACUUM main INTO ?1", [temporary_text])?;
@@ -1184,10 +1402,7 @@ pub(crate) fn validate_editor_metadata(
     Ok(())
 }
 
-pub(crate) fn non_empty_or_generated(
-    field: &str,
-    value: Option<String>,
-) -> Result<String> {
+pub(crate) fn non_empty_or_generated(field: &str, value: Option<String>) -> Result<String> {
     let value = value.unwrap_or_else(|| Uuid::new_v4().to_string());
     validate_non_empty(field, &value)?;
     Ok(value)
