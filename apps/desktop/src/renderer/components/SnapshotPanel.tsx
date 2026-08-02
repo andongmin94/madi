@@ -84,6 +84,26 @@ function SnapshotDiffDetails({
         <dt>문자 수 변화</dt>
         <dd>{signedNumber(summary.characterCountDelta)}자</dd>
       </div>
+      <div>
+        <dt>설정 변화</dt>
+        <dd>
+          +{summary.addedEntities} · −{summary.deletedEntities} · 변경 {summary.changedEntities}
+        </dd>
+      </div>
+      <div>
+        <dt>관계 변화</dt>
+        <dd>
+          +{summary.addedRelations} · −{summary.deletedRelations} · 변경 {summary.changedRelations}
+        </dd>
+      </div>
+      <div>
+        <dt>장면 연결</dt>
+        <dd>{summary.changedSceneLinks}개 변화</dd>
+      </div>
+      <div>
+        <dt>설정 노트</dt>
+        <dd>{summary.changedEntityNotes}개 설정 변화</dd>
+      </div>
     </dl>
   );
 }
@@ -254,6 +274,11 @@ export function SnapshotPanel({
                       <span>{KIND_LABELS[snapshot.kind]}</span>
                     </div>
                     {snapshot.note && <p>{snapshot.note}</p>}
+                    {snapshot.payloadVersion === 1 && (
+                      <p className="snapshot-legacy-warning">
+                        구버전 snapshot · 복원하면 설정(Story Bible)은 빈 상태가 됩니다.
+                      </p>
+                    )}
                     <dl className="snapshot-metadata">
                       <div>
                         <dt>생성</dt>
@@ -306,10 +331,16 @@ export function SnapshotPanel({
                       <button
                         type="button"
                         disabled={busy}
-                        aria-label={`${snapshot.name} 복원`}
+                        aria-label={
+                          snapshot.kind === "AUTO_BEFORE_REPLACE"
+                            ? `${snapshot.name} 전체 치환 전 상태로 되돌리기`
+                            : `${snapshot.name} 복원`
+                        }
                         onClick={() => requestRestore(snapshot)}
                       >
-                        복원
+                        {snapshot.kind === "AUTO_BEFORE_REPLACE"
+                          ? "전체 치환 전 상태로 되돌리기"
+                          : "복원"}
                       </button>
                     </div>
                   </>
@@ -351,6 +382,13 @@ export function SnapshotPanel({
             복원과 안전 snapshot 생성은 하나의 트랜잭션으로 처리되어, 실패하면
             프로젝트 전체가 복원 전 상태로 유지됩니다.
           </p>
+          {restoreCandidate.payloadVersion === 1 && (
+            <p className="snapshot-legacy-warning" role="note">
+              이 v1 snapshot에는 설정 데이터가 없습니다. 복원 후 Story Bible의
+              설정·관계·장면 연결은 빈 상태가 됩니다. 현재 전체 상태는 복원 전에
+              자동 안전 snapshot으로 보관됩니다.
+            </p>
+          )}
           <div>
             <button
               type="button"

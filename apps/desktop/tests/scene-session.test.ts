@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
+  LoadedEntityNote,
   LoadedSceneDocument,
   MadiDesktopApi,
   ProjectSession,
@@ -13,6 +14,7 @@ import type {
   MadiEditorAdapter
 } from "../src/renderer/editor/MadiEditorAdapter";
 import { DocumentSessionController } from "../src/renderer/workspace/DocumentSessionController";
+import { phase1cApiStubs } from "./phase1c-api-stubs";
 
 class SceneEditor implements MadiEditorAdapter {
   public readonly opened: Array<Uint8Array | undefined> = [];
@@ -76,6 +78,26 @@ class SceneEditor implements MadiEditorAdapter {
   }
 }
 
+function loadedEntityNote(
+  entityId: string,
+  revision: number
+): LoadedEntityNote {
+  return {
+    ownerKind: "ENTITY",
+    ownerId: entityId,
+    id: `entity-document-${entityId}`,
+    projectId: "project-1",
+    title: `설정 ${entityId}`,
+    editorEngine: "typie",
+    editorEngineCommit: "fixed-commit",
+    editorSchemaVersion: 1,
+    snapshot: Uint8Array.from([revision, 7]),
+    plainTextRecovery: `${entityId} 상세 노트`,
+    revision,
+    updatedAt: "2026-08-02T00:02:00.000Z"
+  };
+}
+
 const session: ProjectSession = {
   sessionId: "d98be040-afbb-4510-b875-a8cbbe7b10a5",
   fileName: "드래곤을죽이다.madi",
@@ -118,6 +140,7 @@ function loadedScene(sceneId: string, revision: number): LoadedSceneDocument {
 function createApi(overrides: Partial<MadiDesktopApi> = {}): MadiDesktopApi {
   const unusedTree = vi.fn(async () => emptyTree);
   const api: MadiDesktopApi = {
+    ...phase1cApiStubs(),
     createProject: vi.fn(async () => session),
     openProject: vi.fn(async () => session),
     saveDocument: vi.fn(async () => ({
@@ -194,6 +217,164 @@ function deferred<T>() {
 }
 
 describe("Phase 1A scene session safety", () => {
+  it("uses one owner-aware editor session across scene and entity notes", async () => {
+    const calls: string[] = [];
+    const api = createApi({
+      saveSceneDocument: vi.fn(async (request) => {
+        calls.push(`save-scene:${request.sceneId}`);
+        return {
+          sceneId: request.sceneId,
+          documentId: request.documentId,
+          revision: 2,
+          updatedAt: "2026-08-02T00:01:00.000Z",
+          generation: request.generation,
+          saveSequence: request.saveSequence
+        };
+      }),
+      loadEntityNote: vi.fn(async ({ ownerId }) => {
+        calls.push(`load-entity:${ownerId}`);
+        return loadedEntityNote(ownerId, 2);
+      }),
+      saveEntityNote: vi.fn(async (request) => {
+        calls.push(`save-entity:${request.ownerId}`);
+        return {
+          ownerKind: "ENTITY" as const,
+          ownerId: request.ownerId,
+          documentId: request.documentId,
+          revision: 3,
+          updatedAt: "2026-08-02T00:03:00.000Z",
+          generation: request.generation,
+          saveSequence: request.saveSequence
+        };
+      }),
+      loadSceneDocument: vi.fn(async ({ sceneId }) => {
+        calls.push(`load-scene:${sceneId}`);
+        return loadedScene(sceneId, 3);
+      })
+    });
+    const editor = new SceneEditor();
+    const controller = new DocumentSessionController(
+      api,
+      editor,
+      "fixed-commit",
+      1
+    );
+
+    await controller.createProject();
+    expect(await controller.selectEntityNote("entity-a")).toBe(true);
+    expect(calls.slice(0, 2)).toEqual([
+      "save-scene:scene-a",
+      "load-entity:entity-a"
+    ]);
+    expect(controller.getState()).toMatchObject({
+      activeOwnerKind: "ENTITY",
+      activeOwnerId: "entity-a",
+      activeEntityId: "entity-a",
+      activeSceneId: null
+    });
+
+    editor.plainText = "수정한 설정 노트";
+    editor.emitContentChange();
+    expect(await controller.selectEntityNote("entity-b")).toBe(true);
+    expect(calls.slice(-2)).toEqual([
+      "save-entity:entity-a",
+      "load-entity:entity-b"
+    ]);
+    expect(controller.getState()).toMatchObject({
+      activeOwnerKind: "ENTITY",
+      activeOwnerId: "entity-b"
+    });
+
+    editor.plainText = "수정한 두 번째 설정 노트";
+    editor.emitContentChange();
+    expect(await controller.selectScene("scene-b")).toBe(true);
+    expect(calls.slice(-2)).toEqual([
+      "save-entity:entity-b",
+      "load-scene:scene-b"
+    ]);
+    expect(api.saveEntityNote).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        ownerKind: "ENTITY" as const,
+        ownerId: "entity-a",
+        documentId: "entity-document-entity-a"
+      })
+    );
+    expect(controller.getState()).toMatchObject({
+      activeOwnerKind: "SCENE",
+      activeOwnerId: "scene-b",
+      activeEntityId: null,
+      activeSceneId: "scene-b"
+    });
+  });
+
+  it("rejects a stale entity save response without switching or overwriting owners", async () => {
+    const api = createApi({
+      loadEntityNote: vi.fn(async ({ ownerId }) => loadedEntityNote(ownerId, 2)),
+      saveEntityNote: vi.fn(async (request) => ({
+        ownerKind: "ENTITY" as const,
+        ownerId: "entity-stale",
+        documentId: request.documentId,
+        revision: 3,
+        updatedAt: "2026-08-02T00:03:00.000Z",
+        generation: request.generation,
+        saveSequence: request.saveSequence
+      }))
+    });
+    const editor = new SceneEditor();
+    const controller = new DocumentSessionController(
+      api,
+      editor,
+      "fixed-commit",
+      1
+    );
+
+    await controller.createProject();
+    expect(await controller.selectEntityNote("entity-a")).toBe(true);
+    editor.plainText = "저장 실패해도 유지할 노트";
+    editor.emitContentChange();
+
+    expect(await controller.save()).toBe(false);
+    expect(controller.getState()).toMatchObject({
+      activeOwnerKind: "ENTITY",
+      activeOwnerId: "entity-a",
+      savePhase: "error"
+    });
+    expect(controller.getState().errorMessage).toContain("owner");
+    expect(api.saveSceneDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it("flushes a dirty entity note before close", async () => {
+    const api = createApi({
+      loadEntityNote: vi.fn(async ({ ownerId }) => loadedEntityNote(ownerId, 2)),
+      saveEntityNote: vi.fn(async (request) => ({
+        ownerKind: "ENTITY" as const,
+        ownerId: request.ownerId,
+        documentId: request.documentId,
+        revision: 3,
+        updatedAt: "2026-08-02T00:03:00.000Z",
+        generation: request.generation,
+        saveSequence: request.saveSequence
+      }))
+    });
+    const editor = new SceneEditor();
+    const controller = new DocumentSessionController(
+      api,
+      editor,
+      "fixed-commit",
+      1
+    );
+
+    await controller.createProject();
+    await controller.selectEntityNote("entity-a");
+    editor.plainText = "종료 전 저장할 설정 노트";
+    editor.emitContentChange();
+
+    expect(await controller.prepareForClose()).toBe(true);
+    expect(api.saveEntityNote).toHaveBeenCalledTimes(1);
+    expect(controller.getState().savePhase).toBe("saved");
+  });
+
   it("saves scene A before loading scene B", async () => {
     const calls: string[] = [];
     const api = createApi({

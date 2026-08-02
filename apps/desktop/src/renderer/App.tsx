@@ -9,13 +9,23 @@ import {
 import type {
   DescendantScenePreview,
   DiffNamedSnapshotResult,
+  EntityAliasRecord,
+  EntityKind,
+  EntityMentionCandidate,
+  EntityRecord,
+  EntityRelationRecord,
+  EntityStatus,
   ListDescendantScenesResult,
   MadiDesktopApi,
   NamedSnapshotSummary,
   ProjectTree,
+  RelationTypeRecord,
+  SceneEntityLinkRecord,
+  SceneEntityRole,
   SearchHit,
   SearchProjectRequest,
   SearchProjectResult,
+  TagRecord,
   TextStatisticsResult
 } from "../shared/contracts";
 import type {
@@ -53,11 +63,26 @@ import {
   orderedDescendantScenes,
   splitHighlightSegments
 } from "./workspace/scrivenings";
+import {
+  StoryBibleWorkspace,
+  type StoryEntity,
+  type StoryEntityDeleteImpact,
+  type StoryEntityListFilter,
+  type StoryEntityPatch,
+  type StoryMentionCandidate,
+  type StoryRelationInput,
+  type StoryRelationTypeInput,
+  type StorySceneLink
+} from "./components/storyBible/StoryBibleWorkspace";
+import { SceneEntityInspector } from "./components/storyBible/SceneEntityInspector";
 
 const INITIAL_WORKSPACE: WorkspaceState = {
   savePhase: "no-project",
   session: null,
   activeSceneId: null,
+  activeEntityId: null,
+  activeOwnerKind: null,
+  activeOwnerId: null,
   title: "새 작품",
   revision: 0,
   snapshotBytes: 0,
@@ -78,7 +103,8 @@ export interface AppProps {
 }
 
 type EnginePhase = "loading" | "ready" | "error";
-type Panel = "search" | "snapshots" | "development" | "ime";
+type Panel = "search" | "snapshots" | "scene-entities" | "development" | "ime";
+type AppMode = "MANUSCRIPT" | "STORY_BIBLE";
 const AUTOSAVE_DELAY_MS = 550;
 const DEFAULT_BINDER_WIDTH = 300;
 const WORKSPACE_PAGE_LIMIT = 200;
@@ -202,6 +228,68 @@ async function searchAllProject(
       throw new Error("검색 결과 페이지 정보가 올바르지 않습니다.");
     }
     offset = nextOffset;
+  }
+}
+
+async function searchAllEntities(
+  api: MadiDesktopApi,
+  sessionId: string,
+  query: string
+): Promise<readonly string[]> {
+  const entityIds: string[] = [];
+  const seen = new Set<string>();
+  let offset = 0;
+  for (;;) {
+    const page = await api.searchEntities({
+      sessionId,
+      query,
+      offset,
+      limit: WORKSPACE_PAGE_LIMIT
+    });
+    for (const hit of page.hits) {
+      if (!seen.has(hit.entity.id)) {
+        seen.add(hit.entity.id);
+        entityIds.push(hit.entity.id);
+      }
+    }
+    if (!page.hasMore) {
+      return entityIds;
+    }
+    if (page.hits.length === 0) {
+      throw new Error("설정 검색 페이지 정보가 올바르지 않습니다.");
+    }
+    offset += page.hits.length;
+  }
+}
+
+async function discoverAllEntityMentions(
+  api: MadiDesktopApi,
+  sessionId: string,
+  entityId: string
+): Promise<readonly EntityMentionCandidate[]> {
+  const candidates: EntityMentionCandidate[] = [];
+  const seenScenes = new Set<string>();
+  let offset = 0;
+  for (;;) {
+    const page = await api.discoverEntityMentions({
+      sessionId,
+      entityId,
+      offset,
+      limit: WORKSPACE_PAGE_LIMIT
+    });
+    for (const candidate of page.candidates) {
+      if (!seenScenes.has(candidate.sceneNodeId)) {
+        seenScenes.add(candidate.sceneNodeId);
+        candidates.push(candidate);
+      }
+    }
+    if (!page.hasMore) {
+      return candidates;
+    }
+    if (page.candidates.length === 0) {
+      throw new Error("본문 후보 페이지 정보가 올바르지 않습니다.");
+    }
+    offset += page.candidates.length;
   }
 }
 
@@ -363,6 +451,30 @@ export function App({
   const [treeError, setTreeError] = useState("");
   const [uiStateReady, setUiStateReady] = useState(false);
   const [panel, setPanel] = useState<Panel>("development");
+  const [appMode, setAppMode] = useState<AppMode>("MANUSCRIPT");
+  const [entities, setEntities] = useState<readonly EntityRecord[]>([]);
+  const [entityAliases, setEntityAliases] = useState<
+    ReadonlyMap<string, readonly EntityAliasRecord[]>
+  >(() => new Map());
+  const [entityTags, setEntityTags] = useState<
+    ReadonlyMap<string, readonly TagRecord[]>
+  >(() => new Map());
+  const [tags, setTags] = useState<readonly TagRecord[]>([]);
+  const [relationTypes, setRelationTypes] = useState<
+    readonly RelationTypeRecord[]
+  >([]);
+  const [entityRelations, setEntityRelations] = useState<
+    readonly EntityRelationRecord[]
+  >([]);
+  const [sceneEntityLinks, setSceneEntityLinks] = useState<
+    readonly SceneEntityLinkRecord[]
+  >([]);
+  const [entityMentions, setEntityMentions] = useState<
+    readonly EntityMentionCandidate[]
+  >([]);
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [storyBibleBusy, setStoryBibleBusy] = useState(false);
+  const [storyBibleError, setStoryBibleError] = useState("");
   const [scenePreviews, setScenePreviews] = useState<
     readonly DescendantScenePreview[]
   >([]);
@@ -390,6 +502,9 @@ export function App({
   const [compositionEventActive, setCompositionEventActive] =
     useState<boolean | null>(null);
   const closeAttemptRef = useRef<Promise<void> | null>(null);
+  const entityMountRef = useRef<HTMLDivElement>(null);
+  const lastManuscriptSceneIdRef = useRef<string | null>(null);
+  const storyReloadTokenRef = useRef(0);
   const projectStateSessionRef = useRef<string | null>(null);
   const compositionActiveRef = useRef(false);
   const isComposing =
@@ -446,6 +561,90 @@ export function App({
       : selectedNodeId;
   const currentSceneStatistics = textStatistics?.scenes.find(
     (scene) => scene.sceneId === workspace.activeSceneId
+  );
+  const storyEntities = useMemo<readonly StoryEntity[]>(
+    () =>
+      entities.map((entity) => ({
+        id: entity.id,
+        projectId: entity.projectId,
+        kind: entity.kind,
+        name: entity.name,
+        summary: entity.summary,
+        documentId: entity.documentId,
+        status: entity.status,
+        colorToken: entity.colorToken,
+        iconKey: entity.iconKey,
+        attributesJson: JSON.stringify(entity.attributes),
+        createdAt: entity.createdAt,
+        updatedAt: entity.updatedAt,
+        aliases: entityAliases.get(entity.id) ?? [],
+        tags: entityTags.get(entity.id) ?? []
+      })),
+    [entities, entityAliases, entityTags]
+  );
+  const storySceneLinks = useMemo<readonly StorySceneLink[]>(
+    () =>
+      sceneEntityLinks.map((link) => ({
+        ...link,
+        sceneTitle:
+          projectTree?.nodes.find((node) => node.id === link.sceneNodeId)
+            ?.title ?? "삭제된 장면"
+      })),
+    [projectTree, sceneEntityLinks]
+  );
+  const storyMentions = useMemo<readonly StoryMentionCandidate[]>(
+    () =>
+      entityMentions.map((candidate) => ({
+        occurrenceId: candidate.occurrenceId,
+        sceneId: candidate.sceneNodeId,
+        sceneTitle: candidate.sceneTitle,
+        documentId: candidate.documentId,
+        matchedTerm: candidate.matchedAlias,
+        start: candidate.start,
+        end: candidate.end,
+        contextBefore: candidate.contextBefore,
+        matchedText: candidate.matchedText,
+        contextAfter: candidate.contextAfter,
+        alreadyLinked: candidate.alreadyLinked
+      })),
+    [entityMentions]
+  );
+
+  const reloadStoryBible = useCallback(
+    async (sessionId: string): Promise<void> => {
+      const requestToken = ++storyReloadTokenRef.current;
+      const [entityResult, tagResult, typeResult, relationResult, linkResult] =
+        await Promise.all([
+          api.listEntities({ sessionId, sort: "NAME_ASC" }),
+          api.listTags({ sessionId }),
+          api.listRelationTypes({ sessionId }),
+          api.listEntityRelations({ sessionId }),
+          api.listSceneEntityLinks({ sessionId })
+        ]);
+      if (requestToken !== storyReloadTokenRef.current) {
+        return;
+      }
+      setEntities(entityResult.entities);
+      setTags(tagResult.tags);
+      setRelationTypes(typeResult.relationTypes);
+      setEntityRelations(relationResult.relations);
+      setSceneEntityLinks(linkResult.links);
+      setSelectedEntityId((current) =>
+        current && entityResult.entities.some((entity) => entity.id === current)
+          ? current
+          : (entityResult.entities[0]?.id ?? null)
+      );
+      controller?.adoptProjectRevision(
+        Math.max(
+          entityResult.revision,
+          tagResult.revision,
+          typeResult.revision,
+          relationResult.revision,
+          linkResult.revision
+        )
+      );
+    },
+    [api, controller]
   );
 
   useEffect(() => {
@@ -521,6 +720,17 @@ export function App({
       setSnapshotDiff(null);
       setSnapshotError("");
       setTextStatistics(null);
+      setAppMode("MANUSCRIPT");
+      setEntities([]);
+      setEntityAliases(new Map());
+      setEntityTags(new Map());
+      setTags([]);
+      setRelationTypes([]);
+      setEntityRelations([]);
+      setSceneEntityLinks([]);
+      setEntityMentions([]);
+      setSelectedEntityId(null);
+      setStoryBibleError("");
       return;
     }
     if (projectStateSessionRef.current !== session.sessionId) {
@@ -535,6 +745,17 @@ export function App({
       setSnapshotDiff(null);
       setSnapshotError("");
       setTextStatistics(null);
+      setAppMode("MANUSCRIPT");
+      setEntities([]);
+      setEntityAliases(new Map());
+      setEntityTags(new Map());
+      setTags([]);
+      setRelationTypes([]);
+      setEntityRelations([]);
+      setSceneEntityLinks([]);
+      setEntityMentions([]);
+      setSelectedEntityId(null);
+      setStoryBibleError("");
     }
     let cancelled = false;
     setUiStateReady(false);
@@ -624,6 +845,88 @@ export function App({
   }, [api, controller, workspace.session?.sessionId]);
 
   useEffect(() => {
+    const sessionId = workspace.session?.sessionId;
+    if (!sessionId) {
+      return;
+    }
+    void reloadStoryBible(sessionId).catch((error: unknown) => {
+      if (projectStateSessionRef.current === sessionId) {
+        setStoryBibleError(
+          publicError(error, "설정 데이터를 불러오지 못했습니다.")
+        );
+      }
+    });
+  }, [reloadStoryBible, workspace.session?.sessionId]);
+
+  useEffect(() => {
+    const sessionId = workspace.session?.sessionId;
+    const entityId = selectedEntityId;
+    if (!sessionId || !entityId) {
+      setEntityMentions([]);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all([
+      api.listEntityAliases({ sessionId, entityId }),
+      api.listEntityTags({ sessionId, entityId }),
+      discoverAllEntityMentions(api, sessionId, entityId)
+    ])
+      .then(([aliasResult, tagResult, mentions]) => {
+        if (cancelled) {
+          return;
+        }
+        setEntityAliases((current) => {
+          const next = new Map(current);
+          next.set(entityId, aliasResult.aliases);
+          return next;
+        });
+        setEntityTags((current) => {
+          const next = new Map(current);
+          next.set(entityId, tagResult.tags);
+          return next;
+        });
+        setEntityMentions(mentions);
+        controller?.adoptProjectRevision(
+          Math.max(aliasResult.revision, tagResult.revision)
+        );
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setStoryBibleError(
+            publicError(error, "선택한 설정의 상세 연결을 불러오지 못했습니다.")
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, controller, selectedEntityId, workspace.session?.sessionId]);
+
+  useEffect(() => {
+    if (workspace.activeSceneId) {
+      lastManuscriptSceneIdRef.current = workspace.activeSceneId;
+    }
+  }, [workspace.activeSceneId]);
+
+  useEffect(() => {
+    if (
+      appMode !== "STORY_BIBLE" ||
+      !controller ||
+      !entityMountRef.current ||
+      !workspace.activeEntityId
+    ) {
+      return;
+    }
+    try {
+      controller.relocateEditor(entityMountRef.current);
+    } catch (error) {
+      setStoryBibleError(
+        publicError(error, "설정 노트 편집기 이동에 실패했습니다.")
+      );
+    }
+  }, [appMode, controller, selectedEntityId, workspace.activeEntityId]);
+
+  useEffect(() => {
     const session = workspace.session;
     if (!session || !selectedScriveningsNode) {
       setScenePreviews([]);
@@ -664,7 +967,12 @@ export function App({
   ]);
 
   useEffect(() => {
-    if (!controller || !selectedScene || !mountRef.current) {
+    if (
+      appMode !== "MANUSCRIPT" ||
+      !controller ||
+      !selectedScene ||
+      !mountRef.current
+    ) {
       return;
     }
     try {
@@ -672,7 +980,7 @@ export function App({
     } catch (error) {
       setTreeError(publicError(error, "단일 장면 편집기 이동 실패"));
     }
-  }, [controller, selectedScene?.id]);
+  }, [appMode, controller, selectedScene?.id]);
 
   useEffect(() => {
     if (
@@ -1532,11 +1840,13 @@ export function App({
         if (mountRef.current) {
           controller.relocateEditor(mountRef.current);
         }
-        const [tree, restoredUi] = await Promise.all([
+        const activeOwnerBeforeRestore = controller.getState();
+        const [tree, restoredUi, restoredEntities] = await Promise.all([
           api.getProjectTree({ sessionId: session.sessionId }),
-          api.loadUiState({ sessionId: session.sessionId })
+          api.loadUiState({ sessionId: session.sessionId }),
+          api.listEntities({ sessionId: session.sessionId, sort: "NAME_ASC" })
         ]);
-        const activeBeforeRestore = controller.getState().activeSceneId;
+        const activeBeforeRestore = activeOwnerBeforeRestore.activeSceneId;
         const restoredSelection = restoredUi.state?.selectedNodeId
           ? tree.nodes.find(
               (node) => node.id === restoredUi.state?.selectedNodeId
@@ -1548,11 +1858,28 @@ export function App({
             (node) =>
               node.kind === "SCENE" && node.id === activeBeforeRestore
           ) ?? tree.nodes.find((node) => node.kind === "SCENE") ?? null;
-        if (sceneToLoad) {
+        const entityToLoad =
+          appMode === "STORY_BIBLE"
+            ? restoredEntities.entities.find(
+                (entity) => entity.id === activeOwnerBeforeRestore.activeEntityId
+              ) ?? restoredEntities.entities[0] ?? null
+            : null;
+        if (entityToLoad) {
+          await controller.reloadEntityFromStorage(
+            entityToLoad.id,
+            result.revision
+          );
+          if (entityMountRef.current) {
+            controller.relocateEditor(entityMountRef.current);
+          }
+        } else if (sceneToLoad) {
           await controller.reloadSceneFromStorage(
             sceneToLoad.id,
             result.revision
           );
+          if (mountRef.current) {
+            controller.relocateEditor(mountRef.current);
+          }
         } else {
           await controller.clearActiveSceneAfterProjectRestore(
             tree.project.title,
@@ -1592,6 +1919,7 @@ export function App({
           );
         }
         setSelectedNodeId(nextSelection?.id ?? null);
+        setSelectedEntityId(entityToLoad?.id ?? null);
         if (nextSelection && nextSelection.kind !== "SCENE" && sceneToLoad) {
           const insideSelection = orderedDescendantScenes(
             tree,
@@ -1607,8 +1935,12 @@ export function App({
           setScriveningsHighlightedSceneId(null);
         }
         setSearchResult(null);
+        setEntityMentions([]);
         setSnapshotDiff(null);
-        await reloadSnapshotList();
+        await Promise.all([
+          reloadSnapshotList(),
+          reloadStoryBible(session.sessionId)
+        ]);
       }, () => compositionActiveRef.current);
     } catch (error) {
       setSnapshotError(
@@ -1620,13 +1952,539 @@ export function App({
     }
   };
 
-  const hasActiveDocument =
+  const switchAppMode = async (nextMode: AppMode): Promise<void> => {
+    if (!controller || nextMode === appMode) {
+      return;
+    }
+    if (!(await controller.flushPendingChanges(() => compositionActiveRef.current))) {
+      return;
+    }
+    setStoryBibleError("");
+    if (nextMode === "STORY_BIBLE") {
+      setAppMode("STORY_BIBLE");
+      const entityId =
+        (selectedEntityId && entities.some((entity) => entity.id === selectedEntityId)
+          ? selectedEntityId
+          : entities[0]?.id) ?? null;
+      if (entityId) {
+        const switched = await controller.selectEntityNote(
+          entityId,
+          () => compositionActiveRef.current
+        );
+        if (switched) {
+          setSelectedEntityId(entityId);
+        }
+      }
+      return;
+    }
+
+    setAppMode("MANUSCRIPT");
+    const sceneId =
+      (lastManuscriptSceneIdRef.current &&
+      projectTree?.nodes.some(
+        (node) =>
+          node.kind === "SCENE" && node.id === lastManuscriptSceneIdRef.current
+      )
+        ? lastManuscriptSceneIdRef.current
+        : projectTree?.nodes.find((node) => node.kind === "SCENE")?.id) ?? null;
+    if (sceneId) {
+      const switched = await controller.selectScene(
+        sceneId,
+        () => compositionActiveRef.current
+      );
+      if (switched) {
+        setSelectedNodeId(sceneId);
+        setScriveningsLiveSceneId(null);
+        setScriveningsHighlightedSceneId(null);
+        if (mountRef.current) {
+          controller.relocateEditor(mountRef.current);
+        }
+      }
+    }
+  };
+
+  const selectStoryEntity = async (entityId: string): Promise<void> => {
+    if (!controller) {
+      throw new Error("편집기가 준비되지 않았습니다.");
+    }
+    const switched = await controller.selectEntityNote(
+      entityId,
+      () => compositionActiveRef.current
+    );
+    if (!switched) {
+      throw new Error(
+        controller.getState().errorMessage || "설정 노트를 전환하지 못했습니다."
+      );
+    }
+    setSelectedEntityId(entityId);
+  };
+
+  const createStoryEntity = async (
+    kind: EntityKind,
+    name: string
+  ): Promise<void> => {
+    const session = workspace.session;
+    if (!session || !controller) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    setStoryBibleBusy(true);
+    try {
+      if (!(await controller.flushPendingChanges(() => compositionActiveRef.current))) {
+        throw new Error(controller.getState().errorMessage);
+      }
+      const result = await api.createEntity({
+        sessionId: session.sessionId,
+        kind,
+        name,
+        editorEngine: "typie",
+        editorEngineCommit: typieCommit,
+        editorSchemaVersion
+      });
+      controller.adoptProjectRevision(result.revision);
+      await reloadStoryBible(session.sessionId);
+      setSelectedEntityId(result.entity.id);
+      if (
+        !(await controller.selectEntityNote(
+          result.entity.id,
+          () => compositionActiveRef.current
+        ))
+      ) {
+        throw new Error(controller.getState().errorMessage);
+      }
+    } finally {
+      setStoryBibleBusy(false);
+    }
+  };
+
+  const updateStoryEntity = async (
+    entityId: string,
+    patch: StoryEntityPatch
+  ): Promise<void> => {
+    const session = workspace.session;
+    const entity = entities.find((item) => item.id === entityId);
+    if (!session || !entity) {
+      throw new Error("변경할 설정을 찾지 못했습니다.");
+    }
+    const result = await api.updateEntity({
+      sessionId: session.sessionId,
+      entityId,
+      kind: patch.kind ?? entity.kind,
+      name: patch.name ?? entity.name,
+      summary: patch.summary === undefined ? entity.summary : patch.summary,
+      status: patch.status ?? entity.status,
+      colorToken:
+        patch.colorToken === undefined ? entity.colorToken : patch.colorToken,
+      iconKey: patch.iconKey === undefined ? entity.iconKey : patch.iconKey,
+      attributes: entity.attributes
+    });
+    setEntities((current) =>
+      current.map((item) => (item.id === entityId ? result.entity : item))
+    );
+    controller?.adoptProjectRevision(result.revision);
+  };
+
+  const getStoryEntityDeleteImpact = async (
+    entityId: string
+  ): Promise<StoryEntityDeleteImpact> => {
+    const session = workspace.session;
+    const entity = entities.find((item) => item.id === entityId);
+    if (!session || !entity) {
+      throw new Error("삭제할 설정을 찾지 못했습니다.");
+    }
+    const result = await api.getEntityDeleteImpact({
+      sessionId: session.sessionId,
+      entityId
+    });
+    return {
+      entityId,
+      entityName: entity.name,
+      relationCount: result.impact.relationCount,
+      explicitSceneCount: result.impact.sceneLinkCount,
+      discoveredSceneCount: result.impact.mentionSceneCount,
+      aliasCount: result.impact.aliasCount,
+      tagCount: result.impact.tagCount,
+      noteCharacterCount: result.impact.noteCharacterCount
+    };
+  };
+
+  const deleteStoryEntity = async (entityId: string): Promise<void> => {
+    const session = workspace.session;
+    if (!session || !controller) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    if (!(await controller.flushPendingChanges(() => compositionActiveRef.current))) {
+      throw new Error(controller.getState().errorMessage);
+    }
+    const result = await api.deleteEntity({
+      sessionId: session.sessionId,
+      entityId,
+      confirmed: true
+    });
+    controller.adoptProjectRevision(result.revision);
+    const remaining = entities.filter((entity) => entity.id !== entityId);
+    setEntities(remaining);
+    setEntityRelations((current) =>
+      current.filter(
+        (relation) =>
+          relation.sourceEntityId !== entityId && relation.targetEntityId !== entityId
+      )
+    );
+    setSceneEntityLinks((current) =>
+      current.filter((link) => link.entityId !== entityId)
+    );
+    setEntityAliases((current) => {
+      const next = new Map(current);
+      next.delete(entityId);
+      return next;
+    });
+    setEntityTags((current) => {
+      const next = new Map(current);
+      next.delete(entityId);
+      return next;
+    });
+    const fallbackId = remaining[0]?.id ?? null;
+    setSelectedEntityId(fallbackId);
+    if (fallbackId) {
+      await controller.selectEntityNote(
+        fallbackId,
+        () => compositionActiveRef.current
+      );
+    } else {
+      await controller.clearActiveSceneAfterProjectRestore(
+        projectTree?.project.title ?? session.title,
+        result.revision
+      );
+    }
+  };
+
+  const addStoryAlias = async (entityId: string, alias: string): Promise<void> => {
+    const session = workspace.session;
+    if (!session) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    const result = await api.createEntityAlias({
+      sessionId: session.sessionId,
+      entityId,
+      alias
+    });
+    setEntityAliases((current) => {
+      const next = new Map(current);
+      next.set(entityId, [...(next.get(entityId) ?? []), result.alias]);
+      return next;
+    });
+    controller?.adoptProjectRevision(result.revision);
+    setEntityMentions(
+      await discoverAllEntityMentions(api, session.sessionId, entityId)
+    );
+  };
+
+  const deleteStoryAlias = async (aliasId: string): Promise<void> => {
+    const session = workspace.session;
+    const entityId = selectedEntityId;
+    if (!session || !entityId) {
+      throw new Error("선택한 설정이 없습니다.");
+    }
+    const result = await api.deleteEntityAlias({
+      sessionId: session.sessionId,
+      aliasId
+    });
+    setEntityAliases((current) => {
+      const next = new Map(current);
+      next.set(
+        entityId,
+        (next.get(entityId) ?? []).filter((alias) => alias.id !== aliasId)
+      );
+      return next;
+    });
+    controller?.adoptProjectRevision(result.revision);
+    setEntityMentions(
+      await discoverAllEntityMentions(api, session.sessionId, entityId)
+    );
+  };
+
+  const createStoryTag = async (name: string): Promise<TagRecord> => {
+    const session = workspace.session;
+    if (!session) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    const result = await api.createTag({ sessionId: session.sessionId, name });
+    setTags((current) => [...current, result.tag]);
+    controller?.adoptProjectRevision(result.revision);
+    return result.tag;
+  };
+
+  const setStoryEntityTags = async (
+    entityId: string,
+    tagIds: readonly string[]
+  ): Promise<void> => {
+    const session = workspace.session;
+    if (!session) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    const result = await api.setEntityTags({
+      sessionId: session.sessionId,
+      entityId,
+      tagIds
+    });
+    setEntityTags((current) => {
+      const next = new Map(current);
+      next.set(entityId, result.tags);
+      return next;
+    });
+    controller?.adoptProjectRevision(result.revision);
+  };
+
+  const createStoryRelation = async (
+    sourceEntityId: string,
+    input: StoryRelationInput
+  ): Promise<void> => {
+    const session = workspace.session;
+    if (!session) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    const result = await api.createEntityRelation({
+      sessionId: session.sessionId,
+      sourceEntityId,
+      relationTypeId: input.relationTypeId,
+      targetEntityId: input.targetEntityId,
+      note: input.note ?? null
+    });
+    setEntityRelations((current) => [...current, result.relation]);
+    controller?.adoptProjectRevision(result.revision);
+  };
+
+  const updateStoryRelation = async (
+    relationId: string,
+    input: StoryRelationInput
+  ): Promise<void> => {
+    const session = workspace.session;
+    if (!session) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    const result = await api.updateEntityRelation({
+      sessionId: session.sessionId,
+      relationId,
+      relationTypeId: input.relationTypeId,
+      targetEntityId: input.targetEntityId,
+      note: input.note ?? null
+    });
+    setEntityRelations((current) =>
+      current.map((relation) =>
+        relation.id === relationId ? result.relation : relation
+      )
+    );
+    controller?.adoptProjectRevision(result.revision);
+  };
+
+  const deleteStoryRelation = async (relationId: string): Promise<void> => {
+    const session = workspace.session;
+    if (!session) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    const result = await api.deleteEntityRelation({
+      sessionId: session.sessionId,
+      relationId
+    });
+    setEntityRelations((current) =>
+      current.filter((relation) => relation.id !== relationId)
+    );
+    controller?.adoptProjectRevision(result.revision);
+  };
+
+  const createStoryRelationType = async (
+    input: StoryRelationTypeInput
+  ): Promise<void> => {
+    const session = workspace.session;
+    if (!session) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    const result = await api.createRelationType({
+      sessionId: session.sessionId,
+      name: input.name,
+      inverseName: input.inverseName ?? null,
+      directed: input.directed,
+      colorToken: input.colorToken ?? null
+    });
+    setRelationTypes((current) => [...current, result.relationType]);
+    controller?.adoptProjectRevision(result.revision);
+  };
+
+  const updateStoryRelationType = async (
+    relationTypeId: string,
+    input: StoryRelationTypeInput
+  ): Promise<void> => {
+    const session = workspace.session;
+    if (!session) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    const result = await api.updateRelationType({
+      sessionId: session.sessionId,
+      relationTypeId,
+      name: input.name,
+      inverseName: input.inverseName ?? null,
+      directed: input.directed,
+      colorToken: input.colorToken ?? null
+    });
+    setRelationTypes((current) =>
+      current.map((type) =>
+        type.id === relationTypeId ? result.relationType : type
+      )
+    );
+    controller?.adoptProjectRevision(result.revision);
+  };
+
+  const deleteStoryRelationType = async (
+    relationTypeId: string
+  ): Promise<void> => {
+    const session = workspace.session;
+    if (!session) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    const result = await api.deleteRelationType({
+      sessionId: session.sessionId,
+      relationTypeId
+    });
+    setRelationTypes((current) =>
+      current.filter((type) => type.id !== relationTypeId)
+    );
+    controller?.adoptProjectRevision(result.revision);
+  };
+
+  const createSceneEntityLink = async (
+    sceneId: string,
+    entityId: string,
+    role: SceneEntityRole
+  ): Promise<void> => {
+    const session = workspace.session;
+    if (!session) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    const result = await api.createSceneEntityLink({
+      sessionId: session.sessionId,
+      sceneNodeId: sceneId,
+      entityId,
+      role
+    });
+    setSceneEntityLinks((current) => [...current, result.link]);
+    controller?.adoptProjectRevision(result.revision);
+  };
+
+  const deleteSceneEntityLink = async (
+    link: StorySceneLink
+  ): Promise<void> => {
+    const session = workspace.session;
+    if (!session) {
+      throw new Error("프로젝트가 열려 있지 않습니다.");
+    }
+    const result = await api.deleteSceneEntityLink({
+      sessionId: session.sessionId,
+      sceneNodeId: link.sceneNodeId,
+      entityId: link.entityId,
+      role: link.role
+    });
+    setSceneEntityLinks((current) =>
+      current.filter(
+        (item) =>
+          item.sceneNodeId !== link.sceneNodeId ||
+          item.entityId !== link.entityId ||
+          item.role !== link.role
+      )
+    );
+    controller?.adoptProjectRevision(result.revision);
+  };
+
+  const promoteStoryMention = async (
+    candidate: StoryMentionCandidate,
+    role: SceneEntityRole
+  ): Promise<void> => {
+    const session = workspace.session;
+    const entityId = selectedEntityId;
+    if (!session || !entityId) {
+      throw new Error("선택한 설정이 없습니다.");
+    }
+    const result = await api.promoteEntityMention({
+      sessionId: session.sessionId,
+      entityId,
+      sceneNodeId: candidate.sceneId,
+      role
+    });
+    setSceneEntityLinks((current) => [...current, result.link]);
+    setEntityMentions((current) =>
+      current.map((item) =>
+        item.occurrenceId === candidate.occurrenceId
+          ? { ...item, alreadyLinked: true }
+          : item
+      )
+    );
+    controller?.adoptProjectRevision(result.revision);
+  };
+
+  const openStoryScene = async (
+    sceneId: string,
+    range?: { readonly start: number; readonly end: number }
+  ): Promise<void> => {
+    if (!controller) {
+      throw new Error("편집기가 준비되지 않았습니다.");
+    }
+    setAppMode("MANUSCRIPT");
+    const switched = await controller.selectScene(
+      sceneId,
+      () => compositionActiveRef.current
+    );
+    if (!switched) {
+      throw new Error(controller.getState().errorMessage);
+    }
+    setSelectedNodeId(sceneId);
+    setScriveningsLiveSceneId(null);
+    setScriveningsHighlightedSceneId(null);
+    if (mountRef.current) {
+      controller.relocateEditor(mountRef.current);
+    }
+    if (range) {
+      controller.revealTextRange(range.start, range.end);
+    }
+  };
+
+  const openStoryEntity = async (entityId: string): Promise<void> => {
+    setAppMode("STORY_BIBLE");
+    await selectStoryEntity(entityId);
+  };
+
+  const listStoryEntityIds = async (
+    filter: StoryEntityListFilter
+  ): Promise<readonly string[]> => {
+    const session = workspace.session;
+    if (!session) {
+      return [];
+    }
+    const result = await api.listEntities({
+      sessionId: session.sessionId,
+      ...(filter.kind === "ALL" ? {} : { kinds: [filter.kind] }),
+      ...(filter.status === "ALL" ? {} : { statuses: [filter.status] }),
+      ...(filter.tagId === "ALL" ? {} : { tagIds: [filter.tagId] }),
+      sort: filter.sort === "NAME" ? "NAME_ASC" : "UPDATED_DESC"
+    });
+    return result.entities.map((entity) => entity.id);
+  };
+
+  const searchStoryEntityIds = async (query: string): Promise<readonly string[]> => {
+    const session = workspace.session;
+    return session ? searchAllEntities(api, session.sessionId, query) : [];
+  };
+
+  const hasActiveOwnerDocument =
     enginePhase === "ready" &&
     !!workspace.session?.documentId &&
-    !!workspace.activeSceneId;
+    !!workspace.activeOwnerId;
+  const hasActiveDocument =
+    hasActiveOwnerDocument && workspace.activeOwnerKind === "SCENE";
+  const hasActiveEntityNote =
+    hasActiveOwnerDocument && workspace.activeOwnerKind === "ENTITY";
   const hasDocument =
-    hasActiveDocument &&
-    (Boolean(selectedScene) || Boolean(visibleScriveningsLiveSceneId));
+    appMode === "STORY_BIBLE"
+      ? hasActiveEntityNote
+      : hasActiveDocument &&
+        (Boolean(selectedScene) || Boolean(visibleScriveningsLiveSceneId));
   const busy =
     workspace.savePhase === "saving" ||
     workspace.savePhase === "restoring";
@@ -1636,7 +2494,7 @@ export function App({
       <header className="titlebar">
         <div className="wordmark" aria-label="madi">
           madi
-          <span>phase 1B</span>
+          <span>phase 1C</span>
         </div>
         <label className="document-title">
           <span className="sr-only">현재 작품명</span>
@@ -1699,11 +2557,30 @@ export function App({
             Redo
           </ToolbarButton>
           <ToolbarButton
-            disabled={!hasDocument || busy}
+            disabled={!hasActiveDocument || appMode !== "MANUSCRIPT" || busy}
             onClick={() => controller?.insertSceneBreak()}
           >
             장면 구분선
           </ToolbarButton>
+        </div>
+        <span className="toolbar__divider" aria-hidden="true" />
+        <div className="mode-switch" role="group" aria-label="작업 모드">
+          <button
+            type="button"
+            aria-pressed={appMode === "MANUSCRIPT"}
+            disabled={!workspace.session || busy}
+            onClick={() => void switchAppMode("MANUSCRIPT")}
+          >
+            원고
+          </button>
+          <button
+            type="button"
+            aria-pressed={appMode === "STORY_BIBLE"}
+            disabled={!workspace.session || busy}
+            onClick={() => void switchAppMode("STORY_BIBLE")}
+          >
+            설정
+          </button>
         </div>
         <div className="toolbar__spacer" />
         <div className="panel-switch" role="group" aria-label="작업 패널">
@@ -1725,6 +2602,14 @@ export function App({
           </button>
           <button
             type="button"
+            aria-pressed={panel === "scene-entities"}
+            disabled={!workspace.session || appMode !== "MANUSCRIPT"}
+            onClick={() => setPanel("scene-entities")}
+          >
+            설정 연결
+          </button>
+          <button
+            type="button"
             aria-pressed={panel === "development"}
             onClick={() => setPanel("development")}
           >
@@ -1743,6 +2628,7 @@ export function App({
 
       <section
         className="workspace phase1-workspace"
+        hidden={appMode !== "MANUSCRIPT"}
         style={{ gridTemplateColumns: `${binderWidth}px minmax(0, 1fr)` }}
       >
         <div className="binder-pane">
@@ -1950,6 +2836,19 @@ export function App({
             onRequestDiff={requestSnapshotDiff}
             onRestore={restoreNamedSnapshot}
           />
+        ) : panel === "scene-entities" ? (
+          <SceneEntityInspector
+            sceneId={selectedScene?.id ?? null}
+            sceneTitle={selectedScene?.title ?? "장면을 선택하세요"}
+            entities={storyEntities}
+            links={storySceneLinks}
+            busy={busy || storyBibleBusy}
+            errorMessage={storyBibleError}
+            onCreateLink={createSceneEntityLink}
+            onDeleteLink={deleteSceneEntityLink}
+            onOpenEntity={openStoryEntity}
+            onSearchEntities={searchStoryEntityIds}
+          />
         ) : panel === "ime" && imeEnvironment ? (
           <ImeChecklist
             key={`${imeEnvironment.appVersion}:${imeEnvironment.typieCommit}:${imeEnvironment.editorSchemaVersion}:${imeEnvironment.platform}:${imeEnvironment.userAgent}`}
@@ -2060,6 +2959,64 @@ export function App({
         )}
         </div>
       </section>
+
+      {appMode === "STORY_BIBLE" && workspace.session && (
+        <StoryBibleWorkspace
+          entities={storyEntities}
+          tags={tags}
+          relationTypes={relationTypes}
+          relations={entityRelations}
+          sceneLinks={storySceneLinks}
+          mentions={storyMentions}
+          selectedEntityId={selectedEntityId}
+          noteEditor={
+            <div
+              ref={entityMountRef}
+              className="typie-editor-mount story-bible__typie-mount"
+              data-testid="entity-note-editor-mount"
+              data-owner-kind="ENTITY"
+              data-owner-id={selectedEntityId ?? undefined}
+              aria-label={`${
+                entities.find((entity) => entity.id === selectedEntityId)?.name ??
+                "설정"
+              } Typie 상세 노트 편집기`}
+              aria-hidden={!hasActiveEntityNote}
+              inert={hasActiveEntityNote ? undefined : true}
+              onMouseDown={() => hasActiveEntityNote && controller?.focus()}
+            />
+          }
+          noteSaveLabel={
+            workspace.savePhase === "dirty"
+              ? "저장 대기"
+              : workspace.savePhase === "saving"
+                ? "저장 중"
+                : workspace.savePhase === "error"
+                  ? "저장 실패 · 편집 유지"
+                  : "저장됨"
+          }
+          busy={busy || storyBibleBusy}
+          errorMessage={storyBibleError || workspace.errorMessage}
+          onSearchEntities={searchStoryEntityIds}
+          onListEntities={listStoryEntityIds}
+          onCreate={createStoryEntity}
+          onSelect={selectStoryEntity}
+          onUpdate={updateStoryEntity}
+          onRequestDelete={getStoryEntityDeleteImpact}
+          onConfirmDelete={deleteStoryEntity}
+          onAddAlias={addStoryAlias}
+          onDeleteAlias={deleteStoryAlias}
+          onCreateTag={createStoryTag}
+          onSetTags={setStoryEntityTags}
+          onCreateRelation={createStoryRelation}
+          onUpdateRelation={updateStoryRelation}
+          onDeleteRelation={deleteStoryRelation}
+          onCreateRelationType={createStoryRelationType}
+          onUpdateRelationType={updateStoryRelationType}
+          onDeleteRelationType={deleteStoryRelationType}
+          onOpenScene={openStoryScene}
+          onPromoteMention={promoteStoryMention}
+        />
+      )}
 
       <footer className="statusbar">
         <span>{workspace.session?.fileName ?? "열린 프로젝트 없음"}</span>

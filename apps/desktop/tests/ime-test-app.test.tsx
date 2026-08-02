@@ -12,6 +12,7 @@ import type {
   MadiEditorAdapter
 } from "../src/renderer/editor/MadiEditorAdapter";
 import { phase1bApiStubs } from "./phase1b-api-stubs";
+import type { Phase1cApi } from "./phase1c-api-stubs";
 
 class EmptyTestEditor implements MadiEditorAdapter {
   private readonly listeners = new Set<(change: EditorChange) => void>();
@@ -71,7 +72,7 @@ function phase1ApiStubs(): Pick<
   | "deleteNamedSnapshot"
   | "diffNamedSnapshot"
   | "restoreNamedSnapshot"
-> {
+> & Phase1cApi {
   const tree = {
     project: {
       id: "ime-project",

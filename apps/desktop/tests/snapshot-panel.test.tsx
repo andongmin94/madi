@@ -45,7 +45,15 @@ const summary: SnapshotDiffSummary = {
   renamedNodes: 4,
   reorderedNodes: 5,
   changedSceneBodies: 6,
-  characterCountDelta: -127
+  characterCountDelta: -127,
+  addedEntities: 0,
+  deletedEntities: 0,
+  changedEntities: 0,
+  addedRelations: 0,
+  deletedRelations: 0,
+  changedRelations: 0,
+  changedSceneLinks: 0,
+  changedEntityNotes: 0
 };
 
 const diff: DiffNamedSnapshotResult = {
@@ -176,7 +184,7 @@ describe("Phase 1B named snapshot panel", () => {
     );
     expect(onRequestDiff).toHaveBeenCalledWith("snapshot-1");
     const dialog = screen.getByRole("alertdialog");
-    expect(within(dialog).getByText(/자동 안전 snapshot/)).toBeTruthy();
+    expect(within(dialog).getAllByText(/자동 안전 snapshot/).length).toBeGreaterThan(0);
     expect(within(dialog).getByText(/하나의 트랜잭션/)).toBeTruthy();
     const restoreButton = within(dialog).getByRole("button", {
       name: "안전 snapshot 생성 후 복원"
@@ -196,5 +204,36 @@ describe("Phase 1B named snapshot panel", () => {
     await waitFor(() => {
       expect(screen.queryByRole("alertdialog")).toBeNull();
     });
+  });
+
+  it("offers the product-level whole-replacement rollback action on safety snapshots", () => {
+    const onRequestDiff = vi.fn();
+    render(<SnapshotPanel {...defaultProps({ onRequestDiff })} />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "치환 전 자동 보관 전체 치환 전 상태로 되돌리기"
+      })
+    );
+
+    expect(onRequestDiff).toHaveBeenCalledWith("snapshot-2");
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "project-wide Undo" })
+    ).toBeNull();
+  });
+
+  it("warns that restoring a legacy v1 snapshot clears Story Bible data", () => {
+    const onRequestDiff = vi.fn();
+    render(<SnapshotPanel {...defaultProps({ onRequestDiff })} />);
+
+    expect(screen.getAllByText(/구버전 snapshot/)).toHaveLength(2);
+    fireEvent.click(
+      screen.getByRole("button", { name: "1차 퇴고 전 복원" })
+    );
+
+    const dialog = screen.getByRole("alertdialog");
+    expect(within(dialog).getByText(/설정·관계·장면 연결은 빈 상태/)).toBeTruthy();
+    expect(within(dialog).getAllByText(/자동 안전 snapshot/).length).toBeGreaterThan(0);
   });
 });

@@ -3,6 +3,7 @@ import type {
   MadiDesktopApi,
   ProjectSession,
   SaveDocumentResult,
+  SaveEntityNoteResult,
   SaveSceneDocumentResult,
   TransformedSceneDocument
 } from "../../shared/contracts";
@@ -24,6 +25,9 @@ export interface WorkspaceState {
   readonly savePhase: SavePhase;
   readonly session: ProjectSession | null;
   readonly activeSceneId: string | null;
+  readonly activeEntityId: string | null;
+  readonly activeOwnerKind: "SCENE" | "ENTITY" | null;
+  readonly activeOwnerId: string | null;
   readonly title: string;
   readonly revision: number;
   readonly snapshotBytes: number;
@@ -40,6 +44,9 @@ const INITIAL_STATE: WorkspaceState = {
   savePhase: "no-project",
   session: null,
   activeSceneId: null,
+  activeEntityId: null,
+  activeOwnerKind: null,
+  activeOwnerId: null,
   title: "새 작품",
   revision: 0,
   snapshotBytes: 0,
@@ -122,11 +129,26 @@ function isCompositionActive(guard: CompositionGuard): boolean {
 }
 
 function isSceneSaveResult(
-  result: SaveDocumentResult | SaveSceneDocumentResult
+  result: SaveDocumentResult | SaveSceneDocumentResult | SaveEntityNoteResult
 ): result is SaveSceneDocumentResult {
   return (
     "sceneId" in result &&
     typeof result.sceneId === "string" &&
+    "generation" in result &&
+    typeof result.generation === "number" &&
+    "saveSequence" in result &&
+    typeof result.saveSequence === "number"
+  );
+}
+
+function isEntitySaveResult(
+  result: SaveDocumentResult | SaveSceneDocumentResult | SaveEntityNoteResult
+): result is SaveEntityNoteResult {
+  return (
+    "ownerKind" in result &&
+    result.ownerKind === "ENTITY" &&
+    "ownerId" in result &&
+    typeof result.ownerId === "string" &&
     "generation" in result &&
     typeof result.generation === "number" &&
     "saveSequence" in result &&
@@ -199,6 +221,9 @@ export class DocumentSessionController {
       this.patch({
         session,
         activeSceneId: session.sceneId ?? null,
+        activeEntityId: null,
+        activeOwnerKind: session.sceneId ? "SCENE" : null,
+        activeOwnerId: session.sceneId ?? null,
         title: session.title,
         revision: session.revision,
         savePhase: "dirty",
@@ -239,6 +264,9 @@ export class DocumentSessionController {
         this.patch({
           session,
           activeSceneId: null,
+          activeEntityId: null,
+          activeOwnerKind: null,
+          activeOwnerId: null,
           title: session.title,
           revision: session.revision,
           savePhase: "saved",
@@ -287,6 +315,9 @@ export class DocumentSessionController {
       this.patch({
         session: restoredSession,
         activeSceneId: session.sceneId ?? null,
+        activeEntityId: null,
+        activeOwnerKind: session.sceneId ? "SCENE" : null,
+        activeOwnerId: session.sceneId ?? null,
         title: document.title,
         revision: document.revision,
         // create_project intentionally writes a zero-byte placeholder before
@@ -403,7 +434,13 @@ export class DocumentSessionController {
         this.state.errorMessage || "현재 장면을 안전하게 저장하지 못했습니다."
       );
     }
-    const originalSceneId = this.state.activeSceneId;
+    const originalOwner =
+      this.state.activeOwnerKind && this.state.activeOwnerId
+        ? {
+            kind: this.state.activeOwnerKind,
+            id: this.state.activeOwnerId
+          }
+        : null;
     this.beginExclusiveEditorOperation();
     this.patch({ savePhase: "restoring", errorMessage: "" });
     try {
@@ -412,9 +449,13 @@ export class DocumentSessionController {
       return result;
     } catch (error) {
       if (this.state.savePhase === "restoring") {
-        if (originalSceneId) {
+        if (originalOwner) {
           try {
-            await this.reloadSceneFromStorage(originalSceneId);
+            if (originalOwner.kind === "SCENE") {
+              await this.reloadSceneFromStorage(originalOwner.id);
+            } else {
+              await this.reloadEntityFromStorage(originalOwner.id);
+            }
           } catch {
             // The caller may have restored a snapshot that no longer contains
             // the old scene. Keep the editor fail-closed if no fallback scene
@@ -440,7 +481,8 @@ export class DocumentSessionController {
   private async performSave(session: ProjectSession): Promise<boolean> {
     const generationAtStart = this.changeGeneration;
     const sessionTokenAtStart = this.sessionToken;
-    const sceneIdAtStart = this.state.activeSceneId;
+    const ownerKindAtStart = this.state.activeOwnerKind;
+    const ownerIdAtStart = this.state.activeOwnerId;
     const documentIdAtStart = session.documentId;
     const saveSequence = ++this.saveSequence;
     this.patch({ savePhase: "saving", errorMessage: "" });
@@ -451,7 +493,9 @@ export class DocumentSessionController {
       if (
         this.sessionToken !== sessionTokenAtStart ||
         this.state.session?.sessionId !== session.sessionId ||
-        this.state.activeSceneId !== sceneIdAtStart
+        this.state.activeOwnerKind !== ownerKindAtStart ||
+        this.state.activeOwnerId !== ownerIdAtStart ||
+        this.state.session?.documentId !== documentIdAtStart
       ) {
         return true;
       }
@@ -466,10 +510,10 @@ export class DocumentSessionController {
         return true;
       }
       const result =
-        sceneIdAtStart && documentIdAtStart
+        ownerKindAtStart === "SCENE" && ownerIdAtStart && documentIdAtStart
           ? await this.api.saveSceneDocument({
               sessionId: session.sessionId,
-              sceneId: sceneIdAtStart,
+              sceneId: ownerIdAtStart,
               documentId: documentIdAtStart,
               generation: generationAtStart,
               saveSequence,
@@ -479,6 +523,22 @@ export class DocumentSessionController {
               snapshot,
               plainTextRecovery
             })
+          : ownerKindAtStart === "ENTITY" &&
+              ownerIdAtStart &&
+              documentIdAtStart
+            ? await this.api.saveEntityNote({
+                sessionId: session.sessionId,
+                ownerKind: "ENTITY",
+                ownerId: ownerIdAtStart,
+                documentId: documentIdAtStart,
+                generation: generationAtStart,
+                saveSequence,
+                editorEngine: "typie",
+                editorEngineCommit: this.editorEngineCommit,
+                editorSchemaVersion: this.editorSchemaVersion,
+                snapshot,
+                plainTextRecovery
+              })
           : await this.api.saveDocument({
               sessionId: session.sessionId,
               ...(session.documentId
@@ -494,15 +554,18 @@ export class DocumentSessionController {
       if (
         this.sessionToken !== sessionTokenAtStart ||
         this.state.session?.sessionId !== session.sessionId ||
-        this.state.activeSceneId !== sceneIdAtStart
+        this.state.activeOwnerKind !== ownerKindAtStart ||
+        this.state.activeOwnerId !== ownerIdAtStart ||
+        this.state.session?.documentId !== documentIdAtStart
       ) {
         return true;
       }
       if (
-        sceneIdAtStart &&
+        ownerKindAtStart === "SCENE" &&
+        ownerIdAtStart &&
         documentIdAtStart &&
         (!isSceneSaveResult(result) ||
-          result.sceneId !== sceneIdAtStart ||
+          result.sceneId !== ownerIdAtStart ||
           result.documentId !== documentIdAtStart ||
           result.generation !== generationAtStart ||
           result.saveSequence !== saveSequence)
@@ -514,10 +577,33 @@ export class DocumentSessionController {
         });
         return false;
       }
+      if (
+        ownerKindAtStart === "ENTITY" &&
+        ownerIdAtStart &&
+        documentIdAtStart &&
+        (!isEntitySaveResult(result) ||
+          result.ownerId !== ownerIdAtStart ||
+          result.documentId !== documentIdAtStart ||
+          result.generation !== generationAtStart ||
+          result.saveSequence !== saveSequence)
+      ) {
+        this.patch({
+          savePhase: "error",
+          errorMessage:
+            "설정 노트 저장 응답이 현재 편집 owner와 일치하지 않습니다. 현재 설정 노트는 유지됩니다."
+        });
+        return false;
+      }
       const savedSession: ProjectSession = {
-        ...session,
+        sessionId: session.sessionId,
+        fileName: session.fileName,
+        projectId: session.projectId,
+        ...(session.workNodeId ? { workNodeId: session.workNodeId } : {}),
+        ...(ownerKindAtStart === "SCENE" && ownerIdAtStart
+          ? { sceneId: ownerIdAtStart }
+          : {}),
         documentId: result.documentId,
-        title: sceneIdAtStart ? session.title : this.state.title,
+        title: ownerKindAtStart ? session.title : this.state.title,
         revision: result.revision
       };
       this.lastSavedContentSignature = signature;
@@ -626,6 +712,133 @@ export class DocumentSessionController {
           revision: document.revision
         },
         activeSceneId: sceneId,
+        activeEntityId: null,
+        activeOwnerKind: "SCENE",
+        activeOwnerId: sceneId,
+        title: document.title,
+        revision: document.revision,
+        savePhase: isInitialPlaceholder ? "dirty" : "saved",
+        snapshotBytes: document.snapshot.byteLength,
+        snapshotFingerprint: snapshotFingerprint(document.snapshot),
+        recoveryCharacters: document.plainTextRecovery.length,
+        canUndo: false,
+        canRedo: false,
+        isComposing: false,
+        lastSavedAt: document.updatedAt,
+        errorMessage: ""
+      });
+      this.editor.focus();
+      return true;
+    } catch (error) {
+      this.setState({
+        ...previous,
+        savePhase: "error",
+        errorMessage: publicError(error)
+      });
+      return false;
+    }
+  }
+
+  public selectEntityNote(
+    entityId: string,
+    compositionGuard: CompositionGuard = false
+  ): Promise<boolean> {
+    if (this.exclusiveEditorOperation) {
+      this.patch({
+        errorMessage:
+          "프로젝트 작업이 끝난 뒤 설정 노트를 전환하세요. 현재 편집 대상은 유지됩니다."
+      });
+      return Promise.resolve(false);
+    }
+    if (
+      this.state.activeEntityId === entityId &&
+      this.state.activeOwnerKind === "ENTITY" &&
+      this.state.session?.documentId
+    ) {
+      return Promise.resolve(true);
+    }
+    const requestToken = ++this.latestSceneSwitch;
+    const operation = this.sceneSwitchQueue.then(() =>
+      this.performEntitySwitch(entityId, requestToken, compositionGuard)
+    );
+    this.sceneSwitchQueue = operation.then(
+      () => undefined,
+      () => undefined
+    );
+    return operation;
+  }
+
+  private async performEntitySwitch(
+    entityId: string,
+    requestToken: number,
+    compositionGuard: CompositionGuard
+  ): Promise<boolean> {
+    const session = this.state.session;
+    if (!session) {
+      return false;
+    }
+    if (isCompositionActive(compositionGuard) || this.state.isComposing) {
+      this.patch({
+        errorMessage:
+          "한글 조합이 끝난 뒤 설정 노트를 전환하세요. 현재 편집 대상은 유지됩니다."
+      });
+      return false;
+    }
+    if (!(await this.flushPendingChanges(compositionGuard))) {
+      return false;
+    }
+    if (requestToken !== this.latestSceneSwitch) {
+      return false;
+    }
+
+    const previous = this.state;
+    this.patch({ savePhase: "restoring", errorMessage: "" });
+    try {
+      const document = await this.api.loadEntityNote({
+        sessionId: session.sessionId,
+        ownerKind: "ENTITY",
+        ownerId: entityId
+      });
+      if (requestToken !== this.latestSceneSwitch) {
+        this.setState(previous);
+        return false;
+      }
+      if (document.ownerKind !== "ENTITY" || document.ownerId !== entityId) {
+        throw new Error(
+          "설정 노트 응답이 요청한 owner와 일치하지 않습니다. 현재 편집 대상은 유지됩니다."
+        );
+      }
+      assertSnapshotCompatibility(
+        document,
+        this.editorEngineCommit,
+        this.editorSchemaVersion
+      );
+      const isInitialPlaceholder = document.snapshot.byteLength === 0;
+      await this.withSuppressedChanges(() =>
+        this.editor.open(
+          isInitialPlaceholder ? undefined : document.snapshot
+        )
+      );
+      this.sessionToken += 1;
+      this.changeGeneration = 0;
+      this.lastSavedContentSignature = isInitialPlaceholder
+        ? null
+        : contentSignature(document.snapshot, document.plainTextRecovery);
+      this.setState({
+        ...previous,
+        session: {
+          sessionId: session.sessionId,
+          fileName: session.fileName,
+          projectId: session.projectId,
+          ...(session.workNodeId ? { workNodeId: session.workNodeId } : {}),
+          documentId: document.id,
+          title: session.title,
+          revision: document.revision
+        },
+        activeSceneId: null,
+        activeEntityId: entityId,
+        activeOwnerKind: "ENTITY",
+        activeOwnerId: entityId,
         title: document.title,
         revision: document.revision,
         savePhase: isInitialPlaceholder ? "dirty" : "saved",
@@ -858,6 +1071,70 @@ export class DocumentSessionController {
         revision
       },
       activeSceneId: sceneId,
+      activeEntityId: null,
+      activeOwnerKind: "SCENE",
+      activeOwnerId: sceneId,
+      title: document.title,
+      revision,
+      savePhase: isInitialPlaceholder ? "dirty" : "saved",
+      snapshotBytes: document.snapshot.byteLength,
+      snapshotFingerprint: snapshotFingerprint(document.snapshot),
+      recoveryCharacters: document.plainTextRecovery.length,
+      canUndo: false,
+      canRedo: false,
+      isComposing: false,
+      lastSavedAt: document.updatedAt,
+      errorMessage: ""
+    });
+    return true;
+  }
+
+  public async reloadEntityFromStorage(
+    entityId: string,
+    projectRevision?: number
+  ): Promise<boolean> {
+    const session = this.state.session;
+    if (!session) {
+      return false;
+    }
+    const document = await this.api.loadEntityNote({
+      sessionId: session.sessionId,
+      ownerKind: "ENTITY",
+      ownerId: entityId
+    });
+    if (document.ownerKind !== "ENTITY" || document.ownerId !== entityId) {
+      throw new Error("설정 노트 응답 owner가 현재 설정과 일치하지 않습니다.");
+    }
+    assertSnapshotCompatibility(
+      document,
+      this.editorEngineCommit,
+      this.editorSchemaVersion
+    );
+    const isInitialPlaceholder = document.snapshot.byteLength === 0;
+    await this.withSuppressedChanges(() =>
+      this.editor.open(isInitialPlaceholder ? undefined : document.snapshot)
+    );
+    this.sessionToken += 1;
+    this.changeGeneration = 0;
+    this.latestSceneSwitch += 1;
+    this.lastSavedContentSignature = isInitialPlaceholder
+      ? null
+      : contentSignature(document.snapshot, document.plainTextRecovery);
+    const revision = projectRevision ?? document.revision;
+    this.patch({
+      session: {
+        sessionId: session.sessionId,
+        fileName: session.fileName,
+        projectId: session.projectId,
+        ...(session.workNodeId ? { workNodeId: session.workNodeId } : {}),
+        documentId: document.id,
+        title: session.title,
+        revision
+      },
+      activeSceneId: null,
+      activeEntityId: entityId,
+      activeOwnerKind: "ENTITY",
+      activeOwnerId: entityId,
       title: document.title,
       revision,
       savePhase: isInitialPlaceholder ? "dirty" : "saved",
@@ -897,6 +1174,9 @@ export class DocumentSessionController {
         revision: projectRevision
       },
       activeSceneId: null,
+      activeEntityId: null,
+      activeOwnerKind: null,
+      activeOwnerId: null,
       title: projectTitle,
       revision: projectRevision,
       savePhase: "saved",
@@ -938,7 +1218,11 @@ export class DocumentSessionController {
   }
 
   public insertSceneBreak(): void {
-    if (this.exclusiveEditorOperation || this.state.savePhase === "restoring") {
+    if (
+      this.exclusiveEditorOperation ||
+      this.state.savePhase === "restoring" ||
+      this.state.activeOwnerKind !== "SCENE"
+    ) {
       return;
     }
     this.editor.insertSceneBreak();
