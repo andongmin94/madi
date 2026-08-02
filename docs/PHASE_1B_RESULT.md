@@ -3,7 +3,7 @@
 기준일: 2026-08-02
 
 ```text
-Verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
+Verdict: TECHNICAL GO — PRIVATE LOCAL
 Implementation: COMPLETE IN WORKING TREE
 Focused verification: PASS
 Integration/development/packaged Electron acceptance: PASS
@@ -19,17 +19,16 @@ Public/paid/customer distribution: NOT AUTHORIZED
 
 ## 1. 최종 판정
 
-최종 판정은 `CONDITIONAL TECHNICAL GO — PRIVATE LOCAL`이다. Phase 1B의 세 기능은
+최종 판정은 `TECHNICAL GO — PRIVATE LOCAL`이다. Phase 1B의 세 기능은
 실제 core/API/UI 경로로 구현됐다. 검색은 exact Korean substring이고 선택 치환은
 plain text rewrite가 아니라 Typie 의미 transaction과 원자적 DB batch를 사용한다.
 named snapshot은 logical payload와 자동 safety restore를 제공한다.
 
-조건부인 이유는 다음 세 가지다.
-
-1. 여러 SCENE 치환은 자동 `AUTO_BEFORE_REPLACE` snapshot restore로 되돌리며 하나의
-   지속 가능한 project-wide 사용자 `Ctrl+Z` entry는 아니다.
-2. native Windows 한국어 IME는 수동 검증 전이다.
-3. 배포 전 Typie 라이선스 방식에 대한 사람의 결정이 필요하다.
+여러 SCENE 치환은 `AUTO_BEFORE_REPLACE` snapshot restore로 되돌린다. 영구
+project-wide command log를 만들지 않는 것은 기술적 미완료가 아니라
+`ADR-0002-project-wide-undo-via-snapshots`에서 확정한 제품 설계다. native Windows
+한국어 IME 수동검증과 배포 라이선스 결정은 private-local 기술 판정을 막지 않지만
+각각 지원 환경 확정과 배포 전에 완료해야 한다.
 
 ## 2. Scrivenings 구현 방식
 
@@ -194,7 +193,8 @@ smoke를 포함해 exit code 0으로 완료됐으므로 해당 자동 회귀 범
 - 한 응답은 core에서 최대 64 MiB preview text로 제한한다.
 - search renderer는 일관된 revision을 요구하므로 검색 중 save가 일어나면 다시 검색해야
   한다.
-- project-wide Undo stack persistence와 부분 snapshot restore가 없다.
+- ADR-0002에 따라 project-wide Undo는 persistent command stack이 아니라 전체 logical
+  safety snapshot restore다. 부분 snapshot restore는 없다.
 - 장시간/대규모/DPI/memory benchmark 수치는 아직 없다.
 
 ## 12. 수동 IME와 라이선스
@@ -209,16 +209,15 @@ installer 외부 전달 또는 proprietary production 배포는 금지한다.
 
 ## 13. Phase 1C 진입 여부
 
-비공개 로컬 Phase 1C 준비 작업은 **조건부 진입 가능**하다. 모든 자동 gate는
-통과했지만 project-wide 사용자 Undo 지속성, native Windows IME 수동 검증과 배포
-라이선스 결정은 여전히 조건이다. Phase 1C 진입은 public/paid/customer distribution
-승인이 아니다.
+비공개 로컬 Phase 1C 작업은 **진입 가능**하다. 모든 자동 gate가 통과했고
+project-wide Undo 경계도 ADR-0002로 확정됐다. Phase 1C 진입은
+public/paid/customer distribution 승인이 아니다.
 
 ## 14. 다음 권장 작업
 
 1. native Windows IME 15항목을 사람이 수행한다.
 2. Phase 1C에서 장편 benchmark, preview page cache/virtual list와 snapshot retention을
    먼저 다룬다.
-3. project-wide Undo/Redo를 snapshot restore UX로 유지할지 지속형 command log로
-   확장할지 결정한다.
+3. ADR-0002에 따라 **전체 치환 전 상태로 되돌리기** UX를 유지하며 실제 사용자
+   요구가 확인될 때만 재검토한다.
 4. 배포 논의 전 Typie 라이선스 방식을 서면 결정한다.

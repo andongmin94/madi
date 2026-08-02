@@ -163,8 +163,10 @@ runtime undo stack을 영속화하지 않으므로 전체 작업을 한 번의 �
 되돌리는 기능은 제공하지 않는다.
 
 cross-scene user-visible rollback은 `AUTO_BEFORE_REPLACE` named snapshot을 선택하고
-restore하는 방식이다. 이 한계가 현재 판정을
-`CONDITIONAL TECHNICAL GO — PRIVATE LOCAL`로 유지하는 이유 중 하나다.
+**전체 치환 전 상태로 되돌리기**를 실행해 restore하는 방식이다. 이는 임시 한계가
+아니라 ADR-0002에서 확정한 공식 제품 동작이다. 영구 project-wide command log는
+구현하지 않으며 이 결정에 따라 Phase 1B 판정은
+`TECHNICAL GO — PRIVATE LOCAL`이다.
 
 ## 9. 확인된 검증과 성능 한계
 

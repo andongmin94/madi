@@ -12,7 +12,7 @@ Phase 1B implementation: COMPLETE IN WORKING TREE
 Phase 1B focused verification: PASS
 Phase 1B integration/development/packaged Electron acceptance: PASS
 Phase 1B final pnpm verify gate: PASS
-Phase 1B verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
+Phase 1B verdict: TECHNICAL GO — PRIVATE LOCAL
 Windows native Korean IME: MANUAL VALIDATION PENDING
 License: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Public/paid/installer distribution: NOT AUTHORIZED
@@ -128,7 +128,7 @@ commit 전에 작업을 중단한다. DB commit 뒤 저장된 장면 reload가 �
 저장하지 못하도록 fatal lock을 유지하며 창 닫기만 허용한다.
 
 project 전체 작업은 하나의 지속 가능한 `Ctrl+Z` entry가 아니다. 여러 장면을
-되돌릴 때는 자동 생성된 snapshot을 복원한다. 정확한 의미론은
+되돌릴 때는 자동 생성된 snapshot을 복원하며 이는 공식 제품 동작이다. 정확한 의미론은
 [`docs/SEARCH_REPLACE_SEMANTICS.md`](docs/SEARCH_REPLACE_SEMANTICS.md)를 따른다.
 
 ### 6. Named snapshot
@@ -443,7 +443,6 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 - screen reader·keyboard-only 접근성 및 native 후보창 위치
 - 실제 후보 Typie commit upgrade rehearsal
 - remote recursive clean clone: `DEFERRED TO PRE-RELEASE`
-- project-wide persistent Undo history
 - 대형 원고 preview page cache와 완전한 virtual list
 - exact search 성능 benchmark/index 전략
 - named snapshot retention, compression과 quota
@@ -453,6 +452,7 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 
 - [Phase 1B 범위와 완료 계약](docs/PHASE_1B_SCOPE.md)
 - [Phase 1B 저장소 결과](docs/PHASE_1B_RESULT.md)
+- [ADR-0002: project-wide Undo via snapshots](docs/decisions/ADR-0002-project-wide-undo-via-snapshots.md)
 - [Scrivenings 아키텍처](docs/SCRIVENINGS_ARCHITECTURE.md)
 - [검색·선택 치환 의미론](docs/SEARCH_REPLACE_SEMANTICS.md)
 - [Named snapshot logical payload](docs/NAMED_SNAPSHOT_FORMAT.md)
