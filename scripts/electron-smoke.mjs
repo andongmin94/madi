@@ -517,6 +517,88 @@ function verifyBinderEvidence(evidence, expectation, stage) {
   return { actualCounts, actualTitles, siblingOrder };
 }
 
+function storyEntityRows(page) {
+  return page.locator(
+    '.story-bible__entities li[data-entity-id]'
+  );
+}
+
+function storyEntityRowById(page, entityId) {
+  return page.locator(
+    `.story-bible__entities li[data-entity-id="${entityId}"]`
+  );
+}
+
+async function storyEntityIds(page) {
+  return storyEntityRows(page).evaluateAll((elements) =>
+    elements.map((element) => element.dataset.entityId ?? "")
+  );
+}
+
+async function waitForStoryEntityId(page, name) {
+  const entityId = await pollBinderUi(
+    async () => {
+      const matches = await storyEntityRows(page).evaluateAll(
+        (elements, expectedName) =>
+          elements
+            .filter(
+              (element) =>
+                element.querySelector("strong")?.textContent?.trim() ===
+                expectedName
+            )
+            .map((element) => element.dataset.entityId ?? ""),
+        name
+      );
+      return matches.length === 1 ? matches[0] : "";
+    },
+    `Story Bible entity ${JSON.stringify(name)}`
+  );
+  if (typeof entityId !== "string" || !entityId) {
+    throw new Error(`Story Bible entity ${JSON.stringify(name)} has no id`);
+  }
+  return entityId;
+}
+
+async function createStoryEntityThroughUi(page, kind) {
+  const beforeIds = new Set(await storyEntityIds(page));
+  await page
+    .getByRole("combobox", { name: "새 설정 타입" })
+    .selectOption(kind);
+  await page.getByRole("button", { name: "새 엔트리 생성" }).click();
+  const entityId = await pollBinderUi(
+    async () => {
+      const created = (await storyEntityIds(page)).filter(
+        (candidate) => !beforeIds.has(candidate)
+      );
+      return created.length === 1 ? created[0] : "";
+    },
+    `Story Bible ${kind} creation`
+  );
+  if (typeof entityId !== "string" || !entityId) {
+    throw new Error(`Story Bible ${kind} creation did not expose one id`);
+  }
+  await pollBinderUi(
+    async () =>
+      (await storyEntityRowById(page, entityId)
+        .getByRole("button")
+        .getAttribute("aria-current")) === "true",
+    `Story Bible ${kind} selection`
+  );
+  return entityId;
+}
+
+function storyNoteInput(page) {
+  return page.locator(
+    ".story-bible__typie-mount .typie-runtime__ime-input"
+  );
+}
+
+function snapshotItemByName(snapshotPanel, name) {
+  return snapshotPanel
+    .locator("li[data-snapshot-id]")
+    .filter({ hasText: name });
+}
+
 const temporaryWorkspace = await mkdtemp(
   join(tmpdir(), "madi-electron-smoke-")
 );
@@ -545,6 +627,18 @@ const phase1bScreenshot = join(
   packaged
     ? "madi-packaged-phase1b.png"
     : "madi-electron-phase1b.png"
+);
+const phase1cScreenshot = join(
+  artifactDirectory,
+  packaged
+    ? "madi-packaged-phase1c.png"
+    : "madi-electron-phase1c.png"
+);
+const phase1cReopenedScreenshot = join(
+  artifactDirectory,
+  packaged
+    ? "madi-packaged-phase1c-reopened.png"
+    : "madi-electron-phase1c-reopened.png"
 );
 
 let firstApplication;
@@ -1065,6 +1159,443 @@ try {
     "Phase 1B Scrivenings, Korean search, semantic replace, and snapshot restore verified"
   );
 
+  const phase1cFixture = {
+    protagonistName: "아린",
+    protagonistSummary: "북쪽 기록을 좇는 초안 단계의 주인공",
+    protagonistStatus: "DRAFT",
+    protagonistAlias: phase1bSearchToken,
+    protagonistTag: "Phase 1C 핵심",
+    protagonistNote: "아린은 잿빛 성채의 봉인을 기억한다. Phase 1C Typie 상세 노트.",
+    locationName: "잿빛 성채",
+    relationTypeName: "인도자",
+    relationTypeInverseName: "길을 받는 이",
+    relationNote: "아린이 잿빛 성채로 향하는 길을 연다.",
+    snapshotName: "Electron Phase 1C 기준점",
+    temporaryName: "아린 임시 변경"
+  };
+
+  await firstPage
+    .getByRole("button", { name: "설정", exact: true })
+    .click();
+  await firstPage
+    .getByRole("region", { name: "설정 작업 공간" })
+    .waitFor({ state: "visible", timeout: 30_000 });
+
+  const protagonistId = await createStoryEntityThroughUi(
+    firstPage,
+    "CHARACTER"
+  );
+  const protagonistNameInput = firstPage.getByRole("textbox", {
+    name: "설정 이름"
+  });
+  await protagonistNameInput.fill(phase1cFixture.protagonistName);
+  await protagonistNameInput.blur();
+  if (
+    (await waitForStoryEntityId(
+      firstPage,
+      phase1cFixture.protagonistName
+    )) !== protagonistId
+  ) {
+    throw new Error("Story Bible protagonist identity changed after rename");
+  }
+  await firstPage
+    .getByRole("combobox", { name: "설정 상태 변경" })
+    .selectOption(phase1cFixture.protagonistStatus);
+  await pollBinderUi(
+    async () =>
+      (
+        (await storyEntityRowById(firstPage, protagonistId)
+          .locator("small")
+          .textContent()) ?? ""
+      ).includes("초안"),
+    "Story Bible protagonist status"
+  );
+  const protagonistSummaryInput = firstPage.getByRole("textbox", {
+    name: "설정 한 줄 요약"
+  });
+  await protagonistSummaryInput.fill(phase1cFixture.protagonistSummary);
+  await protagonistSummaryInput.blur();
+  await firstPage.waitForTimeout(300);
+
+  const aliasInput = firstPage.getByRole("textbox", { name: "새 별칭" });
+  await aliasInput.fill(phase1cFixture.protagonistAlias);
+  await firstPage.getByRole("button", { name: "별칭 추가" }).click();
+  await pollBinderUi(
+    async () =>
+      (await aliasInput.inputValue()) === "" &&
+      (await firstPage
+        .getByRole("region", { name: "별칭" })
+        .getByText(phase1cFixture.protagonistAlias, { exact: true })
+        .isVisible()
+        .catch(() => false)),
+    "Story Bible alias creation and mention discovery",
+    60_000
+  );
+
+  const tagInput = firstPage.getByRole("textbox", { name: "새 태그" });
+  await tagInput.fill(phase1cFixture.protagonistTag);
+  await firstPage
+    .getByRole("button", { name: "태그 생성 및 연결" })
+    .click();
+  await pollBinderUi(
+    async () =>
+      (await tagInput.inputValue()) === "" &&
+      (await firstPage
+        .getByRole("checkbox", { name: phase1cFixture.protagonistTag })
+        .isChecked()
+        .catch(() => false)),
+    "Story Bible tag creation and assignment"
+  );
+
+  const protagonistNoteInput = storyNoteInput(firstPage);
+  await protagonistNoteInput.waitFor({ state: "attached", timeout: 30_000 });
+  await protagonistNoteInput.fill(phase1cFixture.protagonistNote);
+  await firstPage
+    .locator('[data-testid="save-status"][data-phase="dirty"]')
+    .waitFor({ timeout: 30_000 });
+  await firstPage.getByRole("button", { name: "저장", exact: true }).click();
+  await firstPage
+    .locator('[data-testid="save-status"][data-phase="saved"]')
+    .waitFor({ timeout: 30_000 });
+
+  const locationId = await createStoryEntityThroughUi(
+    firstPage,
+    "LOCATION"
+  );
+  const locationNameInput = firstPage.getByRole("textbox", {
+    name: "설정 이름"
+  });
+  await locationNameInput.fill(phase1cFixture.locationName);
+  await locationNameInput.blur();
+  if (
+    (await waitForStoryEntityId(firstPage, phase1cFixture.locationName)) !==
+    locationId
+  ) {
+    throw new Error("Story Bible location identity changed after rename");
+  }
+
+  await storyEntityRowById(firstPage, protagonistId)
+    .getByRole("button")
+    .click();
+  await pollBinderUi(
+    async () =>
+      (await storyEntityRowById(firstPage, protagonistId)
+        .getByRole("button")
+        .getAttribute("aria-current")) === "true",
+    "Story Bible protagonist reselection"
+  );
+
+  const relationTypeManager = firstPage.locator(
+    "details.relation-type-manager"
+  );
+  await relationTypeManager.locator("summary").click();
+  await firstPage
+    .getByRole("textbox", { name: "관계 타입 이름" })
+    .fill(phase1cFixture.relationTypeName);
+  await firstPage
+    .getByRole("textbox", { name: "관계 타입 역방향 이름" })
+    .fill(phase1cFixture.relationTypeInverseName);
+  await firstPage
+    .getByRole("checkbox", { name: "방향 관계" })
+    .check();
+  await firstPage
+    .getByRole("button", { name: "관계 타입 생성" })
+    .click();
+  const customRelationTypeRow = relationTypeManager
+    .locator("li[data-relation-type-id]")
+    .filter({ hasText: phase1cFixture.relationTypeName });
+  await customRelationTypeRow.waitFor({ state: "attached", timeout: 30_000 });
+  const customRelationTypeId = await customRelationTypeRow.getAttribute(
+    "data-relation-type-id"
+  );
+  if (!customRelationTypeId) {
+    throw new Error("Custom directed relation type has no id");
+  }
+  await pollBinderUi(
+    async () =>
+      (await firstPage
+        .getByRole("textbox", { name: "관계 타입 이름" })
+        .inputValue()) === "",
+    "custom relation type persistence"
+  );
+
+  await firstPage
+    .getByRole("combobox", { name: "관계 타입" })
+    .selectOption(customRelationTypeId);
+  await firstPage
+    .getByRole("combobox", { name: "관계 대상 설정 검색" })
+    .selectOption(locationId);
+  await firstPage
+    .getByRole("textbox", { name: "관계 메모" })
+    .fill(phase1cFixture.relationNote);
+  await firstPage.getByRole("button", { name: "관계 추가" }).click();
+  const outgoingRelations = firstPage.getByRole("region", {
+    name: "나가는 관계"
+  });
+  const customRelationRow = outgoingRelations
+    .locator("li[data-relation-id]")
+    .filter({ hasText: phase1cFixture.relationTypeName });
+  await customRelationRow.waitFor({ state: "attached", timeout: 30_000 });
+  const customRelationId = await customRelationRow.getAttribute(
+    "data-relation-id"
+  );
+  if (!customRelationId) {
+    throw new Error("Custom directed relation has no id");
+  }
+
+  const mentionSection = firstPage.getByRole("region", {
+    name: "본문에서 찾은 후보"
+  });
+  await pollBinderUi(
+    async () =>
+      (await mentionSection.locator("li[data-mention-id]").count()) === 7,
+    "seven automatic alias mention candidates",
+    60_000
+  );
+  const promotedMentionRow = mentionSection
+    .locator("li[data-mention-id]")
+    .filter({ hasText: binderTitles.sceneFour });
+  await promotedMentionRow.waitFor({ state: "attached", timeout: 30_000 });
+  const promotedMentionId = await promotedMentionRow.getAttribute(
+    "data-mention-id"
+  );
+  if (!promotedMentionId) {
+    throw new Error("Automatic mention candidate has no occurrence id");
+  }
+  await promotedMentionRow
+    .getByRole("button", { name: "언급으로 연결" })
+    .click();
+  await promotedMentionRow
+    .getByText("명시적 연결됨", { exact: true })
+    .waitFor({ timeout: 30_000 });
+  const promotedLinkSelector =
+    `[data-scene-link-id="${sceneFourId}:${protagonistId}:MENTIONED"]`;
+  await firstPage.locator(promotedLinkSelector).waitFor({
+    state: "attached",
+    timeout: 30_000
+  });
+
+  await firstPage
+    .getByRole("button", { name: "원고", exact: true })
+    .click();
+  await selectBinderScene(firstPage, binderTitles.sceneThree);
+  await firstPage
+    .getByRole("button", { name: "설정 연결", exact: true })
+    .click();
+  const sceneEntityInspector = firstPage.getByRole("complementary", {
+    name: "이 장면의 설정"
+  });
+  await sceneEntityInspector
+    .getByRole("combobox", { name: "장면에 연결할 설정" })
+    .selectOption(protagonistId);
+  await sceneEntityInspector
+    .getByRole("combobox", { name: "장면 설정 역할" })
+    .selectOption("POV");
+  await sceneEntityInspector
+    .getByRole("button", { name: "설정 연결", exact: true })
+    .click();
+  const explicitSceneLinkSelector =
+    `[data-scene-link-id="${sceneThreeId}:${protagonistId}:POV"]`;
+  await sceneEntityInspector.locator(explicitSceneLinkSelector).waitFor({
+    state: "attached",
+    timeout: 30_000
+  });
+
+  await firstPage.getByRole("button", { name: "Snapshot" }).click();
+  await snapshotPanel
+    .getByRole("textbox", { name: "이름", exact: true })
+    .fill(phase1cFixture.snapshotName);
+  await snapshotPanel
+    .getByRole("textbox", { name: "메모 (선택)", exact: true })
+    .fill("설정·관계·장면 연결·ENTITY 노트 기준점");
+  await snapshotPanel
+    .getByRole("button", { name: "현재 프로젝트 snapshot 생성" })
+    .click();
+  await snapshotPanel
+    .getByText("저장된 snapshot 4개", { exact: true })
+    .waitFor({ timeout: 30_000 });
+  const phase1cSnapshotItem = snapshotItemByName(
+    snapshotPanel,
+    phase1cFixture.snapshotName
+  );
+  await phase1cSnapshotItem.waitFor({ state: "attached", timeout: 30_000 });
+  const phase1cSnapshotMetadata = (
+    await phase1cSnapshotItem.locator(".snapshot-metadata").innerText()
+  ).trim();
+  if (!/형식\s+[^\r\n]+ v2/u.test(phase1cSnapshotMetadata)) {
+    throw new Error(
+      `Phase 1C named snapshot is not payload v2: ${phase1cSnapshotMetadata}`
+    );
+  }
+
+  await firstPage
+    .getByRole("button", { name: "설정", exact: true })
+    .click();
+  await storyEntityRowById(firstPage, protagonistId)
+    .getByRole("button")
+    .click();
+  const temporaryNameInput = firstPage.getByRole("textbox", {
+    name: "설정 이름"
+  });
+  await temporaryNameInput.fill(phase1cFixture.temporaryName);
+  await temporaryNameInput.blur();
+  if (
+    (await waitForStoryEntityId(firstPage, phase1cFixture.temporaryName)) !==
+    protagonistId
+  ) {
+    throw new Error("Temporary Story Bible mutation changed entity identity");
+  }
+
+  await firstPage
+    .getByRole("button", { name: "원고", exact: true })
+    .click();
+  await firstPage.getByRole("button", { name: "Snapshot" }).click();
+  await snapshotPanel
+    .getByRole("button", {
+      name: `${phase1cFixture.snapshotName} 복원`
+    })
+    .click();
+  const phase1cRestoreDialog = snapshotPanel.getByRole("alertdialog");
+  await phase1cRestoreDialog.waitFor({ state: "visible", timeout: 30_000 });
+  const confirmPhase1cRestore = phase1cRestoreDialog.getByRole("button", {
+    name: "안전 snapshot 생성 후 복원"
+  });
+  await pollBinderUi(
+    async () => !(await confirmPhase1cRestore.isDisabled()),
+    "Phase 1C named snapshot restore confirmation"
+  );
+  const phase1cDiffText = (
+    await phase1cRestoreDialog
+      .locator(".snapshot-diff--compact")
+      .innerText()
+  ).trim();
+  if (!/설정 변화\s+\+0 · −0 · 변경 1/u.test(phase1cDiffText)) {
+    throw new Error(
+      `Phase 1C temporary entity mutation was not reported: ${phase1cDiffText}`
+    );
+  }
+  await confirmPhase1cRestore.click();
+  await snapshotPanel
+    .getByText("저장된 snapshot 5개", { exact: true })
+    .waitFor({ timeout: 60_000 });
+
+  await firstPage
+    .getByRole("button", { name: "설정", exact: true })
+    .click();
+  await firstPage
+    .getByRole("region", { name: "설정 작업 공간" })
+    .waitFor({ state: "visible", timeout: 30_000 });
+  if (
+    (await storyEntityIds(firstPage)).length !== 2 ||
+    (await waitForStoryEntityId(
+      firstPage,
+      phase1cFixture.protagonistName
+    )) !== protagonistId ||
+    (await waitForStoryEntityId(firstPage, phase1cFixture.locationName)) !==
+      locationId
+  ) {
+    throw new Error("Phase 1C snapshot restore changed entity identity or count");
+  }
+  await storyEntityRowById(firstPage, protagonistId)
+    .getByRole("button")
+    .click();
+  await pollBinderUi(
+    async () =>
+      (await firstPage
+        .getByRole("textbox", { name: "설정 한 줄 요약" })
+        .inputValue()) === phase1cFixture.protagonistSummary &&
+      (await firstPage
+        .getByRole("combobox", { name: "설정 상태 변경" })
+        .inputValue()) === phase1cFixture.protagonistStatus &&
+      (await storyNoteInput(firstPage).inputValue()) ===
+        phase1cFixture.protagonistNote,
+    "restored Story Bible metadata and ENTITY Typie note",
+    60_000
+  );
+  await firstPage
+    .getByRole("region", { name: "별칭" })
+    .getByText(phase1cFixture.protagonistAlias, { exact: true })
+    .waitFor({ timeout: 30_000 });
+  if (
+    !(await firstPage
+      .getByRole("checkbox", { name: phase1cFixture.protagonistTag })
+      .isChecked())
+  ) {
+    throw new Error("Phase 1C snapshot restore did not restore the entity tag");
+  }
+  const restoredCustomRelationTypeId = await relationTypeManager
+    .locator("li[data-relation-type-id]")
+    .filter({ hasText: phase1cFixture.relationTypeName })
+    .getAttribute("data-relation-type-id");
+  const restoredCustomRelationId = await firstPage
+    .getByRole("region", { name: "나가는 관계" })
+    .locator("li[data-relation-id]")
+    .filter({ hasText: phase1cFixture.relationTypeName })
+    .getAttribute("data-relation-id");
+  if (
+    restoredCustomRelationTypeId !== customRelationTypeId ||
+    restoredCustomRelationId !== customRelationId ||
+    !(await firstPage.locator(promotedLinkSelector).isVisible()) ||
+    !(await firstPage.locator(explicitSceneLinkSelector).isVisible())
+  ) {
+    throw new Error(
+      "Phase 1C snapshot restore changed relation or scene-link identity"
+    );
+  }
+  await pollBinderUi(
+    async () =>
+      (await mentionSection.locator("li[data-mention-id]").count()) === 7,
+    "restored automatic mention candidates",
+    60_000
+  );
+  await firstPage.screenshot({ path: phase1cScreenshot });
+  const phase1cAcceptance = {
+    entityCount: 2,
+    entityIds: {
+      protagonist: protagonistId,
+      location: locationId
+    },
+    metadata: {
+      name: phase1cFixture.protagonistName,
+      summary: phase1cFixture.protagonistSummary,
+      status: phase1cFixture.protagonistStatus,
+      alias: phase1cFixture.protagonistAlias,
+      tag: phase1cFixture.protagonistTag
+    },
+    entityNoteCharacters: Array.from(phase1cFixture.protagonistNote).length,
+    customDirectedRelation: {
+      relationTypeId: customRelationTypeId,
+      relationId: customRelationId,
+      name: phase1cFixture.relationTypeName,
+      inverseName: phase1cFixture.relationTypeInverseName,
+      targetEntityId: locationId
+    },
+    automaticMentionCandidates: 7,
+    promotedMention: {
+      occurrenceId: promotedMentionId,
+      sceneId: sceneFourId,
+      role: "MENTIONED"
+    },
+    manuscriptSceneLink: {
+      sceneId: sceneThreeId,
+      entityId: protagonistId,
+      role: "POV"
+    },
+    namedSnapshot: {
+      payloadVersion: 2,
+      countAfterRestore: 5,
+      temporaryEntityMutationDetected: true,
+      restored: true
+    }
+  };
+  reportStage(
+    "Phase 1C Story Bible, mention promotion, scene link, and snapshot v2 restore verified"
+  );
+
+  await firstPage
+    .getByRole("button", { name: "원고", exact: true })
+    .click();
+
   await selectBinderScene(firstPage, binderTitles.sceneThree);
 
   const persistedBinderWidth = 420;
@@ -1344,7 +1875,7 @@ try {
     name: "Named snapshot"
   });
   await reopenedSnapshotPanel
-    .getByText("저장된 snapshot 3개", { exact: true })
+    .getByText("저장된 snapshot 5개", { exact: true })
     .waitFor({ timeout: 30_000 });
   await secondPage.getByRole("button", { name: "검색 · 치환" }).click();
   const reopenedSearchPanel = secondPage.getByRole("complementary", {
@@ -1368,10 +1899,126 @@ try {
   const phase1bReopenAcceptance = {
     scriveningsSceneCount: 11,
     liveEditorCount: 1,
-    namedSnapshotCount: 3,
+    namedSnapshotCount: 5,
     restoredSearchOccurrences: 7
   };
   reportStage("restart Phase 1B Scrivenings, search, and snapshots verified");
+
+  await secondPage
+    .getByRole("button", { name: "설정", exact: true })
+    .click();
+  await secondPage
+    .getByRole("region", { name: "설정 작업 공간" })
+    .waitFor({ state: "visible", timeout: 30_000 });
+  const reopenedProtagonistId = await waitForStoryEntityId(
+    secondPage,
+    phase1cFixture.protagonistName
+  );
+  const reopenedLocationId = await waitForStoryEntityId(
+    secondPage,
+    phase1cFixture.locationName
+  );
+  if (
+    (await storyEntityIds(secondPage)).length !== 2 ||
+    reopenedProtagonistId !== protagonistId ||
+    reopenedLocationId !== locationId
+  ) {
+    throw new Error(
+      "Restart changed Phase 1C Story Bible entity identity or count"
+    );
+  }
+  await storyEntityRowById(secondPage, protagonistId)
+    .getByRole("button")
+    .click();
+  await pollBinderUi(
+    async () =>
+      (await secondPage
+        .getByRole("textbox", { name: "설정 이름" })
+        .inputValue()) === phase1cFixture.protagonistName &&
+      (await secondPage
+        .getByRole("textbox", { name: "설정 한 줄 요약" })
+        .inputValue()) === phase1cFixture.protagonistSummary &&
+      (await secondPage
+        .getByRole("combobox", { name: "설정 상태 변경" })
+        .inputValue()) === phase1cFixture.protagonistStatus &&
+      (await storyNoteInput(secondPage).inputValue()) ===
+        phase1cFixture.protagonistNote,
+    "reopened Story Bible metadata and ENTITY Typie note",
+    60_000
+  );
+  await secondPage
+    .getByRole("region", { name: "별칭" })
+    .getByText(phase1cFixture.protagonistAlias, { exact: true })
+    .waitFor({ timeout: 30_000 });
+  if (
+    !(await secondPage
+      .getByRole("checkbox", { name: phase1cFixture.protagonistTag })
+      .isChecked())
+  ) {
+    throw new Error("Restart did not restore the Phase 1C entity tag");
+  }
+
+  const reopenedRelationTypeManager = secondPage.locator(
+    "details.relation-type-manager"
+  );
+  const reopenedRelationTypeId = await reopenedRelationTypeManager
+    .locator("li[data-relation-type-id]")
+    .filter({ hasText: phase1cFixture.relationTypeName })
+    .getAttribute("data-relation-type-id");
+  const reopenedRelationId = await secondPage
+    .getByRole("region", { name: "나가는 관계" })
+    .locator("li[data-relation-id]")
+    .filter({ hasText: phase1cFixture.relationTypeName })
+    .getAttribute("data-relation-id");
+  const reopenedPromotedLink = secondPage.locator(promotedLinkSelector);
+  const reopenedExplicitLink = secondPage.locator(explicitSceneLinkSelector);
+  if (
+    reopenedRelationTypeId !== customRelationTypeId ||
+    reopenedRelationId !== customRelationId ||
+    !(await reopenedPromotedLink.isVisible()) ||
+    !(await reopenedExplicitLink.isVisible())
+  ) {
+    throw new Error(
+      "Restart changed the Phase 1C relation type, relation, or scene links"
+    );
+  }
+  const reopenedMentionSection = secondPage.getByRole("region", {
+    name: "본문에서 찾은 후보"
+  });
+  await pollBinderUi(
+    async () =>
+      (await reopenedMentionSection.locator("li[data-mention-id]").count()) ===
+      7,
+    "reopened automatic mention candidates",
+    60_000
+  );
+  const reopenedPromotedMention = reopenedMentionSection
+    .locator("li[data-mention-id]")
+    .filter({ hasText: binderTitles.sceneFour });
+  await reopenedPromotedMention
+    .getByText("명시적 연결됨", { exact: true })
+    .waitFor({ timeout: 30_000 });
+  await reopenedRelationTypeManager.locator("summary").click();
+  await secondPage.screenshot({ path: phase1cReopenedScreenshot });
+  const phase1cReopenAcceptance = {
+    entityCount: 2,
+    stableEntityIds: true,
+    aliasRestored: true,
+    tagRestored: true,
+    entityNoteCharacters: Array.from(phase1cFixture.protagonistNote).length,
+    stableRelationTypeId: reopenedRelationTypeId === customRelationTypeId,
+    stableRelationId: reopenedRelationId === customRelationId,
+    restoredSceneLinks: [
+      { sceneId: sceneFourId, role: "MENTIONED" },
+      { sceneId: sceneThreeId, role: "POV" }
+    ],
+    automaticMentionCandidates: 7,
+    namedSnapshotCount: 5,
+    processRestartRestore: true
+  };
+  reportStage(
+    "restart Phase 1C entities, alias, tag, relation, links, mentions, and ENTITY note verified"
+  );
 
   if (
     secondRun.pageErrors.length > 0 ||
@@ -1448,6 +2095,8 @@ try {
         },
         phase1bAcceptance,
         phase1bReopenAcceptance,
+        phase1cAcceptance,
+        phase1cReopenAcceptance,
         pageAwarePointerHitTest: true,
         imeChecklist,
         canvas,
@@ -1481,7 +2130,13 @@ try {
             : "output/playwright/madi-electron-ime-checklist.png",
           packaged
             ? "output/playwright/madi-packaged-phase1b.png"
-            : "output/playwright/madi-electron-phase1b.png"
+            : "output/playwright/madi-electron-phase1b.png",
+          packaged
+            ? "output/playwright/madi-packaged-phase1c.png"
+            : "output/playwright/madi-electron-phase1c.png",
+          packaged
+            ? "output/playwright/madi-packaged-phase1c-reopened.png"
+            : "output/playwright/madi-electron-phase1c-reopened.png"
         ]
       },
       null,
