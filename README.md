@@ -1,25 +1,31 @@
 # madi
 
 `madi`는 한국어 장편소설 작가를 위한 local-first Windows desktop 저작도구다.
-현재 작업트리는 첫 제품 수직 기능인 Phase 1A를 구현한다.
+현재 작업트리는 Phase 1A의 장면별 저작 기능 위에 Phase 1B Manuscript Workspace를
+구현한다.
 
 ```text
 Phase 0.5 baseline: CONDITIONAL TECHNICAL GO
 Private local Phase 1A development: AUTHORIZED
-Phase 1A implementation: COMPLETE
-Phase 1A final verification/package verdict: PASS
 Phase 1A technical verdict: TECHNICAL GO — PRIVATE LOCAL
+Phase 1B implementation: COMPLETE IN WORKING TREE
+Phase 1B focused verification: PASS
+Phase 1B integration/development/packaged Electron acceptance: PASS
+Phase 1B final pnpm verify gate: PASS
+Phase 1B verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
 Windows native Korean IME: MANUAL VALIDATION PENDING
 License: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Public/paid/installer distribution: NOT AUTHORIZED
 ```
 
-최종 `pnpm verify`, 독립 `pnpm package:unpacked` 및 실제 Electron의
-2권·3화·5장면 종료/재열기 시나리오가 모두 통과했다. 현재 저장소 결과와 남은
-배포·hardening 경계는 [`docs/PHASE_1A_RESULT.md`](docs/PHASE_1A_RESULT.md)를
-따른다.
+Phase 1B 집중 검증은 Rust 23/23, Desktop Vitest 16 files/88 tests, desktop
+typecheck, Typie semantic probe와 전체 integration을 통과했다. 실제 development
+Electron에서 11 SCENE Scrivenings/search/7-scene 치환/snapshot restore/reopen도
+통과했고 unpacked 생성과 packaged Electron의 같은 Phase 1B/reopen 시나리오도
+통과했다. 최종 aggregate `pnpm verify`를 포함한 모든 자동 gate가 통과했다.
+현재 증거와 조건은 [`docs/PHASE_1B_RESULT.md`](docs/PHASE_1B_RESULT.md)를 따른다.
 
-## Phase 1A에서 할 수 있는 일
+## Phase 1B에서 할 수 있는 일
 
 - 하나의 `.madi` SQLite 파일에 작품 구조와 장면별 Typie 문서를 함께 저장
 - `WORK → VOLUME → CHAPTER → SCENE` Binder
@@ -31,11 +37,18 @@ Public/paid/installer distribution: NOT AUTHORIZED
 - 약 550ms debounce 자동저장, `Ctrl+S`, 장면 전환 전 저장, 종료 전 저장
 - 마지막 선택 node, Binder 펼침 상태 및 폭을 `.madi`에 저장·복원
 - 앱 종료 후 같은 `.madi`를 열어 구조와 각 장면 document 복원
+- WORK/VOLUME/CHAPTER 선택 범위의 연속 원고(Scrivener식 Scrivenings)
+- active SCENE 한 개만 shared Typie editor로 편집하고 나머지는 read-only 표시
+- 제목/본문, 현재 subtree/작품 전체의 한국어 exact substring 검색
+- 결과 문맥, 장면별 그룹, 위치 이동과 단일 장면/Scrivenings 강조
+- BODY 결과별 선택적 의미 치환과 치환 전 자동 logical snapshot
+- 이름 있는 snapshot 생성·목록·이름 변경·삭제·요약 diff·안전 복원
+- 현재 SCENE과 선택 subtree의 공백 포함/제외 Unicode scalar 글자 수
 - Electron 없이 UTF-8 plain-text recovery를 꺼내는 Rust CLI
 
-등장인물, 세계관, 관계 그래프, plot Canvas, Reader Lab, EPUB, HWP/HWPX,
-LLM, cloud/sync, collaboration, mobile/web, 전체 원고 연속 보기, 프로젝트 전체
-검색·치환 및 이름 있는 snapshot은 Phase 1A 범위가 아니다.
+등장인물, 세계관, 관계 그래프, plot Canvas, docking workspace, Reader Lab, EPUB,
+HWP/HWPX, LLM, cloud/sync, collaboration, mobile/web, 장면별 상세 diff와 플랫폼별
+출판 글자 수는 Phase 1B 범위가 아니다.
 
 ## 실제 사용 흐름
 
@@ -71,13 +84,18 @@ Typie WASM이 준비되면 상단에서 `새 프로젝트` 또는 `.madi 열기`
 - 삭제는 확인 dialog 뒤 명시적인 recursive delete로 실행된다. WORK는 삭제할 수
   없다.
 
-### 4. 장면 편집과 저장
+### 4. 단일 장면과 Scrivenings 편집
 
-1. SCENE을 선택한다. WORK/VOLUME/CHAPTER를 선택하면 editor 대신 안내가 나온다.
+1. SCENE을 선택하면 기존 단일 장면 editor가 열린다.
 2. 장면별 한국어 본문을 입력한다.
 3. 필요하면 상단 `장면 구분선`으로 `madi.scene-break.v1`을 넣는다.
 4. 저장 badge에서 `dirty → saving → saved` 상태를 확인한다.
 5. 즉시 저장하려면 `Ctrl+S` 또는 상단 `저장`을 누른다.
+
+WORK, VOLUME 또는 CHAPTER를 선택하면 하위 장면을 Binder 순서로 보여주는
+Scrivenings가 열린다. 장면 문서는 합치지 않는다. 비활성 장면은 read-only preview이고
+본문을 누른 한 장면만 기존 shared Typie editor를 사용한다. 먼 장면은 lightweight
+placeholder로 남겨 한 번에 여러 Typie instance를 만들지 않는다.
 
 SCENE A에서 B로 이동할 때 A의 snapshot과 plain-text recovery 저장이 성공한 뒤 B를
 load한다. 한글 IME composition 중에는 저장·전환·종료를 거부하고 현재 장면을
@@ -91,7 +109,42 @@ A → B → C 요청은 queue와 request/session token으로 오래된 장면 lo
 dirty event가 있었더라도 snapshot bytes와 plain-text recovery의 signature가 마지막
 성공 값과 같으면 DB write를 반복하지 않고 saved로 돌아간다.
 
-### 5. 종료와 재열기
+### 5. 작품 검색과 선택 치환
+
+상단 `검색 · 치환` panel에서 query, 제목/본문/전체, case, 현재 선택 범위/작품 전체를
+정한다. 검색은 저장된 recovery의 non-overlapping exact substring이며 결과는 장면별
+문맥과 Unicode scalar range를 제공한다. FTS5는 사용하지 않는다.
+
+BODY 결과만 checkbox로 선택해 치환할 수 있다. 적용 전에 현재 장면을 저장하고
+preview revision, SCENE/document identity와 source SHA-256를 확인한다. 각 장면은
+Typie semantic transaction으로 변환되고 모든 결과는 `AUTO_BEFORE_REPLACE` snapshot과
+함께 한 SQLite transaction으로 commit된다. newline, scene break/atom 또는 block을
+가로지르는 범위와 mixed inline modifier 범위는 거부한다.
+
+project-wide 치환과 snapshot restore가 shared editor를 임시 사용하면 controller가
+exclusive lock을 잡고 Typie surface/input을 inert/disabled로 만든다. 그동안 `Ctrl+S`,
+Undo/Redo, scene break, focus와 장면 전환은 fail-closed다. 예상하지 못한 editor mutation은
+commit 전에 작업을 중단한다. DB commit 뒤 저장된 장면 reload가 실패하면 임시 graph를
+저장하지 못하도록 fatal lock을 유지하며 창 닫기만 허용한다.
+
+project 전체 작업은 하나의 지속 가능한 `Ctrl+Z` entry가 아니다. 여러 장면을
+되돌릴 때는 자동 생성된 snapshot을 복원한다. 정확한 의미론은
+[`docs/SEARCH_REPLACE_SEMANTICS.md`](docs/SEARCH_REPLACE_SEMANTICS.md)를 따른다.
+
+### 6. Named snapshot
+
+`Named snapshot` panel에서 이름과 선택 메모로 현재 logical project를 저장하고 목록,
+이름 변경, 삭제와 현재 상태 대비 요약 diff를 사용할 수 있다. restore 확인 뒤 core는
+현재 상태를 같은 transaction의 `AUTO_BEFORE_RESTORE` snapshot으로 먼저 보존한다.
+payload는 SQLite 복사본이 아니라 hash가 붙은 `MADI_LOGICAL_JSON` v1이다.
+
+복원 확인 순간에는 fresh diff를 다시 요청해 preview revision과 summary를 대조한다.
+달라졌으면 복원을 실행하지 않고 갱신된 차이를 다시 확인하게 한다. CURRENT 검색은
+선택 Binder node ID까지 preview identity에 넣으므로 같은 표시 label이어도 실제 scope
+node가 바뀌는 즉시 치환 preview가 무효화된다. 현재 live SCENE의 첫 BODY hit는
+editor focus를 빼앗지 않고 Typie selection으로 강조한다.
+
+### 7. 종료와 재열기
 
 1. 현재 IME 조합을 끝낸다.
 2. 창을 닫는다.
@@ -109,10 +162,11 @@ tree 복원을 막지 않고 기본 선택·펼침·폭으로 격리한다. Bind
 
 - `PRAGMA application_id = 0x4D414449`
 - `app_meta.format_version = 1`
-- `app_meta.schema_version = 2`
-- `PRAGMA user_version = 2`
+- `app_meta.schema_version = 3`
+- `PRAGMA user_version = 3`
 - 기존 table: `app_meta`, `documents`, `schema_migrations`
 - Phase 1A table: `projects`, `tree_nodes`, `ui_state`
+- Phase 1B table: `search_documents`, `named_snapshots`
 
 정규 hierarchy:
 
@@ -129,6 +183,12 @@ project마다 WORK는 정확히 하나다. SCENE만 `document_id`를 가지며, 
 이름 변경·저장·삭제는 연결 document와 같은 transaction에서 처리한다. 구조와
 장면 저장은 project-wide optimistic `revision`을 사용하고 pre-save backup을
 회전한다. UI state 저장은 manuscript revision을 올리지 않는다.
+
+`search_documents`는 `documents.plain_text_recovery`의 exact-search projection이며
+insert/update/delete trigger가 같은 transaction에서 갱신한다. `named_snapshots`는
+`MANUAL`, `AUTO_BEFORE_REPLACE`, `AUTO_BEFORE_RESTORE` logical payload와 SHA-256를
+저장한다. schema 2 file을 열면 기존 document를 잃지 않고 migration 3에서 projection을
+backfill한다. `format_version`은 계속 1이다.
 
 sibling 순서는 `REAL order_key`를 `1024.0` 간격으로 배정한다. 중간 삽입은
 midpoint를 사용하고 간격이 `0.000001` 이하이면 해당 sibling만 rebalance한다.
@@ -170,6 +230,9 @@ main이 dialog path를 session capability에 연결하고, preload는 다음 고
 createProject, openProject, saveDocument, loadDocument, recoverPlainText,
 getProjectTree, createNode, renameNode, moveNode, reorderNode, deleteNode,
 loadSceneDocument, saveSceneDocument, saveUiState, loadUiState,
+listDescendantScenes, searchProject, getTextStatistics, applyReplacementBatch,
+createNamedSnapshot, listNamedSnapshots, renameNamedSnapshot,
+deleteNamedSnapshot, diffNamedSnapshot, restoreNamedSnapshot,
 getAppVersion, onCloseRequested, completeCloseRequest
 ```
 
@@ -197,7 +260,17 @@ git -C .\vendor\typie status --short
 ```
 
 일반 앱 build는 고정된 runtime artifact를 사용한다. `wasm-opt`을 포함하는 Typie
-runtime 전체 source 재현 build는 `DEFERRED TO PRE-RELEASE`다.
+runtime에 Phase 1B semantic replacement patch를 적용한 재현 build script는 다음이다.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\build-typie-phase1b-runtime.ps1
+```
+
+script는 clean/pinned submodule을 확인하고
+`patches/typie/phase1b-semantic-replace.patch`를 임시 적용해 WASM/bindings를 만든 뒤
+`BUILD_INFO.json`의 SHA-256를 검증하고 submodule을 clean 상태로 되돌린다. 최종 gate에서
+이 script의 독립 재실행 여부와 결과를 별도로 기록해야 한다.
 
 ## Windows 개발 요구사항
 
@@ -246,6 +319,7 @@ pnpm run test:core
 pnpm run typecheck
 pnpm run test:desktop
 pnpm run test:phase1a
+pnpm run test:phase1b
 pnpm run test:integration
 
 # 최종 gate
@@ -259,9 +333,9 @@ pnpm test:package
 ```
 
 `pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust test, 실제 Typie
-probe, 기존 `.madi` integration, production build, 일반 Electron smoke와 unpacked
-packaged smoke를 순서대로 실행한다. `pnpm test:dev`는 interactive Vite/Electron
-startup 성격 때문에 별도다.
+probe, Phase 0.5/1A/1B `.madi` integration, production build, 일반 Electron smoke와
+unpacked packaged smoke를 순서대로 실행한다. `pnpm test:dev`는 interactive
+Vite/Electron startup 성격 때문에 별도다.
 
 unpacked 출력:
 
@@ -278,13 +352,15 @@ output/madi-win32-x64/resources/licenses/
 
 | 항목 | 현재 기록 |
 |---|---|
-| Rust 전체 test | `16 / 16 PASS` |
-| renderer focused test | `56 / 56 PASS` |
-| Phase 1A sidecar 재시작 round-trip | `PASS` — 2 process, WORK 1/VOLUME 2/CHAPTER 4/SCENE 6, 한국어 장면 3, scene break 1, 최종 revision 14 |
-| 기존 Phase 0.5 integration | `PASS` |
-| Phase 1A 변경 뒤 최종 `pnpm verify` | `PASS` — exit 0 |
-| Phase 1A 변경 뒤 독립 `pnpm package:unpacked` | `PASS` — `output/madi-win32-x64/madi.exe` |
-| 다중 Binder node를 조작하는 실제 Electron 종료/재열기 acceptance | `PASS` — 개발 앱과 unpacked packaged 앱 |
+| Rust 전체 test | `23 / 23 PASS` |
+| renderer focused test | `16 files / 88 tests PASS` |
+| desktop typecheck | `PASS` |
+| Typie semantic replacement probe | `PASS` |
+| Phase 1B 10+ SCENE/two-process integration | `PASS` |
+| Phase 1B 실제 development Electron acceptance | `PASS` — SCENE 11, one live, Korean exact 7 → semantic replace 7 → restore 7, reopen |
+| Phase 1B 변경 뒤 최종 `pnpm verify` | `PASS` — exit code 0 |
+| Phase 1B 변경 뒤 독립 `pnpm package:unpacked` | `PASS` |
+| Phase 1B 실제 unpacked Electron acceptance | `PASS` — SCENE 11, snapshot 3, second-process reopen/search 7 |
 
 ## Rust CLI와 JSON-RPC
 
@@ -315,6 +391,10 @@ create_project, open_project, inspect_project,
 load_project_tree, create_tree_node, rename_tree_node,
 move_tree_node, reorder_tree_node, delete_tree_node,
 load_scene, save_scene, save_ui_state, load_ui_state,
+list_descendant_scenes, search_project, get_text_statistics,
+apply_replacement_batch, create_named_snapshot, list_named_snapshots,
+rename_named_snapshot, delete_named_snapshot, diff_named_snapshot,
+restore_named_snapshot,
 save_document, load_document, recover_plain_text
 ```
 
@@ -354,7 +434,7 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 
 ## 후속 단계로 미룬 항목
 
-다음은 완료가 아니라 비공개 Phase 1A의 차단에서 후속 단계로 옮긴 것이다.
+다음은 완료가 아니라 비공개 Phase 1B의 차단에서 후속 단계로 옮긴 것이다.
 
 - Windows native 한국어 IME 수동검증
 - installer/installed-state lifecycle
@@ -363,11 +443,19 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 - screen reader·keyboard-only 접근성 및 native 후보창 위치
 - 실제 후보 Typie commit upgrade rehearsal
 - remote recursive clean clone: `DEFERRED TO PRE-RELEASE`
-- `wasm-opt` 포함 runtime source 재현 build: `DEFERRED TO PRE-RELEASE`
+- project-wide persistent Undo history
+- 대형 원고 preview page cache와 완전한 virtual list
+- exact search 성능 benchmark/index 전략
+- named snapshot retention, compression과 quota
+- 장면별 상세 diff와 부분 restore
 
 ## 문서
 
-- [Phase 1A 범위와 완료 계약](docs/PHASE_1A_SCOPE.md)
+- [Phase 1B 범위와 완료 계약](docs/PHASE_1B_SCOPE.md)
+- [Phase 1B 저장소 결과](docs/PHASE_1B_RESULT.md)
+- [Scrivenings 아키텍처](docs/SCRIVENINGS_ARCHITECTURE.md)
+- [검색·선택 치환 의미론](docs/SEARCH_REPLACE_SEMANTICS.md)
+- [Named snapshot logical payload](docs/NAMED_SNAPSHOT_FORMAT.md)
 - [`.madi` v1 format 초안](docs/MADI_FILE_FORMAT_V1_DRAFT.md)
 - [Phase 1A 저장소 결과](docs/PHASE_1A_RESULT.md)
 - [Phase 0.5 폐쇄 결과](docs/PHASE_0_5_CLOSURE_RESULT.md)

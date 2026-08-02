@@ -68,7 +68,7 @@ function assertProjectInspection(inspected, expectedRevision) {
     inspected.integrity_check !== "ok" ||
     inspected.metadata.format_name !== "madi" ||
     inspected.metadata.format_version !== 1 ||
-    inspected.metadata.schema_version !== 2 ||
+    inspected.metadata.schema_version !== 3 ||
     inspected.metadata.revision !== expectedRevision
   ) {
     throw new Error(
@@ -78,9 +78,10 @@ function assertProjectInspection(inspected, expectedRevision) {
     );
   }
   if (
-    inspected.schema_migrations.length !== 2 ||
+    inspected.schema_migrations.length !== 3 ||
     inspected.schema_migrations[0]?.version !== 1 ||
-    inspected.schema_migrations[1]?.version !== 2
+    inspected.schema_migrations[1]?.version !== 2 ||
+    inspected.schema_migrations[2]?.version !== 3
   ) {
     throw new Error("Schema migration record changed during endurance test");
   }
@@ -306,7 +307,7 @@ try {
         semanticSceneBreaks: roundReports.at(-1)?.sceneBreaks,
         orderedContent: true,
         sqliteQuickCheck: "ok",
-        schemaMigrationVersions: [1, 2],
+        schemaMigrationVersions: [1, 2, 3],
         perRound: roundReports,
       },
       null,

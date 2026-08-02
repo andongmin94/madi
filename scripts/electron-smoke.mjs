@@ -540,6 +540,12 @@ const imeChecklistScreenshot = join(
     ? "madi-packaged-ime-checklist.png"
     : "madi-electron-ime-checklist.png"
 );
+const phase1bScreenshot = join(
+  artifactDirectory,
+  packaged
+    ? "madi-packaged-phase1b.png"
+    : "madi-electron-phase1b.png"
+);
 
 let firstApplication;
 let secondApplication;
@@ -579,7 +585,13 @@ try {
     sceneOne: "산맥의 그림자",
     sceneTwo: "불길한 전갈",
     sceneThree: "닫힌 성문",
-    sceneFour: "왕좌 아래의 불"
+    sceneFour: "왕좌 아래의 불",
+    sceneFive: "북쪽 감시탑",
+    sceneSix: "재의 서고",
+    sceneSeven: "침묵의 회랑",
+    sceneEight: "붉은 봉화",
+    sceneNine: "마지막 서약",
+    sceneTen: "용의 심장"
   };
   await renameBinderNode(firstPage, initialWork.id, binderTitles.work);
   await renameBinderNode(
@@ -774,6 +786,50 @@ try {
     childType: "SCENE",
     childTitle: binderTitles.sceneFour
   });
+  const phase1bSearchToken = "마디검증어";
+  const phase1bReplacementToken = "마디치환완료";
+  const phase1bSceneFixtures = [
+    {
+      title: binderTitles.sceneFour,
+      text: `${phase1bSearchToken}가 왕좌 아래에서 희미하게 빛났다.`
+    },
+    {
+      title: binderTitles.sceneFive,
+      text: `경비대장은 ${phase1bSearchToken}를 북쪽 기록에 남겼다.`
+    },
+    {
+      title: binderTitles.sceneSix,
+      text: `서윤은 재의 서고에서 ${phase1bSearchToken}를 찾아냈다.`
+    },
+    {
+      title: binderTitles.sceneSeven,
+      text: `침묵의 회랑 끝에서 ${phase1bSearchToken}라는 메아리가 돌아왔다.`
+    },
+    {
+      title: binderTitles.sceneEight,
+      text: `붉은 봉화의 암호는 ${phase1bSearchToken} 하나뿐이었다.`
+    },
+    {
+      title: binderTitles.sceneNine,
+      text: `마지막 서약문에는 ${phase1bSearchToken}가 선명했다.`
+    },
+    {
+      title: binderTitles.sceneTen,
+      text: `용의 심장은 ${phase1bSearchToken}를 기억하고 있었다.`
+    }
+  ];
+  await input.fill(phase1bSceneFixtures[0].text);
+  const phase1bAdditionalSceneIds = [];
+  for (const fixture of phase1bSceneFixtures.slice(1)) {
+    const sceneId = await addBinderChild(firstPage, {
+      parentType: "CHAPTER",
+      parentTitle: binderTitles.chapterTwo,
+      childType: "SCENE",
+      childTitle: fixture.title
+    });
+    phase1bAdditionalSceneIds.push(sceneId);
+    await input.fill(fixture.text);
+  }
   await selectBinderScene(firstPage, binderTitles.sceneThree);
   const selectedSceneFixture = `${longFixture} 선택 장면 전용 본문`;
   await input.fill(selectedSceneFixture);
@@ -798,7 +854,7 @@ try {
     WORK: 1,
     VOLUME: 2,
     CHAPTER: 3,
-    SCENE: 5
+    SCENE: 11
   });
 
   const binderExpectation = {
@@ -806,7 +862,7 @@ try {
       WORK: 1,
       VOLUME: 2,
       CHAPTER: 3,
-      SCENE: 5
+      SCENE: 11
     },
     titles: {
       WORK: [binderTitles.work],
@@ -821,7 +877,13 @@ try {
         binderTitles.sceneOne,
         binderTitles.sceneTwo,
         binderTitles.sceneThree,
-        binderTitles.sceneFour
+        binderTitles.sceneFour,
+        binderTitles.sceneFive,
+        binderTitles.sceneSix,
+        binderTitles.sceneSeven,
+        binderTitles.sceneEight,
+        binderTitles.sceneNine,
+        binderTitles.sceneTen
       ]
     },
     siblingParentId: chapterOneId,
@@ -837,7 +899,10 @@ try {
       [sceneOneId]: chapterOneId,
       [sceneTwoId]: chapterOneId,
       [sceneThreeId]: chapterTwoId,
-      [sceneFourId]: chapterTwoId
+      [sceneFourId]: chapterTwoId,
+      ...Object.fromEntries(
+        phase1bAdditionalSceneIds.map((sceneId) => [sceneId, chapterTwoId])
+      )
     }
   };
   const firstBinderEvidence = await readBinderEvidence(firstPage);
@@ -847,6 +912,160 @@ try {
     "first run"
   );
   reportStage("Binder hierarchy, scene saves, and sibling reorder verified");
+
+  const workRow = await binderRowByTitle(
+    firstPage,
+    "WORK",
+    binderTitles.work
+  );
+  await directBinderRow(workRow)
+    .getByRole("button", { name: binderTitles.work, exact: true })
+    .click();
+  const scrivenings = firstPage.getByRole("region", {
+    name: "연속 원고 보기"
+  });
+  await scrivenings.waitFor({ state: "visible", timeout: 30_000 });
+  await scrivenings
+    .getByRole("heading", { name: binderTitles.work, exact: true })
+    .waitFor({ timeout: 30_000 });
+  await pollBinderUi(
+    async () =>
+      (await scrivenings.locator("article[data-scene-id]").count()) === 11 &&
+      (await scrivenings.locator("[data-live-editor-slot]").count()) === 1,
+    "11-scene Scrivenings with one live editor"
+  );
+  const scriveningsEvidence = {
+    sceneCount: await scrivenings.locator("article[data-scene-id]").count(),
+    liveEditorCount: await scrivenings
+      .locator("[data-live-editor-slot]")
+      .count(),
+    readonlyOrLightCount: await scrivenings
+      .locator(
+        'article[data-scene-id]:not([data-active="true"]) .scrivenings__preview'
+      )
+      .count(),
+    stats:
+      (await scrivenings
+        .locator('[aria-label="선택 범위 글자 수"]')
+        .textContent())?.trim() ?? ""
+  };
+  if (
+    scriveningsEvidence.sceneCount !== 11 ||
+    scriveningsEvidence.liveEditorCount !== 1 ||
+    scriveningsEvidence.readonlyOrLightCount !== 10 ||
+    !scriveningsEvidence.stats.includes("장면 11개")
+  ) {
+    throw new Error(
+      `Scrivenings did not preserve the one-live-editor invariant: ${JSON.stringify(
+        scriveningsEvidence
+      )}`
+    );
+  }
+
+  await firstPage.getByRole("button", { name: "Snapshot" }).click();
+  const snapshotPanel = firstPage.getByRole("complementary", {
+    name: "Named snapshot"
+  });
+  await snapshotPanel
+    .getByRole("textbox", { name: "이름", exact: true })
+    .fill("Electron Phase 1B 기준점");
+  await snapshotPanel
+    .getByRole("textbox", { name: "메모 (선택)", exact: true })
+    .fill("11개 장면 검색·치환·복원 검증 전");
+  await snapshotPanel
+    .getByRole("button", { name: "현재 프로젝트 snapshot 생성" })
+    .click();
+  await snapshotPanel
+    .getByText("Electron Phase 1B 기준점", { exact: true })
+    .waitFor({ timeout: 30_000 });
+
+  await firstPage.getByRole("button", { name: "검색 · 치환" }).click();
+  const searchPanel = firstPage.getByRole("complementary", {
+    name: "프로젝트 검색 및 선택 치환"
+  });
+  await searchPanel
+    .getByRole("combobox", { name: "검색 대상" })
+    .selectOption("BODIES");
+  await searchPanel
+    .getByRole("radio", { name: "작품 전체", exact: true })
+    .check();
+  await searchPanel
+    .getByRole("searchbox", { name: "찾을 문자열" })
+    .fill(phase1bSearchToken);
+  await searchPanel.getByRole("button", { name: "검색", exact: true }).click();
+  await searchPanel
+    .getByText(/전체 7개 · 본문 7개 · 제목 0개 · 7개 장면/u)
+    .waitFor({ timeout: 30_000 });
+  await searchPanel
+    .getByRole("textbox", { name: "바꿀 문자열" })
+    .fill(phase1bReplacementToken);
+  const applyReplacementButton = searchPanel.getByRole("button", {
+    name: "선택 항목 치환 적용"
+  });
+  await pollBinderUi(
+    async () => !(await applyReplacementButton.isDisabled()),
+    "semantic replacement enabled"
+  );
+  await applyReplacementButton.click();
+  await searchPanel
+    .getByText(/전체 0개 · 본문 0개 · 제목 0개 · 0개 장면/u)
+    .waitFor({ timeout: 60_000 });
+  await searchPanel
+    .getByRole("searchbox", { name: "찾을 문자열" })
+    .fill(phase1bReplacementToken);
+  await searchPanel.getByRole("button", { name: "검색", exact: true }).click();
+  await searchPanel
+    .getByText(/전체 7개 · 본문 7개 · 제목 0개 · 7개 장면/u)
+    .waitFor({ timeout: 30_000 });
+
+  await firstPage.getByRole("button", { name: "Snapshot" }).click();
+  await snapshotPanel
+    .getByText("저장된 snapshot 2개", { exact: true })
+    .waitFor({ timeout: 30_000 });
+  await snapshotPanel
+    .getByRole("button", { name: "Electron Phase 1B 기준점 복원" })
+    .click();
+  const restoreDialog = snapshotPanel.getByRole("alertdialog");
+  await restoreDialog.waitFor({ state: "visible", timeout: 30_000 });
+  const confirmRestore = restoreDialog.getByRole("button", {
+    name: "안전 snapshot 생성 후 복원"
+  });
+  await pollBinderUi(
+    async () => !(await confirmRestore.isDisabled()),
+    "named snapshot restore confirmation"
+  );
+  await confirmRestore.click();
+  await snapshotPanel
+    .getByText("저장된 snapshot 3개", { exact: true })
+    .waitFor({ timeout: 60_000 });
+
+  await firstPage.getByRole("button", { name: "검색 · 치환" }).click();
+  await searchPanel
+    .getByRole("radio", { name: "작품 전체", exact: true })
+    .check();
+  await searchPanel
+    .getByRole("searchbox", { name: "찾을 문자열" })
+    .fill(phase1bSearchToken);
+  await searchPanel.getByRole("button", { name: "검색", exact: true }).click();
+  await searchPanel
+    .getByText(/전체 7개 · 본문 7개 · 제목 0개 · 7개 장면/u)
+    .waitFor({ timeout: 30_000 });
+  await firstPage.screenshot({ path: phase1bScreenshot });
+  const phase1bAcceptance = {
+    sceneCount: 11,
+    searchedOccurrences: 7,
+    transformedScenes: 7,
+    autoBeforeReplaceSnapshot: true,
+    autoBeforeRestoreSnapshot: true,
+    namedSnapshotRestore: true,
+    restoredOccurrences: 7,
+    scrivenings: scriveningsEvidence
+  };
+  reportStage(
+    "Phase 1B Scrivenings, Korean search, semantic replace, and snapshot restore verified"
+  );
+
+  await selectBinderScene(firstPage, binderTitles.sceneThree);
 
   const persistedBinderWidth = 420;
   const binderWidthControl = firstPage.getByRole("slider", {
@@ -881,6 +1100,7 @@ try {
   await firstPage.waitForTimeout(700);
   reportStage("per-project Binder selection, expansion, and width state saved");
 
+  await firstPage.getByRole("button", { name: "개발 패널" }).click();
   const firstDiagnostics = await readDiagnostics(firstPage);
   await firstPage.screenshot({ path: firstScreenshot });
   reportStage("first document saved and UI evidence captured");
@@ -1100,6 +1320,59 @@ try {
   }
   reportStage("restart Binder and short-scene recovery verified");
 
+  const reopenedWorkRow = await binderRowByTitle(
+    secondPage,
+    "WORK",
+    binderTitles.work
+  );
+  await directBinderRow(reopenedWorkRow)
+    .getByRole("button", { name: binderTitles.work, exact: true })
+    .click();
+  const reopenedScrivenings = secondPage.getByRole("region", {
+    name: "연속 원고 보기"
+  });
+  await pollBinderUi(
+    async () =>
+      (await reopenedScrivenings.locator("article[data-scene-id]").count()) ===
+        11 &&
+      (await reopenedScrivenings.locator("[data-live-editor-slot]").count()) ===
+        1,
+    "reopened 11-scene Scrivenings"
+  );
+  await secondPage.getByRole("button", { name: "Snapshot" }).click();
+  const reopenedSnapshotPanel = secondPage.getByRole("complementary", {
+    name: "Named snapshot"
+  });
+  await reopenedSnapshotPanel
+    .getByText("저장된 snapshot 3개", { exact: true })
+    .waitFor({ timeout: 30_000 });
+  await secondPage.getByRole("button", { name: "검색 · 치환" }).click();
+  const reopenedSearchPanel = secondPage.getByRole("complementary", {
+    name: "프로젝트 검색 및 선택 치환"
+  });
+  await reopenedSearchPanel
+    .getByRole("combobox", { name: "검색 대상" })
+    .selectOption("BODIES");
+  await reopenedSearchPanel
+    .getByRole("radio", { name: "작품 전체", exact: true })
+    .check();
+  await reopenedSearchPanel
+    .getByRole("searchbox", { name: "찾을 문자열" })
+    .fill(phase1bSearchToken);
+  await reopenedSearchPanel
+    .getByRole("button", { name: "검색", exact: true })
+    .click();
+  await reopenedSearchPanel
+    .getByText(/전체 7개 · 본문 7개 · 제목 0개 · 7개 장면/u)
+    .waitFor({ timeout: 30_000 });
+  const phase1bReopenAcceptance = {
+    scriveningsSceneCount: 11,
+    liveEditorCount: 1,
+    namedSnapshotCount: 3,
+    restoredSearchOccurrences: 7
+  };
+  reportStage("restart Phase 1B Scrivenings, search, and snapshots verified");
+
   if (
     secondRun.pageErrors.length > 0 ||
     secondRun.runtime.isPackaged !== packaged ||
@@ -1173,6 +1446,8 @@ try {
           charactersAfterRestart: restoredShortSceneCharacters,
           saveBeforeLoad: true
         },
+        phase1bAcceptance,
+        phase1bReopenAcceptance,
         pageAwarePointerHitTest: true,
         imeChecklist,
         canvas,
@@ -1203,7 +1478,10 @@ try {
             : "output/playwright/madi-electron-smoke-restored.png",
           packaged
             ? "output/playwright/madi-packaged-ime-checklist.png"
-            : "output/playwright/madi-electron-ime-checklist.png"
+            : "output/playwright/madi-electron-ime-checklist.png",
+          packaged
+            ? "output/playwright/madi-packaged-phase1b.png"
+            : "output/playwright/madi-electron-phase1b.png"
         ]
       },
       null,

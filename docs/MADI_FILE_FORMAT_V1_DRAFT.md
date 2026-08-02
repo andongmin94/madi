@@ -5,14 +5,15 @@
 ```text
 Specification status: DRAFT
 Logical format version: 1
-SQLite schema version: 2
-Implementation conformance: PHASE 1A PASS — HARDENING GAPS DOCUMENTED
-Migration/core-sidecar round-trip: PASS WITH LIMITS
+SQLite schema version: 3
+Implementation conformance: PHASE 1B INTEGRATION/DEV/PACKAGED ELECTRON/VERIFY PASS
+Migration/core-sidecar round-trip: SCHEMA 2 → 3 AND 10+ SCENE TWO-PROCESS PASS
 ```
 
-이 문서는 Phase 1A의 저장 계약을 기록한다. 이 명세의 문구만으로 구현 적합성을
+이 문서는 Phase 1A의 저장 계약과 Phase 1B의 exact search/named snapshot 확장을
+기록한다. 이 명세의 문구만으로 구현 적합성을
 증명하지는 않으며, 현재 migration·재열기 검증 증거와 제한은
-`PHASE_1A_RESULT.md`를 따른다. 배포 전에는 구현과 fixture를 다시 대조해 이 초안을
+`PHASE_1B_RESULT.md`를 따른다. 배포 전에는 구현과 fixture를 다시 대조해 이 초안을
 확정 문서로 승격해야 한다.
 
 `MUST`, `MUST NOT`, `SHOULD`는 각각 필수, 금지, 권고 요구사항이다.
@@ -25,8 +26,8 @@ Migration/core-sidecar round-trip: PASS WITH LIMITS
 - `PRAGMA application_id`: `0x4D414449` (`MADI`, decimal `1296122953`)
 - `app_meta.format_name`: `madi`
 - `app_meta.format_version`: `1`
-- `app_meta.schema_version`: `2`
-- `PRAGMA user_version`: `2`
+- `app_meta.schema_version`: `3`
+- `PRAGMA user_version`: `3`
 
 v0의 `application_id`와 container는 바꾸지 않는다. 확장자만 `.madi`인 임의
 SQLite 파일, 다른 `application_id`, 알 수 없는 format 또는 지원 값보다 높은
@@ -67,10 +68,12 @@ v1은 기존 row를 버리거나 snapshot을 다른 임시 형식으로 바꾸�
 빈 payload를 유효한 Typie snapshot이라고 가장하지 않는다. 최초 load 시 adapter가
 빈 document를 만들고 최초 성공 save에서 실제 commit/schema/snapshot을 기록한다.
 
-## 3. schema v2
+## 3. schema v3
 
-아래 SQL은 v1의 목표 schema다. 실제 migration은 `IF NOT EXISTS`만으로 성공을
-판정하지 않고, migration record와 전체 불변식을 함께 검증해야 한다.
+schema 3은 Phase 1A schema 2의 `projects`, `tree_nodes`, `ui_state`를 그대로 유지하고
+Phase 1B의 exact-search projection과 named logical snapshot table을 추가한다. 아래 SQL은
+v1의 목표 schema다. 실제 migration은 `IF NOT EXISTS`만으로 성공을 판정하지 않고,
+migration record와 전체 불변식을 함께 검증해야 한다.
 
 ### `projects`
 
@@ -168,6 +171,62 @@ Electron main이 `workspace.v1`의 snake_case shape, node ID, 최대 1,000개 ex
 ID와 Binder 폭을 검증한다. renderer는 원고 text, snapshot, DOM, selection,
 viewport, composition payload 또는 timer state를 이 값에 넣지 않는다.
 
+### `search_documents`
+
+```sql
+CREATE TABLE search_documents (
+    document_id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    plain_text TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX search_documents_project_idx
+    ON search_documents(project_id, document_id);
+```
+
+이 table은 canonical 본문이 아니라 `documents.plain_text_recovery`의 exact-search
+projection이다. `AFTER INSERT`, `AFTER UPDATE OF project_id,
+plain_text_recovery, updated_at`, `AFTER DELETE` trigger가 document transaction 안에서
+upsert/delete한다. schema 3 migration은 기존 documents를 한 번 backfill한다.
+
+현재 search는 FTS5가 아니라 이 projection의 text를 Rust에서 non-overlapping exact
+substring으로 순회한다. 검색 결과의 offset과 글자 수는 Unicode scalar 기준이다.
+
+### `named_snapshots`
+
+```sql
+CREATE TABLE named_snapshots (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    note TEXT,
+    kind TEXT NOT NULL CHECK (
+        kind IN ('MANUAL', 'AUTO_BEFORE_REPLACE', 'AUTO_BEFORE_RESTORE')
+    ),
+    payload_format TEXT NOT NULL,
+    payload_version INTEGER NOT NULL CHECK (payload_version > 0),
+    payload_blob BLOB NOT NULL,
+    content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX named_snapshots_project_created_idx
+    ON named_snapshots(project_id, created_at DESC, id);
+```
+
+현재 payload identity는 `MADI_LOGICAL_JSON` version 1이며 embedded JSON identity는
+`madi.logical-snapshot` version 1이다. `content_hash`는 exact uncompressed UTF-8
+payload bytes의 lowercase SHA-256 hex다. payload에는 project/tree/documents,
+Typie BLOB의 base64, recovery와 `workspace.v1`만 포함하고 named snapshot table과
+search projection은 포함하지 않는다.
+
+전체 payload와 restore 계약은 `docs/NAMED_SNAPSHOT_FORMAT.md`를 따른다.
+
 ## 4. canonical hierarchy
 
 허용 graph는 다음뿐이다.
@@ -258,33 +317,35 @@ ID가 결정적 read fallback이지만 정상 mutation은 tie를 남기지 않�
 
 ## 6. project 생성
 
-새 v1 project는 대상과 같은 directory의 고유 임시 SQLite 파일에서 다음을 하나의
-transaction으로 만든다.
+새 v1 project는 대상과 같은 directory의 고유 임시 SQLite 파일에서 schema migration
+transaction들을 적용한 뒤 canonical project row를 별도 transaction으로 만든다.
 
 1. v0 table과 schema migration 1
 2. `projects`, `tree_nodes`, `ui_state`와 schema migration 2
-3. `app_meta` 한 row
-4. 같은 ID의 `projects` 한 row
-5. project title을 가진 WORK 한 row
-6. WORK 아래 초기 document title을 가진 CHAPTER 한 row
-7. CHAPTER 아래 같은 title의 SCENE과 document 한 쌍
+3. `search_documents`, trigger, `named_snapshots`와 schema migration 3
+4. `app_meta` 한 row
+5. 같은 ID의 `projects` 한 row
+6. project title을 가진 WORK 한 row
+7. WORK 아래 초기 document title을 가진 CHAPTER 한 row
+8. CHAPTER 아래 같은 title의 SCENE과 document 한 쌍
 
 초기 VOLUME은 만들지 않는다. 기본 node/document는 기존 “새 파일을 만들면 바로 쓸
 수 있음” 동작을 유지하기 위한 최소값이다. core의 `document_title`을 생략하면 project
 title을 사용하며, 현재 desktop create path도 project title을 넘긴다. 이후 Binder의
 추가 동작은 `새 권`, `새 화`, `새 장면`을 기본 제목으로 사용한다.
 
-schema를 만들고 `application_id = 0x4D414449`, `user_version = 2`를 설정한 뒤 file을
+schema를 만들고 `application_id = 0x4D414449`, `user_version = 3`을 설정한 뒤 file을
 sync한다. destination이 이미 있으면 덮어쓰지 않는다. 완성된 임시 파일만 기존 v0의
 no-clobber publish 절차로 destination 이름에 연결한다.
 
-## 7. v0 → v1 migration
+## 7. schema 1/2 → schema 3 migration
 
 입력은 `format_version = 0`, `schema_version = 1`, `user_version = 1`인 유효한 v0
-파일이다. migration 전에는 application ID, metadata, `quick_check`와 지원 version을
-검사한다.
+파일 또는 schema 2 파일이다. 현재 open 순서는 migration 전에 application ID와
+지원 가능한 `user_version`을 확인하고, migration 뒤 `quick_check`, metadata와
+hierarchy를 검증한다. unknown metadata preflight의 한계는 compatibility 절에 명시한다.
 
-### 절차
+### schema 1 → 2 절차
 
 1. SQLite connection을 열고 application ID와 지원 가능한 `user_version`을 확인한다.
 2. `BEGIN IMMEDIATE`를 시작한다.
@@ -298,7 +359,7 @@ no-clobber publish 절차로 destination 이름에 연결한다.
 10. `schema_migrations(version = 2)`를 기록한다.
 11. `app_meta.format_version = 1`, `schema_version = 2`로 바꾼다.
 12. `PRAGMA user_version = 2`를 설정한다.
-13. 성공하면 commit한다.
+13. 성공하면 schema 2 migration transaction을 commit한다.
 
 v0는 현재 기본 document 한 개를 가지므로 일반 migration 결과는 WORK → `본문`
 CHAPTER → SCENE 한 경로다. 방어적으로 여러 legacy document가 있으면 같은 `본문`
@@ -309,10 +370,29 @@ ui_state row는 migration 필수가 아니다. 값이 없으면 open 시 첫 유
 container 기본 펼침 상태와 기본 폭 `300`을 계산하고, 첫 UI state save에서
 `workspace.v1`을 기록한다.
 
-어느 단계든 실패하면 전체 transaction을 rollback하고 원본 v0 metadata와 document를
-그대로 유지한다. 현재 구현은 migration 전 `.bak`을 만들지 않으므로 pre-migration
-backup이 있다고 주장하지 않는다. 손상된 row를 버리고 migration을 성공 처리하거나
-빈 v1 project로 대체하면 안 된다.
+schema 2 단계 중 실패하면 해당 transaction을 rollback하고 원본 schema 1 metadata와
+document를 유지한다.
+
+### schema 2 → 3 절차
+
+1. 별도 `BEGIN IMMEDIATE`를 시작한다.
+2. `search_documents`, project index와 documents insert/update/delete trigger를 만든다.
+3. `named_snapshots`와 project/created index를 만든다.
+4. 기존 `documents.id/project_id/plain_text_recovery/updated_at`을 projection에
+   `INSERT OR REPLACE`로 backfill한다.
+5. `schema_migrations(version = 3)`을 기록한다.
+6. `app_meta.schema_version = 3`으로 바꾸고 `format_version = 1`을 유지한다.
+7. `PRAGMA user_version = 3`을 설정한다.
+8. 성공하면 commit한다.
+
+schema 2 → 3 실패는 table/backfill/version 변경을 함께 rollback한다. schema 1에서
+open할 때는 schema 2 transaction이 먼저 commit된 뒤 schema 3 transaction이 실행되므로
+두 migration을 하나의 outer transaction으로 원자화했다고 주장하지 않는다. 재open은
+현재 `user_version`에서 migration chain을 계속한다.
+
+현재 구현은 migration 전 `.bak`을 만들지 않으므로 pre-migration backup이 있다고
+주장하지 않는다. 손상된 row를 버리고 migration을 성공 처리하거나 빈 v1 project로
+대체하면 안 된다.
 
 ## 8. structural mutation transaction
 
@@ -429,6 +509,47 @@ canonical identity로 보내며
 `app_meta.revision`을 기존 pre-save backup protocol로 원자적으로 갱신한다. 오류
 메시지에는 snapshot, recovery 또는 사용자가 입력한 본문을 넣지 않는다.
 
+documents update와 같은 transaction에서 schema 3 trigger가 `search_documents`를
+upsert한다. 따라서 검색 projection은 마지막 성공 save와 같은 commit boundary를
+가진다. UI가 dirty editor의 미저장 text를 DB 검색 결과라고 표시하면 안 된다.
+
+### Phase 1B descendant/search/statistics read
+
+- `list_descendant_scenes`는 선택 subtree의 SCENE을 Binder DFS 순서로 반환하며
+  snapshot BLOB을 제외한다. page limit은 1..1,000이고 encoded recovery text는 응답당
+  최대 64 MiB다.
+- `search_project`는 title과 `search_documents.plain_text`를 non-overlapping exact
+  substring으로 검색한다. default result limit은 1,000, 최대 5,000이며 total은 page와
+  별도로 정확히 계산한다.
+- BODY result는 SCENE/document ID, Unicode scalar start/end와 source recovery의
+  SHA-256를 가진다.
+- `get_text_statistics`는 subtree SCENE의 Unicode scalar 수와 Unicode whitespace를
+  제외한 수를 계산한다.
+
+세 read operation은 deferred transaction에서 metadata와 text를 같은 revision view로
+읽는다.
+
+### Phase 1B selective replacement commit
+
+`apply_replacement_batch`는 renderer가 만든 arbitrary text를 신뢰하지 않는다.
+expected project revision, SCENE-document-editor identity, source body SHA-256,
+occurrence count, query/replacement transduction, character delta와 transformed snapshot이
+실제로 달라졌는지 확인한다.
+
+검증 뒤 하나의 immediate transaction에서 현재 logical state를
+`AUTO_BEFORE_REPLACE`로 저장하고 모든 target documents를 update한 뒤 project revision을
+한 번 올린다. 중간 실패는 document/search projection/safety snapshot/revision을 모두
+rollback한다. Typie 의미 transform 자체의 adapter 계약은
+`docs/SEARCH_REPLACE_SEMANTICS.md`를 따른다.
+
+### Named logical snapshot operation
+
+manual create/rename/delete는 pre-operation backup, expected revision과 immediate
+transaction을 사용하고 revision을 한 번 올린다. diff는 read-only다. restore는 같은
+transaction 안에서 현재 logical payload를 `AUTO_BEFORE_RESTORE`로 insert하고 target을
+검증한 뒤 project/tree/documents/`workspace.v1`을 복원한다. 다른 UI key와 기존 named
+snapshot row는 보존한다. 자세한 payload는 `docs/NAMED_SNAPSHOT_FORMAT.md`를 따른다.
+
 ## 12. UI state 정규화
 
 disk의 `workspace.v1` 계약:
@@ -455,7 +576,8 @@ load 때:
    복원을 계속한다.
 3. renderer는 없는 expanded ID를 제거하고 유효한 branch만 펼침 상태에 적용한다.
 4. 존재하지 않는 selected ID는 session SCENE, 첫 SCENE, WORK 순으로 대체한다.
-5. 존재하는 non-SCENE selected ID는 유지하고 안내 화면을 표시한다.
+5. 존재하는 WORK/VOLUME/CHAPTER selected ID는 유지하고 해당 subtree Scrivenings를
+   표시한다.
 6. SCENE이 없으면 WORK를 선택하고 editor를 비활성화한다.
 7. 저장 row가 없거나 invalid이면 모든 branch를 펼치고 width 기본값 `300`을
    사용한다.
@@ -486,6 +608,11 @@ renderer는 장면 load 시 현재 Typie engine/commit/schema compatibility를 �
 불변식을 유지하지만, 임의로 변조한 SQLite에 대한 추가 corruption test와 scan은
 별도 hardening 대상이다.
 
+open 자체는 모든 document에 대응하는 `search_documents` row와 모든 named snapshot
+payload hash를 전수 decode하지 않는다. search는 projection 누락을 integrity 오류로
+거부하고 snapshot hash/shape는 diff/restore 시 검증한다. 변조 DB 전체를 open 전에
+audit하는 것은 후속 hardening 대상이다.
+
 validation 실패 시 본문을 log에 출력하지 않고 typed corruption/compatibility 오류를
 반환한다. 사용자의 명시적 복구 동작 없이 빈 값으로 덮어쓰거나 자동 삭제하지 않는다.
 `plain_text_recovery` CLI 경로는 계속 별도로 유지한다.
@@ -505,10 +632,11 @@ UI state write가 실패해도 마지막 성공 canonical manuscript는 유지�
 
 ## 15. compatibility
 
-- v0는 backup 후 명시적 schema 2 migration을 수행한다.
+- schema 1은 schema 2를 거쳐 schema 3으로, schema 2는 schema 3으로 migration한다.
+  migration 전 backup을 자동 생성한다고 주장하지 않는다.
 - v1 reader는 v0 snapshot bytes를 decode하지 않고 그대로 연결한 뒤 기존 adapter
   compatibility contract를 사용한다.
-- `user_version > 2`, `schema_version > 2` 또는 알 수 없는 format은 downgrade하지
+- `user_version > 3`, `schema_version > 3` 또는 알 수 없는 format은 downgrade하지
   않는다.
 - Typie commit/schema 변경은 별도 upgrade rehearsal과 migration 없이는 자동
   변환하지 않는다.
@@ -517,7 +645,7 @@ UI state write가 실패해도 마지막 성공 canonical manuscript는 유지�
 - v1 파일을 v0 앱이 쓸 수 있다고 약속하지 않는다.
 
 위 unknown-format 선거부는 목표 계약이다. 현재 open 순서는 `application_id`와
-`user_version`을 본 뒤 v2 migration을 먼저 실행하고, 그 다음 `quick_check`와
+`user_version`을 본 뒤 v2/v3 migration을 먼저 실행하고, 그 다음 `quick_check`와
 `app_meta` format/schema를 검증한다. 따라서 `user_version = 1`인 변조 파일의
 unknown `app_meta.format_version`을 migration 전에 거부하는 conformance는
 `PENDING`이다.
@@ -525,12 +653,13 @@ unknown `app_meta.format_version`을 migration 전에 거부하는 conformance�
 ## 16. 요구 test와 현재 결과
 
 집중 test와 최종 aggregate gate를 구분한다. 상세 결과와 구현 gap은
-`docs/PHASE_1A_RESULT.md`를 따른다.
+`docs/PHASE_1B_RESULT.md`를 따른다.
 
 | 영역 | 필수 검증 | 결과 |
 |---|---|---|
 | schema | 새 v1 create의 table/index/version | `PASS` — Rust |
 | migration | 실제 v0 fixture의 공통 `본문` CHAPTER backfill | `PASS` — failure rollback test와 pre-migration backup은 없음 |
+| migration 3 | schema 2 data/search projection backfill/version | `PASS` — Rust |
 | hierarchy | 허용 edge와 대표 금지 edge | `PASS` — Rust |
 | root | project당 WORK 정확히 하나 | `PASS` — Rust |
 | scene-document | create/rename/load/save/delete 연결 | `PASS` — Rust |
@@ -538,11 +667,15 @@ unknown `app_meta.format_version`을 migration 전에 거부하는 conformance�
 | ordering | append/midpoint/reorder/move/reopen | `PASS` — Rust/sidecar 범위 |
 | delete | non-leaf 거부, explicit recursive, WORK 금지 | `PASS` — Rust |
 | UI state | generic JSON save/load와 malformed `workspace.v1` default fallback | `PASS` — 다중 Binder Electron reopen 포함 |
-| content | 6 SCENE 중 3개의 한국어 snapshot/recovery | `PASS` — 2-process sidecar |
-| scene break | `madi.scene-break.v1` 하나 save/reopen | `PASS` — 2-process sidecar |
-| lifecycle | 두 core process와 실제 Electron process reopen | `PASS` — 개발/packaged 앱 |
-| regression | 변경 뒤 최종 `pnpm verify` | `PASS` — exit 0 |
-| package | 변경 뒤 `pnpm package:unpacked` | `PASS` — Windows unpacked |
+| exact search | Korean substring/save refresh/pagination/source hash | `PASS` — Rust |
+| replacement | revision/hash/transduction/atomic multi-document rollback | `PASS` — Rust/Typie focused |
+| snapshot | logical hash/CRUD/diff/restore/auto safety/rollback | `PASS` — Rust |
+| content | 10+ SCENE Korean/scene-break two-process fixture | `PASS` |
+| lifecycle | Phase 1B development Electron reopen | `PASS` — 11 SCENE/Scriv./search/replace/restore |
+| packaged lifecycle | Phase 1B unpacked Electron reopen | `PASS` — 11 SCENE/search 7/snapshot 3 |
+| regression | 변경 뒤 최종 `pnpm verify` | `PASS` — exit code 0 |
+| package | 변경 뒤 `pnpm package:unpacked` | `PASS` |
 
-Phase 1A의 구현·회귀·package gate는 통과했다. 이 문서는 계속 v1 **초안**이며,
-위에 명시한 migration preflight와 임의 변조 DB open audit은 hardening 과제로 남는다.
+Phase 1B 집중 test, integration, development/packaged Electron과 최종 aggregate
+`pnpm verify`는 모두 통과했다. 이 문서는 계속 v1 **초안**이며, 위 migration
+preflight와 임의 변조 DB open audit도 hardening 과제로 남는다.
