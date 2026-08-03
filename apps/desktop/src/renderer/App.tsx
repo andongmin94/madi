@@ -9,12 +9,14 @@ import {
 import type {
   DescendantScenePreview,
   DiffNamedSnapshotResult,
+  EntityGraphDetail,
   EntityAliasRecord,
   EntityKind,
   EntityMentionCandidate,
   EntityRecord,
   EntityRelationRecord,
   EntityStatus,
+  EntitySceneContext,
   ListDescendantScenesResult,
   MadiDesktopApi,
   NamedSnapshotSummary,
@@ -26,7 +28,9 @@ import type {
   SearchProjectRequest,
   SearchProjectResult,
   TagRecord,
-  TextStatisticsResult
+  TextStatisticsResult,
+  WorldGraphReadModel,
+  WorldGraphUiState
 } from "../shared/contracts";
 import type {
   EditorTextReplacement,
@@ -75,6 +79,12 @@ import {
   type StorySceneLink
 } from "./components/storyBible/StoryBibleWorkspace";
 import { SceneEntityInspector } from "./components/storyBible/SceneEntityInspector";
+import {
+  DEFAULT_WORLD_GRAPH_UI_STATE,
+  WorldGraphWorkspace,
+  normalizeWorldGraphUiState,
+  type WorldGraphPerformanceSample
+} from "./components/worldGraph";
 
 const INITIAL_WORKSPACE: WorkspaceState = {
   savePhase: "no-project",
@@ -104,7 +114,7 @@ export interface AppProps {
 
 type EnginePhase = "loading" | "ready" | "error";
 type Panel = "search" | "snapshots" | "scene-entities" | "development" | "ime";
-type AppMode = "MANUSCRIPT" | "STORY_BIBLE";
+type AppMode = "MANUSCRIPT" | "STORY_BIBLE" | "WORLD_GRAPH";
 const AUTOSAVE_DELAY_MS = 550;
 const DEFAULT_BINDER_WIDTH = 300;
 const WORKSPACE_PAGE_LIMIT = 200;
@@ -475,6 +485,16 @@ export function App({
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [storyBibleBusy, setStoryBibleBusy] = useState(false);
   const [storyBibleError, setStoryBibleError] = useState("");
+  const [worldGraphModel, setWorldGraphModel] =
+    useState<WorldGraphReadModel | null>(null);
+  const [worldGraphUiState, setWorldGraphUiState] =
+    useState<WorldGraphUiState>(DEFAULT_WORLD_GRAPH_UI_STATE);
+  const [worldGraphStateReady, setWorldGraphStateReady] = useState(false);
+  const [worldGraphBusy, setWorldGraphBusy] = useState(false);
+  const [worldGraphError, setWorldGraphError] = useState("");
+  const [worldGraphPerformance, setWorldGraphPerformance] = useState<
+    WorldGraphPerformanceSample & { readonly ipcMs?: number }
+  >({});
   const [scenePreviews, setScenePreviews] = useState<
     readonly DescendantScenePreview[]
   >([]);
@@ -505,6 +525,10 @@ export function App({
   const entityMountRef = useRef<HTMLDivElement>(null);
   const lastManuscriptSceneIdRef = useRef<string | null>(null);
   const storyReloadTokenRef = useRef(0);
+  const worldGraphReloadTokenRef = useRef(0);
+  const worldGraphUiStateRef = useRef<WorldGraphUiState>(
+    DEFAULT_WORLD_GRAPH_UI_STATE
+  );
   const projectStateSessionRef = useRef<string | null>(null);
   const compositionActiveRef = useRef(false);
   const isComposing =
@@ -643,6 +667,63 @@ export function App({
           linkResult.revision
         )
       );
+    },
+    [api, controller]
+  );
+
+  const reloadWorldGraph = useCallback(
+    async (sessionId: string, retryStale = true): Promise<void> => {
+      const requestToken = ++worldGraphReloadTokenRef.current;
+      setWorldGraphBusy(true);
+      const startedAt = performance.now();
+      try {
+        const result = await api.getWorldGraph({ sessionId });
+        if (requestToken !== worldGraphReloadTokenRef.current) {
+          return;
+        }
+        const current = controller?.getState();
+        if (!current?.session || current.session.sessionId !== sessionId) {
+          return;
+        }
+        if (result.projectId !== current.session.projectId) {
+          throw new Error("다른 작품의 그래프 응답을 차단했습니다.");
+        }
+        if (result.revision < current.revision) {
+          if (retryStale) {
+            await reloadWorldGraph(sessionId, false);
+          } else {
+            setWorldGraphError(
+              "현재 작품 revision보다 오래된 그래프 응답을 버렸습니다."
+            );
+          }
+          return;
+        }
+        setWorldGraphModel(result);
+        setWorldGraphPerformance((currentSample) => ({
+          ...currentSample,
+          ipcMs: performance.now() - startedAt
+        }));
+        setWorldGraphError("");
+        controller?.adoptProjectRevision(result.revision);
+      } catch (error) {
+        if (requestToken === worldGraphReloadTokenRef.current) {
+          if (
+            retryStale &&
+            error instanceof Error &&
+            error.message.includes("stale world graph")
+          ) {
+            await reloadWorldGraph(sessionId, false);
+            return;
+          }
+          setWorldGraphError(
+            publicError(error, "세계관 그래프를 불러오지 못했습니다.")
+          );
+        }
+      } finally {
+        if (requestToken === worldGraphReloadTokenRef.current) {
+          setWorldGraphBusy(false);
+        }
+      }
     },
     [api, controller]
   );
@@ -860,8 +941,148 @@ export function App({
 
   useEffect(() => {
     const sessionId = workspace.session?.sessionId;
+    ++worldGraphReloadTokenRef.current;
+    setWorldGraphStateReady(false);
+    setWorldGraphModel(null);
+    setWorldGraphPerformance({});
+    if (!sessionId || !controller) {
+      worldGraphUiStateRef.current = DEFAULT_WORLD_GRAPH_UI_STATE;
+      setWorldGraphUiState(DEFAULT_WORLD_GRAPH_UI_STATE);
+      setWorldGraphBusy(false);
+      setWorldGraphError("");
+      return;
+    }
+    let cancelled = false;
+    const restoreWorldGraph = async () => {
+      const stored = await api
+        .loadWorldGraphUiState({ sessionId })
+        .catch(() => ({ state: null }));
+      if (cancelled || controller.getState().session?.sessionId !== sessionId) {
+        return;
+      }
+      const restored = normalizeWorldGraphUiState(stored.state);
+      worldGraphUiStateRef.current = restored;
+      setWorldGraphUiState(restored);
+      setWorldGraphStateReady(true);
+    };
+    void restoreWorldGraph();
+    return () => {
+      cancelled = true;
+      ++worldGraphReloadTokenRef.current;
+    };
+  }, [api, controller, workspace.session?.sessionId]);
+
+  useEffect(() => {
+    const sessionId = workspace.session?.sessionId;
+    if (
+      appMode !== "WORLD_GRAPH" ||
+      !sessionId ||
+      !worldGraphStateReady
+    ) {
+      return;
+    }
+    void reloadWorldGraph(sessionId);
+  }, [
+    appMode,
+    reloadWorldGraph,
+    worldGraphStateReady,
+    workspace.revision,
+    workspace.session?.sessionId
+  ]);
+
+  const acceptWorldGraphUiState = useCallback((state: WorldGraphUiState) => {
+    const normalized = normalizeWorldGraphUiState(state);
+    worldGraphUiStateRef.current = normalized;
+    setWorldGraphUiState(normalized);
+  }, []);
+
+  const recordWorldGraphPerformance = useCallback(
+    (sample: WorldGraphPerformanceSample) => {
+      setWorldGraphPerformance((current) => ({ ...current, ...sample }));
+    },
+    []
+  );
+
+  const persistWorldGraphUiState = useCallback(async (): Promise<void> => {
+    const sessionId = workspace.session?.sessionId;
+    if (!sessionId || !worldGraphStateReady) {
+      return;
+    }
+    await api.saveWorldGraphUiState({
+      sessionId,
+      state: worldGraphUiStateRef.current
+    });
+  }, [api, worldGraphStateReady, workspace.session?.sessionId]);
+
+  const persistWorldGraphUiStateBeforeTransition = useCallback(
+    async (): Promise<boolean> => {
+      if (appMode !== "WORLD_GRAPH") {
+        return true;
+      }
+      try {
+        await persistWorldGraphUiState();
+        return true;
+      } catch (error) {
+        setWorldGraphError(
+          publicError(error, "그래프 화면 상태를 저장하지 못했습니다.")
+        );
+        return false;
+      }
+    },
+    [appMode, persistWorldGraphUiState]
+  );
+
+  useEffect(() => {
+    if (!worldGraphStateReady || !workspace.session) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void persistWorldGraphUiState().catch((error: unknown) => {
+        setWorldGraphError(
+          publicError(error, "그래프 화면 상태를 저장하지 못했습니다.")
+        );
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [persistWorldGraphUiState, worldGraphStateReady, worldGraphUiState, workspace.session]);
+
+  const loadWorldGraphEntityDetail = useCallback(
+    async (entityId: string): Promise<EntityGraphDetail> => {
+      const sessionId = workspace.session?.sessionId;
+      if (!sessionId) {
+        throw new Error("프로젝트가 열려 있지 않습니다.");
+      }
+      return api.getEntityGraphDetail({ sessionId, entityId });
+    },
+    [api, workspace.session?.sessionId]
+  );
+
+  const loadWorldGraphSceneContext = useCallback(
+    async (entityId: string): Promise<EntitySceneContext> => {
+      const sessionId = workspace.session?.sessionId;
+      if (!sessionId) {
+        throw new Error("프로젝트가 열려 있지 않습니다.");
+      }
+      return api.getEntitySceneContext({ sessionId, entityId });
+    },
+    [api, workspace.session?.sessionId]
+  );
+
+  const loadWorldGraphMentionCount = useCallback(
+    async (entityId: string): Promise<number> => {
+      const sessionId = workspace.session?.sessionId;
+      if (!sessionId) {
+        throw new Error("프로젝트가 열려 있지 않습니다.");
+      }
+      return (await discoverAllEntityMentions(api, sessionId, entityId)).length;
+    },
+    [api, workspace.session?.sessionId]
+  );
+
+  useEffect(() => {
+    const sessionId = workspace.session?.sessionId;
     const entityId = selectedEntityId;
-    if (!sessionId || !entityId) {
+    if (!sessionId || !entityId || appMode === "WORLD_GRAPH") {
       setEntityMentions([]);
       return;
     }
@@ -900,7 +1121,13 @@ export function App({
     return () => {
       cancelled = true;
     };
-  }, [api, controller, selectedEntityId, workspace.session?.sessionId]);
+  }, [
+    api,
+    appMode,
+    controller,
+    selectedEntityId,
+    workspace.session?.sessionId
+  ]);
 
   useEffect(() => {
     if (workspace.activeSceneId) {
@@ -1145,6 +1372,23 @@ export function App({
                 );
               }
             }
+            if (
+              readyToClose &&
+              worldGraphStateReady &&
+              workspace.session
+            ) {
+              try {
+                await api.saveWorldGraphUiState({
+                  sessionId: workspace.session.sessionId,
+                  state: worldGraphUiStateRef.current
+                });
+              } catch (error) {
+                readyToClose = false;
+                setWorldGraphError(
+                  publicError(error, "그래프 화면 상태 저장 실패")
+                );
+              }
+            }
             const root = document.documentElement;
             if (readyToClose) {
               root.inert = true;
@@ -1178,6 +1422,7 @@ export function App({
     projectTree,
     selectedNodeId,
     uiStateReady,
+    worldGraphStateReady,
     workspace.session
   ]);
 
@@ -1959,11 +2204,21 @@ export function App({
     if (!(await controller.flushPendingChanges(() => compositionActiveRef.current))) {
       return;
     }
+    if (!(await persistWorldGraphUiStateBeforeTransition())) {
+      return;
+    }
     setStoryBibleError("");
+    if (nextMode === "WORLD_GRAPH") {
+      if (mountRef.current) {
+        controller.relocateEditor(mountRef.current);
+      }
+      setAppMode("WORLD_GRAPH");
+      return;
+    }
     if (nextMode === "STORY_BIBLE") {
-      setAppMode("STORY_BIBLE");
       const entityId =
-        (selectedEntityId && entities.some((entity) => entity.id === selectedEntityId)
+        (selectedEntityId &&
+        entities.some((entity) => entity.id === selectedEntityId)
           ? selectedEntityId
           : entities[0]?.id) ?? null;
       if (entityId) {
@@ -1973,12 +2228,18 @@ export function App({
         );
         if (switched) {
           setSelectedEntityId(entityId);
+        } else {
+          setWorldGraphError(
+            controller.getState().errorMessage ||
+              "설정 노트를 전환하지 못했습니다."
+          );
+          return;
         }
       }
+      setAppMode("STORY_BIBLE");
       return;
     }
 
-    setAppMode("MANUSCRIPT");
     const sceneId =
       (lastManuscriptSceneIdRef.current &&
       projectTree?.nodes.some(
@@ -1999,8 +2260,14 @@ export function App({
         if (mountRef.current) {
           controller.relocateEditor(mountRef.current);
         }
+      } else {
+        setWorldGraphError(
+          controller.getState().errorMessage || "장면을 전환하지 못했습니다."
+        );
+        return;
       }
     }
+    setAppMode("MANUSCRIPT");
   };
 
   const selectStoryEntity = async (entityId: string): Promise<void> => {
@@ -2426,14 +2693,20 @@ export function App({
     if (!controller) {
       throw new Error("편집기가 준비되지 않았습니다.");
     }
-    setAppMode("MANUSCRIPT");
+    if (!(await persistWorldGraphUiStateBeforeTransition())) {
+      return;
+    }
     const switched = await controller.selectScene(
       sceneId,
       () => compositionActiveRef.current
     );
     if (!switched) {
-      throw new Error(controller.getState().errorMessage);
+      setWorldGraphError(
+        controller.getState().errorMessage || "장면을 전환하지 못했습니다."
+      );
+      return;
     }
+    setAppMode("MANUSCRIPT");
     setSelectedNodeId(sceneId);
     setScriveningsLiveSceneId(null);
     setScriveningsHighlightedSceneId(null);
@@ -2446,8 +2719,31 @@ export function App({
   };
 
   const openStoryEntity = async (entityId: string): Promise<void> => {
-    setAppMode("STORY_BIBLE");
-    await selectStoryEntity(entityId);
+    if (!(await persistWorldGraphUiStateBeforeTransition())) {
+      return;
+    }
+    try {
+      await selectStoryEntity(entityId);
+      setAppMode("STORY_BIBLE");
+    } catch (error) {
+      setWorldGraphError(
+        publicError(error, "설정 노트를 전환하지 못했습니다.")
+      );
+    }
+  };
+
+  const createProjectFromUi = async (): Promise<void> => {
+    if (!(await persistWorldGraphUiStateBeforeTransition())) {
+      return;
+    }
+    await controller?.createProject(() => compositionActiveRef.current);
+  };
+
+  const openProjectFromUi = async (): Promise<void> => {
+    if (!(await persistWorldGraphUiStateBeforeTransition())) {
+      return;
+    }
+    await controller?.openProject(() => compositionActiveRef.current);
   };
 
   const listStoryEntityIds = async (
@@ -2481,7 +2777,9 @@ export function App({
   const hasActiveEntityNote =
     hasActiveOwnerDocument && workspace.activeOwnerKind === "ENTITY";
   const hasDocument =
-    appMode === "STORY_BIBLE"
+    appMode === "WORLD_GRAPH"
+      ? false
+      : appMode === "STORY_BIBLE"
       ? hasActiveEntityNote
       : hasActiveDocument &&
         (Boolean(selectedScene) || Boolean(visibleScriveningsLiveSceneId));
@@ -2494,7 +2792,7 @@ export function App({
       <header className="titlebar">
         <div className="wordmark" aria-label="madi">
           madi
-          <span>phase 1C</span>
+          <span>phase 1D</span>
         </div>
         <label className="document-title">
           <span className="sr-only">현재 작품명</span>
@@ -2512,21 +2810,13 @@ export function App({
         <div className="toolbar__group">
           <ToolbarButton
             disabled={enginePhase !== "ready" || busy}
-            onClick={() =>
-              void controller?.createProject(
-                () => compositionActiveRef.current
-              )
-            }
+            onClick={() => void createProjectFromUi()}
           >
             새 프로젝트
           </ToolbarButton>
           <ToolbarButton
             disabled={enginePhase !== "ready" || busy}
-            onClick={() =>
-              void controller?.openProject(
-                () => compositionActiveRef.current
-              )
-            }
+            onClick={() => void openProjectFromUi()}
           >
             .madi 열기
           </ToolbarButton>
@@ -2580,6 +2870,14 @@ export function App({
             onClick={() => void switchAppMode("STORY_BIBLE")}
           >
             설정
+          </button>
+          <button
+            type="button"
+            aria-pressed={appMode === "WORLD_GRAPH"}
+            disabled={!workspace.session || busy}
+            onClick={() => void switchAppMode("WORLD_GRAPH")}
+          >
+            그래프
           </button>
         </div>
         <div className="toolbar__spacer" />
@@ -2860,19 +3158,11 @@ export function App({
             hasDocument={hasDocument}
             busy={busy}
             environment={imeEnvironment}
-            onCreateEmptyDocument={() =>
-              controller?.createProject(
-                () => compositionActiveRef.current
-              )
-            }
+            onCreateEmptyDocument={createProjectFromUi}
             onSaveSnapshot={() => {
               void controller?.save(() => compositionActiveRef.current);
             }}
-            onOpenProject={() =>
-              controller?.openProject(
-                () => compositionActiveRef.current
-              )
-            }
+            onOpenProject={openProjectFromUi}
             onUndo={() => controller?.undo()}
             onRedo={() => controller?.redo()}
           />
@@ -3016,6 +3306,40 @@ export function App({
           onOpenScene={openStoryScene}
           onPromoteMention={promoteStoryMention}
         />
+      )}
+
+      {appMode === "WORLD_GRAPH" && workspace.session && (
+        <div
+          className="world-graph-host"
+          data-testid="world-graph-host"
+          data-graph-ipc-ms={worldGraphPerformance.ipcMs?.toFixed(3)}
+          data-graph-elements-ms={
+            worldGraphPerformance.elementConversionMs?.toFixed(3)
+          }
+          data-graph-filter-ms={worldGraphPerformance.filterMs?.toFixed(3)}
+          data-graph-bfs-ms={worldGraphPerformance.bfsMs?.toFixed(3)}
+          data-graph-search-ms={worldGraphPerformance.searchFocusMs?.toFixed(3)}
+          data-graph-layout-ms={worldGraphPerformance.layoutMs?.toFixed(3)}
+          data-graph-display-ms={worldGraphPerformance.displayMs?.toFixed(3)}
+        >
+          <WorldGraphWorkspace
+            model={worldGraphStateReady ? worldGraphModel : null}
+            initialUiState={worldGraphUiState}
+            busy={worldGraphBusy || !worldGraphStateReady}
+            errorMessage={worldGraphError}
+            onUiStateChange={acceptWorldGraphUiState}
+            onLoadEntityDetail={loadWorldGraphEntityDetail}
+            onLoadEntitySceneContext={loadWorldGraphSceneContext}
+            onLoadMentionCount={loadWorldGraphMentionCount}
+            onOpenEntity={openStoryEntity}
+            onOpenRelation={(_relationId, sourceEntityId) =>
+              openStoryEntity(sourceEntityId)
+            }
+            onOpenScene={(sceneId) => openStoryScene(sceneId)}
+            onSelectedEntityChange={setSelectedEntityId}
+            onPerformanceSample={recordWorldGraphPerformance}
+          />
+        </div>
       )}
 
       <footer className="statusbar">

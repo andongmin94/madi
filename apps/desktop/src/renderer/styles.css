@@ -1305,6 +1305,12 @@ button:disabled {
   box-shadow: 0 1px 3px rgb(38 35 29 / 22%);
 }
 
+.world-graph-host {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .story-bible {
   position: relative;
   display: grid;
