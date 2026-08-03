@@ -593,6 +593,10 @@ function storyNoteInput(page) {
   );
 }
 
+function singleParagraphImeProjection(text) {
+  return `\u2028${text}\u2029`;
+}
+
 function snapshotItemByName(snapshotPanel, name) {
   return snapshotPanel
     .locator("li[data-snapshot-id]")
@@ -1056,7 +1060,9 @@ try {
     );
   }
 
-  await firstPage.getByRole("button", { name: "Snapshot" }).click();
+  await firstPage
+    .getByRole("button", { name: "Snapshot", exact: true })
+    .click();
   const snapshotPanel = firstPage.getByRole("complementary", {
     name: "Named snapshot"
   });
@@ -1112,7 +1118,9 @@ try {
     .getByText(/전체 7개 · 본문 7개 · 제목 0개 · 7개 장면/u)
     .waitFor({ timeout: 30_000 });
 
-  await firstPage.getByRole("button", { name: "Snapshot" }).click();
+  await firstPage
+    .getByRole("button", { name: "Snapshot", exact: true })
+    .click();
   await snapshotPanel
     .getByText("저장된 snapshot 2개", { exact: true })
     .waitFor({ timeout: 30_000 });
@@ -1220,17 +1228,38 @@ try {
   const aliasInput = firstPage.getByRole("textbox", { name: "새 별칭" });
   await aliasInput.fill(phase1cFixture.protagonistAlias);
   await firstPage.getByRole("button", { name: "별칭 추가" }).click();
-  await pollBinderUi(
-    async () =>
-      (await aliasInput.inputValue()) === "" &&
-      (await firstPage
+  try {
+    await pollBinderUi(
+      async () =>
+        (await aliasInput.inputValue()) === "" &&
+        (await firstPage
+          .getByRole("region", { name: "별칭" })
+          .getByRole("button", {
+            name: `${phase1cFixture.protagonistAlias} 별칭 삭제`,
+            exact: true
+          })
+          .isVisible()
+          .catch(() => false)),
+      "Story Bible alias creation and mention discovery",
+      60_000
+    );
+  } catch (error) {
+    const aliasEvidence = {
+      inputValue: await aliasInput.inputValue().catch(() => "<detached>"),
+      aliasVisible: await firstPage
         .getByRole("region", { name: "별칭" })
-        .getByText(phase1cFixture.protagonistAlias, { exact: true })
+        .getByRole("button", {
+          name: `${phase1cFixture.protagonistAlias} 별칭 삭제`,
+          exact: true
+        })
         .isVisible()
-        .catch(() => false)),
-    "Story Bible alias creation and mention discovery",
-    60_000
-  );
+        .catch(() => false),
+      alerts: await firstPage.getByRole("alert").allTextContents()
+    };
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}; state: ${JSON.stringify(aliasEvidence)}`
+    );
+  }
 
   const tagInput = firstPage.getByRole("textbox", { name: "새 태그" });
   await tagInput.fill(phase1cFixture.protagonistTag);
@@ -1401,7 +1430,9 @@ try {
     timeout: 30_000
   });
 
-  await firstPage.getByRole("button", { name: "Snapshot" }).click();
+  await firstPage
+    .getByRole("button", { name: "Snapshot", exact: true })
+    .click();
   await snapshotPanel
     .getByRole("textbox", { name: "이름", exact: true })
     .fill(phase1cFixture.snapshotName);
@@ -1449,7 +1480,9 @@ try {
   await firstPage
     .getByRole("button", { name: "원고", exact: true })
     .click();
-  await firstPage.getByRole("button", { name: "Snapshot" }).click();
+  await firstPage
+    .getByRole("button", { name: "Snapshot", exact: true })
+    .click();
   await snapshotPanel
     .getByRole("button", {
       name: `${phase1cFixture.snapshotName} 복원`
@@ -1499,22 +1532,49 @@ try {
   await storyEntityRowById(firstPage, protagonistId)
     .getByRole("button")
     .click();
-  await pollBinderUi(
-    async () =>
-      (await firstPage
+  try {
+    await pollBinderUi(
+      async () =>
+        (await firstPage
+          .getByRole("textbox", { name: "설정 한 줄 요약" })
+          .inputValue()) === phase1cFixture.protagonistSummary &&
+        (await firstPage
+          .getByRole("combobox", { name: "설정 상태 변경" })
+          .inputValue()) === phase1cFixture.protagonistStatus &&
+        (await storyNoteInput(firstPage).inputValue()) ===
+          singleParagraphImeProjection(phase1cFixture.protagonistNote),
+      "restored Story Bible metadata and ENTITY Typie note",
+      60_000
+    );
+  } catch (error) {
+    const restoreEvidence = {
+      name: await firstPage
+        .getByRole("textbox", { name: "설정 이름" })
+        .inputValue()
+        .catch(() => "<detached>"),
+      summary: await firstPage
         .getByRole("textbox", { name: "설정 한 줄 요약" })
-        .inputValue()) === phase1cFixture.protagonistSummary &&
-      (await firstPage
+        .inputValue()
+        .catch(() => "<detached>"),
+      status: await firstPage
         .getByRole("combobox", { name: "설정 상태 변경" })
-        .inputValue()) === phase1cFixture.protagonistStatus &&
-      (await storyNoteInput(firstPage).inputValue()) ===
-        phase1cFixture.protagonistNote,
-    "restored Story Bible metadata and ENTITY Typie note",
-    60_000
-  );
+        .inputValue()
+        .catch(() => "<detached>"),
+      note: await storyNoteInput(firstPage)
+        .inputValue()
+        .catch(() => "<detached>"),
+      alerts: await firstPage.getByRole("alert").allTextContents()
+    };
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}; state: ${JSON.stringify(restoreEvidence)}`
+    );
+  }
   await firstPage
     .getByRole("region", { name: "별칭" })
-    .getByText(phase1cFixture.protagonistAlias, { exact: true })
+    .getByRole("button", {
+      name: `${phase1cFixture.protagonistAlias} 별칭 삭제`,
+      exact: true
+    })
     .waitFor({ timeout: 30_000 });
   if (
     !(await firstPage
@@ -1870,7 +1930,9 @@ try {
         1,
     "reopened 11-scene Scrivenings"
   );
-  await secondPage.getByRole("button", { name: "Snapshot" }).click();
+  await secondPage
+    .getByRole("button", { name: "Snapshot", exact: true })
+    .click();
   const reopenedSnapshotPanel = secondPage.getByRole("complementary", {
     name: "Named snapshot"
   });
@@ -1942,13 +2004,16 @@ try {
         .getByRole("combobox", { name: "설정 상태 변경" })
         .inputValue()) === phase1cFixture.protagonistStatus &&
       (await storyNoteInput(secondPage).inputValue()) ===
-        phase1cFixture.protagonistNote,
+        singleParagraphImeProjection(phase1cFixture.protagonistNote),
     "reopened Story Bible metadata and ENTITY Typie note",
     60_000
   );
   await secondPage
     .getByRole("region", { name: "별칭" })
-    .getByText(phase1cFixture.protagonistAlias, { exact: true })
+    .getByRole("button", {
+      name: `${phase1cFixture.protagonistAlias} 별칭 삭제`,
+      exact: true
+    })
     .waitFor({ timeout: 30_000 });
   if (
     !(await secondPage
