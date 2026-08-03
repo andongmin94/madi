@@ -694,6 +694,75 @@ async function run() {
       );
     }
 
+    const initialWorldGraph = await firstProcess.request("get_world_graph", {
+      file_path: projectPath,
+    });
+    verify(initialWorldGraph.project_id === projectId, "graph-project-id");
+    verify(initialWorldGraph.nodes.length === 19, "graph-node-total");
+    verify(initialWorldGraph.edges.length === 16, "graph-edge-total");
+    verify(
+      initialWorldGraph.stats.entity_count === 19 &&
+        initialWorldGraph.stats.relation_count === 16,
+      "graph-stats-totals",
+    );
+    const graphLeia = initialWorldGraph.nodes.find(
+      (node) => node.id === "entity-leia",
+    );
+    verify(
+      graphLeia?.aliases.length === 2 &&
+        graphLeia.tags.length === 2 &&
+        graphLeia.explicit_scene_link_count === 1,
+      "graph-node-metadata",
+    );
+    const directedGraphEdge = initialWorldGraph.edges.find(
+      (edge) => edge.id === "relation-01",
+    );
+    verify(
+      directedGraphEdge?.directed === true &&
+        directedGraphEdge.source_entity_id === "entity-leia" &&
+        directedGraphEdge.target_entity_id === "entity-mage-order" &&
+        directedGraphEdge.forward_label.length > 0 &&
+        directedGraphEdge.inverse_label?.length > 0,
+      "graph-directed-edge",
+    );
+    const undirectedGraphEdges = initialWorldGraph.edges.filter(
+      (edge) => edge.id === "relation-03",
+    );
+    verify(
+      undirectedGraphEdges.length === 1 &&
+        undirectedGraphEdges[0].directed === false,
+      "graph-undirected-single-edge",
+    );
+    const graphStats = await firstProcess.request("get_world_graph_stats", {
+      file_path: projectPath,
+    });
+    verify(
+      equalJson(graphStats.stats, initialWorldGraph.stats),
+      "graph-stats-command",
+    );
+    const mageOrderGraphDetail = await firstProcess.request(
+      "get_entity_graph_detail",
+      { file_path: projectPath, entity_id: "entity-mage-order" },
+    );
+    const inverseMembership = mageOrderGraphDetail.incoming_relations.find(
+      (relation) => relation.edge.id === "relation-01",
+    );
+    verify(
+      inverseMembership?.display_label === directedGraphEdge.inverse_label &&
+        inverseMembership.perspective === "INCOMING",
+      "graph-inverse-detail-label",
+    );
+    const leiaSceneContext = await firstProcess.request(
+      "get_entity_scene_context",
+      { file_path: projectPath, entity_id: "entity-leia" },
+    );
+    verify(
+      leiaSceneContext.links.some(
+        (link) => link.scene_node_id === defaultSceneId && link.role === "POV",
+      ),
+      "graph-scene-context",
+    );
+
     const linksBeforeDiscovery = linkInventory(initialLinks.links);
     const mentions = await firstProcess.request("discover_entity_mentions", {
       file_path: projectPath,
@@ -856,6 +925,38 @@ async function run() {
       { file_path: projectPath },
     );
 
+    const graphUiStateBeforeSnapshot = {
+      mode: "FULL",
+      focused_entity_id: null,
+      depth: 1,
+      filters: {
+        kinds: ["CHARACTER", "LOCATION"],
+        statuses: ["ACTIVE", "DRAFT"],
+        tag_ids: ["tag-north"],
+        tag_mode: "ANY",
+        relation_type_ids: [],
+        relation_direction: "ALL",
+        show_isolated: true,
+        show_labels: true,
+      },
+      layout: "cose",
+      viewport: { zoom: 1, pan: { x: 0, y: 0 } },
+      node_positions: { "entity-leia": { x: 12, y: 24 } },
+      selected_entity_id: "entity-leia",
+    };
+    const graphUiSaveBeforeSnapshot = await firstProcess.request(
+      "save_ui_state",
+      {
+        file_path: projectPath,
+        key: "world-graph.v1",
+        value: graphUiStateBeforeSnapshot,
+      },
+    );
+    verify(
+      graphUiSaveBeforeSnapshot.metadata.revision === revision,
+      "graph-ui-save-changed-revision",
+    );
+
     const baselineSnapshot = await mutate(
       "create_named_snapshot",
       {
@@ -993,6 +1094,24 @@ async function run() {
       "mutate-delete-relation-type",
     );
 
+    const graphUiStateAfterSnapshot = {
+      ...graphUiStateBeforeSnapshot,
+      mode: "FOCUSED",
+      focused_entity_id: "entity-third-ember",
+      depth: 3,
+      viewport: { zoom: 1.5, pan: { x: 91, y: -17 } },
+      node_positions: {
+        "entity-leia": { x: 40, y: 80 },
+        "entity-third-ember": { x: 140, y: 160 },
+      },
+      selected_entity_id: "entity-third-ember",
+    };
+    await firstProcess.request("save_ui_state", {
+      file_path: projectPath,
+      key: "world-graph.v1",
+      value: graphUiStateAfterSnapshot,
+    });
+
     const diff = await firstProcess.request("diff_named_snapshot", {
       file_path: projectPath,
       snapshot_id: baselineSnapshot.snapshot.id,
@@ -1041,6 +1160,14 @@ async function run() {
     verify(
       equalJson(restored.changes_before_restore, diff.summary),
       "restore-diff-summary",
+    );
+    const graphUiAfterRestore = await firstProcess.request("load_ui_state", {
+      file_path: projectPath,
+      key: "world-graph.v1",
+    });
+    verify(
+      equalJson(graphUiAfterRestore.state?.value, graphUiStateAfterSnapshot),
+      "graph-ui-state-was-preserved-across-named-snapshot-restore",
     );
 
     const restoredEntities = await firstProcess.request("list_entities", {
@@ -1131,6 +1258,15 @@ async function run() {
         (snapshot) => snapshot.payload_version === 2,
       ),
       "snapshot-inventory-v2",
+    );
+    const finalWorldGraph = await firstProcess.request("get_world_graph", {
+      file_path: projectPath,
+    });
+    verify(
+      finalWorldGraph.nodes.length === 19 &&
+        finalWorldGraph.edges.length === 16 &&
+        finalWorldGraph.revision === revision,
+      "final-world-graph",
     );
     await firstProcess.close();
     firstProcess = undefined;
@@ -1240,13 +1376,28 @@ async function run() {
       restartSnapshots.snapshots.length === snapshotsBeforeRestart.snapshots.length,
       "restart-snapshot-total",
     );
+    const restartWorldGraph = await secondProcess.request("get_world_graph", {
+      file_path: projectPath,
+    });
+    verify(
+      equalJson(restartWorldGraph, finalWorldGraph),
+      "restart-world-graph-roundtrip",
+    );
+    const restartGraphUiState = await secondProcess.request("load_ui_state", {
+      file_path: projectPath,
+      key: "world-graph.v1",
+    });
+    verify(
+      equalJson(restartGraphUiState.state?.value, graphUiStateAfterSnapshot),
+      "restart-world-graph-ui-state",
+    );
     await secondProcess.close();
     secondProcess = undefined;
 
     process.stdout.write(
       `${JSON.stringify(
         {
-          phase: "1C",
+          phase: "1C+1D",
           coreProcesses: 2,
           hierarchy,
           entities: {
@@ -1282,6 +1433,16 @@ async function run() {
             payloadVersion: 2,
             diff: diff.summary,
             restoreVerified: true,
+          },
+          worldGraph: {
+            nodes: finalWorldGraph.nodes.length,
+            edges: finalWorldGraph.edges.length,
+            directed: finalWorldGraph.stats.directed_relation_count,
+            undirected: finalWorldGraph.stats.undirected_relation_count,
+            inverseDetailLabel: true,
+            sceneContext: true,
+            uiStateExcludedFromNamedSnapshot: true,
+            processRestartRoundTrip: true,
           },
           processRestartRoundTrip: true,
           finalRevision: revision,

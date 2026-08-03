@@ -1,9 +1,11 @@
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import {
+  copyFile,
   mkdir,
   mkdtemp,
-  rm
+  rm,
+  stat
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -59,6 +61,11 @@ async function launchApplication(projectPath, userDataPath) {
     },
     timeout: 30_000
   });
+  const requestedUrls = [];
+  const pageErrors = [];
+  application
+    .context()
+    .on("request", (request) => requestedUrls.push(request.url()));
 
   await application.evaluate(
     ({ dialog }, options) => {
@@ -80,9 +87,6 @@ async function launchApplication(projectPath, userDataPath) {
     appName: app.getName(),
     userDataPath: app.getPath("userData")
   }));
-  const requestedUrls = [];
-  const pageErrors = [];
-  page.on("request", (request) => requestedUrls.push(request.url()));
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.context().setOffline(true);
   await page.reload({ waitUntil: "load" });
@@ -603,6 +607,1247 @@ function snapshotItemByName(snapshotPanel, name) {
     .filter({ hasText: name });
 }
 
+async function readRendererHeapBytes(page) {
+  return page.evaluate(() => {
+    const memory = Reflect.get(performance, "memory");
+    const usedJsHeapSize =
+      memory && typeof memory === "object"
+        ? Reflect.get(memory, "usedJSHeapSize")
+        : null;
+    return typeof usedJsHeapSize === "number" &&
+      Number.isFinite(usedJsHeapSize)
+      ? usedJsHeapSize
+      : null;
+  });
+}
+
+async function readWorldGraphEvidence(page) {
+  return page.locator('[data-testid="world-graph-workspace"]').evaluate(
+    (workspace) => {
+      const numeric = (value) => {
+        if (typeof value !== "string" || value.trim() === "") {
+          return null;
+        }
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+      const host = workspace.closest('[data-testid="world-graph-host"]');
+      const canvasHost = workspace.querySelector(
+        '[data-testid="world-graph-canvas"]'
+      );
+      const canvases = canvasHost
+        ? [...canvasHost.querySelectorAll("canvas")]
+        : [];
+      const canvasDimensions = canvases.map((canvas) => ({
+        width: canvas instanceof HTMLCanvasElement ? canvas.width : 0,
+        height: canvas instanceof HTMLCanvasElement ? canvas.height : 0,
+        clientWidth: canvas instanceof HTMLElement ? canvas.clientWidth : 0,
+        clientHeight: canvas instanceof HTMLElement ? canvas.clientHeight : 0
+      }));
+      let nonTransparentSamples = 0;
+      for (const canvas of canvases) {
+        if (
+          !(canvas instanceof HTMLCanvasElement) ||
+          canvas.width === 0 ||
+          canvas.height === 0
+        ) {
+          continue;
+        }
+        const context = canvas.getContext("2d");
+        if (!context) {
+          continue;
+        }
+        const pixels = context.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        ).data;
+        const stride = Math.max(
+          4,
+          Math.floor(pixels.length / 8_000 / 4) * 4
+        );
+        for (let index = 3; index < pixels.length; index += stride) {
+          if (pixels[index] !== 0) {
+            nonTransparentSamples += 1;
+          }
+        }
+      }
+      const nodeRegion = workspace.querySelector(
+        '[aria-label="그래프 설정 목록"]'
+      );
+      const edgeRegion = workspace.querySelector(
+        '[aria-label="그래프 관계 목록"]'
+      );
+      const stats = workspace.querySelector('[aria-label="그래프 통계"]');
+      return {
+        projectId: workspace.getAttribute("data-project-id") ?? "",
+        revision: numeric(workspace.getAttribute("data-revision")),
+        busy: workspace.getAttribute("aria-busy") === "true",
+        state: {
+          mode: workspace.getAttribute("data-mode") ?? "",
+          depth: numeric(workspace.getAttribute("data-depth")),
+          focusedEntityId:
+            workspace.getAttribute("data-focused-entity-id") ?? "",
+          selectedKind: workspace.getAttribute("data-selected-kind") ?? "",
+          selectedId: workspace.getAttribute("data-selected-id") ?? "",
+          layout: workspace.getAttribute("data-layout") ?? "",
+          positionCount: numeric(
+            workspace.getAttribute("data-position-count")
+          ),
+          viewport: {
+            zoom: numeric(workspace.getAttribute("data-viewport-zoom")),
+            panX: numeric(workspace.getAttribute("data-viewport-pan-x")),
+            panY: numeric(workspace.getAttribute("data-viewport-pan-y"))
+          },
+          visibleNodeCount: numeric(
+            workspace.getAttribute("data-visible-node-count")
+          ),
+          visibleEdgeCount: numeric(
+            workspace.getAttribute("data-visible-edge-count")
+          )
+        },
+        canvas: {
+          elementCount: canvases.length,
+          dimensions: canvasDimensions,
+          nonTransparentSamples,
+          hostWidth:
+            canvasHost instanceof HTMLElement
+              ? canvasHost.getBoundingClientRect().width
+              : 0,
+          hostHeight:
+            canvasHost instanceof HTMLElement
+              ? canvasHost.getBoundingClientRect().height
+              : 0
+        },
+        accessible: {
+          nodeIds: nodeRegion
+            ? [...nodeRegion.querySelectorAll("button[data-entity-id]")].map(
+                (button) => button.getAttribute("data-entity-id") ?? ""
+              )
+            : [],
+          nodeLabels: nodeRegion
+            ? [...nodeRegion.querySelectorAll("button[data-entity-id]")].map(
+                (button) => button.textContent?.trim() ?? ""
+              )
+            : [],
+          edgeIds: edgeRegion
+            ? [...edgeRegion.querySelectorAll("button[data-relation-id]")].map(
+                (button) => button.getAttribute("data-relation-id") ?? ""
+              )
+            : [],
+          edgeLabels: edgeRegion
+            ? [...edgeRegion.querySelectorAll("button[data-relation-id]")].map(
+                (button) => button.textContent?.trim() ?? ""
+              )
+            : []
+        },
+        statsText: stats?.textContent?.replace(/\s+/gu, " ").trim() ?? "",
+        performance: {
+          ipcMs: numeric(host?.getAttribute("data-graph-ipc-ms") ?? null),
+          elementConversionMs: numeric(
+            host?.getAttribute("data-graph-elements-ms") ?? null
+          ),
+          filterMs: numeric(
+            host?.getAttribute("data-graph-filter-ms") ?? null
+          ),
+          bfsMs: numeric(host?.getAttribute("data-graph-bfs-ms") ?? null),
+          searchFocusMs: numeric(
+            host?.getAttribute("data-graph-search-ms") ?? null
+          ),
+          layoutMs: numeric(
+            host?.getAttribute("data-graph-layout-ms") ?? null
+          ),
+          displayMs: numeric(
+            host?.getAttribute("data-graph-display-ms") ?? null
+          )
+        }
+      };
+    }
+  );
+}
+
+async function waitForWorldGraph(page, expectedNodeCount, expectedEdgeCount) {
+  const workspace = page.locator('[data-testid="world-graph-workspace"]');
+  await workspace.waitFor({ state: "visible", timeout: 30_000 });
+  const evidence = await pollBinderUi(
+    async () => {
+      const current = await readWorldGraphEvidence(page).catch(() => null);
+      if (
+        !current ||
+        current.busy ||
+        current.state.visibleNodeCount !== expectedNodeCount ||
+        current.state.visibleEdgeCount !== expectedEdgeCount ||
+        current.accessible.nodeIds.length !== expectedNodeCount ||
+        current.accessible.edgeIds.length !== expectedEdgeCount ||
+        current.canvas.elementCount === 0 ||
+        current.canvas.hostWidth <= 0 ||
+        current.canvas.hostHeight <= 0 ||
+        current.canvas.nonTransparentSamples === 0 ||
+        !current.canvas.dimensions.every(
+          (dimension) => dimension.width > 0 && dimension.height > 0
+        ) ||
+        current.state.layout !== "preset" ||
+        (current.state.positionCount ?? 0) < expectedNodeCount ||
+        current.performance.ipcMs === null ||
+        current.performance.elementConversionMs === null ||
+        current.performance.filterMs === null ||
+        current.performance.layoutMs === null ||
+        current.performance.displayMs === null
+      ) {
+        return null;
+      }
+      return current;
+    },
+    `world graph ${expectedNodeCount} nodes and ${expectedEdgeCount} edges`,
+    60_000
+  );
+  return evidence;
+}
+
+async function openWorldGraph(page, expectedNodeCount, expectedEdgeCount) {
+  const heapBeforeBytes = await readRendererHeapBytes(page);
+  const startedAt = Date.now();
+  await page.getByRole("button", { name: "그래프", exact: true }).click();
+  await page
+    .locator('[data-testid="world-graph-workspace"]')
+    .waitFor({ state: "visible", timeout: 30_000 });
+  const workspaceVisibleMs = Date.now() - startedAt;
+  const evidence = await waitForWorldGraph(
+    page,
+    expectedNodeCount,
+    expectedEdgeCount
+  );
+  return {
+    evidence,
+    timing: {
+      clickToWorkspaceVisibleMs: workspaceVisibleMs,
+      clickToReadyMs: Date.now() - startedAt
+    },
+    memory: {
+      heapBeforeBytes,
+      heapAfterBytes: await readRendererHeapBytes(page)
+    }
+  };
+}
+
+async function openWorldGraphAccessibleList(page) {
+  const details = page.locator("details.world-graph-accessible-list");
+  if ((await details.getAttribute("open")) === null) {
+    await details.locator("summary").click();
+  }
+  await details.locator('[aria-label="그래프 설정 목록"]').waitFor({
+    state: "visible",
+    timeout: 30_000
+  });
+}
+
+async function openWorldGraphFilters(page) {
+  const details = page.locator("details.world-graph-filter");
+  if ((await details.getAttribute("open")) === null) {
+    await details.locator("summary").click();
+  }
+  await details.getByRole("group", { name: "표시 방식" }).waitFor({
+    state: "visible",
+    timeout: 30_000
+  });
+}
+
+async function waitForWorldGraphState(page, expectation, description) {
+  return pollBinderUi(
+    async () => {
+      const evidence = await readWorldGraphEvidence(page).catch(() => null);
+      if (!evidence || evidence.busy) {
+        return null;
+      }
+      return Object.entries(expectation).every(
+        ([key, value]) => evidence.state[key] === value
+      )
+        ? evidence
+        : null;
+    },
+    description,
+    60_000
+  );
+}
+
+async function zoomWorldGraphCanvas(page) {
+  const startedAt = performance.now();
+  const canvas = page.locator('[data-testid="world-graph-canvas"]');
+  const before = await readWorldGraphEvidence(page);
+  const bounds = await canvas.boundingBox();
+  if (!bounds) {
+    throw new Error("World Graph canvas has no visible bounding box");
+  }
+  await page.mouse.move(
+    bounds.x + bounds.width * 0.72,
+    bounds.y + bounds.height * 0.72
+  );
+  const wheelDelta =
+    (before.state.viewport.zoom ?? 1) >= 2.8 ? 480 : -480;
+  await page.mouse.wheel(0, wheelDelta);
+  const viewportChanged = async () => {
+    const evidence = await readWorldGraphEvidence(page);
+    const beforeViewport = before.state.viewport;
+    const afterViewport = evidence.state.viewport;
+    return beforeViewport.zoom !== null &&
+      afterViewport.zoom !== null &&
+      beforeViewport.panX !== null &&
+      afterViewport.panX !== null &&
+      beforeViewport.panY !== null &&
+      afterViewport.panY !== null &&
+      (Math.abs(afterViewport.zoom - beforeViewport.zoom) > 0.0001 ||
+        Math.abs(afterViewport.panX - beforeViewport.panX) > 0.01 ||
+        Math.abs(afterViewport.panY - beforeViewport.panY) > 0.01)
+      ? evidence
+      : null;
+  };
+  let method = "playwright-wheel";
+  let after = await pollBinderUi(
+    viewportChanged,
+    "World Graph Playwright wheel viewport change",
+    2_000
+  ).catch(() => null);
+  if (!after) {
+    method = "cytoscape-dom-fallback";
+    const changedThroughCytoscape = await canvas.evaluate((element) => {
+      const registry = Reflect.get(element, "_cyreg");
+      const cy =
+        registry && typeof registry === "object"
+          ? Reflect.get(registry, "cy")
+          : null;
+      if (
+        !cy ||
+        typeof cy.zoom !== "function" ||
+        typeof cy.panBy !== "function"
+      ) {
+        return false;
+      }
+      const currentZoom = cy.zoom();
+      cy.zoom(currentZoom >= 2.8 ? 2.35 : Math.min(3, currentZoom * 1.2));
+      cy.panBy({ x: 31, y: 19 });
+      return true;
+    });
+    if (!changedThroughCytoscape) {
+      throw new Error("World Graph canvas did not expose its Cytoscape instance");
+    }
+    after = await pollBinderUi(
+      viewportChanged,
+      "World Graph deterministic Cytoscape viewport change",
+      10_000
+    );
+  }
+  return {
+    method,
+    before: before.state.viewport,
+    after: after.state.viewport,
+    observedMs: Number((performance.now() - startedAt).toFixed(2))
+  };
+}
+
+async function readWorldGraphDataset(page) {
+  return page.locator('[data-testid="world-graph-workspace"]').evaluate(
+    (workspace) => {
+      const numberAttribute = (name) => {
+        const value = workspace.getAttribute(name);
+        if (value === null || value === "") {
+          return null;
+        }
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+      const host = workspace.closest('[data-testid="world-graph-host"]');
+      const hostNumber = (name) => {
+        const value = host?.getAttribute(name);
+        if (value === null || value === undefined || value === "") {
+          return null;
+        }
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+      return {
+        projectId: workspace.getAttribute("data-project-id") ?? "",
+        revision: numberAttribute("data-revision"),
+        busy: workspace.getAttribute("aria-busy") === "true",
+        mode: workspace.getAttribute("data-mode") ?? "",
+        depth: numberAttribute("data-depth"),
+        focusedEntityId:
+          workspace.getAttribute("data-focused-entity-id") ?? "",
+        selectedKind: workspace.getAttribute("data-selected-kind") ?? "",
+        selectedId: workspace.getAttribute("data-selected-id") ?? "",
+        layout: workspace.getAttribute("data-layout") ?? "",
+        positionCount: numberAttribute("data-position-count"),
+        selectedPosition: {
+          x: numberAttribute("data-selected-position-x"),
+          y: numberAttribute("data-selected-position-y")
+        },
+        totalNodeCount: numberAttribute("data-total-node-count"),
+        totalEdgeCount: numberAttribute("data-total-edge-count"),
+        viewport: {
+          zoom: numberAttribute("data-viewport-zoom"),
+          panX: numberAttribute("data-viewport-pan-x"),
+          panY: numberAttribute("data-viewport-pan-y")
+        },
+        visibleNodeCount: numberAttribute("data-visible-node-count"),
+        visibleEdgeCount: numberAttribute("data-visible-edge-count"),
+        centerRequest: numberAttribute("data-center-request"),
+        autoLayoutRequest: numberAttribute("data-auto-layout-request"),
+        performance: {
+          ipcMs: hostNumber("data-graph-ipc-ms"),
+          elementConversionMs: hostNumber("data-graph-elements-ms"),
+          filterMs: hostNumber("data-graph-filter-ms"),
+          bfsMs: hostNumber("data-graph-bfs-ms"),
+          searchFocusMs: hostNumber("data-graph-search-ms"),
+          layoutMs: hostNumber("data-graph-layout-ms"),
+          displayMs: hostNumber("data-graph-display-ms")
+        }
+      };
+    }
+  );
+}
+
+async function waitForScaleGraphState(page, expectation, description) {
+  return pollBinderUi(
+    async () => {
+      const state = await readWorldGraphDataset(page).catch(() => null);
+      if (!state || state.busy) {
+        return null;
+      }
+      return Object.entries(expectation).every(
+        ([key, value]) => state[key] === value
+      )
+        ? state
+        : null;
+    },
+    description,
+    60_000
+  );
+}
+
+function maximumMetric(values) {
+  return Math.max(...values.filter((value) => Number.isFinite(value)));
+}
+
+async function dragSelectedWorldGraphNode(page) {
+  const canvas = page.locator('[data-testid="world-graph-canvas"]');
+  for (const detailsSelector of [
+    "details.world-graph-accessible-list",
+    "details.world-graph-filter"
+  ]) {
+    const details = page.locator(detailsSelector);
+    if ((await details.getAttribute("open")) !== null) {
+      await details.locator("summary").click();
+    }
+  }
+  await canvas.scrollIntoViewIfNeeded();
+
+  let before = await readWorldGraphDataset(page);
+  const previousCenterRequest = before.centerRequest;
+  await page.getByRole("button", { name: "중심 그래프", exact: true }).click();
+  await pollBinderUi(
+    async () => {
+      const current = await readWorldGraphDataset(page);
+      return current.centerRequest !== previousCenterRequest ? current : null;
+    },
+    "scale selected node explicit center request"
+  );
+  await page.waitForTimeout(300);
+  await canvas.scrollIntoViewIfNeeded();
+  before = await readWorldGraphDataset(page);
+  const bounds = await canvas.boundingBox();
+  if (!bounds) {
+    throw new Error("Scale World Graph canvas has no bounding box for drag");
+  }
+
+  const renderedEvidence = await canvas.evaluate((element, selectedId) => {
+    const registry = Reflect.get(element, "_cyreg");
+    const cy =
+      registry && typeof registry === "object"
+        ? Reflect.get(registry, "cy")
+        : null;
+    const node = cy?.getElementById?.(selectedId);
+    if (!node?.nonempty?.()) {
+      return null;
+    }
+    return {
+      model: node.position(),
+      rendered: node.renderedPosition(),
+      renderedBounds: node.renderedBoundingBox(),
+      zoom: cy.zoom(),
+      pan: cy.pan(),
+      grabbable: node.grabbable(),
+      locked: node.locked()
+    };
+  }, before.selectedId);
+  if (!renderedEvidence) {
+    throw new Error("Selected scale node is absent from Cytoscape");
+  }
+  const formulaRendered = {
+    x:
+      before.selectedPosition.x * before.viewport.zoom +
+      before.viewport.panX,
+    y:
+      before.selectedPosition.y * before.viewport.zoom +
+      before.viewport.panY
+  };
+  const start = {
+    pageX: bounds.x + renderedEvidence.rendered.x,
+    pageY: bounds.y + renderedEvidence.rendered.y
+  };
+  if (
+    start.pageX < bounds.x + 4 ||
+    start.pageX > bounds.x + bounds.width - 4 ||
+    start.pageY < bounds.y + 4 ||
+    start.pageY > bounds.y + bounds.height - 4
+  ) {
+    throw new Error(
+      `Selected scale node is outside the actual canvas: ${JSON.stringify({
+        bounds,
+        state: before,
+        renderedEvidence,
+        formulaRendered,
+        start
+      })}`
+    );
+  }
+
+  const horizontalRoom = bounds.x + bounds.width - start.pageX;
+  const verticalRoom = bounds.y + bounds.height - start.pageY;
+  const deltaX = horizontalRoom > 80 ? 48 : -48;
+  const deltaY = verticalRoom > 70 ? 36 : -36;
+  const hitEvidence = await page.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y);
+    const host = document.querySelector('[data-testid="world-graph-canvas"]');
+    return {
+      withinCanvas: Boolean(target && host?.contains(target)),
+      tagName: target?.tagName ?? "",
+      className:
+        target instanceof HTMLElement || target instanceof SVGElement
+          ? String(target.className)
+          : ""
+    };
+  }, { x: start.pageX, y: start.pageY });
+  if (!hitEvidence.withinCanvas) {
+    throw new Error(
+      `Scale pointer target is covered: ${JSON.stringify({
+        start,
+        hitEvidence
+      })}`
+    );
+  }
+  await page.mouse.move(start.pageX, start.pageY);
+  await page.mouse.down();
+  await page.mouse.move(start.pageX + deltaX, start.pageY + deltaY, {
+    steps: 10
+  });
+  await page.mouse.up();
+
+  const after = await pollBinderUi(
+    async () => {
+      const current = await readWorldGraphDataset(page);
+      const xChanged =
+        Number.isFinite(current.selectedPosition.x) &&
+        Math.abs(current.selectedPosition.x - before.selectedPosition.x) > 2;
+      const yChanged =
+        Number.isFinite(current.selectedPosition.y) &&
+        Math.abs(current.selectedPosition.y - before.selectedPosition.y) > 2;
+      return xChanged || yChanged ? current : null;
+    },
+    "scale actual pointer node drag",
+    10_000
+  );
+  return {
+    method: "playwright-pointer",
+    entityId: before.selectedId,
+    renderedStart: { x: start.pageX, y: start.pageY },
+    renderedModelEvidence: renderedEvidence,
+    formulaRendered,
+    formulaDelta: {
+      x: renderedEvidence.rendered.x - formulaRendered.x,
+      y: renderedEvidence.rendered.y - formulaRendered.y
+    },
+    renderedDelta: { x: deltaX, y: deltaY },
+    hitEvidence,
+    before: before.selectedPosition,
+    after: after.selectedPosition
+  };
+}
+
+async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
+  const fixture = resolve(scaleFixturePath);
+  const fixtureStats = await stat(fixture);
+  if (!fixtureStats.isFile() || fixtureStats.size === 0) {
+    throw new Error("Phase 1D scale fixture is missing or empty");
+  }
+  const scaleWorkspace = await mkdtemp(join(tmpdir(), "madi-scale-smoke-"));
+  const scaleProjectPath = join(scaleWorkspace, "phase1d-scale-copy.madi");
+  const scaleUserDataPath = join(scaleWorkspace, "electron-user-data");
+  const scaleFullScreenshot = join(
+    artifactDirectory,
+    packaged
+      ? "madi-packaged-phase1d-scale-full.png"
+      : "madi-electron-phase1d-scale-full.png"
+  );
+  const scalePersistedScreenshot = join(
+    artifactDirectory,
+    packaged
+      ? "madi-packaged-phase1d-scale-persisted.png"
+      : "madi-electron-phase1d-scale-persisted.png"
+  );
+  const scaleReopenedScreenshot = join(
+    artifactDirectory,
+    packaged
+      ? "madi-packaged-phase1d-scale-reopened.png"
+      : "madi-electron-phase1d-scale-reopened.png"
+  );
+  let firstApplication;
+  let secondApplication;
+  try {
+    await mkdir(artifactDirectory, { recursive: true });
+    await copyFile(fixture, scaleProjectPath);
+    const firstRun = await launchApplication(
+      scaleProjectPath,
+      scaleUserDataPath
+    );
+    firstApplication = firstRun.application;
+    const firstPage = firstRun.page;
+    reportStage("Phase 1D scale first window ready");
+    await firstPage.getByRole("button", { name: ".madi 열기" }).click();
+    try {
+      await firstPage
+        .locator('[data-testid="save-status"][data-phase="saved"]')
+        .waitFor({ timeout: 60_000 });
+    } catch (error) {
+      const diagnostics = await firstPage.locator("body").evaluate((body) => ({
+        savePhase:
+          body.querySelector('[data-testid="save-status"]')?.getAttribute(
+            "data-phase"
+          ) ?? "missing",
+        alerts: [...body.querySelectorAll('[role="alert"]')].map(
+          (element) => element.textContent?.trim() ?? ""
+        ),
+        text: body.textContent?.slice(0, 2_000) ?? ""
+      }));
+      throw new Error(
+        `Scale fixture did not open: ${JSON.stringify(diagnostics)}; ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+
+    const firstEntry = await openWorldGraph(firstPage, 500, 2_000);
+    const fullEvidence = firstEntry.evidence;
+    if (
+      fullEvidence.accessible.nodeIds.length !== 500 ||
+      fullEvidence.accessible.edgeIds.length !== 2_000 ||
+      fullEvidence.accessible.nodeIds[0] !== "scale-entity-000" ||
+      fullEvidence.accessible.nodeIds.at(-1) !== "scale-entity-499" ||
+      fullEvidence.state.positionCount !== 500 ||
+      fullEvidence.canvas.elementCount === 0 ||
+      fullEvidence.canvas.nonTransparentSamples === 0
+    ) {
+      throw new Error(
+        `Scale full graph evidence is incomplete: ${JSON.stringify({
+          state: fullEvidence.state,
+          nodeCount: fullEvidence.accessible.nodeIds.length,
+          edgeCount: fullEvidence.accessible.edgeIds.length,
+          firstNode: fullEvidence.accessible.nodeIds[0],
+          lastNode: fullEvidence.accessible.nodeIds.at(-1),
+          canvas: fullEvidence.canvas
+        })}`
+      );
+    }
+    await firstPage.screenshot({ path: scaleFullScreenshot });
+
+    const initialGraphReady = {
+      reportedLayoutMs: fullEvidence.performance.layoutMs,
+      observedReadyMs: firstEntry.timing.clickToReadyMs
+    };
+    const layoutRuns = [];
+    const workspace = firstPage.locator(
+      '[data-testid="world-graph-workspace"]'
+    );
+    for (let run = 1; run <= 5; run += 1) {
+      const startedAt = performance.now();
+      await firstPage
+        .getByRole("button", { name: "자동 배치 다시 실행", exact: true })
+        .click();
+      await pollBinderUi(
+        async () =>
+          Number(await workspace.getAttribute("data-auto-layout-request")) ===
+          run,
+        `scale automatic layout request ${run}`,
+        30_000
+      );
+      await firstPage.evaluate(
+        () =>
+          new Promise((resolveFrame) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolveFrame))
+          )
+      );
+      const state = await pollBinderUi(
+        async () => {
+          const current = await readWorldGraphDataset(firstPage);
+          return current.performance.layoutMs !== null &&
+            current.positionCount === 500
+            ? current
+            : null;
+        },
+        `scale automatic layout completion ${run}`,
+        30_000
+      );
+      layoutRuns.push({
+        run,
+        reportedMs: state.performance.layoutMs,
+        observedReadyMs: Number((performance.now() - startedAt).toFixed(2))
+      });
+    }
+
+    await openWorldGraphFilters(firstPage);
+    const scaleTagFilter = firstPage
+      .getByRole("group", { name: "태그" })
+      .locator('input[value="scale-tag-7"]');
+    const filterStartedAt = performance.now();
+    await scaleTagFilter.check();
+    const taggedEvidence = await waitForWorldGraph(firstPage, 25, 0);
+    const filterObservedMs = Number(
+      (performance.now() - filterStartedAt).toFixed(2)
+    );
+    await scaleTagFilter.uncheck();
+    await waitForWorldGraph(firstPage, 500, 2_000);
+    const relationTypeFilter = firstPage
+      .getByRole("group", { name: "관계 타입" })
+      .locator('input[value="phase-1d-project:builtin-membership"]');
+    await relationTypeFilter.check();
+    const directionFilter = firstPage.getByRole("combobox", {
+      name: "관계 방향 필터"
+    });
+    await directionFilter.selectOption("DIRECTED");
+    const labelFilter = firstPage.getByRole("checkbox", {
+      name: "관계 label 표시",
+      exact: true
+    });
+    await labelFilter.uncheck();
+    await waitForWorldGraph(firstPage, 500, 2_000);
+
+    const searchStartedAt = performance.now();
+    const search = firstPage.locator('[data-testid="world-graph-search"]');
+    await search.fill("별칭 321-2");
+    const searchResults = firstPage.getByRole("list", {
+      name: "세계관 설정 검색 결과"
+    });
+    const searchedEntityId = "scale-entity-321";
+    await searchResults
+      .locator(`button[data-entity-id="${searchedEntityId}"]`)
+      .waitFor({ state: "visible", timeout: 30_000 });
+    const searchResultReadyMs = Number(
+      (performance.now() - searchStartedAt).toFixed(2)
+    );
+    const searchResultCount = await searchResults
+      .locator("button[data-entity-id]")
+      .count();
+    const searchFocusStartedAt = performance.now();
+    await searchResults
+      .locator(`button[data-entity-id="${searchedEntityId}"]`)
+      .click();
+    const searchedState = await pollBinderUi(
+      async () => {
+        const current = await readWorldGraphDataset(firstPage);
+        return current.selectedKind === "NODE" &&
+          current.selectedId === searchedEntityId
+          ? current
+          : null;
+      },
+      "scale alias search focus"
+    );
+    const searchFocusObservedMs = Number(
+      (performance.now() - searchFocusStartedAt).toFixed(2)
+    );
+
+    await openWorldGraphAccessibleList(firstPage);
+    const selectionEntityId = "scale-entity-400";
+    const selectionStartedAt = performance.now();
+    await firstPage
+      .getByRole("region", { name: "그래프 설정 목록" })
+      .locator(`button[data-entity-id="${selectionEntityId}"]`)
+      .click();
+    await pollBinderUi(
+      async () => {
+        const current = await readWorldGraphDataset(firstPage);
+        return current.selectedKind === "NODE" &&
+          current.selectedId === selectionEntityId;
+      },
+      "scale accessible node selection response"
+    );
+    const selectionObservedMs = Number(
+      (performance.now() - selectionStartedAt).toFixed(2)
+    );
+    await firstPage
+      .locator('[data-testid="world-graph-detail"]')
+      .getByRole("heading", { name: "대규모 설정 400", exact: true })
+      .waitFor({ timeout: 30_000 });
+    const detailObservedMs = Number(
+      (performance.now() - selectionStartedAt).toFixed(2)
+    );
+
+    const focusedEntityId = "scale-entity-000";
+    const focusRuns = [];
+    const centerStartedAt = performance.now();
+    await firstPage
+      .getByRole("combobox", { name: "중심 설정" })
+      .selectOption(focusedEntityId);
+    const focusExpectations = [
+      { depth: 1, nodes: 9, edges: 26 },
+      { depth: 2, nodes: 17, edges: 58 },
+      { depth: 3, nodes: 25, edges: 90 }
+    ];
+    for (const expectation of focusExpectations) {
+      const startedAt =
+        expectation.depth === 1 ? centerStartedAt : performance.now();
+      if (expectation.depth !== 1) {
+        await firstPage
+          .getByRole("combobox", { name: "중심 그래프 깊이" })
+          .selectOption(String(expectation.depth));
+      }
+      await waitForWorldGraph(
+        firstPage,
+        expectation.nodes,
+        expectation.edges
+      );
+      const focusedState = await waitForScaleGraphState(
+        firstPage,
+        {
+          mode: "FOCUSED",
+          depth: expectation.depth,
+          focusedEntityId
+        },
+        `scale focused depth ${expectation.depth}`
+      );
+      focusRuns.push({
+        depth: expectation.depth,
+        visibleNodeCount: focusedState.visibleNodeCount,
+        visibleEdgeCount: focusedState.visibleEdgeCount,
+        bfsMs: focusedState.performance.bfsMs,
+        observedMs: Number((performance.now() - startedAt).toFixed(2))
+      });
+    }
+
+    await openWorldGraphAccessibleList(firstPage);
+    await firstPage
+      .getByRole("region", { name: "그래프 설정 목록" })
+      .locator(`button[data-entity-id="${focusedEntityId}"]`)
+      .click();
+    await waitForScaleGraphState(
+      firstPage,
+      {
+        selectedKind: "NODE",
+        selectedId: focusedEntityId,
+        positionCount: 500,
+        totalNodeCount: 500,
+        totalEdgeCount: 2_000
+      },
+      "scale selected node before pointer drag"
+    );
+    const canonicalBefore = {
+      projectId: fullEvidence.projectId,
+      revision: fullEvidence.revision,
+      nodeCount: fullEvidence.accessible.nodeIds.length,
+      edgeCount: fullEvidence.accessible.edgeIds.length
+    };
+    const dragInteraction = await dragSelectedWorldGraphNode(firstPage);
+    const viewportInteraction = await zoomWorldGraphCanvas(firstPage);
+    const persistedState = await waitForScaleGraphState(
+      firstPage,
+      {
+        mode: "FOCUSED",
+        depth: 3,
+        focusedEntityId,
+        selectedKind: "NODE",
+        selectedId: focusedEntityId,
+        layout: "preset",
+        positionCount: 500,
+        visibleNodeCount: 25,
+        visibleEdgeCount: 90
+      },
+      "scale final persisted state"
+    );
+    const canonicalAfter = {
+      projectId: persistedState.projectId,
+      revision: persistedState.revision,
+      nodeCount: persistedState.totalNodeCount,
+      edgeCount: persistedState.totalEdgeCount
+    };
+    if (
+      canonicalBefore.projectId !== canonicalAfter.projectId ||
+      canonicalBefore.revision !== canonicalAfter.revision ||
+      canonicalBefore.nodeCount !== canonicalAfter.nodeCount ||
+      canonicalBefore.edgeCount !== canonicalAfter.edgeCount ||
+      dragInteraction.entityId !== focusedEntityId
+    ) {
+      throw new Error(
+        `Scale pointer drag changed canonical graph data: ${JSON.stringify({
+          canonicalBefore,
+          canonicalAfter,
+          dragInteraction
+        })}`
+      );
+    }
+    await firstPage.waitForTimeout(900);
+    await firstPage.screenshot({ path: scalePersistedScreenshot });
+
+    const layoutReported = layoutRuns.map((run) => run.reportedMs ?? NaN);
+    const focusedBfs = focusRuns.map((run) => run.bfsMs ?? NaN);
+    const conditionalBreaches = [];
+    const recordConditionalBreach = (metric, targetMs, actualMs) => {
+      if (Number.isFinite(actualMs) && actualMs > targetMs) {
+        conditionalBreaches.push({ metric, targetMs, actualMs });
+      }
+    };
+    recordConditionalBreach(
+      "graph read model + IPC",
+      1_000,
+      fullEvidence.performance.ipcMs
+    );
+    recordConditionalBreach(
+      "tag filter observed response",
+      250,
+      filterObservedMs
+    );
+    recordConditionalBreach(
+      "alias search result ready",
+      250,
+      searchResultReadyMs
+    );
+    recordConditionalBreach(
+      "alias search result click to focus",
+      250,
+      searchFocusObservedMs
+    );
+    recordConditionalBreach(
+      "node selection response",
+      250,
+      selectionObservedMs
+    );
+    recordConditionalBreach(
+      "node selection to detail heading",
+      250,
+      detailObservedMs
+    );
+    recordConditionalBreach(
+      "pan/zoom response",
+      250,
+      viewportInteraction.observedMs
+    );
+    for (const run of focusRuns) {
+      recordConditionalBreach(
+        `focused depth ${run.depth} observed response`,
+        250,
+        run.observedMs
+      );
+    }
+    if (
+      searchResultCount !== 1 ||
+      fullEvidence.performance.ipcMs === null ||
+      !layoutReported.every((value) => Number.isFinite(value)) ||
+      maximumMetric(layoutReported) > 5_000 ||
+      initialGraphReady.observedReadyMs > 5_000 ||
+      !focusedBfs.every((value) => Number.isFinite(value)) ||
+      firstRun.pageErrors.length > 0 ||
+      firstRun.requestedUrls.some(
+        (url) =>
+          url !== firstRun.localFileProbeUrl && !isLocalRuntimeUrl(url)
+      ) ||
+      firstRun.localFileProbe.readable
+    ) {
+      throw new Error(
+        `Phase 1D scale first-run gate failed: ${JSON.stringify({
+          searchResultCount,
+          graphPerformance: fullEvidence.performance,
+          initialGraphReady,
+          layoutRuns,
+          filterObservedMs,
+          filterMs: taggedEvidence.performance.filterMs,
+          searchResultReadyMs,
+          searchFocusObservedMs,
+          searchFocusMs: searchedState.performance.searchFocusMs,
+          focusRuns,
+          selectionObservedMs,
+          detailObservedMs,
+          viewportInteraction,
+          pageErrors: firstRun.pageErrors
+        })}`
+      );
+    }
+
+    const firstWindowClosed = firstPage.waitForEvent("close", {
+      timeout: 30_000
+    });
+    await firstApplication.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.close();
+    });
+    await firstWindowClosed;
+    await forceCloseApplication(firstApplication);
+    firstApplication = undefined;
+    reportStage("Phase 1D scale first process closed with UI state saved");
+
+    const secondRun = await launchApplication(
+      scaleProjectPath,
+      scaleUserDataPath
+    );
+    secondApplication = secondRun.application;
+    const secondPage = secondRun.page;
+    await secondPage.getByRole("button", { name: ".madi 열기" }).click();
+    await secondPage
+      .locator('[data-testid="save-status"][data-phase="saved"]')
+      .waitFor({ timeout: 30_000 });
+    let reopenedEntry;
+    try {
+      reopenedEntry = await openWorldGraph(secondPage, 25, 90);
+    } catch (error) {
+      const [dataset, evidence, pageState] = await Promise.all([
+        readWorldGraphDataset(secondPage).catch((failure) => ({
+          error: failure instanceof Error ? failure.message : String(failure)
+        })),
+        readWorldGraphEvidence(secondPage).catch((failure) => ({
+          error: failure instanceof Error ? failure.message : String(failure)
+        })),
+        secondPage.locator("body").evaluate((body) => ({
+          savePhase:
+            body.querySelector('[data-testid="save-status"]')?.getAttribute(
+              "data-phase"
+            ) ?? "missing",
+          alerts: [...body.querySelectorAll('[role="alert"]')].map(
+            (element) => element.textContent?.trim() ?? ""
+          )
+        }))
+      ]);
+      throw new Error(
+        `Phase 1D scale reopen readiness failed: ${JSON.stringify({
+          dataset,
+          evidence,
+          pageState
+        })}; ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    const reopenedEvidence = reopenedEntry.evidence;
+    await openWorldGraphFilters(secondPage);
+    await openWorldGraphAccessibleList(secondPage);
+    const reopenedState = await readWorldGraphDataset(secondPage);
+    const viewportMatches = ["zoom", "panX", "panY"].every((key) => {
+      const expected = persistedState.viewport[key];
+      const actual = reopenedState.viewport[key];
+      return (
+        typeof expected === "number" &&
+        typeof actual === "number" &&
+        Math.abs(expected - actual) < 0.001
+      );
+    });
+    const reopenedRelationTypeFilter = secondPage
+      .getByRole("group", { name: "관계 타입" })
+      .locator('input[value="phase-1d-project:builtin-membership"]');
+    const reopenedDirectionFilter = secondPage.getByRole("combobox", {
+      name: "관계 방향 필터"
+    });
+    const reopenedLabelFilter = secondPage.getByRole("checkbox", {
+      name: "관계 label 표시",
+      exact: true
+    });
+    const dragPositionMatches = ["x", "y"].every((key) => {
+      const expected = dragInteraction.after[key];
+      const actual = reopenedState.selectedPosition[key];
+      return (
+        typeof expected === "number" &&
+        typeof actual === "number" &&
+        Math.abs(expected - actual) < 0.001
+      );
+    });
+    const reopenedCanonical = {
+      projectId: reopenedState.projectId,
+      revision: reopenedState.revision,
+      nodeCount: reopenedState.totalNodeCount,
+      edgeCount: reopenedState.totalEdgeCount
+    };
+    recordConditionalBreach(
+      "restart graph read model + IPC",
+      1_000,
+      reopenedEvidence.performance.ipcMs
+    );
+    if (
+      reopenedState.mode !== "FOCUSED" ||
+      reopenedState.depth !== 3 ||
+      reopenedState.focusedEntityId !== focusedEntityId ||
+      reopenedState.selectedKind !== "NODE" ||
+      reopenedState.selectedId !== focusedEntityId ||
+      reopenedState.layout !== "preset" ||
+      reopenedState.positionCount !== 500 ||
+      reopenedState.visibleNodeCount !== 25 ||
+      reopenedState.visibleEdgeCount !== 90 ||
+      !viewportMatches ||
+      !dragPositionMatches ||
+      JSON.stringify(reopenedCanonical) !== JSON.stringify(canonicalBefore) ||
+      !(await reopenedRelationTypeFilter.isChecked()) ||
+      (await reopenedDirectionFilter.inputValue()) !== "DIRECTED" ||
+      (await reopenedLabelFilter.isChecked()) ||
+      reopenedEvidence.canvas.elementCount === 0 ||
+      reopenedEvidence.canvas.nonTransparentSamples === 0 ||
+      reopenedEntry.timing.clickToReadyMs > 5_000 ||
+      secondRun.pageErrors.length > 0 ||
+      secondRun.requestedUrls.some(
+        (url) =>
+          url !== secondRun.localFileProbeUrl && !isLocalRuntimeUrl(url)
+      ) ||
+      secondRun.localFileProbe.readable
+    ) {
+      throw new Error(
+        `Phase 1D scale restart gate failed: ${JSON.stringify({
+          expected: persistedState,
+          actual: reopenedState,
+          viewportMatches,
+          dragPositionMatches,
+          canonicalBefore,
+          reopenedCanonical,
+          relationTypeFilter: await reopenedRelationTypeFilter.isChecked(),
+          direction: await reopenedDirectionFilter.inputValue(),
+          showLabels: await reopenedLabelFilter.isChecked(),
+          pageErrors: secondRun.pageErrors
+        })}`
+      );
+    }
+    await secondPage.screenshot({ path: scaleReopenedScreenshot });
+
+    const sortedLayouts = [...layoutReported].sort((left, right) => left - right);
+    const externalRuntimeRequestUrls = [
+      ...firstRun.requestedUrls.filter(
+        (url) =>
+          url !== firstRun.localFileProbeUrl && !isLocalRuntimeUrl(url)
+      ),
+      ...secondRun.requestedUrls.filter(
+        (url) =>
+          url !== secondRun.localFileProbeUrl && !isLocalRuntimeUrl(url)
+      )
+    ];
+    const acceptance = {
+      phase1dScaleElectron: true,
+      packaged,
+      appIsPackaged: firstRun.runtime.isPackaged,
+      fixture: {
+        source: "output/test-fixtures/phase1d-scale.madi",
+        bytes: fixtureStats.size,
+        entities: 500,
+        aliases: 1_500,
+        relations: 2_000,
+        sceneLinks: 2_000
+      },
+      fullGraph: {
+        nodes: fullEvidence.accessible.nodeIds.length,
+        edges: fullEvidence.accessible.edgeIds.length,
+        positionCount: fullEvidence.state.positionCount,
+        actualCytoscapeCanvas: fullEvidence.canvas
+      },
+      performance: {
+        initialGraphReady,
+        graphEntry: {
+          ...firstEntry.timing,
+          memory: firstEntry.memory,
+          metrics: fullEvidence.performance
+        },
+        layoutRuns,
+        layoutMedianMs: sortedLayouts[2],
+        layoutMaximumMs: maximumMetric(layoutReported),
+        filter: {
+          tagId: "scale-tag-7",
+          visibleNodes: taggedEvidence.state.visibleNodeCount,
+          visibleEdges: taggedEvidence.state.visibleEdgeCount,
+          internalMs: taggedEvidence.performance.filterMs,
+          observedMs: filterObservedMs
+        },
+        search: {
+          alias: "별칭 321-2",
+          entityId: searchedEntityId,
+          resultCount: searchResultCount,
+          internalFocusMs: searchedState.performance.searchFocusMs,
+          resultReadyMs: searchResultReadyMs,
+          clickToFocusMs: searchFocusObservedMs
+        },
+        focused: focusRuns,
+        selection: {
+          entityId: selectionEntityId,
+          responseMs: selectionObservedMs,
+          lazyDetailReadyMs: detailObservedMs
+        },
+        viewportInteraction,
+        dragInteraction
+      },
+      canonicalIntegrity: {
+        before: canonicalBefore,
+        afterDrag: canonicalAfter,
+        reopened: reopenedCanonical,
+        unchanged: true
+      },
+      decision:
+        conditionalBreaches.length > 0
+          ? "CONDITIONAL TECHNICAL GO — PRIVATE LOCAL"
+          : "TECHNICAL GO — PRIVATE LOCAL",
+      conditionalBreaches,
+      persistedState,
+      restart: {
+        ...reopenedEntry.timing,
+        memory: reopenedEntry.memory,
+        metrics: reopenedEvidence.performance,
+        restoredState: reopenedState,
+        viewportMatches,
+        dragPositionMatches,
+        actualCytoscapeCanvas: reopenedEvidence.canvas
+      },
+      externalRuntimeRequests: externalRuntimeRequestUrls.length,
+      externalRuntimeRequestUrls,
+      arbitraryLocalFileReadBlocked: true,
+      networkEmulationOffline: true,
+      screenshots: [
+        packaged
+          ? "output/playwright/madi-packaged-phase1d-scale-full.png"
+          : "output/playwright/madi-electron-phase1d-scale-full.png",
+        packaged
+          ? "output/playwright/madi-packaged-phase1d-scale-persisted.png"
+          : "output/playwright/madi-electron-phase1d-scale-persisted.png",
+        packaged
+          ? "output/playwright/madi-packaged-phase1d-scale-reopened.png"
+          : "output/playwright/madi-electron-phase1d-scale-reopened.png"
+      ]
+    };
+    process.stdout.write(`${JSON.stringify(acceptance, null, 2)}\n`);
+    reportStage(
+      "Phase 1D scale 500-node/2,000-edge graph and process restart verified"
+    );
+  } finally {
+    if (firstApplication) {
+      await forceCloseApplication(firstApplication);
+    }
+    if (secondApplication) {
+      await forceCloseApplication(secondApplication);
+    }
+    const resolvedScaleWorkspace = resolve(scaleWorkspace);
+    const resolvedTemporaryRoot = resolve(tmpdir());
+    if (
+      resolvedScaleWorkspace.startsWith(`${resolvedTemporaryRoot}\\`) ||
+      resolvedScaleWorkspace.startsWith(`${resolvedTemporaryRoot}/`)
+    ) {
+      await rm(resolvedScaleWorkspace, {
+        recursive: true,
+        force: true,
+        maxRetries: 20,
+        retryDelay: 100
+      });
+    }
+  }
+}
+
+const scaleFixturePath = process.env.MADI_SCALE_FIXTURE?.trim();
+
+if (scaleFixturePath) {
+  await runPhase1dScaleElectronSmoke(scaleFixturePath);
+} else {
+
 const temporaryWorkspace = await mkdtemp(
   join(tmpdir(), "madi-electron-smoke-")
 );
@@ -643,6 +1888,18 @@ const phase1cReopenedScreenshot = join(
   packaged
     ? "madi-packaged-phase1c-reopened.png"
     : "madi-electron-phase1c-reopened.png"
+);
+const phase1dScreenshot = join(
+  artifactDirectory,
+  packaged
+    ? "madi-packaged-phase1d.png"
+    : "madi-electron-phase1d.png"
+);
+const phase1dReopenedScreenshot = join(
+  artifactDirectory,
+  packaged
+    ? "madi-packaged-phase1d-reopened.png"
+    : "madi-electron-phase1d-reopened.png"
 );
 
 let firstApplication;
@@ -1652,6 +2909,392 @@ try {
     "Phase 1C Story Bible, mention promotion, scene link, and snapshot v2 restore verified"
   );
 
+  const firstGraphEntry = await openWorldGraph(firstPage, 2, 1);
+  const initialGraphEvidence = firstGraphEntry.evidence;
+  if (
+    JSON.stringify([...initialGraphEvidence.accessible.nodeIds].sort()) !==
+      JSON.stringify([protagonistId, locationId].sort()) ||
+    initialGraphEvidence.accessible.edgeIds.length !== 1 ||
+    initialGraphEvidence.accessible.edgeIds[0] !== customRelationId ||
+    !initialGraphEvidence.statsText.includes("전체 설정 2개") ||
+    !initialGraphEvidence.statsText.includes("표시 설정 2개") ||
+    !initialGraphEvidence.statsText.includes("전체 관계 1개") ||
+    !initialGraphEvidence.statsText.includes("표시 관계 1개")
+  ) {
+    throw new Error(
+      `Phase 1D full graph did not expose the canonical two-node/one-edge model: ${JSON.stringify(
+        initialGraphEvidence
+      )}`
+    );
+  }
+
+  await openWorldGraphAccessibleList(firstPage);
+  const graphNodeRegion = firstPage.getByRole("region", {
+    name: "그래프 설정 목록"
+  });
+  const graphEdgeRegion = firstPage.getByRole("region", {
+    name: "그래프 관계 목록"
+  });
+  const protagonistGraphButton = graphNodeRegion.locator(
+    `button[data-entity-id="${protagonistId}"]`
+  );
+  await protagonistGraphButton.click();
+  await waitForWorldGraphState(
+    firstPage,
+    { selectedKind: "NODE", selectedId: protagonistId },
+    "accessible protagonist graph-node selection"
+  );
+  const graphDetail = firstPage.locator('[data-testid="world-graph-detail"]');
+  await graphDetail
+    .getByRole("heading", { name: phase1cFixture.protagonistName, exact: true })
+    .waitFor({ timeout: 30_000 });
+  await graphDetail
+    .getByRole("region", { name: "명시적 장면 연결" })
+    .getByRole("button", {
+      name: `${binderTitles.sceneThree} · POV`,
+      exact: true
+    })
+    .waitFor({ timeout: 30_000 });
+  await graphDetail
+    .getByRole("region", { name: "명시적 장면 연결" })
+    .getByRole("button", {
+      name: `${binderTitles.sceneFour} · MENTIONED`,
+      exact: true
+    })
+    .waitFor({ timeout: 30_000 });
+  await graphDetail
+    .getByRole("region", { name: "본문 자동 언급 후보" })
+    .getByText("7개", { exact: true })
+    .waitFor({ timeout: 30_000 });
+
+  const graphCanvas = firstPage.locator(
+    '[data-testid="world-graph-canvas"]'
+  );
+  await graphCanvas.focus();
+  await graphCanvas.press("Enter");
+  const keyboardDetailFocus = await pollBinderUi(
+    () =>
+      firstPage.evaluate(
+        () => document.activeElement?.id === "world-graph-detail"
+      ),
+    "World Graph Enter key detail focus"
+  );
+  await graphCanvas.focus();
+  await graphCanvas.press("Escape");
+  await waitForWorldGraphState(
+    firstPage,
+    { selectedKind: "", selectedId: "" },
+    "World Graph Escape key selection clear"
+  );
+  await protagonistGraphButton.click();
+
+  const graphEdgeButton = graphEdgeRegion.locator(
+    `button[data-relation-id="${customRelationId}"]`
+  );
+  await graphEdgeButton.click();
+  await waitForWorldGraphState(
+    firstPage,
+    { selectedKind: "EDGE", selectedId: customRelationId },
+    "accessible directed graph-edge selection"
+  );
+  await graphDetail
+    .getByRole("heading", {
+      name: phase1cFixture.relationTypeName,
+      exact: true
+    })
+    .waitFor({ timeout: 30_000 });
+  await graphDetail
+    .getByText("방향 관계 →", { exact: true })
+    .waitFor({ timeout: 30_000 });
+  await graphDetail
+    .getByText(
+      `역방향 label: ${phase1cFixture.relationTypeInverseName}`,
+      { exact: true }
+    )
+    .waitFor({ timeout: 30_000 });
+  await graphDetail
+    .getByText(`관계 메모: ${phase1cFixture.relationNote}`, { exact: true })
+    .waitFor({ timeout: 30_000 });
+  await graphDetail
+    .getByRole("button", { name: "관계 편집에서 열기", exact: true })
+    .click();
+  try {
+    await firstPage
+      .getByRole("region", { name: "설정 작업 공간" })
+      .waitFor({ state: "visible", timeout: 30_000 });
+  } catch (error) {
+    const navigationEvidence = {
+      pageErrors: firstRun.pageErrors,
+      alerts: await firstPage.getByRole("alert").allTextContents(),
+      status: await firstPage.getByRole("status").allTextContents(),
+      graph: await readWorldGraphEvidence(firstPage).catch(() => null),
+      storyBibleVisible: await firstPage
+        .getByRole("region", { name: "설정 작업 공간" })
+        .isVisible()
+        .catch(() => false)
+    };
+    throw new Error(
+      `World Graph relation navigation failed: ${
+        error instanceof Error ? error.message : String(error)
+      }; state: ${JSON.stringify(navigationEvidence)}`
+    );
+  }
+  const relationNavigation = await pollBinderUi(
+    async () =>
+      (await firstPage
+        .getByRole("textbox", { name: "설정 이름" })
+        .inputValue()) === phase1cFixture.protagonistName &&
+      (await storyEntityRowById(firstPage, protagonistId)
+        .getByRole("button")
+        .getAttribute("aria-current")) === "true",
+    "World Graph edge to Story Bible relation navigation"
+  );
+
+  await openWorldGraph(firstPage, 2, 1);
+  await openWorldGraphAccessibleList(firstPage);
+  await firstPage
+    .getByRole("region", { name: "그래프 설정 목록" })
+    .locator(`button[data-entity-id="${protagonistId}"]`)
+    .click();
+  await waitForWorldGraphState(
+    firstPage,
+    { selectedKind: "NODE", selectedId: protagonistId },
+    "protagonist selection before Story Bible detail navigation"
+  );
+  await firstPage
+    .locator('[data-testid="world-graph-detail"]')
+    .getByRole("button", { name: "설정 상세에서 열기", exact: true })
+    .click();
+  await firstPage
+    .getByRole("region", { name: "설정 작업 공간" })
+    .waitFor({ state: "visible", timeout: 30_000 });
+  const entityNavigation = await pollBinderUi(
+    async () =>
+      (await firstPage
+        .getByRole("textbox", { name: "설정 이름" })
+        .inputValue()) === phase1cFixture.protagonistName,
+    "World Graph node to Story Bible entity navigation"
+  );
+
+  await openWorldGraph(firstPage, 2, 1);
+  await openWorldGraphAccessibleList(firstPage);
+  await firstPage
+    .getByRole("region", { name: "그래프 설정 목록" })
+    .locator(`button[data-entity-id="${protagonistId}"]`)
+    .click();
+  await firstPage
+    .locator('[data-testid="world-graph-detail"]')
+    .getByRole("region", { name: "명시적 장면 연결" })
+    .getByRole("button", {
+      name: `${binderTitles.sceneThree} · POV`,
+      exact: true
+    })
+    .waitFor({ timeout: 30_000 });
+  await firstPage
+    .locator('[data-testid="world-graph-detail"]')
+    .getByRole("button", {
+      name: `${binderTitles.sceneThree} · POV`,
+      exact: true
+    })
+    .click();
+  await pageWaitForSelectedBinderRow(firstPage, sceneThreeId);
+  const sceneNavigation =
+    (await binderRowById(firstPage, sceneThreeId).getAttribute("aria-selected")) ===
+    "true";
+
+  await openWorldGraph(firstPage, 2, 1);
+  const graphSearch = firstPage.locator('[data-testid="world-graph-search"]');
+  await graphSearch.fill(phase1cFixture.protagonistAlias);
+  const graphSearchResults = firstPage.getByRole("list", {
+    name: "세계관 설정 검색 결과"
+  });
+  await graphSearchResults
+    .locator(`button[data-entity-id="${protagonistId}"]`)
+    .waitFor({ state: "visible", timeout: 30_000 });
+  const searchResultCount = await graphSearchResults
+    .locator("button[data-entity-id]")
+    .count();
+  await graphSearchResults
+    .locator(`button[data-entity-id="${protagonistId}"]`)
+    .click();
+  await waitForWorldGraphState(
+    firstPage,
+    { mode: "FULL", selectedKind: "NODE", selectedId: protagonistId },
+    "World Graph alias search focus"
+  );
+
+  await firstPage
+    .getByRole("button", { name: "전체 그래프", exact: true })
+    .click();
+  const fullModeEvidence = await waitForWorldGraphState(
+    firstPage,
+    { mode: "FULL" },
+    "World Graph full mode"
+  );
+  await firstPage
+    .getByRole("button", { name: "중심 그래프", exact: true })
+    .click();
+  const focusedDepthEvidence = [];
+  for (const depth of [1, 2, 3]) {
+    await firstPage
+      .getByRole("combobox", { name: "중심 그래프 깊이" })
+      .selectOption(String(depth));
+    const depthEvidence = await waitForWorldGraphState(
+      firstPage,
+      {
+        mode: "FOCUSED",
+        depth,
+        focusedEntityId: protagonistId,
+        visibleNodeCount: 2,
+        visibleEdgeCount: 1
+      },
+      `World Graph focused depth ${depth}`
+    );
+    focusedDepthEvidence.push({
+      depth,
+      visibleNodeCount: depthEvidence.state.visibleNodeCount,
+      visibleEdgeCount: depthEvidence.state.visibleEdgeCount
+    });
+  }
+
+  await openWorldGraphFilters(firstPage);
+  const tagFilter = firstPage.getByRole("checkbox", {
+    name: phase1cFixture.protagonistTag,
+    exact: true
+  });
+  await tagFilter.check();
+  const taggedGraphEvidence = await waitForWorldGraph(firstPage, 1, 0);
+  await tagFilter.uncheck();
+  await waitForWorldGraph(firstPage, 2, 1);
+  const relationTypeFilter = firstPage.getByRole("checkbox", {
+    name: `${phase1cFixture.relationTypeName} (1)`,
+    exact: true
+  });
+  await relationTypeFilter.check();
+  const directionFilter = firstPage.getByRole("combobox", {
+    name: "관계 방향 필터"
+  });
+  await directionFilter.selectOption("DIRECTED");
+  const labelFilter = firstPage.getByRole("checkbox", {
+    name: "관계 label 표시",
+    exact: true
+  });
+  await labelFilter.uncheck();
+  await waitForWorldGraph(firstPage, 2, 1);
+
+  const viewportInteraction = await zoomWorldGraphCanvas(firstPage);
+  await openWorldGraphAccessibleList(firstPage);
+  await firstPage
+    .getByRole("region", { name: "그래프 설정 목록" })
+    .locator(`button[data-entity-id="${protagonistId}"]`)
+    .click();
+  const persistedGraphEvidence = await waitForWorldGraphState(
+    firstPage,
+    {
+      mode: "FOCUSED",
+      depth: 3,
+      focusedEntityId: protagonistId,
+      selectedKind: "NODE",
+      selectedId: protagonistId,
+      layout: "preset",
+      positionCount: 2,
+      visibleNodeCount: 2,
+      visibleEdgeCount: 1
+    },
+    "final persisted World Graph state"
+  );
+  await firstPage.waitForTimeout(800);
+  const finalGraphEvidence = await readWorldGraphEvidence(firstPage);
+  if (
+    searchResultCount !== 1 ||
+    !(await relationTypeFilter.isChecked()) ||
+    (await directionFilter.inputValue()) !== "DIRECTED" ||
+    (await labelFilter.isChecked()) ||
+    finalGraphEvidence.performance.searchFocusMs === null ||
+    finalGraphEvidence.performance.bfsMs === null ||
+    !keyboardDetailFocus ||
+    !relationNavigation ||
+    !entityNavigation ||
+    !sceneNavigation
+  ) {
+    throw new Error(
+      `Phase 1D graph interaction acceptance failed: ${JSON.stringify({
+        searchResultCount,
+        keyboardDetailFocus,
+        relationNavigation,
+        entityNavigation,
+        sceneNavigation,
+        finalGraphEvidence
+      })}`
+    );
+  }
+  await firstPage.screenshot({ path: phase1dScreenshot });
+  const phase1dAcceptance = {
+    canonicalGraph: {
+      nodeCount: 2,
+      edgeCount: 1,
+      nodeIds: initialGraphEvidence.accessible.nodeIds,
+      edgeId: customRelationId,
+      directed: true,
+      actualCytoscapeCanvas: true,
+      canvas: initialGraphEvidence.canvas,
+      statsText: initialGraphEvidence.statsText
+    },
+    graphEntry: {
+      ...firstGraphEntry.timing,
+      memory: firstGraphEntry.memory,
+      performance: initialGraphEvidence.performance
+    },
+    accessibility: {
+      nodeSelection: true,
+      edgeSelection: true,
+      enterMovesFocusToDetail: keyboardDetailFocus,
+      escapeClearsSelection: true
+    },
+    nodeDetail: {
+      entityId: protagonistId,
+      explicitSceneLinks: [
+        { sceneId: sceneThreeId, role: "POV" },
+        { sceneId: sceneFourId, role: "MENTIONED" }
+      ],
+      automaticMentionCandidates: 7
+    },
+    edgeDetail: {
+      relationId: customRelationId,
+      forwardLabel: phase1cFixture.relationTypeName,
+      inverseLabel: phase1cFixture.relationTypeInverseName,
+      note: phase1cFixture.relationNote,
+      readOnly: true
+    },
+    navigation: {
+      entity: entityNavigation,
+      relation: relationNavigation,
+      scene: sceneNavigation
+    },
+    search: {
+      queryMatchedAlias: phase1cFixture.protagonistAlias,
+      resultCount: searchResultCount,
+      selectedEntityId: protagonistId
+    },
+    modes: {
+      fullVisibleNodeCount: fullModeEvidence.state.visibleNodeCount,
+      focusedDepths: focusedDepthEvidence
+    },
+    filters: {
+      tagFilteredNodeCount: taggedGraphEvidence.state.visibleNodeCount,
+      tagFilteredEdgeCount: taggedGraphEvidence.state.visibleEdgeCount,
+      relationTypeId: customRelationTypeId,
+      relationDirection: "DIRECTED",
+      showLabels: false
+    },
+    viewportInteraction,
+    persistedUiState: persistedGraphEvidence.state,
+    finalPerformance: finalGraphEvidence.performance
+  };
+  reportStage(
+    "Phase 1D real Cytoscape graph, accessibility, detail, search/filter, navigation, and persisted UI state verified"
+  );
+
   await firstPage
     .getByRole("button", { name: "원고", exact: true })
     .click();
@@ -2085,6 +3728,114 @@ try {
     "restart Phase 1C entities, alias, tag, relation, links, mentions, and ENTITY note verified"
   );
 
+  const reopenedGraphEntry = await openWorldGraph(secondPage, 2, 1);
+  await openWorldGraphAccessibleList(secondPage);
+  await openWorldGraphFilters(secondPage);
+  const reopenedGraphEvidence = await readWorldGraphEvidence(secondPage);
+  const reopenedRelationTypeFilter = secondPage.getByRole("checkbox", {
+    name: `${phase1cFixture.relationTypeName} (1)`,
+    exact: true
+  });
+  const reopenedDirectionFilter = secondPage.getByRole("combobox", {
+    name: "관계 방향 필터"
+  });
+  const reopenedLabelFilter = secondPage.getByRole("checkbox", {
+    name: "관계 label 표시",
+    exact: true
+  });
+  const reopenedProtagonistGraphButton = secondPage
+    .getByRole("region", { name: "그래프 설정 목록" })
+    .locator(`button[data-entity-id="${protagonistId}"]`);
+  const restoredViewportMatches = ["zoom", "panX", "panY"].every((key) => {
+    const expected = finalGraphEvidence.state.viewport[key];
+    const actual = reopenedGraphEvidence.state.viewport[key];
+    return (
+      typeof expected === "number" &&
+      typeof actual === "number" &&
+      Math.abs(expected - actual) < 0.001
+    );
+  });
+  const reopenedDetail = secondPage.locator(
+    '[data-testid="world-graph-detail"]'
+  );
+  await reopenedDetail
+    .getByRole("heading", { name: phase1cFixture.protagonistName, exact: true })
+    .waitFor({ timeout: 30_000 });
+  await reopenedDetail
+    .getByRole("region", { name: "본문 자동 언급 후보" })
+    .getByText("7개", { exact: true })
+    .waitFor({ timeout: 30_000 });
+  if (
+    reopenedGraphEvidence.state.mode !== "FOCUSED" ||
+    reopenedGraphEvidence.state.depth !== 3 ||
+    reopenedGraphEvidence.state.focusedEntityId !== protagonistId ||
+    reopenedGraphEvidence.state.selectedKind !== "NODE" ||
+    reopenedGraphEvidence.state.selectedId !== protagonistId ||
+    reopenedGraphEvidence.state.layout !== "preset" ||
+    reopenedGraphEvidence.state.positionCount !== 2 ||
+    reopenedGraphEvidence.state.visibleNodeCount !== 2 ||
+    reopenedGraphEvidence.state.visibleEdgeCount !== 1 ||
+    reopenedGraphEvidence.canvas.elementCount === 0 ||
+    reopenedGraphEvidence.canvas.nonTransparentSamples === 0 ||
+    (await reopenedProtagonistGraphButton.getAttribute("aria-pressed")) !==
+      "true" ||
+    !(await reopenedRelationTypeFilter.isChecked()) ||
+    (await reopenedDirectionFilter.inputValue()) !== "DIRECTED" ||
+    (await reopenedLabelFilter.isChecked()) ||
+    !restoredViewportMatches
+  ) {
+    throw new Error(
+      `Restart did not restore project-specific Phase 1D graph UI state: ${JSON.stringify(
+        {
+          expected: finalGraphEvidence.state,
+          actual: reopenedGraphEvidence,
+          relationTypeFilter: await reopenedRelationTypeFilter.isChecked(),
+          relationDirection: await reopenedDirectionFilter.inputValue(),
+          showLabels: await reopenedLabelFilter.isChecked(),
+          selectedNodePressed:
+            await reopenedProtagonistGraphButton.getAttribute("aria-pressed"),
+          restoredViewportMatches
+        }
+      )}`
+    );
+  }
+  await secondPage.screenshot({ path: phase1dReopenedScreenshot });
+  const phase1dReopenAcceptance = {
+    graphEntry: {
+      ...reopenedGraphEntry.timing,
+      memory: reopenedGraphEntry.memory,
+      performance: reopenedGraphEvidence.performance
+    },
+    restoredUiState: reopenedGraphEvidence.state,
+    projectSpecificRestore: {
+      focusedMode: true,
+      focusedEntityId: protagonistId,
+      depth: 3,
+      relationTypeId: customRelationTypeId,
+      relationDirection: "DIRECTED",
+      showLabels: false,
+      lastSelectedEntityId: protagonistId,
+      nodePositionCount: 2,
+      viewportMatches: restoredViewportMatches
+    },
+    actualCytoscapeCanvas: {
+      restored: true,
+      canvas: reopenedGraphEvidence.canvas
+    },
+    canonicalGraph: {
+      nodeIds: reopenedGraphEvidence.accessible.nodeIds,
+      edgeIds: reopenedGraphEvidence.accessible.edgeIds
+    },
+    detailReloaded: {
+      entityId: protagonistId,
+      automaticMentionCandidates: 7
+    },
+    processRestartRestore: true
+  };
+  reportStage(
+    "restart Phase 1D focused graph, filters, node positions, viewport, selection, detail, and real canvas verified"
+  );
+
   if (
     secondRun.pageErrors.length > 0 ||
     secondRun.runtime.isPackaged !== packaged ||
@@ -2127,6 +3878,16 @@ try {
     );
   }
 
+  const externalRuntimeRequestUrls = [
+    ...firstRun.requestedUrls.filter(
+      (url) =>
+        url !== firstRun.localFileProbeUrl && !isLocalRuntimeUrl(url)
+    ),
+    ...secondRun.requestedUrls.filter(
+      (url) =>
+        url !== secondRun.localFileProbeUrl && !isLocalRuntimeUrl(url)
+    )
+  ];
   process.stdout.write(
     `${JSON.stringify(
       {
@@ -2162,6 +3923,8 @@ try {
         phase1bReopenAcceptance,
         phase1cAcceptance,
         phase1cReopenAcceptance,
+        phase1dAcceptance,
+        phase1dReopenAcceptance,
         pageAwarePointerHitTest: true,
         imeChecklist,
         canvas,
@@ -2181,7 +3944,8 @@ try {
         processRestartRestore: true,
         restoredCanvas,
         arbitraryLocalFileReadBlocked: true,
-        externalRuntimeRequests: 0,
+        externalRuntimeRequests: externalRuntimeRequestUrls.length,
+        externalRuntimeRequestUrls,
         networkEmulationOffline: true,
         screenshots: [
           packaged
@@ -2201,7 +3965,13 @@ try {
             : "output/playwright/madi-electron-phase1c.png",
           packaged
             ? "output/playwright/madi-packaged-phase1c-reopened.png"
-            : "output/playwright/madi-electron-phase1c-reopened.png"
+            : "output/playwright/madi-electron-phase1c-reopened.png",
+          packaged
+            ? "output/playwright/madi-packaged-phase1d.png"
+            : "output/playwright/madi-electron-phase1d.png",
+          packaged
+            ? "output/playwright/madi-packaged-phase1d-reopened.png"
+            : "output/playwright/madi-electron-phase1d-reopened.png"
         ]
       },
       null,
@@ -2230,4 +4000,5 @@ try {
     });
   }
   reportStage("cleanup completed");
+}
 }

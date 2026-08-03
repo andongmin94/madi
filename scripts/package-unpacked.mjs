@@ -94,6 +94,17 @@ await Promise.all([
     ),
     resolve(resourcesDirectory, "licenses", "NANUM_GOTHIC-OFL-1.1.txt"),
   ),
+  cp(
+    resolve(
+      repositoryRoot,
+      "apps",
+      "desktop",
+      "node_modules",
+      "cytoscape",
+      "LICENSE",
+    ),
+    resolve(resourcesDirectory, "licenses", "CYTOSCAPE-MIT.txt"),
+  ),
 ]);
 
 const executable = resolve(packageDirectory, "madi.exe");
@@ -119,6 +130,7 @@ process.stdout.write(
         "resources/licenses/THIRD_PARTY_NOTICES.md",
         "resources/licenses/TYPIE-AGPL-3.0.txt",
         "resources/licenses/NANUM_GOTHIC-OFL-1.1.txt",
+        "resources/licenses/CYTOSCAPE-MIT.txt",
       ],
     },
     null,
