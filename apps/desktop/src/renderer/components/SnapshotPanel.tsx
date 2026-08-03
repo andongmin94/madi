@@ -97,6 +97,19 @@ function SnapshotDiffDetails({
         </dd>
       </div>
       <div>
+        <dt>태그 변화</dt>
+        <dd>
+          +{summary.addedTags} · −{summary.deletedTags} · 변경 {summary.changedTags}
+        </dd>
+      </div>
+      <div>
+        <dt>관계 타입</dt>
+        <dd>
+          +{summary.addedRelationTypes} · −{summary.deletedRelationTypes} · 변경{" "}
+          {summary.changedRelationTypes}
+        </dd>
+      </div>
+      <div>
         <dt>장면 연결</dt>
         <dd>{summary.changedSceneLinks}개 변화</dd>
       </div>

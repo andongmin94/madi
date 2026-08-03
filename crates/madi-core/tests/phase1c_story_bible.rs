@@ -604,6 +604,45 @@ fn snapshot_v2_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         saved_by: None,
     })
     .unwrap();
+    create_entity_alias(CreateEntityAliasParams {
+        file_path: fixture.path.clone(),
+        entity_id: "leia".to_owned(),
+        alias: "북부   마법사".to_owned(),
+        alias_id: Some("snapshot-alias".to_owned()),
+        expected_revision: None,
+        saved_by: None,
+    })
+    .unwrap();
+    for (tag_id, name) in [
+        ("snapshot-tag-change", "변경 전 태그"),
+        ("snapshot-tag-delete", "삭제할 태그"),
+    ] {
+        create_tag(CreateTagParams {
+            file_path: fixture.path.clone(),
+            name: name.to_owned(),
+            color_token: None,
+            tag_id: Some(tag_id.to_owned()),
+            expected_revision: None,
+            saved_by: None,
+        })
+        .unwrap();
+    }
+    for (relation_type_id, name) in [
+        ("snapshot-type-change", "변경 전 관계"),
+        ("snapshot-type-delete", "삭제할 관계"),
+    ] {
+        create_relation_type(CreateRelationTypeParams {
+            file_path: fixture.path.clone(),
+            name: name.to_owned(),
+            inverse_name: None,
+            directed: false,
+            color_token: None,
+            relation_type_id: Some(relation_type_id.to_owned()),
+            expected_revision: None,
+            saved_by: None,
+        })
+        .unwrap();
+    }
     let baseline = create_named_snapshot(CreateNamedSnapshotParams {
         file_path: fixture.path.clone(),
         name: "설정 기준".to_owned(),
@@ -629,12 +668,72 @@ fn snapshot_v2_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         saved_by: None,
     })
     .unwrap();
+    create_tag(CreateTagParams {
+        file_path: fixture.path.clone(),
+        name: "추가된 태그".to_owned(),
+        color_token: None,
+        tag_id: Some("snapshot-tag-added".to_owned()),
+        expected_revision: None,
+        saved_by: None,
+    })
+    .unwrap();
+    update_tag(UpdateTagParams {
+        file_path: fixture.path.clone(),
+        tag_id: "snapshot-tag-change".to_owned(),
+        name: "변경 후 태그".to_owned(),
+        color_token: Some("amber".to_owned()),
+        expected_revision: None,
+        saved_by: None,
+    })
+    .unwrap();
+    delete_tag(DeleteTagParams {
+        file_path: fixture.path.clone(),
+        tag_id: "snapshot-tag-delete".to_owned(),
+        expected_revision: None,
+        saved_by: None,
+    })
+    .unwrap();
+    create_relation_type(CreateRelationTypeParams {
+        file_path: fixture.path.clone(),
+        name: "추가된 관계".to_owned(),
+        inverse_name: None,
+        directed: false,
+        color_token: None,
+        relation_type_id: Some("snapshot-type-added".to_owned()),
+        expected_revision: None,
+        saved_by: None,
+    })
+    .unwrap();
+    update_relation_type(UpdateRelationTypeParams {
+        file_path: fixture.path.clone(),
+        relation_type_id: "snapshot-type-change".to_owned(),
+        name: "변경 후 관계".to_owned(),
+        inverse_name: Some("역관계".to_owned()),
+        directed: true,
+        color_token: Some("blue".to_owned()),
+        expected_revision: None,
+        saved_by: None,
+    })
+    .unwrap();
+    delete_relation_type(DeleteRelationTypeParams {
+        file_path: fixture.path.clone(),
+        relation_type_id: "snapshot-type-delete".to_owned(),
+        expected_revision: None,
+        saved_by: None,
+    })
+    .unwrap();
     let diff = diff_named_snapshot(DiffNamedSnapshotParams {
         file_path: fixture.path.clone(),
         snapshot_id: "story-baseline".to_owned(),
     })
     .unwrap();
     assert_eq!(diff.summary.changed_entities, 1);
+    assert_eq!(diff.summary.added_tags, 1);
+    assert_eq!(diff.summary.deleted_tags, 1);
+    assert_eq!(diff.summary.changed_tags, 1);
+    assert_eq!(diff.summary.added_relation_types, 1);
+    assert_eq!(diff.summary.deleted_relation_types, 1);
+    assert_eq!(diff.summary.changed_relation_types, 1);
     restore_named_snapshot(RestoreNamedSnapshotParams {
         file_path: fixture.path.clone(),
         snapshot_id: "story-baseline".to_owned(),
@@ -678,6 +777,70 @@ fn snapshot_v2_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         )
         .unwrap();
     let original_payload: serde_json::Value = serde_json::from_slice(&blob).unwrap();
+    let mut insert_failure_payload = original_payload.clone();
+    let duplicate_tag = {
+        let tags = insert_failure_payload["tags"].as_array().unwrap();
+        let mut duplicate = tags[0].clone();
+        duplicate["id"] = json!("snapshot-tag-duplicate-name");
+        duplicate
+    };
+    insert_failure_payload["tags"]
+        .as_array_mut()
+        .unwrap()
+        .push(duplicate_tag);
+    let insert_failure_blob = serde_json::to_vec(&insert_failure_payload).unwrap();
+    let insert_failure_hash = format!("{:x}", Sha256::digest(&insert_failure_blob));
+    connection
+        .execute(
+            "INSERT INTO named_snapshots (
+                id, project_id, name, note, kind, payload_format, payload_version,
+                payload_blob, content_hash, created_at, updated_at
+             ) SELECT 'insert-failure-v2', project_id, 'INSERT 실패', NULL, 'MANUAL',
+                      payload_format, 2, ?1, ?2, created_at, updated_at
+               FROM named_snapshots WHERE id = 'story-baseline'",
+            params![insert_failure_blob, insert_failure_hash],
+        )
+        .unwrap();
+    let mut invalid_alias_payload = original_payload.clone();
+    invalid_alias_payload["entity_aliases"][0]["normalized_alias"] = json!("위조 별칭");
+    let invalid_alias_blob = serde_json::to_vec(&invalid_alias_payload).unwrap();
+    let invalid_alias_hash = format!("{:x}", Sha256::digest(&invalid_alias_blob));
+    connection
+        .execute(
+            "INSERT INTO named_snapshots (
+                id, project_id, name, note, kind, payload_format, payload_version,
+                payload_blob, content_hash, created_at, updated_at
+             ) SELECT 'invalid-alias-v2', project_id, '별칭 위조', NULL, 'MANUAL',
+                      payload_format, 2, ?1, ?2, created_at, updated_at
+               FROM named_snapshots WHERE id = 'story-baseline'",
+            params![invalid_alias_blob, invalid_alias_hash],
+        )
+        .unwrap();
+    let mut invalid_builtin_payload = original_payload.clone();
+    let builtin = invalid_builtin_payload["relation_types"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|relation_type| {
+            relation_type["id"]
+                .as_str()
+                .is_some_and(|id| id.ends_with(":builtin-related"))
+        })
+        .unwrap();
+    builtin["is_builtin"] = json!(false);
+    let invalid_builtin_blob = serde_json::to_vec(&invalid_builtin_payload).unwrap();
+    let invalid_builtin_hash = format!("{:x}", Sha256::digest(&invalid_builtin_blob));
+    connection
+        .execute(
+            "INSERT INTO named_snapshots (
+                id, project_id, name, note, kind, payload_format, payload_version,
+                payload_blob, content_hash, created_at, updated_at
+             ) SELECT 'invalid-builtin-v2', project_id, 'builtin 위조', NULL, 'MANUAL',
+                      payload_format, 2, ?1, ?2, created_at, updated_at
+               FROM named_snapshots WHERE id = 'story-baseline'",
+            params![invalid_builtin_blob, invalid_builtin_hash],
+        )
+        .unwrap();
     let mut forged_payload = original_payload.clone();
     forged_payload["version"] = json!(1);
     let forged_blob = serde_json::to_vec(&forged_payload).unwrap();
@@ -694,12 +857,104 @@ fn snapshot_v2_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         )
         .unwrap();
     drop(connection);
+    let before_insert_failure_revision = open_project(OpenProjectParams {
+        file_path: fixture.path.clone(),
+    })
+    .unwrap()
+    .metadata
+    .revision;
+    let before_insert_failure_entities = list_entities(ListEntitiesParams {
+        file_path: fixture.path.clone(),
+        query: None,
+        kinds: vec![],
+        statuses: vec![],
+        tag_ids: vec![],
+        sort: EntitySort::NameAsc,
+    })
+    .unwrap();
+    let before_insert_failure_tags = list_tags(ListTagsParams {
+        file_path: fixture.path.clone(),
+    })
+    .unwrap();
     let before_failed_restore = list_named_snapshots(ListNamedSnapshotsParams {
         file_path: fixture.path.clone(),
     })
     .unwrap()
     .snapshots
     .len();
+    assert!(restore_named_snapshot(RestoreNamedSnapshotParams {
+        file_path: fixture.path.clone(),
+        snapshot_id: "insert-failure-v2".to_owned(),
+        auto_snapshot_name: None,
+        expected_revision: None,
+        saved_by: None,
+    })
+    .is_err());
+    assert_eq!(
+        open_project(OpenProjectParams {
+            file_path: fixture.path.clone(),
+        })
+        .unwrap()
+        .metadata
+        .revision,
+        before_insert_failure_revision
+    );
+    assert_eq!(
+        list_named_snapshots(ListNamedSnapshotsParams {
+            file_path: fixture.path.clone(),
+        })
+        .unwrap()
+        .snapshots
+        .len(),
+        before_failed_restore
+    );
+    assert_eq!(
+        list_entities(ListEntitiesParams {
+            file_path: fixture.path.clone(),
+            query: None,
+            kinds: vec![],
+            statuses: vec![],
+            tag_ids: vec![],
+            sort: EntitySort::NameAsc,
+        })
+        .unwrap(),
+        before_insert_failure_entities
+    );
+    assert_eq!(
+        list_tags(ListTagsParams {
+            file_path: fixture.path.clone(),
+        })
+        .unwrap(),
+        before_insert_failure_tags
+    );
+    for invalid_snapshot_id in ["invalid-alias-v2", "invalid-builtin-v2"] {
+        assert!(restore_named_snapshot(RestoreNamedSnapshotParams {
+            file_path: fixture.path.clone(),
+            snapshot_id: invalid_snapshot_id.to_owned(),
+            auto_snapshot_name: None,
+            expected_revision: None,
+            saved_by: None,
+        })
+        .is_err());
+        assert_eq!(
+            open_project(OpenProjectParams {
+                file_path: fixture.path.clone(),
+            })
+            .unwrap()
+            .metadata
+            .revision,
+            before_insert_failure_revision
+        );
+        assert_eq!(
+            list_named_snapshots(ListNamedSnapshotsParams {
+                file_path: fixture.path.clone(),
+            })
+            .unwrap()
+            .snapshots
+            .len(),
+            before_failed_restore
+        );
+    }
     assert!(restore_named_snapshot(RestoreNamedSnapshotParams {
         file_path: fixture.path.clone(),
         snapshot_id: "forged-v1".to_owned(),

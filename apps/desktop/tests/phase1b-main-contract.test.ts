@@ -73,7 +73,13 @@ const coreDiff = {
   deleted_relations: 11,
   changed_relations: 12,
   changed_scene_links: 13,
-  changed_entity_notes: 14
+  changed_entity_notes: 14,
+  added_tags: 15,
+  deleted_tags: 16,
+  changed_tags: 17,
+  added_relation_types: 18,
+  deleted_relation_types: 19,
+  changed_relation_types: 20
 };
 
 function createHarness(
@@ -456,7 +462,13 @@ describe("Phase 1B DesktopService RPC contract", () => {
       deletedRelations: 11,
       changedRelations: 12,
       changedSceneLinks: 13,
-      changedEntityNotes: 14
+      changedEntityNotes: 14,
+      addedTags: 15,
+      deletedTags: 16,
+      changedTags: 17,
+      addedRelationTypes: 18,
+      deletedRelationTypes: 19,
+      changedRelationTypes: 20
     });
     expect(request.mock.calls).toEqual([
       [
@@ -733,5 +745,44 @@ describe("Phase 1B DesktopService RPC contract", () => {
         sessionId: hashHarness.session.sessionId
       })
     ).rejects.toThrow("invalid snapshot hash");
+
+    const invalidDiffHarness = createHarness(() => ({
+      snapshot: coreSnapshot("snapshot-invalid-diff"),
+      summary: { ...coreDiff, added_tags: -1 },
+      metadata: { revision: 3 }
+    }));
+    await expect(
+      invalidDiffHarness.service.diffNamedSnapshot({
+        sessionId: invalidDiffHarness.session.sessionId,
+        snapshotId: "snapshot-invalid-diff"
+      })
+    ).rejects.toThrow("invalid added_tags");
+
+    const {
+      added_tags: _addedTags,
+      deleted_tags: _deletedTags,
+      changed_tags: _changedTags,
+      added_relation_types: _addedRelationTypes,
+      deleted_relation_types: _deletedRelationTypes,
+      changed_relation_types: _changedRelationTypes,
+      ...legacyDiff
+    } = coreDiff;
+    const legacyDiffHarness = createHarness(() => ({
+      snapshot: coreSnapshot("snapshot-legacy-diff"),
+      summary: legacyDiff,
+      metadata: { revision: 3 }
+    }));
+    const parsedLegacyDiff = await legacyDiffHarness.service.diffNamedSnapshot({
+      sessionId: legacyDiffHarness.session.sessionId,
+      snapshotId: "snapshot-legacy-diff"
+    });
+    expect(parsedLegacyDiff.summary).toMatchObject({
+      addedTags: 0,
+      deletedTags: 0,
+      changedTags: 0,
+      addedRelationTypes: 0,
+      deletedRelationTypes: 0,
+      changedRelationTypes: 0
+    });
   });
 });

@@ -111,7 +111,7 @@ fn clean_optional(value: Option<String>) -> Option<String> {
     })
 }
 
-fn normalize_alias(value: &str) -> String {
+pub(crate) fn normalize_alias(value: &str) -> String {
     value
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -226,32 +226,37 @@ pub fn list_entities(params: ListEntitiesParams) -> Result<ListEntitiesResult> {
     let kind_filter = params.kinds.into_iter().collect::<HashSet<_>>();
     let status_filter = params.statuses.into_iter().collect::<HashSet<_>>();
     let tag_filter = params.tag_ids.into_iter().collect::<HashSet<_>>();
-    let mut entities = load_all_entities(&connection, &metadata.project_id)?;
-    entities.retain(|entity| {
+    let loaded_entities = load_all_entities(&connection, &metadata.project_id)?;
+    let mut entities = Vec::with_capacity(loaded_entities.len());
+    for entity in loaded_entities {
         if !kind_filter.is_empty() && !kind_filter.contains(&entity.kind) {
-            return false;
+            continue;
         }
         if !status_filter.is_empty() && !status_filter.contains(&entity.status) {
-            return false;
+            continue;
         }
         if !tag_filter.is_empty() {
-            let attached = load_entity_tag_ids(&connection, &entity.id).unwrap_or_default();
+            let attached = load_entity_tag_ids(&connection, &entity.id)?;
             if !tag_filter.iter().all(|tag| attached.contains(tag)) {
-                return false;
+                continue;
             }
         }
-        query.as_ref().is_none_or(|query| {
+        let query_matches = if let Some(query) = query.as_ref() {
             entity.name.to_lowercase().contains(query)
                 || entity
                     .summary
                     .as_deref()
                     .is_some_and(|summary| summary.to_lowercase().contains(query))
-                || load_aliases(&connection, &entity.id)
-                    .unwrap_or_default()
+                || load_aliases(&connection, &entity.id)?
                     .iter()
                     .any(|alias| alias.alias.to_lowercase().contains(query))
-        })
-    });
+        } else {
+            true
+        };
+        if query_matches {
+            entities.push(entity);
+        }
+    }
     match params.sort {
         EntitySort::NameAsc => entities.sort_by(|left, right| {
             left.name

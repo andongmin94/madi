@@ -313,6 +313,9 @@ export function StoryBibleWorkspace({
   >(null);
   const [relationNote, setRelationNote] = useState("");
   const [editingRelationId, setEditingRelationId] = useState<string | null>(null);
+  const [editingRelationDirection, setEditingRelationDirection] = useState<
+    "OUTGOING" | "INCOMING" | null
+  >(null);
   const [editingRelationTypeId, setEditingRelationTypeId] = useState<
     string | null
   >(null);
@@ -341,6 +344,7 @@ export function StoryBibleWorkspace({
     setRelationTargetQuery("");
     setRelationNote("");
     setEditingRelationId(null);
+    setEditingRelationDirection(null);
     setDeleteImpact(null);
   }, [selected?.id, selected?.updatedAt]);
 
@@ -574,12 +578,19 @@ export function StoryBibleWorkspace({
 
   const submitRelation = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selected || !relationTypeId || !relationTargetId) {
+    const editingRelation = editingRelationId
+      ? relations.find((relation) => relation.id === editingRelationId)
+      : null;
+    const targetEntityId =
+      editingRelationDirection === "INCOMING" && editingRelation
+        ? editingRelation.targetEntityId
+        : relationTargetId;
+    if (!selected || !relationTypeId || !targetEntityId) {
       return;
     }
     const input: StoryRelationInput = {
       relationTypeId,
-      targetEntityId: relationTargetId,
+      targetEntityId,
       ...(relationNote.trim() ? { note: relationNote.trim() } : {})
     };
     void safely(async () => {
@@ -589,6 +600,7 @@ export function StoryBibleWorkspace({
         await onCreateRelation(selected.id, input);
       }
       setEditingRelationId(null);
+      setEditingRelationDirection(null);
       setRelationTargetId("");
       setRelationTargetQuery("");
       setRelationNote("");
@@ -1098,44 +1110,62 @@ export function StoryBibleWorkspace({
                   ))}
                 </select>
               </label>
-              <label>
-                대상 설정 검색
-                <input
-                  type="search"
-                  aria-label="관계 대상 검색어"
-                  value={relationTargetQuery}
-                  placeholder="이름 또는 별칭"
-                  onChange={(event) => setRelationTargetQuery(event.target.value)}
-                />
-              </label>
-              <label>
-                대상 설정
-                <select
-                  aria-label="관계 대상 설정 검색"
-                  value={relationTargetId}
-                  onChange={(event) => setRelationTargetId(event.target.value)}
+              {editingRelationDirection === "INCOMING" ? (
+                <div
+                  className="relation-editor__readonly-counterpart"
+                  aria-label="고정된 상대 설정"
                 >
-                  <option value="">대상 선택</option>
-                  {entities
-                    .filter((entity) => entity.id !== selected.id)
-                    .filter((entity) => {
-                      const needle = normalizedName(relationTargetQuery);
-                      return (
-                        !needle ||
-                        remoteRelationTargetIds?.has(entity.id) ||
-                        [
-                          entity.name,
-                          ...entity.aliases.map((alias) => alias.alias)
-                        ].some((value) => normalizedName(value).includes(needle))
-                        );
-                    })
-                    .map((entity) => (
-                      <option key={entity.id} value={entity.id}>
-                        {entity.name} · {KIND_LABELS[entity.kind]}
-                      </option>
-                    ))}
-                </select>
-              </label>
+                  <span>상대 설정</span>
+                  <strong>{entityLabel(entities, relationTargetId)}</strong>
+                  <small>
+                    무방향 관계의 방향 정합성을 위해 상대 설정은 고정됩니다. 상대
+                    설정 변경은 관계를 만든 쪽에서 가능합니다.
+                  </small>
+                </div>
+              ) : (
+                <>
+                  <label>
+                    대상 설정 검색
+                    <input
+                      type="search"
+                      aria-label="관계 대상 검색어"
+                      value={relationTargetQuery}
+                      placeholder="이름 또는 별칭"
+                      onChange={(event) => setRelationTargetQuery(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    대상 설정
+                    <select
+                      aria-label="관계 대상 설정 검색"
+                      value={relationTargetId}
+                      onChange={(event) => setRelationTargetId(event.target.value)}
+                    >
+                      <option value="">대상 선택</option>
+                      {entities
+                        .filter((entity) => entity.id !== selected.id)
+                        .filter((entity) => {
+                          const needle = normalizedName(relationTargetQuery);
+                          return (
+                            !needle ||
+                            remoteRelationTargetIds?.has(entity.id) ||
+                            [
+                              entity.name,
+                              ...entity.aliases.map((alias) => alias.alias)
+                            ].some((value) =>
+                              normalizedName(value).includes(needle)
+                            )
+                          );
+                        })
+                        .map((entity) => (
+                          <option key={entity.id} value={entity.id}>
+                            {entity.name} · {KIND_LABELS[entity.kind]}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </>
+              )}
               <label>
                 관계 메모 (선택)
                 <input
@@ -1147,7 +1177,11 @@ export function StoryBibleWorkspace({
               <div>
                 <button
                   type="submit"
-                  disabled={!relationTypeId || !relationTargetId || busy}
+                  disabled={
+                    !relationTypeId ||
+                    (!relationTargetId && editingRelationDirection !== "INCOMING") ||
+                    busy
+                  }
                 >
                   {editingRelationId ? "관계 변경 저장" : "관계 추가"}
                 </button>
@@ -1156,6 +1190,7 @@ export function StoryBibleWorkspace({
                     type="button"
                     onClick={() => {
                       setEditingRelationId(null);
+                      setEditingRelationDirection(null);
                       setRelationTargetId("");
                       setRelationTargetQuery("");
                       setRelationNote("");
@@ -1176,6 +1211,7 @@ export function StoryBibleWorkspace({
               selectedId={selected.id}
               onEdit={(relation) => {
                 setEditingRelationId(relation.id);
+                setEditingRelationDirection("OUTGOING");
                 setRelationTypeId(relation.relationTypeId);
                 setRelationTargetQuery("");
                 setRelationTargetId(relation.targetEntityId);
@@ -1192,9 +1228,10 @@ export function StoryBibleWorkspace({
               selectedId={selected.id}
               onEdit={(relation) => {
                 setEditingRelationId(relation.id);
+                setEditingRelationDirection("INCOMING");
                 setRelationTypeId(relation.relationTypeId);
                 setRelationTargetQuery("");
-                setRelationTargetId(relation.targetEntityId);
+                setRelationTargetId(relation.sourceEntityId);
                 setRelationNote(relation.note ?? "");
               }}
               onDelete={(id) => void safely(() => onDeleteRelation(id))}
@@ -1401,7 +1438,8 @@ function RelationList({
                   {!type?.directed && <small>양방향 관계</small>}
                   {relation.note && <p>{relation.note}</p>}
                 </div>
-                {relation.sourceEntityId === selectedId && (
+                {(relation.sourceEntityId === selectedId ||
+                  (!type?.directed && relation.targetEntityId === selectedId)) && (
                   <button
                     type="button"
                     aria-label={`${label} 관계 수정`}

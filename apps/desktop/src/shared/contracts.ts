@@ -331,6 +331,12 @@ export interface SnapshotDiffSummary {
   readonly addedEntities: number;
   readonly deletedEntities: number;
   readonly changedEntities: number;
+  readonly addedTags: number;
+  readonly deletedTags: number;
+  readonly changedTags: number;
+  readonly addedRelationTypes: number;
+  readonly deletedRelationTypes: number;
+  readonly changedRelationTypes: number;
   readonly addedRelations: number;
   readonly deletedRelations: number;
   readonly changedRelations: number;

@@ -49,6 +49,12 @@ const summary: SnapshotDiffSummary = {
   addedEntities: 0,
   deletedEntities: 0,
   changedEntities: 0,
+  addedTags: 7,
+  deletedTags: 8,
+  changedTags: 9,
+  addedRelationTypes: 10,
+  deletedRelationTypes: 11,
+  changedRelationTypes: 12,
   addedRelations: 0,
   deletedRelations: 0,
   changedRelations: 0,
@@ -170,6 +176,8 @@ describe("Phase 1B named snapshot panel", () => {
     expect(within(preview).getByText("5개 노드")).toBeTruthy();
     expect(within(preview).getByText("6개 장면")).toBeTruthy();
     expect(within(preview).getByText("-127자")).toBeTruthy();
+    expect(within(preview).getByText("+7 · −8 · 변경 9")).toBeTruthy();
+    expect(within(preview).getByText("+10 · −11 · 변경 12")).toBeTruthy();
   });
 
   it("requires a diff-backed confirmation and explains restore transaction safety", async () => {

@@ -290,6 +290,24 @@ describe("Phase 1C Story Bible workspace", () => {
       "relation-member",
       expect.objectContaining({ note: "변경한 메모" })
     );
+
+    fireEvent.click(
+      within(incoming).getByRole("button", { name: "적대 관계 수정" })
+    );
+    const fixedCounterpart = screen.getByLabelText("고정된 상대 설정");
+    expect(within(fixedCounterpart).getByText("세리나")).toBeTruthy();
+    expect(
+      within(fixedCounterpart).getByText(/상대 설정 변경은 관계를 만든 쪽에서 가능/)
+    ).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: "관계 메모" }), {
+      target: { value: "target 측에서 고친 메모" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "관계 변경 저장" }));
+    expect(onUpdateRelation).toHaveBeenCalledWith("relation-hostile", {
+      relationTypeId: "type-hostile",
+      targetEntityId: leia.id,
+      note: "target 측에서 고친 메모"
+    });
     fireEvent.click(within(incoming).getByRole("button", { name: "적대 관계 삭제" }));
     expect(onDeleteRelation).toHaveBeenCalledWith("relation-hostile");
 

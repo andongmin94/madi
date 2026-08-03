@@ -696,6 +696,12 @@ pub struct SnapshotDiffSummary {
     pub changed_relations: u64,
     pub changed_scene_links: u64,
     pub changed_entity_notes: u64,
+    pub added_tags: u64,
+    pub deleted_tags: u64,
+    pub changed_tags: u64,
+    pub added_relation_types: u64,
+    pub deleted_relation_types: u64,
+    pub changed_relation_types: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

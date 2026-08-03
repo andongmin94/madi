@@ -369,6 +369,19 @@ END;
 
 const ORDER_STEP: f64 = 1024.0;
 
+pub(crate) const BUILTIN_RELATION_TYPES: [(&str, &str, &str, bool); 10] = [
+    ("builtin-related", "관련됨", "관련됨", false),
+    ("builtin-alliance", "동맹", "동맹", false),
+    ("builtin-hostility", "적대", "적대", false),
+    ("builtin-family", "가족", "가족", false),
+    ("builtin-membership", "소속", "구성원을 가짐", true),
+    ("builtin-location", "위치함", "포함함", true),
+    ("builtin-ownership", "소유함", "소유됨", true),
+    ("builtin-causality", "원인", "결과", true),
+    ("builtin-foreshadows", "암시함", "암시됨", true),
+    ("builtin-resolves", "회수함", "회수됨", true),
+];
+
 pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult> {
     validate_madi_destination(&params.file_path)?;
     validate_non_empty("title", &params.title)?;
@@ -880,19 +893,7 @@ pub(crate) fn seed_builtin_relation_types(
     project_id: &str,
     now: &str,
 ) -> Result<()> {
-    const BUILTINS: [(&str, &str, &str, bool); 10] = [
-        ("builtin-related", "관련됨", "관련됨", false),
-        ("builtin-alliance", "동맹", "동맹", false),
-        ("builtin-hostility", "적대", "적대", false),
-        ("builtin-family", "가족", "가족", false),
-        ("builtin-membership", "소속", "구성원을 가짐", true),
-        ("builtin-location", "위치함", "포함함", true),
-        ("builtin-ownership", "소유함", "소유됨", true),
-        ("builtin-causality", "원인", "결과", true),
-        ("builtin-foreshadows", "암시함", "암시됨", true),
-        ("builtin-resolves", "회수함", "회수됨", true),
-    ];
-    for (suffix, name, inverse_name, directed) in BUILTINS {
+    for (suffix, name, inverse_name, directed) in BUILTIN_RELATION_TYPES {
         let id = format!("{project_id}:{suffix}");
         transaction.execute(
             "INSERT OR IGNORE INTO relation_types (

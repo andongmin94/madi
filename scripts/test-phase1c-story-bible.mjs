@@ -824,6 +824,38 @@ async function run() {
       "delete-impact-note-characters",
     );
 
+    const snapshotDeletedTagId = "tag-snapshot-delete";
+    const snapshotDeletedRelationTypeId = "relation-type-snapshot-delete";
+    await mutate(
+      "create_tag",
+      {
+        file_path: projectPath,
+        tag_id: snapshotDeletedTagId,
+        name: "snapshot 삭제 후보 태그",
+        color_token: "slate",
+      },
+      "create-snapshot-delete-tag",
+    );
+    await mutate(
+      "create_relation_type",
+      {
+        file_path: projectPath,
+        relation_type_id: snapshotDeletedRelationTypeId,
+        name: "snapshot 삭제 후보 관계",
+        inverse_name: null,
+        directed: false,
+        color_token: "slate",
+      },
+      "create-snapshot-delete-relation-type",
+    );
+    const baselineTagInventory = await firstProcess.request("list_tags", {
+      file_path: projectPath,
+    });
+    const baselineRelationTypeInventory = await firstProcess.request(
+      "list_relation_types",
+      { file_path: projectPath },
+    );
+
     const baselineSnapshot = await mutate(
       "create_named_snapshot",
       {
@@ -900,6 +932,66 @@ async function run() {
       },
       "mutate-entity-note",
     );
+    await mutate(
+      "create_tag",
+      {
+        file_path: projectPath,
+        tag_id: "tag-snapshot-added",
+        name: "snapshot 추가 태그",
+        color_token: "amber",
+      },
+      "mutate-add-tag",
+    );
+    await mutate(
+      "update_tag",
+      {
+        file_path: projectPath,
+        tag_id: "tag-north",
+        name: "북부 변경",
+        color_token: "cyan",
+      },
+      "mutate-change-tag",
+    );
+    await mutate(
+      "delete_tag",
+      {
+        file_path: projectPath,
+        tag_id: snapshotDeletedTagId,
+      },
+      "mutate-delete-tag",
+    );
+    await mutate(
+      "create_relation_type",
+      {
+        file_path: projectPath,
+        relation_type_id: "relation-type-snapshot-added",
+        name: "snapshot 추가 관계",
+        inverse_name: "snapshot 추가 역관계",
+        directed: true,
+        color_token: "amber",
+      },
+      "mutate-add-relation-type",
+    );
+    await mutate(
+      "update_relation_type",
+      {
+        file_path: projectPath,
+        relation_type_id: "relation-type-mentor",
+        name: "스승 변경",
+        inverse_name: "제자 변경",
+        directed: true,
+        color_token: "cyan",
+      },
+      "mutate-change-relation-type",
+    );
+    await mutate(
+      "delete_relation_type",
+      {
+        file_path: projectPath,
+        relation_type_id: snapshotDeletedRelationTypeId,
+      },
+      "mutate-delete-relation-type",
+    );
 
     const diff = await firstProcess.request("diff_named_snapshot", {
       file_path: projectPath,
@@ -912,6 +1004,21 @@ async function run() {
     verify(diff.summary.changed_entity_notes >= 1, "diff-changed-entity-notes");
     verify(diff.summary.added_entities === 0, "diff-added-entities");
     verify(diff.summary.deleted_entities === 0, "diff-deleted-entities");
+    verify(diff.summary.added_tags === 1, "diff-added-tags");
+    verify(diff.summary.deleted_tags === 1, "diff-deleted-tags");
+    verify(diff.summary.changed_tags === 1, "diff-changed-tags");
+    verify(
+      diff.summary.added_relation_types === 1,
+      "diff-added-relation-types",
+    );
+    verify(
+      diff.summary.deleted_relation_types === 1,
+      "diff-deleted-relation-types",
+    );
+    verify(
+      diff.summary.changed_relation_types === 1,
+      "diff-changed-relation-types",
+    );
 
     const restored = await mutate(
       "restore_named_snapshot",
@@ -980,6 +1087,40 @@ async function run() {
       ),
       "restored-entity-note-snapshot",
     );
+    const restoredTagInventory = await firstProcess.request("list_tags", {
+      file_path: projectPath,
+    });
+    const restoredRelationTypeInventory = await firstProcess.request(
+      "list_relation_types",
+      { file_path: projectPath },
+    );
+    verify(
+      equalJson(restoredTagInventory.tags, baselineTagInventory.tags),
+      "restored-tag-inventory",
+    );
+    verify(
+      equalJson(
+        restoredRelationTypeInventory.relation_types,
+        baselineRelationTypeInventory.relation_types,
+      ),
+      "restored-relation-type-inventory",
+    );
+    await mutate(
+      "delete_tag",
+      {
+        file_path: projectPath,
+        tag_id: snapshotDeletedTagId,
+      },
+      "cleanup-snapshot-delete-tag",
+    );
+    await mutate(
+      "delete_relation_type",
+      {
+        file_path: projectPath,
+        relation_type_id: snapshotDeletedRelationTypeId,
+      },
+      "cleanup-snapshot-delete-relation-type",
+    );
 
     const snapshotsBeforeRestart = await firstProcess.request(
       "list_named_snapshots",
@@ -1026,6 +1167,28 @@ async function run() {
         ["tag-magic", "tag-north"],
       ),
       "restart-tags",
+    );
+    const restartTagInventory = await secondProcess.request("list_tags", {
+      file_path: projectPath,
+    });
+    verify(
+      restartTagInventory.tags.length === tagDefinitions.length &&
+        !restartTagInventory.tags.some(
+          (tag) => tag.id === snapshotDeletedTagId,
+        ),
+      "restart-clean-tag-inventory",
+    );
+    const restartRelationTypeInventory = await secondProcess.request(
+      "list_relation_types",
+      { file_path: projectPath },
+    );
+    verify(
+      restartRelationTypeInventory.relation_types.length ===
+        relationTypes.relation_types.length + 1 &&
+        !restartRelationTypeInventory.relation_types.some(
+          (type) => type.id === snapshotDeletedRelationTypeId,
+        ),
+      "restart-clean-relation-type-inventory",
     );
     const restartRelations = await secondProcess.request(
       "list_entity_relations",

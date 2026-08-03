@@ -1610,6 +1610,22 @@ button:disabled {
   gap: 7px;
 }
 
+.relation-editor__readonly-counterpart {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  color: #5f574b;
+  background: #ebe5d9;
+  border: 1px solid #d4cabb;
+  border-radius: 5px;
+}
+
+.relation-editor__readonly-counterpart span,
+.relation-editor__readonly-counterpart small {
+  color: #7b7162;
+  font-size: 8px;
+}
+
 .relation-type-manager summary {
   cursor: pointer;
   font-size: 11px;

@@ -24,8 +24,9 @@ use crate::model::{
 use crate::storage::{
     create_consistent_backup, database_timestamp, default_client_identifier, load_app_meta,
     open_existing, seed_builtin_relation_types, sync_file, validate_editor_metadata,
-    validate_non_empty,
+    validate_non_empty, BUILTIN_RELATION_TYPES,
 };
+use crate::story_bible::normalize_alias;
 
 const SNAPSHOT_PAYLOAD_FORMAT: &str = "MADI_LOGICAL_JSON";
 const SNAPSHOT_PAYLOAD_VERSION: i64 = 2;
@@ -1931,6 +1932,60 @@ fn diff_payloads(
         })
         .count() as u64;
 
+    let target_tags = target
+        .tags
+        .iter()
+        .map(|tag| (tag.id.as_str(), tag))
+        .collect::<HashMap<_, _>>();
+    let current_tags = current
+        .tags
+        .iter()
+        .map(|tag| (tag.id.as_str(), tag))
+        .collect::<HashMap<_, _>>();
+    summary.added_tags = current_tags
+        .keys()
+        .filter(|tag_id| !target_tags.contains_key(**tag_id))
+        .count() as u64;
+    summary.deleted_tags = target_tags
+        .keys()
+        .filter(|tag_id| !current_tags.contains_key(**tag_id))
+        .count() as u64;
+    summary.changed_tags = target_tags
+        .iter()
+        .filter(|(tag_id, tag)| {
+            current_tags
+                .get(**tag_id)
+                .is_some_and(|current_tag| *tag != current_tag)
+        })
+        .count() as u64;
+
+    let target_relation_types = target
+        .relation_types
+        .iter()
+        .map(|relation_type| (relation_type.id.as_str(), relation_type))
+        .collect::<HashMap<_, _>>();
+    let current_relation_types = current
+        .relation_types
+        .iter()
+        .map(|relation_type| (relation_type.id.as_str(), relation_type))
+        .collect::<HashMap<_, _>>();
+    summary.added_relation_types = current_relation_types
+        .keys()
+        .filter(|relation_type_id| !target_relation_types.contains_key(**relation_type_id))
+        .count() as u64;
+    summary.deleted_relation_types = target_relation_types
+        .keys()
+        .filter(|relation_type_id| !current_relation_types.contains_key(**relation_type_id))
+        .count() as u64;
+    summary.changed_relation_types = target_relation_types
+        .iter()
+        .filter(|(relation_type_id, relation_type)| {
+            current_relation_types
+                .get(**relation_type_id)
+                .is_some_and(|current_relation_type| *relation_type != current_relation_type)
+        })
+        .count() as u64;
+
     let target_links = target
         .scene_entity_links
         .iter()
@@ -2165,6 +2220,7 @@ fn validate_snapshot_payload(payload: &LogicalSnapshotPayload, project_id: &str)
             || !alias_ids.insert(alias.id.as_str())
             || !normalized_aliases
                 .insert((alias.entity_id.as_str(), alias.normalized_alias.as_str()))
+            || alias.normalized_alias != normalize_alias(&alias.alias)
         {
             return Err(CoreError::SnapshotIntegrity(
                 "payload alias ownership or uniqueness is invalid".to_owned(),
@@ -2199,7 +2255,10 @@ fn validate_snapshot_payload(payload: &LogicalSnapshotPayload, project_id: &str)
 
     let mut relation_type_ids = HashSet::new();
     let mut relation_type_directions = HashMap::new();
-    let mut builtin_relation_types = 0_u64;
+    let mut expected_builtin_relation_type_ids = BUILTIN_RELATION_TYPES
+        .iter()
+        .map(|(suffix, _, _, _)| format!("{project_id}:{suffix}"))
+        .collect::<HashSet<_>>();
     for relation_type in &payload.relation_types {
         if relation_type.project_id != project_id
             || !relation_type_ids.insert(relation_type.id.as_str())
@@ -2211,9 +2270,14 @@ fn validate_snapshot_payload(payload: &LogicalSnapshotPayload, project_id: &str)
         validate_non_empty("snapshot relation type name", &relation_type.name)
             .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
         relation_type_directions.insert(relation_type.id.as_str(), relation_type.directed);
-        builtin_relation_types += u64::from(relation_type.is_builtin);
+        let is_expected_builtin = expected_builtin_relation_type_ids.remove(&relation_type.id);
+        if relation_type.is_builtin != is_expected_builtin {
+            return Err(CoreError::SnapshotIntegrity(
+                "payload built-in relation type identity is invalid".to_owned(),
+            ));
+        }
     }
-    if payload.version == 2 && builtin_relation_types < 10 {
+    if payload.version == 2 && !expected_builtin_relation_type_ids.is_empty() {
         return Err(CoreError::SnapshotIntegrity(
             "version 2 payload is missing built-in relation types".to_owned(),
         ));
