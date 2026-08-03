@@ -62,4 +62,3 @@ pnpm format:check
 성능 목표를 초과하거나 실제 Electron 복원이 불안정하면 이를 숨기지 않고
 `CONDITIONAL TECHNICAL GO` 이하로 판정한다. 자동 테스트는 Windows native IME 수동
 상태와 Typie 배포 라이선스 결정을 변경하지 않는다.
-

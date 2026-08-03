@@ -48,4 +48,3 @@ snapshot을 불필요하게 오염시킨다. 그래프에서 관계 편집까지
 - graph 전용 entity/relation 사본 table 생성
 - node drag나 edge gesture로 즉시 canonical relation 생성
 - renderer에서 SQLite를 직접 읽기
-
