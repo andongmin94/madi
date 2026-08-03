@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-이 파일은 Phase 0 저장소에서 직접 포함하거나 주요 runtime/build dependency로
+이 파일은 Phase 1D 저장소에서 직접 포함하거나 주요 runtime/build dependency로
 사용하는 제3자 자료를 요약한다. 각 license 원문이 우선하며, 이 요약은 license
 조건을 대체하지 않는다.
 
@@ -64,6 +64,21 @@ upstream manifest에는 확인한 범위에서 명시적인 SPDX “only”/“o
 font asset의 madi 내부 family 이름은 Phase 0 Typie 기본 font slot에 맞춘 기술적
 mapping이며, 원래 font 저작권·이름 또는 OFL 조건을 변경하지 않는다.
 
+## Cytoscape.js
+
+- Project: Cytoscape.js
+- Package: `cytoscape`
+- Exact version: `3.34.0`
+- Repository: `https://github.com/cytoscape/cytoscape.js`
+- License: MIT
+- Runtime role: Phase 1D World Graph의 renderer 전용 시각화와 내장 `cose` layout
+- License text: packaged artifact의
+  `resources/licenses/CYTOSCAPE-MIT.txt`
+
+Phase 1D는 별도 layout extension을 추가하지 않고 Cytoscape.js에 포함된 `cose`를
+사용한다. Cytoscape element와 instance는 renderer 내부 파생 표현이며 Rust core,
+preload 계약 또는 Story Bible canonical 저장 모델에 포함하지 않는다.
+
 ## 주요 npm dependency
 
 정확한 direct dependency와 version range:
@@ -82,6 +97,7 @@ mapping이며, 원래 font 저작권·이름 또는 OFL 조건을 변경하지 �
 |---|---|---|
 | Electron | Windows desktop runtime | MIT |
 | React / React DOM | renderer UI | MIT |
+| Cytoscape.js 3.34.0 | World Graph renderer와 `cose` layout | MIT |
 | Vite / `@vitejs/plugin-react` | renderer/preload bundle | MIT |
 | TypeScript | compile/typecheck | Apache-2.0 |
 | Vitest | unit test | MIT |

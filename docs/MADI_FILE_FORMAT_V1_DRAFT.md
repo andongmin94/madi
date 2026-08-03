@@ -6,15 +6,15 @@
 Specification status: DRAFT
 Logical format version: 1
 SQLite schema version: 4
-Implementation conformance: PHASE 1C STORY BIBLE FOUNDATION
+Implementation conformance: PHASE 1D WORLD GRAPH READ MODEL
 Migration/core-sidecar round-trip: SCHEMA 3 → 4
 ```
 
-이 문서는 Phase 1A의 저장 계약, Phase 1B의 exact search/named snapshot 확장과
-Phase 1C의 Story Bible 저장 계약을 기록한다. 이 명세의 문구만으로 구현 적합성을
-증명하지는 않으며, 현재 migration·재열기 검증 증거와 제한은
-`PHASE_1C_RESULT.md`를 따른다. 배포 전에는 구현과 fixture를 다시 대조해 이 초안을
-확정 문서로 승격해야 한다.
+이 문서는 Phase 1A의 저장 계약, Phase 1B의 exact search/named snapshot 확장,
+Phase 1C의 Story Bible 저장 계약과 Phase 1D의 파생 World Graph UI state 경계를
+기록한다. 이 명세의 문구만으로 구현 적합성을 증명하지는 않으며, 현재
+migration·재열기 검증 증거와 제한은 `PHASE_1D_RESULT.md`를 따른다. 배포 전에는
+구현과 fixture를 다시 대조해 이 초안을 확정 문서로 승격해야 한다.
 
 `MUST`, `MUST NOT`, `SHOULD`는 각각 필수, 금지, 권고 요구사항이다.
 
@@ -167,11 +167,18 @@ Phase 1A의 예약 key는 `workspace.v1`이다. 그 값은 다음 JSON object다
 }
 ```
 
+Phase 1D의 예약 key는 `world-graph.v1`이다. 이 값은 full/focused mode, focused entity,
+depth, kind/status/tag/relation/direction/isolated/label filter, layout, pan/zoom, node
+position과 마지막 선택 entity ID만 저장한다. `world-graph.v1`은 graph의 canonical
+node/edge 사본을 저장하지 않으며 Story Bible 데이터를 수정하지 않는다.
+
 `value_json`은 cache나 임의 renderer object 저장소가 아니다. Rust core의
 `ui_state` API는 versioned key와 JSON value를 보존하는 generic 저장 경계다.
 Electron main이 `workspace.v1`의 snake_case shape, node ID, 최대 1,000개 expanded
-ID와 Binder 폭을 검증한다. renderer는 원고 text, snapshot, DOM, selection,
-viewport, composition payload 또는 timer state를 이 값에 넣지 않는다.
+ID와 Binder 폭을 검증한다. `world-graph.v1`은 별도 고정 schema와 유한 좌표·viewport,
+지원 enum, bounded string array/position map을 검증한다. renderer는 원고 text,
+snapshot, DOM, Cytoscape instance, composition payload 또는 timer state를 어느 UI
+state에도 넣지 않는다.
 
 ### `search_documents`
 
@@ -699,6 +706,24 @@ disk의 `workspace.v1` 계약:
 preload의 TypeScript 값은 각각 `selectedNodeId`, `expandedNodeIds`, `binderWidth`이며
 Electron main이 disk snake_case와 renderer camelCase를 변환한다.
 
+disk의 `world-graph.v1` 계약은 다음 camelCase renderer 상태를 snake_case JSON으로
+변환해 저장한다.
+
+- `mode`: `FULL | FOCUSED`
+- `focused_entity_id`: `string | null`
+- `depth`: `1 | 2 | 3`
+- `filters`: kind/status/tag/tag mode/relation type/direction/isolated/label 값
+- `layout`: `cose | preset`
+- `viewport`: finite positive zoom과 finite pan `(x, y)`
+- `node_positions`: entity ID별 finite `(x, y)` map
+- `selected_entity_id`: `string | null`
+
+Graph state load 뒤 renderer는 현재 read model에 없는 focused/selected ID와 삭제된
+entity position을 제거한다. state row가 없거나 손상됐으면 `FULL`, depth 1,
+`ACTIVE + DRAFT`, tag ANY, 모든 relation 방향, isolated/label 표시, `cose`, zoom 1과
+pan `(0, 0)`을 사용한다. 다른 project의 row는 `(project_id, key)` primary key 때문에
+섞이지 않는다.
+
 save 때:
 
 1. renderer는 현재 tree의 non-SCENE node만 expanded list로 만든다.
@@ -706,6 +731,10 @@ save 때:
 3. main은 expanded 개수와 width `220..640` 범위를 확인한다.
 4. core는 generic JSON을 `BEGIN IMMEDIATE` upsert로 저장한다.
 5. 이 write는 manuscript revision과 canonical backup rotation을 바꾸지 않는다.
+
+`world-graph.v1` save도 같은 generic upsert를 사용하지만 dedicated main/preload
+capability가 shape를 검증한다. node drag, pan/zoom과 filter 변경은 canonical project
+revision을 올리지 않는다.
 
 load 때:
 
@@ -720,9 +749,9 @@ load 때:
 7. 저장 row가 없거나 invalid이면 모든 branch를 펼치고 width 기본값 `300`을
    사용한다.
 
-현재 core의 generic UI-state API 자체는 tree 존재 여부나 container 여부를 sanitize하지
-않는다. application renderer/main 경계가 `workspace.v1`을 제한한다. UI state 손상
-때문에 canonical node/document를 삭제하거나 고치지 않는다.
+현재 core의 generic UI-state API 자체는 tree/entity 존재 여부를 sanitize하지 않는다.
+application renderer/main 경계가 `workspace.v1`과 `world-graph.v1`을 제한한다. UI state
+손상 때문에 canonical node/document/entity/relation을 삭제하거나 고치지 않는다.
 
 ## 13. open validation
 
@@ -792,7 +821,7 @@ unknown `app_meta.format_version`을 migration 전에 거부하는 conformance�
 ## 16. 요구 test와 현재 결과
 
 집중 test와 최종 aggregate gate를 구분한다. 상세 결과와 구현 gap은
-`docs/PHASE_1C_RESULT.md`를 따른다.
+`docs/PHASE_1D_RESULT.md`를 따른다.
 
 | 영역 | 필수 검증 | 결과 |
 |---|---|---|
@@ -806,23 +835,27 @@ unknown `app_meta.format_version`을 migration 전에 거부하는 conformance�
 | transaction | stale revision no-overwrite와 transaction-bound mutation | `PASS` — process-kill fault injection은 `DEFERRED TO HARDENING` |
 | ordering | append/midpoint/reorder/move/reopen | `PASS` — Rust/sidecar 범위 |
 | delete | non-leaf 거부, explicit recursive, WORK 금지 | `PASS` — Rust |
-| UI state | generic JSON save/load와 malformed `workspace.v1` default fallback | `PASS` — 다중 Binder Electron reopen 포함 |
+| UI state | `workspace.v1`과 dedicated `world-graph.v1` save/load·검증 | `PASS` — 작품별 Binder/graph two-process reopen, revision 불변 |
 | exact search | Korean substring/save refresh/pagination/source hash | `PASS` — Rust |
 | replacement | revision/hash/transduction/atomic multi-document rollback | `PASS` — Rust/Typie focused |
 | snapshot | logical hash/CRUD/diff/restore/auto safety/rollback | `PASS` — Rust |
 | Story Bible | 8 kind CRUD, alias/tag/search, relation/link/delete integrity | `PASS` — Rust/Desktop |
 | entity note | owner-safe Typie save/switch/stale response/reopen | `PASS` — Rust/Desktop/sidecar |
 | snapshot v2 | Entity/tag/relation type/relation/link/note diff/restore와 v1 empty-state 호환 | `PASS` — Rust/sidecar |
-| Phase 1C scale | entity 500/alias 1,500/relation 2,000/link 2,000 | `PASS` — Rust/Desktop |
+| Phase 1D scale | entity 500/alias 1,500/relation 2,000/link 2,000 | `PASS` — Rust/Desktop/actual dev+packaged canvas |
+| graph derivation | canonical Story Bible → node/edge/stats/diagnostics | `PASS` — graph table·write API·schema bump 없음 |
+| graph semantics | directed/inverse, undirected single edge, self/cross-project 진단 | `PASS` — Rust/TypeScript/Electron |
+| graph UI snapshot boundary | `world-graph.v1`은 named snapshot restore 전후 현재값 보존 | `PASS` — sidecar integration |
 | content | 10+ SCENE Korean/scene-break two-process fixture | `PASS` |
-| lifecycle | Phase 1C development Electron reopen | `PASS` — entity/relation/link/mention/note/snapshot v2, stable ID |
-| packaged lifecycle | Phase 1C unpacked Electron reopen | `PASS` — 같은 first/second process 수명주기 |
+| lifecycle | Phase 1D development Electron reopen | `PASS` — Phase 1C + graph mode/filter/viewport/actual drag position |
+| packaged lifecycle | Phase 1D unpacked Electron reopen | `PASS` — 500/2,000 actual canvas와 같은 first/second process 수명주기 |
 | regression | 변경 뒤 최종 `pnpm verify` | `PASS` — exit code 0 |
 | package | 변경 뒤 `pnpm package:unpacked` | `PASS` |
 | repository boundary | 독립 `pnpm check:repository` | `PASS` — exit code 0 |
-| source format | 독립 `pnpm format:check` | `PASS` — 86 files/issues 0 |
+| source format | 독립 `pnpm format:check` | `PASS` — 103 files/issues 0 |
 
-Phase 1C 최종 development/packaged Electron과 aggregate `pnpm verify`는 모두
-`PASS`이며 상세 증거는 `docs/PHASE_1C_RESULT.md`에 기록한다. 이 문서는 계속 v1
-**초안**이며, 위 migration
-preflight와 임의 변조 DB open audit도 hardening 과제로 남는다.
+Phase 1D 최종 development/packaged Electron hard gate와 aggregate `pnpm verify`는
+모두 `PASS`다. 상호작용 250 ms 조건 때문에 제품 판정은 `CONDITIONAL TECHNICAL GO —
+PRIVATE LOCAL`이며 상세 증거는 `docs/PHASE_1D_RESULT.md`에 기록한다. 이 문서는 계속
+v1 **초안**이며, 위 migration preflight와 임의 변조 DB open audit도 hardening 과제로
+남는다.

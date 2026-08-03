@@ -1,8 +1,8 @@
 # madi
 
 `madi`는 한국어 장편소설 작가를 위한 local-first Windows desktop 저작도구다.
-현재 작업트리는 Phase 1B Manuscript Workspace 위에 Phase 1C Story Bible Foundation을
-구현한다.
+현재 작업트리는 Phase 1C Story Bible Foundation 위에 Phase 1D World Graph의
+파생 read model과 읽기 전용 Cytoscape 탐색 화면을 구현한다.
 
 ```text
 Phase 0.5 baseline: CONDITIONAL TECHNICAL GO
@@ -17,22 +17,27 @@ Phase 1C implementation: COMPLETE IN WORKING TREE
 Phase 1C focused/integration/development/packaged Electron acceptance: PASS
 Phase 1C final pnpm verify gate: PASS
 Phase 1C verdict: TECHNICAL GO — PRIVATE LOCAL
+Phase 1D implementation: COMPLETE IN WORKING TREE
+Phase 1D focused read-model/renderer verification: PASS
+Phase 1D development/unpacked Electron hard gates: PASS
+Phase 1D verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
 Windows native Korean IME: MANUAL VALIDATION PENDING
 Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Public/paid/customer distribution: NOT AUTHORIZED
 ```
 
-Phase 1C 최종 검증은 Rust 28/28, Desktop Vitest 21 files/106 tests, desktop typecheck,
-Typie semantic probe와 전체 integration을 통과했다. 실제 development와 unpacked
-Electron에서 Story Bible entity·alias·tag·Typie note·relation·scene link·mention
-승격·snapshot v2 restore와 second-process reopen도 통과했다. 지정된 완료 gate 6개가
-모두 exit code 0이며 현재 증거는
-[`docs/PHASE_1C_RESULT.md`](docs/PHASE_1C_RESULT.md)를 따른다. Phase 1B의 확정 판정과
-snapshot 기반 project-wide rollback 결정은
+Phase 1D는 기존 Story Bible의 canonical entity/relation을 Rust가 revision-tagged DTO로
+파생하고, renderer가 전체 또는 특정 entity 중심 1~3 hop 그래프로 표시한다. Graph는
+canonical 관계를 쓰지 않으며 node 위치·viewport·filter만 작품별 `world-graph.v1`
+UI state로 저장한다. 구현·성능·실제 Electron 근거는
+[`docs/PHASE_1D_RESULT.md`](docs/PHASE_1D_RESULT.md)와
+[`docs/WORLD_GRAPH_PERFORMANCE.md`](docs/WORLD_GRAPH_PERFORMANCE.md)를 따른다. Phase 1C의
+확정 결과는 [`docs/PHASE_1C_RESULT.md`](docs/PHASE_1C_RESULT.md), Phase 1B의 snapshot
+기반 project-wide rollback 결정은
 [`docs/PHASE_1B_RESULT.md`](docs/PHASE_1B_RESULT.md)와
 [`ADR-0002`](docs/decisions/ADR-0002-project-wide-undo-via-snapshots.md)에 남아 있다.
 
-## Phase 1C에서 할 수 있는 일
+## 현재 할 수 있는 일
 
 - 하나의 `.madi` SQLite 파일에 작품 구조와 장면별 Typie 문서를 함께 저장
 - `WORK → VOLUME → CHAPTER → SCENE` Binder
@@ -52,7 +57,7 @@ snapshot 기반 project-wide rollback 결정은
 - 이름 있는 snapshot 생성·목록·이름 변경·삭제·요약 diff·안전 복원
 - 현재 SCENE과 선택 subtree의 공백 포함/제외 Unicode scalar 글자 수
 - Electron 없이 UTF-8 plain-text recovery를 꺼내는 Rust CLI
-- `원고`와 `설정` 작업 모드 전환
+- `원고`, `설정`, `그래프` 작업 모드 전환
 - 등장인물·장소·조직·물건·사건·세계관 규칙·복선·기타 설정 CRUD
 - 설정별 별칭, 태그, 상태, 요약, 색상 토큰, 아이콘 키와 확장 JSON 속성
 - 설정별 독립 Typie 상세 노트와 장면과 같은 저장 안전성
@@ -60,10 +65,18 @@ snapshot 기반 project-wide rollback 결정은
 - SCENE과 설정의 `APPEARS`, `POV`, `MENTIONED`, `RELATED` 명시적 연결
 - 이름·별칭 exact substring 기반의 본문 언급 후보와 명시적 연결 승격
 - Story Bible 전체와 entity note를 포함하는 named snapshot v2 및 v1 복원 호환
+- Story Bible canonical data에서 파생한 읽기 전용 World Graph
+- 8종 entity kind shape/color, directed arrow, undirected 단일 edge와 inverse detail label
+- kind/status/tag ANY·ALL/relation type/direction/고립 node/label filter
+- 전체 graph 및 선택 entity 중심 1·2·3 hop BFS 탐색
+- 이름·별칭·태그·요약 검색, node/edge 선택, 이웃 강조와 통계
+- 선택 entity의 관계·명시적 장면·lazy 본문 언급 후보 확인
+- 그래프에서 기존 Story Bible entity/관계와 원고 SCENE으로 이동
+- 작품별 node 위치·viewport·filter·focus mode 저장과 종료 후 복원
 
-관계 그래프 시각화, plot Canvas, docking workspace, Reader Lab, EPUB, HWP/HWPX,
-LLM 추출, cloud/sync, collaboration, mobile/web, 장면별 상세 diff와 플랫폼별 출판
-글자 수는 Phase 1C 범위가 아니다.
+그래프 관계 편집, plot Canvas, docking workspace, 시간축/지식 시점 graph, Reader Lab,
+EPUB, HWP/HWPX, LLM 추출, cloud/sync, collaboration, mobile/web, 장면별 상세 diff와
+플랫폼별 출판 글자 수는 Phase 1D 범위가 아니다.
 
 ## 실제 사용 흐름
 
@@ -179,12 +192,31 @@ substring으로 찾은 참고 결과이며 자동으로 canonical relation이나
 관련 설정으로 이동할 수 있다. 설정 mode의 장면/후보를 선택하면 원고 mode로 돌아가
 해당 장면과 첫 일치 범위를 연다.
 
-### 8. 종료와 재열기
+### 8. World Graph
+
+상단 `그래프`를 누르면 Story Bible canonical data를 수정하지 않는 탐색 화면으로
+전환한다. 기본 status filter는 `ACTIVE + DRAFT`이고 `ARCHIVED`는 사용자가 명시적으로
+포함할 수 있다.
+
+1. 검색에서 이름·별칭·태그·요약으로 설정을 찾는다.
+2. 전체 graph 또는 중심 entity와 depth 1·2·3을 선택한다.
+3. 종류·상태·태그 ANY/ALL·관계 type·directed/undirected·고립 node·label을 조합한다.
+4. node를 선택해 관계, 명시적 SCENE link와 lazy mention 후보 수를 본다.
+5. edge를 선택해 forward/inverse label, 방향과 note를 확인한다.
+6. `설정 상세에서 열기`, `관계 편집에서 열기` 또는 SCENE 버튼으로 기존 화면으로
+   이동한다.
+
+Node drag는 배치 좌표만 바꾸며 relation을 생성하지 않는다. `자동 배치 다시 실행`은
+Cytoscape.js 내장 `cose`를 다시 실행하고 `레이아웃 초기화`는 저장 좌표와 viewport를
+비운다. Canvas를 쓰기 어려운 경우 같은 node/edge를 키보드 버튼 목록에서 선택할 수
+있다. Canonical 생성·수정·삭제는 계속 `설정` 화면에서만 수행한다.
+
+### 9. 종료와 재열기
 
 1. 현재 IME 조합을 끝낸다.
 2. 창을 닫는다.
-3. renderer는 현재 dirty 장면 또는 entity note와 `workspace.v1` UI state 저장을 먼저
-   요청한다.
+3. renderer는 현재 dirty 장면 또는 entity note와 `workspace.v1`, `world-graph.v1` UI
+   state 저장을 먼저 요청한다.
 4. main process는 renderer가 저장 성공을 승인하기 전 창을 파괴하지 않는다.
 5. Electron process가 완전히 끝난 뒤 앱을 다시 실행한다.
 6. `.madi 열기`로 같은 파일을 선택한다.
@@ -229,7 +261,7 @@ insert/update/delete trigger가 같은 transaction에서 갱신한다. `named_sn
 `MANUAL`, `AUTO_BEFORE_REPLACE`, `AUTO_BEFORE_RESTORE` logical payload와 SHA-256를
 저장한다. schema 2 file을 열면 기존 document를 잃지 않고 migration 3에서 projection을
 backfill한 뒤 migration 4가 Story Bible table과 built-in 관계 타입을 만든다.
-`format_version`은 계속 1이다.
+`format_version`은 계속 1이다. Phase 1D World Graph는 schema/table을 추가하지 않는다.
 
 sibling 순서는 `REAL order_key`를 `1024.0` 간격으로 배정한다. 중간 삽입은
 midpoint를 사용하고 간격이 `0.000001` 이하이면 해당 sibling만 rebalance한다.
@@ -245,6 +277,11 @@ UI state는 `ui_state.key = 'workspace.v1'`에 다음 snake_case JSON을 저장�
 }
 ```
 
+World Graph 상태는 별도 `ui_state.key = 'world-graph.v1'`에 full/focused mode, 중심 ID,
+depth, filter, layout, viewport, 최대 500개 node position과 마지막 선택 entity ID를
+snake_case JSON으로 저장한다. 이 값은 project revision을 올리지 않고 named snapshot
+payload에도 포함되지 않으므로 snapshot restore 뒤 현재 사용자 배치를 유지한다.
+
 전체 계약과 migration 규칙은
 [`docs/MADI_FILE_FORMAT_V1_DRAFT.md`](docs/MADI_FILE_FORMAT_V1_DRAFT.md)를 따른다.
 
@@ -254,6 +291,7 @@ UI state는 `ui_state.key = 'workspace.v1'`에 다음 snake_case JSON을 저장�
 - TypeScript strict mode
 - Rust `madi-core` persistent JSON-RPC sidecar
 - SQLite `.madi`
+- Cytoscape.js `3.34.0` renderer와 내장 `cose` layout
 - Typie browser WASM, ICU 및 한국어 font를 local asset으로 사용
 - `MadiEditorAdapter` / `TypieEditorAdapter` 경계
 - `nodeIntegration: false`
@@ -282,10 +320,14 @@ listRelationTypes, createRelationType, updateRelationType, deleteRelationType,
 listEntityRelations, createEntityRelation, updateEntityRelation,
 deleteEntityRelation, listSceneEntityLinks, createSceneEntityLink,
 deleteSceneEntityLink, discoverEntityMentions, promoteEntityMention,
+getWorldGraph, getWorldGraphStats, getEntityGraphDetail,
+getEntitySceneContext, saveWorldGraphUiState, loadWorldGraphUiState,
 getAppVersion, onCloseRequested, completeCloseRequest
 ```
 
-core/main/preload 오류에는 snapshot과 원고 본문을 출력하지 않는다.
+World Graph DTO는 madi가 소유하며 Cytoscape type은 renderer 변환 계층 밖으로 누출되지
+않는다. Label·summary·relation note는 text/data로만 전달하고 `innerHTML`을 사용하지
+않는다. Core/main/preload 오류에는 snapshot과 원고 본문을 출력하지 않는다.
 
 ## 고정된 Typie 기준
 
@@ -370,6 +412,7 @@ pnpm run test:desktop
 pnpm run test:phase1a
 pnpm run test:phase1b
 pnpm run test:phase1c
+pnpm run test:phase1d
 pnpm run test:integration
 
 # 최종 gate
@@ -385,7 +428,7 @@ pnpm test:dev
 ```
 
 `pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust test, 실제 Typie
-probe, Phase 0.5/1A/1B/1C `.madi` integration, production build, 일반 Electron smoke와
+probe, Phase 0.5/1A/1B/1C/1D `.madi` integration, production build, 일반 Electron smoke와
 unpacked packaged smoke를 순서대로 실행한다. `pnpm test:dev`는 interactive
 Vite/Electron startup 성격 때문에 별도다.
 
@@ -404,17 +447,18 @@ output/madi-win32-x64/resources/licenses/
 
 | 항목 | 현재 기록 |
 |---|---|
-| Rust 전체 test | `28 / 28 PASS` |
-| renderer 전체 test | `21 files / 106 tests PASS` |
+| Rust 전체 test | `33 / 33 PASS` |
+| renderer 전체 test | `27 files / 136 tests PASS` |
 | desktop typecheck | `PASS` |
 | Typie semantic replacement probe | `PASS` |
-| Phase 1C 10+ SCENE/19 entity/two-process integration | `PASS` — final revision 94 |
-| Phase 1C 실제 development Electron acceptance | `PASS` — entity 2, mention 7, relation/link/note/snapshot v2 restore/reopen |
-| Phase 1C 실제 unpacked Electron acceptance | `PASS` — packaged first/second process와 stable ID 복원 |
-| 최종 `pnpm verify` | `PASS` — exit code 0 |
-| 독립 `pnpm package:unpacked` | `PASS` — `output/madi-win32-x64/madi.exe` |
-| 독립 `pnpm test:electron` / `pnpm test:package` | `PASS` / `PASS` |
-| 독립 `pnpm check:repository` / `pnpm format:check` | `PASS` / `PASS` |
+| Phase 1D 19 entity/16 relation/two-process sidecar | `PASS` — directed 12/undirected 4, final revision 94 |
+| Phase 1D 500/1,500/2,000/2,000 성능 | `CONDITIONAL PASS` — 무누락/no-crash/layout hard gate PASS, interaction 일부 250 ms 초과 |
+| Phase 1D 실제 development Electron acceptance | `PASS (hard gates)` — IPC 110.6 ms, layout 5회 max 973.9 ms, drag/reopen/network 0 PASS |
+| Phase 1D 실제 unpacked Electron acceptance | `PASS (hard gates)` — IPC 64.5 ms, layout 5회 max 930.3 ms, drag/reopen/network 0 PASS |
+| 최종 `pnpm verify` | `PASS` — exit code 0, 145.2초 |
+| 독립 `pnpm package:unpacked` | `PASS` — `output/madi-win32-x64/madi.exe`, release sidecar와 Cytoscape license 포함 |
+| 독립 `pnpm test:electron` / `pnpm test:package` | `PASS / PASS` — exit code 0, small+500/2,000 two-process actual windows |
+| 독립 `pnpm check:repository` / `pnpm format:check` | `PASS / PASS` — boundary PASS, 103 files/issues 0 |
 
 ## Rust CLI와 JSON-RPC
 
@@ -458,6 +502,8 @@ delete_relation_type, list_entity_relations, create_entity_relation,
 update_entity_relation, delete_entity_relation, list_scene_entity_links,
 create_scene_entity_link, delete_scene_entity_link, discover_entity_mentions,
 promote_entity_mention,
+get_world_graph, get_world_graph_stats, get_entity_graph_detail,
+get_entity_scene_context,
 save_document, load_document, recover_plain_text
 ```
 
@@ -497,7 +543,7 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 
 ## 후속 단계로 미룬 항목
 
-다음은 Phase 1C 완료로 해소한 항목이 아니라 후속 지원·배포·hardening gate로 유지한다.
+다음은 Phase 1D 완료로 해소한 항목이 아니라 후속 지원·배포·hardening gate로 유지한다.
 
 - Windows native 한국어 IME 수동검증
 - installer/installed-state lifecycle
@@ -510,11 +556,18 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 - exact search 성능 benchmark/index 전략
 - named snapshot retention, compression과 quota
 - 장면별 상세 diff와 부분 restore
-- 관계 그래프 시각화, 시간축과 인물별 지식 시점 필터
+- 500/2,000을 넘는 graph 규모, 비동기/worker layout과 layout 중 취소
+- graph 관계 편집, 시간축과 인물별 지식 시점 필터
 - 형태소/fuzzy mention 탐색과 자동 relation 추론
 
 ## 문서
 
+- [Phase 1D 범위와 완료 계약](docs/PHASE_1D_SCOPE.md)
+- [Phase 1D 저장소 결과](docs/PHASE_1D_RESULT.md)
+- [World Graph read model](docs/WORLD_GRAPH_READ_MODEL.md)
+- [World Graph 시각 의미](docs/WORLD_GRAPH_VISUAL_SEMANTICS.md)
+- [World Graph 성능](docs/WORLD_GRAPH_PERFORMANCE.md)
+- [ADR-0003: World Graph derived read model](docs/decisions/ADR-0003-world-graph-is-derived-read-model.md)
 - [Phase 1C 범위와 완료 계약](docs/PHASE_1C_SCOPE.md)
 - [Phase 1C 저장소 결과](docs/PHASE_1C_RESULT.md)
 - [Story Bible 데이터 모델](docs/STORY_BIBLE_DATA_MODEL.md)
