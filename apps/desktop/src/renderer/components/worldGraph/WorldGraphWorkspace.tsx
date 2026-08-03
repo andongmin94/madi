@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -36,7 +37,14 @@ import {
   type WorldGraphUiState,
   type WorldGraphViewport
 } from "./types";
+import {
+  loadWorldGraphDetailBundle,
+  WorldGraphDetailCache,
+  type WorldGraphPerformanceSample
+} from "./worldGraphInteraction";
 import "./worldGraph.css";
+
+export type { WorldGraphPerformanceSample } from "./worldGraphInteraction";
 
 export interface WorldGraphWorkspaceProps {
   readonly model: WorldGraphReadModelView | null;
@@ -60,19 +68,13 @@ export interface WorldGraphWorkspaceProps {
     sourceEntityId: string
   ) => void | Promise<void>;
   readonly onOpenScene: (sceneId: string) => void | Promise<void>;
+  readonly onAddEntityToCanvas?: (
+    entityId: string
+  ) => void | Promise<void>;
   readonly onSelectedEntityChange?: (entityId: string | null) => void;
   readonly onPerformanceSample?: (
     sample: WorldGraphPerformanceSample
   ) => void;
-}
-
-export interface WorldGraphPerformanceSample {
-  readonly filterMs?: number;
-  readonly bfsMs?: number;
-  readonly searchFocusMs?: number;
-  readonly elementConversionMs?: number;
-  readonly layoutMs?: number;
-  readonly displayMs?: number;
 }
 
 const SEARCH_MATCH_LABELS = {
@@ -167,6 +169,7 @@ export function WorldGraphWorkspace({
   onOpenEntity,
   onOpenRelation,
   onOpenScene,
+  onAddEntityToCanvas,
   onSelectedEntityChange,
   onPerformanceSample
 }: WorldGraphWorkspaceProps) {
@@ -185,13 +188,24 @@ export function WorldGraphWorkspace({
   const [detail, setDetail] = useState<WorldGraphEntityDetailView | null>(null);
   const [sceneContext, setSceneContext] =
     useState<WorldGraphSceneContextView | null>(null);
-  const [mentionCount, setMentionCount] = useState<number | null>(null);
+  const [mentionResult, setMentionResult] = useState<{
+    readonly key: string;
+    readonly count: number;
+  } | null>(null);
   const [detailBusy, setDetailBusy] = useState(false);
   const [detailError, setDetailError] = useState("");
   const appliedProjectRef = useRef<string | null>(null);
   const appliedExternalFingerprintRef = useRef<string | null>(null);
   const lastEmittedFingerprintRef = useRef<string | null>(null);
   const detailRequestRef = useRef(0);
+  const detailErrorKeyRef = useRef<string | null>(null);
+  const detailCacheRef = useRef(new WorldGraphDetailCache());
+  const selectionStartedAtRef = useRef<number | null>(null);
+  const centerStartedAtRef = useRef<number | null>(null);
+  const detailCommitStartedAtRef = useRef<{
+    readonly commitStartedAt: number;
+    readonly requestStartedAt: number;
+  } | null>(null);
   const externalCallbacksRef = useRef({
     onUiStateChange,
     onLoadEntityDetail,
@@ -300,6 +314,12 @@ export function WorldGraphWorkspace({
     }
   }, [model, selection]);
 
+  useEffect(() => {
+    if (model) {
+      detailCacheRef.current.activate(model.projectId, model.revision);
+    }
+  }, [model?.projectId, model?.revision]);
+
   const graphComputation = useMemo(() => {
     if (!model) {
       return { graph: null, filterMs: 0, bfsMs: 0 };
@@ -372,57 +392,149 @@ export function WorldGraphWorkspace({
       ? model?.edges.find((edge) => edge.id === selection.id) ?? null
       : null;
 
+  const visibleDetail =
+    selectedNode &&
+    model &&
+    detail?.projectId === model.projectId &&
+    detail.revision === model.revision &&
+    detail.entity.id === selectedNode.id
+      ? detail
+      : null;
+  const visibleSceneContext =
+    selectedNode &&
+    model &&
+    sceneContext?.projectId === model.projectId &&
+    sceneContext.revision === model.revision &&
+    sceneContext.entityId === selectedNode.id
+      ? sceneContext
+      : null;
+  const selectedDetailKey =
+    selectedNode && model
+      ? JSON.stringify([model.projectId, model.revision, selectedNode.id])
+      : null;
+  const visibleMentionCount =
+    visibleDetail &&
+    visibleSceneContext &&
+    mentionResult?.key === selectedDetailKey
+      ? mentionResult.count
+      : null;
+  const visibleDetailError =
+    selectedDetailKey === detailErrorKeyRef.current ? detailError : "";
+
+  useLayoutEffect(() => {
+    const startedAt = selectionStartedAtRef.current;
+    if (startedAt === null || !selectedNode) {
+      return;
+    }
+    const durationMs = performance.now() - startedAt;
+    selectionStartedAtRef.current = null;
+    externalCallbacksRef.current.onPerformanceSample?.({
+      reactSelectionCommitMs: durationMs,
+      detailShellRenderMs: durationMs
+    });
+  }, [selectedNode, selection]);
+
+  useLayoutEffect(() => {
+    const pending = detailCommitStartedAtRef.current;
+    if (
+      !pending ||
+      !visibleDetail ||
+      !visibleSceneContext ||
+      visibleMentionCount === null
+    ) {
+      return;
+    }
+    detailCommitStartedAtRef.current = null;
+    const now = performance.now();
+    externalCallbacksRef.current.onPerformanceSample?.({
+      reactDetailCommitMs: now - pending.commitStartedAt,
+      fullLazyDetailMs: now - pending.requestStartedAt
+    });
+  }, [visibleDetail, visibleMentionCount, visibleSceneContext]);
+
   useEffect(() => {
     const requestId = ++detailRequestRef.current;
+    detailErrorKeyRef.current = null;
     setDetailError("");
     setSceneContext(null);
-    setMentionCount(null);
+    setMentionResult(null);
     if (!selectedNode || !model) {
       setDetail(null);
       setDetailBusy(false);
       return;
     }
-    setDetail(derivedDetail(model, selectedNode));
+    const identity = {
+      projectId: model.projectId,
+      projectRevision: model.revision,
+      entityId: selectedNode.id
+    };
+    const cached = detailCacheRef.current.get(identity);
+    if (cached) {
+      setDetail(cached.detail);
+      setSceneContext(cached.sceneContext);
+      setMentionResult({
+        key: JSON.stringify([
+          identity.projectId,
+          identity.projectRevision,
+          identity.entityId
+        ]),
+        count: cached.mentionCount
+      });
+      setDetailBusy(false);
+      externalCallbacksRef.current.onPerformanceSample?.({ detailCacheHit: 1 });
+      return;
+    }
+    setDetail(null);
     setDetailBusy(true);
+    externalCallbacksRef.current.onPerformanceSample?.({ detailCacheHit: 0 });
+    const requestStartedAt = performance.now();
     const detailLoader = externalCallbacksRef.current.onLoadEntityDetail;
     const sceneLoader = externalCallbacksRef.current.onLoadEntitySceneContext;
     const mentionLoader = externalCallbacksRef.current.onLoadMentionCount;
-    const detailPromise = detailLoader
-      ? Promise.resolve(detailLoader(selectedNode.id))
-      : Promise.resolve(derivedDetail(model, selectedNode));
-    const scenePromise = sceneLoader
-      ? Promise.resolve(sceneLoader(selectedNode.id))
-      : Promise.resolve<WorldGraphSceneContextView>({
-          projectId: model.projectId,
-          revision: model.revision,
-          entityId: selectedNode.id,
-          links: []
-        });
-    const mentionPromise = mentionLoader
-      ? Promise.resolve(mentionLoader(selectedNode.id))
-      : Promise.resolve(0);
-    void Promise.all([detailPromise, scenePromise, mentionPromise])
-      .then(([nextDetail, nextSceneContext, nextMentionCount]) => {
+    void loadWorldGraphDetailBundle(identity, {
+      detail: () =>
+        detailLoader
+          ? detailLoader(selectedNode.id)
+          : derivedDetail(model, selectedNode),
+      sceneContext: () =>
+        sceneLoader
+          ? sceneLoader(selectedNode.id)
+          : {
+              projectId: model.projectId,
+              revision: model.revision,
+              entityId: selectedNode.id,
+              links: []
+            },
+      mentionCount: () => (mentionLoader ? mentionLoader(selectedNode.id) : 0)
+    })
+      .then(({ bundle, timing }) => {
         if (requestId !== detailRequestRef.current) {
           return;
         }
-        if (
-          nextDetail.projectId !== model.projectId ||
-          nextSceneContext.projectId !== model.projectId ||
-          nextDetail.revision !== model.revision ||
-          nextSceneContext.revision !== model.revision ||
-          nextDetail.entity.id !== selectedNode.id ||
-          nextSceneContext.entityId !== selectedNode.id
-        ) {
-          setDetailError("오래된 그래프 상세 응답을 버렸습니다. 그래프를 새로 고쳐 주세요.");
-          return;
-        }
-        setDetail(nextDetail);
-        setSceneContext(nextSceneContext);
-        setMentionCount(nextMentionCount);
+        detailCacheRef.current.set(identity, bundle);
+        detailCommitStartedAtRef.current = {
+          commitStartedAt: performance.now(),
+          requestStartedAt
+        };
+        externalCallbacksRef.current.onPerformanceSample?.(timing);
+        setDetail(bundle.detail);
+        setSceneContext(bundle.sceneContext);
+        setMentionResult({
+          key: JSON.stringify([
+            identity.projectId,
+            identity.projectRevision,
+            identity.entityId
+          ]),
+          count: bundle.mentionCount
+        });
       })
       .catch((error: unknown) => {
         if (requestId === detailRequestRef.current) {
+          detailErrorKeyRef.current = JSON.stringify([
+            identity.projectId,
+            identity.projectRevision,
+            identity.entityId
+          ]);
           setDetailError(
             error instanceof Error
               ? error.message
@@ -435,10 +547,7 @@ export function WorldGraphWorkspace({
           setDetailBusy(false);
         }
       });
-  }, [
-    model,
-    selectedNode
-  ]);
+  }, [model, selectedNode]);
 
   const updateFilters = (
     update: (filters: WorldGraphFilterState) => WorldGraphFilterState
@@ -450,6 +559,10 @@ export function WorldGraphWorkspace({
   };
 
   const select = (nextSelection: WorldGraphSelection | null) => {
+    selectionStartedAtRef.current =
+      nextSelection?.kind === "NODE" ? performance.now() : null;
+    detailErrorKeyRef.current = null;
+    setDetailError("");
     setSelection(nextSelection);
     const entityId = nextSelection?.kind === "NODE" ? nextSelection.id : null;
     setUiState((current) => ({
@@ -461,8 +574,16 @@ export function WorldGraphWorkspace({
     }
   };
 
-  const centerNode = (node: WorldGraphNodeView, focusMode: boolean) => {
+  const centerNode = (
+    node: WorldGraphNodeView,
+    focusMode: boolean,
+    source: "SEARCH" | "NAVIGATION" = "NAVIGATION"
+  ) => {
     const focusStartedAt = performance.now();
+    selectionStartedAtRef.current = focusStartedAt;
+    centerStartedAtRef.current = focusStartedAt;
+    detailErrorKeyRef.current = null;
+    setDetailError("");
     const hiddenReason =
       explainHiddenNode(node, uiState.filters) ??
       (filteredGraph && !filteredGraph.nodes.some((item) => item.id === node.id)
@@ -481,7 +602,9 @@ export function WorldGraphWorkspace({
         focusedEntityId: useAsFocusedEntity
           ? node.id
           : current.focusedEntityId,
-        filters: revealNodeInFilters(node, current.filters),
+        filters: explainHiddenNode(node, current.filters)
+          ? revealNodeInFilters(node, current.filters)
+          : current.filters,
         selectedEntityId: node.id
       };
     });
@@ -489,9 +612,11 @@ export function WorldGraphWorkspace({
     externalCallbacksRef.current.onSelectedEntityChange?.(node.id);
     setCenterRequest((value) => value + 1);
     setQuery("");
-    externalCallbacksRef.current.onPerformanceSample?.({
-      searchFocusMs: performance.now() - focusStartedAt
-    });
+    if (source === "SEARCH") {
+      externalCallbacksRef.current.onPerformanceSample?.({
+        searchClickHandlerMs: performance.now() - focusStartedAt
+      });
+    }
   };
 
   const changeMultiFilter = <T extends string>(
@@ -573,7 +698,7 @@ export function WorldGraphWorkspace({
                     <button
                       type="button"
                       data-entity-id={result.node.id}
-                      onClick={() => centerNode(result.node, false)}
+                      onClick={() => centerNode(result.node, false, "SEARCH")}
                     >
                       <span>
                         <strong>{result.node.label}</strong> · {kindLabel(result.node.kind)}
@@ -604,6 +729,7 @@ export function WorldGraphWorkspace({
             onClick={() => {
               const entityId = uiState.focusedEntityId ?? selectedNode?.id ?? null;
               if (entityId) {
+                centerStartedAtRef.current = performance.now();
                 setUiState((current) => ({
                   ...current,
                   mode: "FOCUSED",
@@ -893,6 +1019,7 @@ export function WorldGraphWorkspace({
               showLabels={uiState.filters.showLabels}
               centerEntityId={selectedNode?.id ?? uiState.focusedEntityId}
               centerRequest={centerRequest}
+              centerRequestStartedAt={centerStartedAtRef.current}
               nodePositions={uiState.nodePositions}
               viewport={
                 initialUiState &&
@@ -928,6 +1055,9 @@ export function WorldGraphWorkspace({
               onLayoutComplete={(layoutMs) =>
                 externalCallbacksRef.current.onPerformanceSample?.({ layoutMs })
               }
+              onInteractionPerformance={(sample) =>
+                externalCallbacksRef.current.onPerformanceSample?.(sample)
+              }
             />
           )}
         </main>
@@ -946,14 +1076,15 @@ export function WorldGraphWorkspace({
               <p>설정이나 관계를 선택하면 세부정보를 표시합니다.</p>
               <p>그래프에서는 canonical 설정이나 관계를 변경하지 않습니다.</p>
             </>
-          ) : selectedNode && detail ? (
+          ) : selectedNode ? (
             <NodeDetail
               nodes={model.nodes}
-              detail={detail}
-              sceneContext={sceneContext}
-              mentionCount={mentionCount}
+              entity={selectedNode}
+              detail={visibleDetail}
+              sceneContext={visibleSceneContext}
+              mentionCount={visibleMentionCount}
               busy={detailBusy}
-              error={detailError}
+              error={visibleDetailError}
               onSelectCounterpart={(entityId) => {
                 const node = model.nodes.find((candidate) => candidate.id === entityId);
                 if (node) {
@@ -961,6 +1092,11 @@ export function WorldGraphWorkspace({
                 }
               }}
               onOpenEntity={() => void onOpenEntity(selectedNode.id)}
+              onAddToCanvas={
+                onAddEntityToCanvas
+                  ? () => void onAddEntityToCanvas(selectedNode.id)
+                  : undefined
+              }
               onOpenScene={(sceneId) => void onOpenScene(sceneId)}
             />
           ) : selectedEdge ? (
@@ -986,6 +1122,7 @@ export function WorldGraphWorkspace({
 
 function NodeDetail({
   nodes,
+  entity,
   detail,
   sceneContext,
   mentionCount,
@@ -993,19 +1130,21 @@ function NodeDetail({
   error,
   onSelectCounterpart,
   onOpenEntity,
+  onAddToCanvas,
   onOpenScene
 }: {
   readonly nodes: readonly WorldGraphNodeView[];
-  readonly detail: WorldGraphEntityDetailView;
+  readonly entity: WorldGraphNodeView;
+  readonly detail: WorldGraphEntityDetailView | null;
   readonly sceneContext: WorldGraphSceneContextView | null;
   readonly mentionCount: number | null;
   readonly busy: boolean;
   readonly error: string;
   readonly onSelectCounterpart: (entityId: string) => void;
   readonly onOpenEntity: () => void;
+  readonly onAddToCanvas?: () => void;
   readonly onOpenScene: (sceneId: string) => void;
 }) {
-  const entity = detail.entity;
   return (
     <>
       <h2>{entity.label}</h2>
@@ -1022,30 +1161,46 @@ function NodeDetail({
         <button type="button" onClick={onOpenEntity}>
           설정 상세에서 열기
         </button>
+        {onAddToCanvas && (
+          <button type="button" onClick={onAddToCanvas}>
+            캔버스에 추가
+          </button>
+        )}
       </div>
       {busy && <p role="status">장면과 본문 후보를 불러오는 중입니다.</p>}
       {error && <p role="alert">{error}</p>}
-      <RelationDetailList
-        title="나가는 관계"
-        nodes={nodes}
-        relations={detail.outgoingRelations}
-        onSelectCounterpart={onSelectCounterpart}
-      />
-      <RelationDetailList
-        title="들어오는 관계"
-        nodes={nodes}
-        relations={detail.incomingRelations}
-        onSelectCounterpart={onSelectCounterpart}
-      />
-      <RelationDetailList
-        title="무방향 관계"
-        nodes={nodes}
-        relations={detail.undirectedRelations}
-        onSelectCounterpart={onSelectCounterpart}
-      />
+      {detail ? (
+        <>
+          <RelationDetailList
+            title="나가는 관계"
+            nodes={nodes}
+            relations={detail.outgoingRelations}
+            onSelectCounterpart={onSelectCounterpart}
+          />
+          <RelationDetailList
+            title="들어오는 관계"
+            nodes={nodes}
+            relations={detail.incomingRelations}
+            onSelectCounterpart={onSelectCounterpart}
+          />
+          <RelationDetailList
+            title="무방향 관계"
+            nodes={nodes}
+            relations={detail.undirectedRelations}
+            onSelectCounterpart={onSelectCounterpart}
+          />
+        </>
+      ) : (
+        <section aria-label="상세 관계 목록">
+          <h3>상세 관계</h3>
+          <p>세부정보 불러오는 중</p>
+        </section>
+      )}
       <section aria-label="명시적 장면 연결">
         <h3>명시적 장면 연결 ({sceneContext?.links.length ?? entity.explicitSceneLinkCount})</h3>
-        {sceneContext && sceneContext.links.length > 0 ? (
+        {sceneContext === null ? (
+          <p>장면 연결 불러오는 중</p>
+        ) : sceneContext.links.length > 0 ? (
           <ul>
             {sceneContext.links.map((link) => (
               <li key={`${link.sceneNodeId}:${link.role}`}>

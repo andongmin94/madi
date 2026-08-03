@@ -1,8 +1,16 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
   WorldGraphWorkspace,
+  type WorldGraphPerformanceSample,
   type WorldGraphWorkspaceProps
 } from "../src/renderer/components/worldGraph/WorldGraphWorkspace";
 import { shouldCenterGraphViewport } from "../src/renderer/components/worldGraph/WorldGraphCanvas";
@@ -190,6 +198,42 @@ const scenes: WorldGraphSceneContextView = {
   ]
 };
 
+const orderDetail: WorldGraphEntityDetailView = {
+  projectId: "project-1",
+  revision: 21,
+  entity: order,
+  outgoingRelations: [],
+  incomingRelations: [
+    {
+      edge: member,
+      counterpartEntityId: leia.id,
+      displayLabel: "구성원을 가짐",
+      perspective: "INCOMING"
+    }
+  ],
+  undirectedRelations: []
+};
+
+const orderScenes: WorldGraphSceneContextView = {
+  projectId: "project-1",
+  revision: 21,
+  entityId: order.id,
+  links: []
+};
+
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((accept) => {
+    resolve = accept;
+  });
+  return { promise, resolve };
+}
+
 function props(
   overrides: Partial<WorldGraphWorkspaceProps> = {}
 ): WorldGraphWorkspaceProps {
@@ -257,6 +301,185 @@ describe("WorldGraphWorkspace", () => {
 
     fireEvent.doubleClick(leiaButton);
     expect(onOpenEntity).toHaveBeenCalledWith("leia");
+  });
+
+  it("commits the selected node shell before any lazy detail response", async () => {
+    const pendingDetail = deferred<WorldGraphEntityDetailView>();
+    const pendingScenes = deferred<WorldGraphSceneContextView>();
+    const pendingMentions = deferred<number>();
+    const onLoadEntityDetail = vi.fn(() => pendingDetail.promise);
+    const onLoadEntitySceneContext = vi.fn(() => pendingScenes.promise);
+    const onLoadMentionCount = vi.fn(() => pendingMentions.promise);
+    render(
+      <WorldGraphWorkspace
+        {...props({
+          onLoadEntityDetail,
+          onLoadEntitySceneContext,
+          onLoadMentionCount
+        })}
+      />
+    );
+
+    const list = openAccessibleGraphList();
+    fireEvent.click(
+      within(list).getByRole("button", { name: "레이아 · CHARACTER" })
+    );
+
+    const panel = screen.getByTestId("world-graph-detail");
+    expect(within(panel).getByRole("heading", { name: "레이아" })).toBeTruthy();
+    expect(within(panel).getByText("북부 출신 마법사")).toBeTruthy();
+    expect(within(panel).getByText("세부정보 불러오는 중")).toBeTruthy();
+    expect(within(panel).getByText("장면 연결 불러오는 중")).toBeTruthy();
+    await waitFor(() => {
+      expect(onLoadEntityDetail).toHaveBeenCalledTimes(1);
+      expect(onLoadEntitySceneContext).toHaveBeenCalledTimes(1);
+      expect(onLoadMentionCount).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      pendingDetail.resolve(detail);
+      pendingScenes.resolve(scenes);
+      pendingMentions.resolve(7);
+      await Promise.all([
+        pendingDetail.promise,
+        pendingScenes.promise,
+        pendingMentions.promise
+      ]);
+    });
+    expect(await within(panel).findByText("7개")).toBeTruthy();
+  });
+
+  it("passes only the selected entity id from Graph to the optional Canvas entry point", () => {
+    const onAddEntityToCanvas = vi.fn();
+    render(
+      <WorldGraphWorkspace
+        {...props({ onAddEntityToCanvas })}
+      />
+    );
+    const list = openAccessibleGraphList();
+    fireEvent.click(
+      within(list).getByRole("button", { name: "레이아 · CHARACTER" })
+    );
+    fireEvent.click(
+      within(screen.getByTestId("world-graph-detail")).getByRole("button", {
+        name: "캔버스에 추가"
+      })
+    );
+
+    expect(onAddEntityToCanvas.mock.calls).toEqual([[leia.id]]);
+    expect(typeof onAddEntityToCanvas.mock.calls[0]?.[0]).toBe("string");
+  });
+
+  it("reuses revision-scoped detail cache entries on A to B to A selection", async () => {
+    const onLoadEntityDetail = vi.fn(async (entityId: string) =>
+      entityId === leia.id ? detail : orderDetail
+    );
+    const onLoadEntitySceneContext = vi.fn(async (entityId: string) =>
+      entityId === leia.id ? scenes : orderScenes
+    );
+    const onLoadMentionCount = vi.fn(async (entityId: string) =>
+      entityId === leia.id ? 7 : 0
+    );
+    render(
+      <WorldGraphWorkspace
+        {...props({
+          onLoadEntityDetail,
+          onLoadEntitySceneContext,
+          onLoadMentionCount
+        })}
+      />
+    );
+    const list = openAccessibleGraphList();
+
+    fireEvent.click(
+      within(list).getByRole("button", { name: "레이아 · CHARACTER" })
+    );
+    await waitFor(() => expect(onLoadEntityDetail).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("7개")).toBeTruthy();
+    fireEvent.click(
+      within(list).getByRole("button", { name: "북부 마법사단 · ORGANIZATION" })
+    );
+    await waitFor(() => expect(onLoadEntityDetail).toHaveBeenCalledTimes(2));
+    fireEvent.click(
+      within(list).getByRole("button", { name: "레이아 · CHARACTER" })
+    );
+    expect(
+      within(screen.getByTestId("world-graph-detail")).getByRole("heading", {
+        name: "레이아"
+      })
+    ).toBeTruthy();
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
+    expect(onLoadEntityDetail).toHaveBeenCalledTimes(2);
+    expect(onLoadEntitySceneContext).toHaveBeenCalledTimes(2);
+    expect(onLoadMentionCount).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks a late A response after B becomes the current selection", async () => {
+    const leiaDetail = deferred<WorldGraphEntityDetailView>();
+    const leiaScenes = deferred<WorldGraphSceneContextView>();
+    const leiaMentions = deferred<number>();
+    const nextDetail = deferred<WorldGraphEntityDetailView>();
+    const nextScenes = deferred<WorldGraphSceneContextView>();
+    const nextMentions = deferred<number>();
+    const detailA = {
+      ...detail,
+      outgoingRelations: [
+        {
+          ...detail.outgoingRelations[0],
+          edge: { ...member, note: "A 응답" }
+        }
+      ]
+    };
+    const detailB = {
+      ...orderDetail,
+      incomingRelations: [
+        {
+          ...orderDetail.incomingRelations[0],
+          edge: { ...member, note: "B 응답" }
+        }
+      ]
+    };
+    render(
+      <WorldGraphWorkspace
+        {...props({
+          onLoadEntityDetail: (entityId) =>
+            entityId === leia.id ? leiaDetail.promise : nextDetail.promise,
+          onLoadEntitySceneContext: (entityId) =>
+            entityId === leia.id ? leiaScenes.promise : nextScenes.promise,
+          onLoadMentionCount: (entityId) =>
+            entityId === leia.id ? leiaMentions.promise : nextMentions.promise
+        })}
+      />
+    );
+    const list = openAccessibleGraphList();
+    fireEvent.click(
+      within(list).getByRole("button", { name: "레이아 · CHARACTER" })
+    );
+    fireEvent.click(
+      within(list).getByRole("button", { name: "북부 마법사단 · ORGANIZATION" })
+    );
+
+    await act(async () => {
+      nextDetail.resolve(detailB);
+      nextScenes.resolve(orderScenes);
+      nextMentions.resolve(0);
+      await Promise.all([nextDetail.promise, nextScenes.promise, nextMentions.promise]);
+    });
+    expect(await screen.findByText("B 응답")).toBeTruthy();
+
+    await act(async () => {
+      leiaDetail.resolve(detailA);
+      leiaScenes.resolve(scenes);
+      leiaMentions.resolve(7);
+      await Promise.all([leiaDetail.promise, leiaScenes.promise, leiaMentions.promise]);
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
+    const panel = screen.getByTestId("world-graph-detail");
+    expect(
+      within(panel).getByRole("heading", { name: "북부 마법사단" })
+    ).toBeTruthy();
+    expect(within(panel).getByText("B 응답")).toBeTruthy();
+    expect(within(panel).queryByText("A 응답")).toBeNull();
   });
 
   it("shows directed and undirected edge detail and exposes navigation, never mutation", () => {
@@ -353,6 +576,89 @@ describe("WorldGraphWorkspace", () => {
       expect(workspace.dataset.focusedEntityId).toBe("leia");
       expect(workspace.dataset.centerRequest).toBe("1");
     });
+  });
+
+  it("does not rerun layout for selection, edge detail, lazy commit, or visible search focus", async () => {
+    const samples: WorldGraphPerformanceSample[] = [];
+    render(
+      <WorldGraphWorkspace
+        {...props({
+          onPerformanceSample: (sample) => samples.push(sample),
+          onLoadEntityDetail: async (entityId) =>
+            entityId === leia.id ? detail : orderDetail,
+          onLoadEntitySceneContext: async (entityId) =>
+            entityId === leia.id ? scenes : orderScenes,
+          onLoadMentionCount: async () => 0
+        })}
+      />
+    );
+    await waitFor(() => {
+      const layoutSamples = samples.filter((sample) => "layoutMs" in sample);
+      expect(layoutSamples.length).toBeGreaterThan(0);
+    });
+    const initialLayoutCount = samples.filter(
+      (sample) => "layoutMs" in sample
+    ).length;
+    const list = openAccessibleGraphList();
+    fireEvent.click(
+      within(list).getByRole("button", { name: "레이아 · CHARACTER" })
+    );
+    expect(
+      within(screen.getByTestId("world-graph-detail")).getByRole("heading", {
+        name: "레이아"
+      })
+    ).toBeTruthy();
+    await screen.findByText("0개");
+
+    const edgeList = screen.getByRole("region", { name: "그래프 관계 목록" });
+    fireEvent.click(
+      within(edgeList).getByRole("button", {
+        name: "레이아 → 소속 → 북부 마법사단"
+      })
+    );
+    fireEvent.change(screen.getByRole("searchbox", { name: "세계관 설정 검색" }), {
+      target: { value: "북부 마법사단" }
+    });
+    fireEvent.click(
+      within(
+        screen.getByRole("list", { name: "세계관 설정 검색 결과" })
+      ).getByRole("button", { name: /북부 마법사단/ })
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("world-graph-workspace").dataset.selectedId
+      ).toBe(order.id)
+    );
+    await new Promise((resolve) => window.setTimeout(resolve, 30));
+
+    expect(
+      samples.filter((sample) => "layoutMs" in sample)
+    ).toHaveLength(initialLayoutCount);
+    expect(
+      samples.some(
+        (sample) =>
+          "reactSelectionCommitMs" in sample &&
+          "detailShellRenderMs" in sample
+      )
+    ).toBe(true);
+    expect(
+      samples.some(
+        (sample) =>
+          "cytoscapeNodeLookupMs" in sample &&
+          "neighborHighlightMs" in sample
+      )
+    ).toBe(true);
+    expect(
+      samples.some(
+        (sample) =>
+          "entityDetailRpcMs" in sample &&
+          "sceneContextRpcMs" in sample &&
+          "mentionDiscoveryRpcMs" in sample
+      )
+    ).toBe(true);
+    expect(samples.some((sample) => "reactDetailCommitMs" in sample)).toBe(true);
+    expect(samples.some((sample) => "searchClickHandlerMs" in sample)).toBe(true);
+    expect(JSON.stringify(samples)).not.toMatch(/레이아|마법사단|project-1/);
   });
 
   it("preserves a restored viewport until an explicit center request", () => {

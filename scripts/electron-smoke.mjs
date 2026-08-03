@@ -48,6 +48,52 @@ function isLocalRuntimeUrl(candidate) {
   return ["madi:", "data:", "blob:", "devtools:"].includes(protocol);
 }
 
+function redactExternalUrl(candidate) {
+  try {
+    const parsed = new URL(candidate);
+    return { protocol: parsed.protocol, host: parsed.host };
+  } catch {
+    return { protocol: "invalid", host: "" };
+  }
+}
+
+function redactError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    name: error instanceof Error ? error.name : typeof error,
+    messageLength: message.length
+  };
+}
+
+function assertNoPrivateContent(value, fragments) {
+  const findPaths = (candidate, fragment, path = "$") => {
+    if (typeof candidate === "string") {
+      return candidate.includes(fragment) ? [path] : [];
+    }
+    if (Array.isArray(candidate)) {
+      return candidate.flatMap((nested, index) =>
+        findPaths(nested, fragment, `${path}[${index}]`)
+      );
+    }
+    if (candidate && typeof candidate === "object") {
+      return Object.entries(candidate).flatMap(([key, nested]) =>
+        findPaths(nested, fragment, `${path}.${key}`)
+      );
+    }
+    return [];
+  };
+  const leaks = fragments.flatMap((fragment, index) =>
+    fragment
+      ? findPaths(value, fragment).map((path) => ({ fragmentIndex: index, path }))
+      : []
+  );
+  if (leaks.length > 0) {
+    throw new Error(
+      `private-content-redaction-failed: ${JSON.stringify({ leaks })}`
+    );
+  }
+}
+
 async function launchApplication(projectPath, userDataPath) {
   const userDataArgument = `--user-data-dir=${userDataPath}`;
   const application = await electron.launch({
@@ -87,7 +133,13 @@ async function launchApplication(projectPath, userDataPath) {
     appName: app.getName(),
     userDataPath: app.getPath("userData")
   }));
-  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("pageerror", (error) =>
+    pageErrors.push({
+      name: error.name,
+      messageLength: error.message.length,
+      hasStack: Boolean(error.stack)
+    })
+  );
   await page.context().setOffline(true);
   await page.reload({ waitUntil: "load" });
   try {
@@ -95,12 +147,16 @@ async function launchApplication(projectPath, userDataPath) {
   } catch (error) {
     const visibleState = await page
       .locator(".engine-state")
-      .textContent()
-      .catch(() => "engine state unavailable");
+      .evaluate((element) => ({
+        present: true,
+        className: element.getAttribute("class") ?? "",
+        childCount: element.childElementCount
+      }))
+      .catch(() => ({ present: false, className: "", childCount: 0 }));
     throw new Error(
       `Electron editor did not become ready: ${visibleState}; page errors: ${JSON.stringify(
         pageErrors
-      )}; ${error instanceof Error ? error.message : String(error)}`
+      )}; ${JSON.stringify(redactError(error))}`
     );
   }
 
@@ -309,9 +365,9 @@ async function binderRowByTitle(page, type, title) {
   );
   if (matches.length !== 1 || !matches[0]) {
     throw new Error(
-      `Expected exactly one direct Binder ${type} row titled ${JSON.stringify(
+      `Expected exactly one direct Binder ${type} row with the requested title; titleCharacters=${Array.from(
         title
-      )}, found ${matches.length}`
+      ).length}; matches=${matches.length}`
     );
   }
   return binderRowById(page, matches[0]);
@@ -499,9 +555,14 @@ function verifyBinderEvidence(evidence, expectation, stage) {
     ([nodeId, parentId]) =>
       evidence.find((node) => node.id === nodeId)?.parentId === parentId
   );
+  const titlesMatched =
+    JSON.stringify(actualTitles) === JSON.stringify(expectedTitles);
+  const titleCounts = Object.fromEntries(
+    Object.entries(actualTitles).map(([type, titles]) => [type, titles.length])
+  );
   if (
     JSON.stringify(actualCounts) !== JSON.stringify(expectation.counts) ||
-    JSON.stringify(actualTitles) !== JSON.stringify(expectedTitles) ||
+    !titlesMatched ||
     uniqueTitles.size !== evidence.length ||
     JSON.stringify(siblingOrder) !==
       JSON.stringify(expectation.siblingSceneIds) ||
@@ -510,7 +571,8 @@ function verifyBinderEvidence(evidence, expectation, stage) {
     throw new Error(
       `${stage} Binder evidence mismatch: ${JSON.stringify({
         actualCounts,
-        actualTitles,
+        titleCounts,
+        titlesMatched,
         uniqueTitleCount: uniqueTitles.size,
         nodeCount: evidence.length,
         siblingOrder,
@@ -518,7 +580,7 @@ function verifyBinderEvidence(evidence, expectation, stage) {
       })}`
     );
   }
-  return { actualCounts, actualTitles, siblingOrder };
+  return { actualCounts, titleCount: evidence.length, siblingOrder };
 }
 
 function storyEntityRows(page) {
@@ -555,10 +617,12 @@ async function waitForStoryEntityId(page, name) {
       );
       return matches.length === 1 ? matches[0] : "";
     },
-    `Story Bible entity ${JSON.stringify(name)}`
+    `Story Bible entity match (${Array.from(name).length} characters)`
   );
   if (typeof entityId !== "string" || !entityId) {
-    throw new Error(`Story Bible entity ${JSON.stringify(name)} has no id`);
+    throw new Error(
+      `Story Bible entity match has no id; nameCharacters=${Array.from(name).length}`
+    );
   }
   return entityId;
 }
@@ -680,6 +744,7 @@ async function readWorldGraphEvidence(page) {
         '[aria-label="그래프 관계 목록"]'
       );
       const stats = workspace.querySelector('[aria-label="그래프 통계"]');
+      const statsText = stats?.textContent?.replace(/\s+/gu, " ").trim() ?? "";
       return {
         projectId: workspace.getAttribute("data-project-id") ?? "",
         revision: numeric(workspace.getAttribute("data-revision")),
@@ -726,23 +791,19 @@ async function readWorldGraphEvidence(page) {
                 (button) => button.getAttribute("data-entity-id") ?? ""
               )
             : [],
-          nodeLabels: nodeRegion
-            ? [...nodeRegion.querySelectorAll("button[data-entity-id]")].map(
-                (button) => button.textContent?.trim() ?? ""
-              )
-            : [],
           edgeIds: edgeRegion
             ? [...edgeRegion.querySelectorAll("button[data-relation-id]")].map(
                 (button) => button.getAttribute("data-relation-id") ?? ""
               )
-            : [],
-          edgeLabels: edgeRegion
-            ? [...edgeRegion.querySelectorAll("button[data-relation-id]")].map(
-                (button) => button.textContent?.trim() ?? ""
-              )
             : []
         },
-        statsText: stats?.textContent?.replace(/\s+/gu, " ").trim() ?? "",
+        stats: {
+          textLength: statsText.length,
+          totalNodesMatched: statsText.includes("전체 설정 2개"),
+          visibleNodesMatched: statsText.includes("표시 설정 2개"),
+          totalEdgesMatched: statsText.includes("전체 관계 1개"),
+          visibleEdgesMatched: statsText.includes("표시 관계 1개")
+        },
         performance: {
           ipcMs: numeric(host?.getAttribute("data-graph-ipc-ms") ?? null),
           elementConversionMs: numeric(
@@ -765,6 +826,26 @@ async function readWorldGraphEvidence(page) {
       };
     }
   );
+}
+
+function summarizeWorldGraphEvidence(evidence) {
+  if (!evidence) {
+    return null;
+  }
+  return {
+    revision: evidence.revision,
+    busy: evidence.busy,
+    state: evidence.state,
+    canvas: evidence.canvas,
+    accessible: {
+      nodeCount: evidence.accessible.nodeIds.length,
+      nodeIds: evidence.accessible.nodeIds,
+      edgeCount: evidence.accessible.edgeIds.length,
+      edgeIds: evidence.accessible.edgeIds
+    },
+    stats: evidence.stats,
+    performance: evidence.performance
+  };
 }
 
 async function waitForWorldGraph(page, expectedNodeCount, expectedEdgeCount) {
@@ -999,7 +1080,41 @@ async function readWorldGraphDataset(page) {
           bfsMs: hostNumber("data-graph-bfs-ms"),
           searchFocusMs: hostNumber("data-graph-search-ms"),
           layoutMs: hostNumber("data-graph-layout-ms"),
-          displayMs: hostNumber("data-graph-display-ms")
+          displayMs: hostNumber("data-graph-display-ms"),
+          searchClickHandlerMs: hostNumber(
+            "data-graph-search-click-handler-ms"
+          ),
+          reactSelectionCommitMs: hostNumber(
+            "data-graph-react-selection-commit-ms"
+          ),
+          cytoscapeNodeLookupMs: hostNumber(
+            "data-graph-cytoscape-node-lookup-ms"
+          ),
+          nodeFocusAnimationStartMs: hostNumber(
+            "data-graph-focus-animation-start-ms"
+          ),
+          neighborHighlightMs: hostNumber(
+            "data-graph-neighbor-highlight-ms"
+          ),
+          detailShellRenderMs: hostNumber(
+            "data-graph-detail-shell-render-ms"
+          ),
+          entityDetailRpcMs: hostNumber("data-graph-entity-detail-rpc-ms"),
+          sceneContextRpcMs: hostNumber("data-graph-scene-context-rpc-ms"),
+          mentionDiscoveryRpcMs: hostNumber(
+            "data-graph-mention-discovery-rpc-ms"
+          ),
+          ipcSerializeDeserializeMs: hostNumber(
+            "data-graph-ipc-serialize-deserialize-ms"
+          ),
+          lazyRpcRoundTripMs: hostNumber(
+            "data-graph-lazy-rpc-round-trip-ms"
+          ),
+          reactDetailCommitMs: hostNumber(
+            "data-graph-react-detail-commit-ms"
+          ),
+          fullLazyDetailMs: hostNumber("data-graph-full-lazy-detail-ms"),
+          detailCacheHit: hostNumber("data-graph-detail-cache-hit")
         }
       };
     }
@@ -1026,6 +1141,29 @@ async function waitForScaleGraphState(page, expectation, description) {
 
 function maximumMetric(values) {
   return Math.max(...values.filter((value) => Number.isFinite(value)));
+}
+
+function medianMetric(values) {
+  const sorted = values
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  if (sorted.length === 0) {
+    return Number.NaN;
+  }
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+}
+
+function summarizeMetric(values) {
+  const finite = values.filter((value) => Number.isFinite(value));
+  return {
+    runsMs: values,
+    medianMs: medianMetric(finite),
+    maximumMs:
+      finite.length > 0 ? maximumMetric(finite) : Number.NaN
+  };
 }
 
 async function dragSelectedWorldGraphNode(page) {
@@ -1223,15 +1361,14 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
           body.querySelector('[data-testid="save-status"]')?.getAttribute(
             "data-phase"
           ) ?? "missing",
-        alerts: [...body.querySelectorAll('[role="alert"]')].map(
-          (element) => element.textContent?.trim() ?? ""
-        ),
-        text: body.textContent?.slice(0, 2_000) ?? ""
+        alertCount: body.querySelectorAll('[role="alert"]').length,
+        worldGraphPresent: body.querySelector(".world-graph-workspace") !== null,
+        binderRowCount: body.querySelectorAll("[data-node-id]").length
       }));
       throw new Error(
-        `Scale fixture did not open: ${JSON.stringify(diagnostics)}; ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Scale fixture did not open: ${JSON.stringify(
+          diagnostics
+        )}; ${JSON.stringify(redactError(error))}`
       );
     }
 
@@ -1330,65 +1467,173 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
     await labelFilter.uncheck();
     await waitForWorldGraph(firstPage, 500, 2_000);
 
-    const searchStartedAt = performance.now();
     const search = firstPage.locator('[data-testid="world-graph-search"]');
-    await search.fill("별칭 321-2");
     const searchResults = firstPage.getByRole("list", {
       name: "세계관 설정 검색 결과"
     });
-    const searchedEntityId = "scale-entity-321";
-    await searchResults
-      .locator(`button[data-entity-id="${searchedEntityId}"]`)
-      .waitFor({ state: "visible", timeout: 30_000 });
-    const searchResultReadyMs = Number(
-      (performance.now() - searchStartedAt).toFixed(2)
+    const searchRuns = [];
+    for (let run = 0; run < 5; run += 1) {
+      const numericId = 321 + run;
+      const alias = `별칭 ${numericId}-2`;
+      const entityId = `scale-entity-${numericId}`;
+      const resultStartedAt = performance.now();
+      await search.fill(alias);
+      const resultButton = searchResults.locator(
+        `button[data-entity-id="${entityId}"]`
+      );
+      await resultButton.waitFor({ state: "visible", timeout: 30_000 });
+      const resultReadyMs = Number(
+        (performance.now() - resultStartedAt).toFixed(2)
+      );
+      const resultCount = await searchResults
+        .locator("button[data-entity-id]")
+        .count();
+      const focusStartedAt = performance.now();
+      await resultButton.click();
+      const state = await pollBinderUi(
+        async () => {
+          const current = await readWorldGraphDataset(firstPage);
+          return current.selectedKind === "NODE" &&
+            current.selectedId === entityId
+            ? current
+            : null;
+        },
+        `scale alias search focus ${run + 1}`
+      );
+      await firstPage.evaluate(
+        () =>
+          new Promise((resolveFrame) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolveFrame))
+          )
+      );
+      const measured = await readWorldGraphDataset(firstPage);
+      searchRuns.push({
+        run: run + 1,
+        queryCharacters: Array.from(alias).length,
+        entityId,
+        resultCount,
+        resultReadyMs,
+        clickToFocusMs: Number(
+          (performance.now() - focusStartedAt).toFixed(2)
+        ),
+        internal: measured.performance,
+        selectedId: state.selectedId
+      });
+    }
+    const searchedEntityId = searchRuns.at(-1).entityId;
+    const searchResultCount = searchRuns.every((run) => run.resultCount === 1)
+      ? 1
+      : 0;
+    const searchResultReadyMs = medianMetric(
+      searchRuns.map((run) => run.resultReadyMs)
     );
-    const searchResultCount = await searchResults
-      .locator("button[data-entity-id]")
-      .count();
-    const searchFocusStartedAt = performance.now();
-    await searchResults
-      .locator(`button[data-entity-id="${searchedEntityId}"]`)
-      .click();
-    const searchedState = await pollBinderUi(
-      async () => {
-        const current = await readWorldGraphDataset(firstPage);
-        return current.selectedKind === "NODE" &&
-          current.selectedId === searchedEntityId
-          ? current
-          : null;
-      },
-      "scale alias search focus"
+    const searchFocusObservedMs = medianMetric(
+      searchRuns.map((run) => run.clickToFocusMs)
     );
-    const searchFocusObservedMs = Number(
-      (performance.now() - searchFocusStartedAt).toFixed(2)
-    );
+    const searchedState = await readWorldGraphDataset(firstPage);
 
     await openWorldGraphAccessibleList(firstPage);
-    const selectionEntityId = "scale-entity-400";
-    const selectionStartedAt = performance.now();
-    await firstPage
-      .getByRole("region", { name: "그래프 설정 목록" })
-      .locator(`button[data-entity-id="${selectionEntityId}"]`)
+    const accessibleEntities = firstPage.getByRole("region", {
+      name: "그래프 설정 목록"
+    });
+    const selectionRuns = [];
+    const layoutRequestBeforeSelections = Number(
+      await workspace.getAttribute("data-auto-layout-request")
+    );
+    for (let run = 0; run < 5; run += 1) {
+      const numericId = 400 + run;
+      const entityId = `scale-entity-${numericId}`;
+      const startedAt = performance.now();
+      await accessibleEntities
+        .locator(`button[data-entity-id="${entityId}"]`)
+        .click();
+      await pollBinderUi(
+        async () => {
+          const current = await readWorldGraphDataset(firstPage);
+          return current.selectedKind === "NODE" &&
+            current.selectedId === entityId;
+        },
+        `scale accessible node selection response ${run + 1}`
+      );
+      const selectionMs = Number((performance.now() - startedAt).toFixed(2));
+      const detailPanel = firstPage.locator(
+        '[data-testid="world-graph-detail"]'
+      );
+      await detailPanel
+        .getByRole("heading", {
+          name: `대규모 설정 ${String(numericId).padStart(3, "0")}`,
+          exact: true
+        })
+        .waitFor({ timeout: 30_000 });
+      const shellMs = Number((performance.now() - startedAt).toFixed(2));
+      await detailPanel
+        .getByText("세부정보 불러오는 중", { exact: true })
+        .waitFor({ state: "detached", timeout: 30_000 });
+      await firstPage.evaluate(
+        () =>
+          new Promise((resolveFrame) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolveFrame))
+          )
+      );
+      const measured = await readWorldGraphDataset(firstPage);
+      selectionRuns.push({
+        run: run + 1,
+        entityId,
+        selectionMs,
+        shellMs,
+        fullDetailMs: Number((performance.now() - startedAt).toFixed(2)),
+        internal: measured.performance
+      });
+    }
+    const selectionEntityId = selectionRuns.at(-1).entityId;
+    const selectionObservedMs = medianMetric(
+      selectionRuns.map((run) => run.selectionMs)
+    );
+    const detailObservedMs = medianMetric(
+      selectionRuns.map((run) => run.fullDetailMs)
+    );
+    const layoutRequestAfterSelections = Number(
+      await workspace.getAttribute("data-auto-layout-request")
+    );
+    if (layoutRequestBeforeSelections !== layoutRequestAfterSelections) {
+      throw new Error("Graph selection unexpectedly requested a new layout");
+    }
+    await accessibleEntities
+      .locator('button[data-entity-id="scale-entity-400"]')
       .click();
     await pollBinderUi(
       async () => {
         const current = await readWorldGraphDataset(firstPage);
-        return current.selectedKind === "NODE" &&
-          current.selectedId === selectionEntityId;
+        return current.selectedId === "scale-entity-400" ? current : null;
       },
-      "scale accessible node selection response"
+      "scale cached detail reselection"
     );
-    const selectionObservedMs = Number(
-      (performance.now() - selectionStartedAt).toFixed(2)
+    await firstPage.evaluate(
+      () =>
+        new Promise((resolveFrame) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolveFrame))
+        )
     );
+    const cacheRepeatEvidence = (await readWorldGraphDataset(firstPage))
+      .performance;
+    await accessibleEntities
+      .locator('button[data-entity-id="scale-entity-405"]')
+      .click();
+    await accessibleEntities
+      .locator('button[data-entity-id="scale-entity-406"]')
+      .click();
     await firstPage
       .locator('[data-testid="world-graph-detail"]')
-      .getByRole("heading", { name: "대규모 설정 400", exact: true })
+      .getByRole("heading", { name: "대규모 설정 406", exact: true })
       .waitFor({ timeout: 30_000 });
-    const detailObservedMs = Number(
-      (performance.now() - selectionStartedAt).toFixed(2)
-    );
+    const staleResponseBlocked =
+      (await firstPage
+        .locator('[data-testid="world-graph-detail"]')
+        .getByRole("heading", { name: "대규모 설정 405", exact: true })
+        .count()) === 0;
+    if (!staleResponseBlocked) {
+      throw new Error("A stale graph detail response replaced the latest node");
+    }
 
     const focusedEntityId = "scale-entity-000";
     const focusRuns = [];
@@ -1497,6 +1742,44 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
 
     const layoutReported = layoutRuns.map((run) => run.reportedMs ?? NaN);
     const focusedBfs = focusRuns.map((run) => run.bfsMs ?? NaN);
+    const searchResultSummary = summarizeMetric(
+      searchRuns.map((run) => run.resultReadyMs)
+    );
+    const searchFocusSummary = summarizeMetric(
+      searchRuns.map((run) => run.clickToFocusMs)
+    );
+    const selectionSummary = summarizeMetric(
+      selectionRuns.map((run) => run.selectionMs)
+    );
+    const detailShellSummary = summarizeMetric(
+      selectionRuns.map((run) => run.shellMs)
+    );
+    const fullDetailSummary = summarizeMetric(
+      selectionRuns.map((run) => run.fullDetailMs)
+    );
+    const granularKeys = [
+      "searchClickHandlerMs",
+      "reactSelectionCommitMs",
+      "cytoscapeNodeLookupMs",
+      "nodeFocusAnimationStartMs",
+      "neighborHighlightMs",
+      "detailShellRenderMs",
+      "entityDetailRpcMs",
+      "sceneContextRpcMs",
+      "mentionDiscoveryRpcMs",
+      "ipcSerializeDeserializeMs",
+      "lazyRpcRoundTripMs",
+      "reactDetailCommitMs",
+      "fullLazyDetailMs"
+    ];
+    const granularInteraction = Object.fromEntries(
+      granularKeys.map((key) => [
+        key,
+        summarizeMetric(
+          selectionRuns.map((run) => run.internal[key] ?? Number.NaN)
+        )
+      ])
+    );
     const conditionalBreaches = [];
     const recordConditionalBreach = (metric, targetMs, actualMs) => {
       if (Number.isFinite(actualMs) && actualMs > targetMs) {
@@ -1525,13 +1808,23 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
     );
     recordConditionalBreach(
       "node selection response",
-      250,
-      selectionObservedMs
+      100,
+      selectionSummary.medianMs
     );
     recordConditionalBreach(
-      "node selection to detail heading",
+      "detail shell display",
+      100,
+      detailShellSummary.medianMs
+    );
+    recordConditionalBreach(
+      "full lazy detail median",
       250,
-      detailObservedMs
+      fullDetailSummary.medianMs
+    );
+    recordConditionalBreach(
+      "full lazy detail maximum",
+      500,
+      fullDetailSummary.maximumMs
     );
     recordConditionalBreach(
       "pan/zoom response",
@@ -1547,6 +1840,13 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
     }
     if (
       searchResultCount !== 1 ||
+      searchRuns.length !== 5 ||
+      selectionRuns.length !== 5 ||
+      !staleResponseBlocked ||
+      cacheRepeatEvidence.detailCacheHit !== 1 ||
+      Object.values(granularInteraction).some(
+        (summary) => !Number.isFinite(summary.medianMs)
+      ) ||
       fullEvidence.performance.ipcMs === null ||
       !layoutReported.every((value) => Number.isFinite(value)) ||
       maximumMetric(layoutReported) > 5_000 ||
@@ -1570,9 +1870,14 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
           searchResultReadyMs,
           searchFocusObservedMs,
           searchFocusMs: searchedState.performance.searchFocusMs,
+          searchRuns,
           focusRuns,
           selectionObservedMs,
           detailObservedMs,
+          selectionRuns,
+          granularInteraction,
+          cacheRepeatEvidence,
+          staleResponseBlocked,
           viewportInteraction,
           pageErrors: firstRun.pageErrors
         })}`
@@ -1606,19 +1911,19 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
     } catch (error) {
       const [dataset, evidence, pageState] = await Promise.all([
         readWorldGraphDataset(secondPage).catch((failure) => ({
-          error: failure instanceof Error ? failure.message : String(failure)
+          error: redactError(failure)
         })),
-        readWorldGraphEvidence(secondPage).catch((failure) => ({
-          error: failure instanceof Error ? failure.message : String(failure)
-        })),
+        readWorldGraphEvidence(secondPage)
+          .then(summarizeWorldGraphEvidence)
+          .catch((failure) => ({ error: redactError(failure) })),
         secondPage.locator("body").evaluate((body) => ({
           savePhase:
             body.querySelector('[data-testid="save-status"]')?.getAttribute(
               "data-phase"
             ) ?? "missing",
-          alerts: [...body.querySelectorAll('[role="alert"]')].map(
-            (element) => element.textContent?.trim() ?? ""
-          )
+          alertCount: body.querySelectorAll('[role="alert"]').length,
+          worldGraphPresent: body.querySelector(".world-graph-workspace") !== null,
+          binderRowCount: body.querySelectorAll("[data-node-id]").length
         }))
       ]);
       throw new Error(
@@ -1626,7 +1931,7 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
           dataset,
           evidence,
           pageState
-        })}; ${error instanceof Error ? error.message : String(error)}`
+        })}; ${JSON.stringify(redactError(error))}`
       );
     }
     const reopenedEvidence = reopenedEntry.evidence;
@@ -1762,18 +2067,25 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
           observedMs: filterObservedMs
         },
         search: {
-          alias: "별칭 321-2",
-          entityId: searchedEntityId,
+          runs: searchRuns,
+          lastEntityId: searchedEntityId,
           resultCount: searchResultCount,
           internalFocusMs: searchedState.performance.searchFocusMs,
-          resultReadyMs: searchResultReadyMs,
-          clickToFocusMs: searchFocusObservedMs
+          resultReady: searchResultSummary,
+          clickToFocus: searchFocusSummary
         },
         focused: focusRuns,
         selection: {
-          entityId: selectionEntityId,
-          responseMs: selectionObservedMs,
-          lazyDetailReadyMs: detailObservedMs
+          runs: selectionRuns,
+          lastEntityId: selectionEntityId,
+          visualResponse: selectionSummary,
+          detailShell: detailShellSummary,
+          fullLazyDetail: fullDetailSummary,
+          granularInteraction,
+          cacheRepeatEvidence,
+          staleResponseBlocked,
+          layoutRequestUnchanged:
+            layoutRequestBeforeSelections === layoutRequestAfterSelections
         },
         viewportInteraction,
         dragInteraction
@@ -1800,7 +2112,7 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
         actualCytoscapeCanvas: reopenedEvidence.canvas
       },
       externalRuntimeRequests: externalRuntimeRequestUrls.length,
-      externalRuntimeRequestUrls,
+      externalRuntimeRequestUrls: externalRuntimeRequestUrls.map(redactExternalUrl),
       arbitraryLocalFileReadBlocked: true,
       networkEmulationOffline: true,
       screenshots: [
@@ -1844,6 +2156,7 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
 
 const scaleFixturePath = process.env.MADI_SCALE_FIXTURE?.trim();
 
+try {
 if (scaleFixturePath) {
   await runPhase1dScaleElectronSmoke(scaleFixturePath);
 } else {
@@ -2501,8 +2814,11 @@ try {
       60_000
     );
   } catch (error) {
+    const aliasInputValue = await aliasInput.inputValue().catch(() => null);
     const aliasEvidence = {
-      inputValue: await aliasInput.inputValue().catch(() => "<detached>"),
+      inputAttached: aliasInputValue !== null,
+      inputEmpty: aliasInputValue === "",
+      inputLength: aliasInputValue?.length ?? 0,
       aliasVisible: await firstPage
         .getByRole("region", { name: "별칭" })
         .getByRole("button", {
@@ -2511,10 +2827,12 @@ try {
         })
         .isVisible()
         .catch(() => false),
-      alerts: await firstPage.getByRole("alert").allTextContents()
+      alertCount: await firstPage.getByRole("alert").count()
     };
     throw new Error(
-      `${error instanceof Error ? error.message : String(error)}; state: ${JSON.stringify(aliasEvidence)}`
+      `${JSON.stringify(redactError(error))}; state: ${JSON.stringify(
+        aliasEvidence
+      )}`
     );
   }
 
@@ -2710,9 +3028,9 @@ try {
   const phase1cSnapshotMetadata = (
     await phase1cSnapshotItem.locator(".snapshot-metadata").innerText()
   ).trim();
-  if (!/형식\s+[^\r\n]+ v2/u.test(phase1cSnapshotMetadata)) {
+  if (!/형식\s+[^\r\n]+ \bv3\b/u.test(phase1cSnapshotMetadata)) {
     throw new Error(
-      `Phase 1C named snapshot is not payload v2: ${phase1cSnapshotMetadata}`
+      `Phase 1C named snapshot is not payload v3; metadataLength=${phase1cSnapshotMetadata.length}`
     );
   }
 
@@ -2761,7 +3079,9 @@ try {
   ).trim();
   if (!/설정 변화\s+\+0 · −0 · 변경 1/u.test(phase1cDiffText)) {
     throw new Error(
-      `Phase 1C temporary entity mutation was not reported: ${phase1cDiffText}`
+      `Phase 1C temporary entity mutation was not reported; diffCharacters=${Array.from(
+        phase1cDiffText
+      ).length}`
     );
   }
   await confirmPhase1cRestore.click();
@@ -2804,26 +3124,40 @@ try {
       60_000
     );
   } catch (error) {
-    const restoreEvidence = {
-      name: await firstPage
+    const [name, summary, status, note] = await Promise.all([
+      firstPage
         .getByRole("textbox", { name: "설정 이름" })
         .inputValue()
-        .catch(() => "<detached>"),
-      summary: await firstPage
+        .catch(() => null),
+      firstPage
         .getByRole("textbox", { name: "설정 한 줄 요약" })
         .inputValue()
-        .catch(() => "<detached>"),
-      status: await firstPage
+        .catch(() => null),
+      firstPage
         .getByRole("combobox", { name: "설정 상태 변경" })
         .inputValue()
-        .catch(() => "<detached>"),
-      note: await storyNoteInput(firstPage)
-        .inputValue()
-        .catch(() => "<detached>"),
-      alerts: await firstPage.getByRole("alert").allTextContents()
+        .catch(() => null),
+      storyNoteInput(firstPage).inputValue().catch(() => null)
+    ]);
+    const restoreEvidence = {
+      nameAttached: name !== null,
+      nameMatches: name === phase1cFixture.protagonistName,
+      nameLength: name?.length ?? 0,
+      summaryAttached: summary !== null,
+      summaryMatches: summary === phase1cFixture.protagonistSummary,
+      summaryLength: summary?.length ?? 0,
+      statusAttached: status !== null,
+      statusMatches: status === phase1cFixture.protagonistStatus,
+      noteAttached: note !== null,
+      noteMatches:
+        note === singleParagraphImeProjection(phase1cFixture.protagonistNote),
+      noteCharacters: note ? Array.from(note).length : 0,
+      alertCount: await firstPage.getByRole("alert").count()
     };
     throw new Error(
-      `${error instanceof Error ? error.message : String(error)}; state: ${JSON.stringify(restoreEvidence)}`
+      `${JSON.stringify(redactError(error))}; state: ${JSON.stringify(
+        restoreEvidence
+      )}`
     );
   }
   await firstPage
@@ -2873,18 +3207,26 @@ try {
       location: locationId
     },
     metadata: {
-      name: phase1cFixture.protagonistName,
-      summary: phase1cFixture.protagonistSummary,
+      nameMatched: true,
+      nameCharacters: Array.from(phase1cFixture.protagonistName).length,
+      summaryMatched: true,
+      summaryCharacters: Array.from(phase1cFixture.protagonistSummary).length,
       status: phase1cFixture.protagonistStatus,
-      alias: phase1cFixture.protagonistAlias,
-      tag: phase1cFixture.protagonistTag
+      aliasMatched: true,
+      aliasCharacters: Array.from(phase1cFixture.protagonistAlias).length,
+      tagMatched: true,
+      tagCharacters: Array.from(phase1cFixture.protagonistTag).length
     },
     entityNoteCharacters: Array.from(phase1cFixture.protagonistNote).length,
     customDirectedRelation: {
       relationTypeId: customRelationTypeId,
       relationId: customRelationId,
-      name: phase1cFixture.relationTypeName,
-      inverseName: phase1cFixture.relationTypeInverseName,
+      nameMatched: true,
+      nameCharacters: Array.from(phase1cFixture.relationTypeName).length,
+      inverseNameMatched: true,
+      inverseNameCharacters: Array.from(
+        phase1cFixture.relationTypeInverseName
+      ).length,
       targetEntityId: locationId
     },
     automaticMentionCandidates: 7,
@@ -2899,14 +3241,14 @@ try {
       role: "POV"
     },
     namedSnapshot: {
-      payloadVersion: 2,
+      payloadVersion: 3,
       countAfterRestore: 5,
       temporaryEntityMutationDetected: true,
       restored: true
     }
   };
   reportStage(
-    "Phase 1C Story Bible, mention promotion, scene link, and snapshot v2 restore verified"
+    "Phase 1C Story Bible, mention promotion, scene link, and snapshot v3 restore verified"
   );
 
   const firstGraphEntry = await openWorldGraph(firstPage, 2, 1);
@@ -2916,14 +3258,14 @@ try {
       JSON.stringify([protagonistId, locationId].sort()) ||
     initialGraphEvidence.accessible.edgeIds.length !== 1 ||
     initialGraphEvidence.accessible.edgeIds[0] !== customRelationId ||
-    !initialGraphEvidence.statsText.includes("전체 설정 2개") ||
-    !initialGraphEvidence.statsText.includes("표시 설정 2개") ||
-    !initialGraphEvidence.statsText.includes("전체 관계 1개") ||
-    !initialGraphEvidence.statsText.includes("표시 관계 1개")
+    !initialGraphEvidence.stats.totalNodesMatched ||
+    !initialGraphEvidence.stats.visibleNodesMatched ||
+    !initialGraphEvidence.stats.totalEdgesMatched ||
+    !initialGraphEvidence.stats.visibleEdgesMatched
   ) {
     throw new Error(
       `Phase 1D full graph did not expose the canonical two-node/one-edge model: ${JSON.stringify(
-        initialGraphEvidence
+        summarizeWorldGraphEvidence(initialGraphEvidence)
       )}`
     );
   }
@@ -2997,24 +3339,35 @@ try {
     { selectedKind: "EDGE", selectedId: customRelationId },
     "accessible directed graph-edge selection"
   );
-  await graphDetail
-    .getByRole("heading", {
-      name: phase1cFixture.relationTypeName,
-      exact: true
-    })
-    .waitFor({ timeout: 30_000 });
-  await graphDetail
-    .getByText("방향 관계 →", { exact: true })
-    .waitFor({ timeout: 30_000 });
-  await graphDetail
-    .getByText(
-      `역방향 label: ${phase1cFixture.relationTypeInverseName}`,
-      { exact: true }
-    )
-    .waitFor({ timeout: 30_000 });
-  await graphDetail
-    .getByText(`관계 메모: ${phase1cFixture.relationNote}`, { exact: true })
-    .waitFor({ timeout: 30_000 });
+  try {
+    await pollBinderUi(
+      () =>
+        graphDetail.evaluate((element, expected) => {
+          const heading = element.querySelector("h2")?.textContent?.trim() ?? "";
+          const paragraphs = [...element.querySelectorAll("p")].map(
+            (paragraph) => paragraph.textContent?.trim() ?? ""
+          );
+          return (
+            heading === expected.forwardLabel &&
+            paragraphs.includes("방향 관계 →") &&
+            paragraphs.includes(`역방향 label: ${expected.inverseLabel}`) &&
+            paragraphs.includes(`관계 메모: ${expected.note}`)
+          );
+        }, {
+          forwardLabel: phase1cFixture.relationTypeName,
+          inverseLabel: phase1cFixture.relationTypeInverseName,
+          note: phase1cFixture.relationNote
+        }),
+      "World Graph relation detail equality",
+      30_000
+    );
+  } catch (error) {
+    throw new Error(
+      `World Graph relation detail equality failed: ${JSON.stringify(
+        redactError(error)
+      )}`
+    );
+  }
   await graphDetail
     .getByRole("button", { name: "관계 편집에서 열기", exact: true })
     .click();
@@ -3025,18 +3378,20 @@ try {
   } catch (error) {
     const navigationEvidence = {
       pageErrors: firstRun.pageErrors,
-      alerts: await firstPage.getByRole("alert").allTextContents(),
-      status: await firstPage.getByRole("status").allTextContents(),
-      graph: await readWorldGraphEvidence(firstPage).catch(() => null),
+      alertCount: await firstPage.getByRole("alert").count(),
+      statusCount: await firstPage.getByRole("status").count(),
+      graph: summarizeWorldGraphEvidence(
+        await readWorldGraphEvidence(firstPage).catch(() => null)
+      ),
       storyBibleVisible: await firstPage
         .getByRole("region", { name: "설정 작업 공간" })
         .isVisible()
         .catch(() => false)
     };
     throw new Error(
-      `World Graph relation navigation failed: ${
-        error instanceof Error ? error.message : String(error)
-      }; state: ${JSON.stringify(navigationEvidence)}`
+      `World Graph relation navigation failed: ${JSON.stringify(
+        redactError(error)
+      )}; state: ${JSON.stringify(navigationEvidence)}`
     );
   }
   const relationNavigation = await pollBinderUi(
@@ -3224,7 +3579,7 @@ try {
         relationNavigation,
         entityNavigation,
         sceneNavigation,
-        finalGraphEvidence
+        finalGraphEvidence: summarizeWorldGraphEvidence(finalGraphEvidence)
       })}`
     );
   }
@@ -3238,7 +3593,14 @@ try {
       directed: true,
       actualCytoscapeCanvas: true,
       canvas: initialGraphEvidence.canvas,
-      statsText: initialGraphEvidence.statsText
+      stats: {
+        totalNodes: 2,
+        visibleNodes: 2,
+        totalEdges: 1,
+        visibleEdges: 1,
+        matched: true,
+        textLength: initialGraphEvidence.stats.textLength
+      }
     },
     graphEntry: {
       ...firstGraphEntry.timing,
@@ -3261,9 +3623,16 @@ try {
     },
     edgeDetail: {
       relationId: customRelationId,
-      forwardLabel: phase1cFixture.relationTypeName,
-      inverseLabel: phase1cFixture.relationTypeInverseName,
-      note: phase1cFixture.relationNote,
+      forwardLabelMatched: true,
+      forwardLabelCharacters: Array.from(
+        phase1cFixture.relationTypeName
+      ).length,
+      inverseLabelMatched: true,
+      inverseLabelCharacters: Array.from(
+        phase1cFixture.relationTypeInverseName
+      ).length,
+      noteMatched: true,
+      noteCharacters: Array.from(phase1cFixture.relationNote).length,
       readOnly: true
     },
     navigation: {
@@ -3272,7 +3641,8 @@ try {
       scene: sceneNavigation
     },
     search: {
-      queryMatchedAlias: phase1cFixture.protagonistAlias,
+      queryMatchedAlias: true,
+      queryCharacters: Array.from(phase1cFixture.protagonistAlias).length,
       resultCount: searchResultCount,
       selectedEntityId: protagonistId
     },
@@ -3374,11 +3744,13 @@ try {
         {
           pageErrors: firstRun.pageErrors,
           runtime: firstRun.runtime,
-          externalUrls: firstRun.requestedUrls.filter(
-            (url) =>
-              url !== firstRun.localFileProbeUrl &&
-              !isLocalRuntimeUrl(url)
-          ),
+          externalUrls: firstRun.requestedUrls
+            .filter(
+              (url) =>
+                url !== firstRun.localFileProbeUrl &&
+                !isLocalRuntimeUrl(url)
+            )
+            .map(redactExternalUrl),
           localFileProbe: firstRun.localFileProbe,
           canvas,
           imeChecklist,
@@ -3788,7 +4160,7 @@ try {
       `Restart did not restore project-specific Phase 1D graph UI state: ${JSON.stringify(
         {
           expected: finalGraphEvidence.state,
-          actual: reopenedGraphEvidence,
+          actual: summarizeWorldGraphEvidence(reopenedGraphEvidence),
           relationTypeFilter: await reopenedRelationTypeFilter.isChecked(),
           relationDirection: await reopenedDirectionFilter.inputValue(),
           showLabels: await reopenedLabelFilter.isChecked(),
@@ -3864,11 +4236,13 @@ try {
         {
           pageErrors: secondRun.pageErrors,
           runtime: secondRun.runtime,
-          externalUrls: secondRun.requestedUrls.filter(
-            (url) =>
-              url !== secondRun.localFileProbeUrl &&
-              !isLocalRuntimeUrl(url)
-          ),
+          externalUrls: secondRun.requestedUrls
+            .filter(
+              (url) =>
+                url !== secondRun.localFileProbeUrl &&
+                !isLocalRuntimeUrl(url)
+            )
+            .map(redactExternalUrl),
           localFileProbe: secondRun.localFileProbe,
           firstDiagnostics,
           restoredDiagnostics,
@@ -3888,9 +4262,7 @@ try {
         url !== secondRun.localFileProbeUrl && !isLocalRuntimeUrl(url)
     )
   ];
-  process.stdout.write(
-    `${JSON.stringify(
-      {
+  const acceptance = {
         electronWindow: true,
         packaged,
         appIsPackaged: firstRun.runtime.isPackaged,
@@ -3901,7 +4273,7 @@ try {
         automatedFixtureCharacters: Array.from(longFixture).length,
         binderAcceptance: {
           counts: verifiedFirstBinder.actualCounts,
-          titles: verifiedFirstBinder.actualTitles,
+          titleCount: verifiedFirstBinder.titleCount,
           uniqueTitles: true,
           siblingOrderBeforeRestart: verifiedFirstBinder.siblingOrder,
           siblingOrderAfterRestart: verifiedRestoredBinder.siblingOrder,
@@ -3945,7 +4317,7 @@ try {
         restoredCanvas,
         arbitraryLocalFileReadBlocked: true,
         externalRuntimeRequests: externalRuntimeRequestUrls.length,
-        externalRuntimeRequestUrls,
+        externalRuntimeRequestUrls: externalRuntimeRequestUrls.map(redactExternalUrl),
         networkEmulationOffline: true,
         screenshots: [
           packaged
@@ -3973,11 +4345,25 @@ try {
             ? "output/playwright/madi-packaged-phase1d-reopened.png"
             : "output/playwright/madi-electron-phase1d-reopened.png"
         ]
-      },
-      null,
-      2
-    )}\n`
-  );
+  };
+  assertNoPrivateContent(acceptance, [
+    longFixture.slice(0, 80),
+    selectedSceneFixture,
+    phase1bSearchToken,
+    phase1bReplacementToken,
+    phase1cFixture.protagonistName,
+    phase1cFixture.protagonistSummary,
+    phase1cFixture.protagonistAlias,
+    phase1cFixture.protagonistTag,
+    phase1cFixture.protagonistNote,
+    phase1cFixture.locationName,
+    phase1cFixture.relationTypeName,
+    phase1cFixture.relationTypeInverseName,
+    phase1cFixture.relationNote,
+    ...Object.values(binderTitles),
+    dirtyCloseSuffix
+  ]);
+  process.stdout.write(`${JSON.stringify(acceptance, null, 2)}\n`);
 } finally {
   reportStage("cleanup started");
   if (firstApplication) {
@@ -4001,4 +4387,9 @@ try {
   }
   reportStage("cleanup completed");
 }
+}
+} catch (error) {
+  throw new Error(
+    `electron-smoke-failed: ${JSON.stringify(redactError(error))}`
+  );
 }

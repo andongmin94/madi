@@ -10,6 +10,7 @@ import {
   WORLD_GRAPH_CYTOSCAPE_STYLES
 } from "./cytoscapeElements";
 import { createWorldGraphCoseLayoutOptions } from "./worldGraphLayout";
+import type { WorldGraphPerformanceSample } from "./worldGraphInteraction";
 import type {
   FilteredWorldGraph,
   WorldGraphPoint,
@@ -23,6 +24,7 @@ export interface WorldGraphCanvasProps {
   readonly showLabels: boolean;
   readonly centerEntityId: string | null;
   readonly centerRequest: number;
+  readonly centerRequestStartedAt: number | null;
   readonly nodePositions: Readonly<Record<string, WorldGraphPoint>>;
   readonly viewport: WorldGraphViewport | null;
   readonly autoLayoutRequest: number;
@@ -35,6 +37,9 @@ export interface WorldGraphCanvasProps {
   readonly onViewportChange: (viewport: WorldGraphViewport) => void;
   readonly onElementConversionComplete?: (durationMs: number) => void;
   readonly onLayoutComplete?: (durationMs: number) => void;
+  readonly onInteractionPerformance?: (
+    sample: WorldGraphPerformanceSample
+  ) => void;
 }
 
 function isJsdom(): boolean {
@@ -48,22 +53,80 @@ function selectionFromEvent(event: EventObject): WorldGraphSelection {
   };
 }
 
-function runSelectionStyling(
+const TRANSIENT_SELECTION_CLASSES =
+  "selected neighbor dimmed endpoint connected";
+
+function selectionKey(selection: WorldGraphSelection | null): string {
+  return selection ? `${selection.kind}:${selection.id}` : "NONE";
+}
+
+/** Updates transient classes only; canonical element data and styles stay intact. */
+export function applyWorldGraphSelectionStyles(
   cy: Core,
   graph: FilteredWorldGraph,
   selection: WorldGraphSelection | null
-): void {
-  const byId = new Map(
-    toCytoscapeElements(graph, true, selection).map((element) => [
-      String(element.data.id),
-      element.classes ?? ""
-    ])
-  );
+): Pick<
+  WorldGraphPerformanceSample,
+  "cytoscapeNodeLookupMs" | "neighborHighlightMs"
+> {
+  const lookupStartedAt = performance.now();
+  const selectedElement = selection
+    ? cy.getElementById(selection.id)
+    : cy.collection();
+  const cytoscapeNodeLookupMs = performance.now() - lookupStartedAt;
+  const highlightStartedAt = performance.now();
+  const neighborIds = new Set<string>();
+  const endpointIds = new Set<string>();
+  if (selection?.kind === "NODE") {
+    neighborIds.add(selection.id);
+    for (const edge of graph.edges) {
+      if (edge.sourceEntityId === selection.id) {
+        neighborIds.add(edge.targetEntityId);
+      } else if (edge.targetEntityId === selection.id) {
+        neighborIds.add(edge.sourceEntityId);
+      }
+    }
+  } else if (selection?.kind === "EDGE" && selectedElement.nonempty()) {
+    const edge = graph.edges.find((candidate) => candidate.id === selection.id);
+    if (edge) {
+      endpointIds.add(edge.sourceEntityId);
+      endpointIds.add(edge.targetEntityId);
+    }
+  }
   cy.batch(() => {
-    cy.elements().forEach((element) => {
-      element.classes(byId.get(element.id()) ?? "");
+    cy.elements().removeClass(TRANSIENT_SELECTION_CLASSES);
+    if (!selection || selectedElement.empty()) {
+      return;
+    }
+    if (selection.kind === "NODE") {
+      cy.nodes().forEach((node) => {
+        if (node.id() === selection.id) {
+          node.addClass("selected");
+        } else {
+          node.addClass(neighborIds.has(node.id()) ? "neighbor" : "dimmed");
+        }
+      });
+      cy.edges().forEach((edge) => {
+        edge.addClass(
+          edge.source().id() === selection.id ||
+            edge.target().id() === selection.id
+            ? "connected"
+            : "dimmed"
+        );
+      });
+      return;
+    }
+    cy.nodes().forEach((node) => {
+      node.addClass(endpointIds.has(node.id()) ? "endpoint" : "dimmed");
+    });
+    cy.edges().forEach((edge) => {
+      edge.addClass(edge.id() === selection.id ? "selected" : "dimmed");
     });
   });
+  return {
+    cytoscapeNodeLookupMs,
+    neighborHighlightMs: performance.now() - highlightStartedAt
+  };
 }
 
 export function shouldCenterGraphViewport(
@@ -79,6 +142,7 @@ export function WorldGraphCanvas({
   showLabels,
   centerEntityId,
   centerRequest,
+  centerRequestStartedAt,
   nodePositions,
   viewport,
   autoLayoutRequest,
@@ -87,17 +151,24 @@ export function WorldGraphCanvas({
   onNodePositionChange,
   onViewportChange,
   onElementConversionComplete,
-  onLayoutComplete
+  onLayoutComplete,
+  onInteractionPerformance
 }: WorldGraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  const graphRef = useRef(graph);
+  const lastStyledRef = useRef<{
+    readonly graph: FilteredWorldGraph;
+    readonly selectionKey: string;
+  } | null>(null);
   const callbacksRef = useRef({
     onSelectionChange,
     onOpenEntity,
     onNodePositionChange,
     onViewportChange,
     onElementConversionComplete,
-    onLayoutComplete
+    onLayoutComplete,
+    onInteractionPerformance
   });
   const nodePositionsRef = useRef(nodePositions);
   const viewportRef = useRef(viewport);
@@ -116,7 +187,8 @@ export function WorldGraphCanvas({
       onNodePositionChange,
       onViewportChange,
       onElementConversionComplete,
-      onLayoutComplete
+      onLayoutComplete,
+      onInteractionPerformance
     };
   }, [
     onLayoutComplete,
@@ -124,8 +196,11 @@ export function WorldGraphCanvas({
     onNodePositionChange,
     onOpenEntity,
     onSelectionChange,
-    onViewportChange
+    onViewportChange,
+    onInteractionPerformance
   ]);
+
+  graphRef.current = graph;
 
   useEffect(() => {
     callbacksRef.current.onElementConversionComplete?.(
@@ -180,7 +255,16 @@ export function WorldGraphCanvas({
     cyRef.current = cy;
 
     cy.on("tap", "node, edge", (event) => {
-      callbacksRef.current.onSelectionChange(selectionFromEvent(event));
+      const nextSelection = selectionFromEvent(event);
+      const currentGraph = graphRef.current;
+      callbacksRef.current.onInteractionPerformance?.(
+        applyWorldGraphSelectionStyles(cy, currentGraph, nextSelection)
+      );
+      lastStyledRef.current = {
+        graph: currentGraph,
+        selectionKey: selectionKey(nextSelection)
+      };
+      callbacksRef.current.onSelectionChange(nextSelection);
     });
     cy.on("tap", (event) => {
       if (event.target === cy) {
@@ -237,6 +321,7 @@ export function WorldGraphCanvas({
         }
       }
     });
+    lastStyledRef.current = null;
 
     if (cy.nodes().length === 0) {
       return;
@@ -297,8 +382,16 @@ export function WorldGraphCanvas({
   }, [autoLayoutRequest]);
 
   useEffect(() => {
-    if (cyRef.current) {
-      runSelectionStyling(cyRef.current, graph, selection);
+    const key = selectionKey(selection);
+    if (
+      cyRef.current &&
+      (lastStyledRef.current?.graph !== graph ||
+        lastStyledRef.current.selectionKey !== key)
+    ) {
+      callbacksRef.current.onInteractionPerformance?.(
+        applyWorldGraphSelectionStyles(cyRef.current, graph, selection)
+      );
+      lastStyledRef.current = { graph, selectionKey: key };
     }
   }, [graph, selection]);
 
@@ -311,11 +404,22 @@ export function WorldGraphCanvas({
     ) {
       return;
     }
+    const lookupStartedAt = performance.now();
     const node = cy.getElementById(centerEntityId);
+    const lookupMs = performance.now() - lookupStartedAt;
     if (node.nonempty()) {
+      const animateStartedAt = performance.now();
       cy.animate({ center: { eles: node }, duration: 180 });
+      const animationStartMs = performance.now() - animateStartedAt;
+      callbacksRef.current.onInteractionPerformance?.({
+        cytoscapeNodeLookupMs: lookupMs,
+        nodeFocusAnimationStartMs: animationStartMs,
+        ...(centerRequestStartedAt === null
+          ? {}
+          : { searchFocusMs: performance.now() - centerRequestStartedAt })
+      });
     }
-  }, [centerEntityId, centerRequest]);
+  }, [centerEntityId, centerRequest, centerRequestStartedAt]);
 
   const handleCanvasKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
