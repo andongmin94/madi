@@ -174,7 +174,7 @@ fn migrates_v2_without_data_loss_and_builds_exact_search_projection() {
     .unwrap();
     assert_eq!(opened.metadata.format_version, FORMAT_VERSION);
     assert_eq!(opened.metadata.schema_version, SCHEMA_VERSION);
-    assert_eq!(opened.schema_migrations.last().unwrap().version, 4);
+    assert_eq!(opened.schema_migrations.last().unwrap().version, 5);
     assert_eq!(load_text(&path, &fixture.scene_a_id), "그는 문을 열었다. 문을 다시 닫았다.");
 
     let connection = Connection::open(&path).unwrap();
@@ -359,7 +359,7 @@ fn named_snapshot_hash_crud_diff_restore_and_reopen_preserve_the_logical_project
     .unwrap();
     assert_eq!(created.snapshot.content_hash.len(), 64);
     assert_eq!(created.snapshot.payload_format, "MADI_LOGICAL_JSON");
-    assert_eq!(created.snapshot.payload_version, 2);
+    assert_eq!(created.snapshot.payload_version, 3);
 
     let second = create_named_snapshot(CreateNamedSnapshotParams {
         file_path: path.clone(),
@@ -800,7 +800,7 @@ fn phase_1b_json_rpc_methods_use_the_documented_snake_case_contract() {
     )
     .unwrap();
     assert_eq!(scenes["scenes"].as_array().unwrap().len(), 2);
-    assert_eq!(scenes["metadata"]["schema_version"], 4);
+    assert_eq!(scenes["metadata"]["schema_version"], SCHEMA_VERSION);
     assert_eq!(scenes["total_scenes"], 2);
     assert!(scenes["scenes"][0]["document"]["snapshot_base64"].is_null());
     assert_eq!(

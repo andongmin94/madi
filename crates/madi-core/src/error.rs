@@ -64,6 +64,9 @@ pub enum CoreError {
     #[error("revision conflict: expected {expected}, current revision is {actual}")]
     RevisionConflict { expected: i64, actual: i64 },
 
+    #[error("canvas revision conflict: expected {expected}, current revision is {actual}")]
+    CanvasRevisionConflict { expected: i64, actual: i64 },
+
     #[error("replacement source content changed for scene {scene_id}")]
     SourceContentConflict { scene_id: String },
 

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use crate::canvas::{canonical_canvas_document, MadiCanvasDocument};
 use crate::error::{CoreError, Result};
 use crate::model::{
     AppMeta, ApplyReplacementBatchParams, ApplyReplacementBatchResult, CreateNamedSnapshotParams,
@@ -29,7 +30,7 @@ use crate::storage::{
 use crate::story_bible::normalize_alias;
 
 const SNAPSHOT_PAYLOAD_FORMAT: &str = "MADI_LOGICAL_JSON";
-const SNAPSHOT_PAYLOAD_VERSION: i64 = 2;
+const SNAPSHOT_PAYLOAD_VERSION: i64 = 3;
 const MIN_SNAPSHOT_PAYLOAD_VERSION: i64 = 1;
 const SNAPSHOT_DOCUMENT_FORMAT: &str = "madi.logical-snapshot";
 const SNAPSHOT_UI_STATE_KEY: &str = "workspace.v1";
@@ -427,6 +428,7 @@ pub fn diff_named_snapshot(params: DiffNamedSnapshotParams) -> Result<DiffNamedS
         }
         let target = decode_snapshot_payload(&snapshot, &payload_blob)?;
         let current = capture_snapshot_payload(&transaction)?;
+        validate_snapshot_payload(&current, &metadata.project_id)?;
         let summary = diff_payloads(&target, &current);
         transaction.commit()?;
         DiffNamedSnapshotResult {
@@ -1092,6 +1094,8 @@ struct LogicalSnapshotPayload {
     entity_relations: Vec<SnapshotEntityRelation>,
     #[serde(default)]
     scene_entity_links: Vec<SnapshotSceneEntityLink>,
+    #[serde(default)]
+    canvases: Vec<SnapshotCanvas>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1219,6 +1223,21 @@ struct SnapshotSceneEntityLink {
     role: String,
     note: Option<String>,
     created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct SnapshotCanvas {
+    id: String,
+    project_id: String,
+    name: String,
+    description: Option<String>,
+    document_format: String,
+    document_version: String,
+    document_json: String,
+    content_hash: String,
+    revision: i64,
+    created_at: String,
+    updated_at: String,
 }
 
 fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPayload> {
@@ -1481,6 +1500,35 @@ fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPa
         values
     };
 
+    let canvases = {
+        let mut statement = connection.prepare(
+            "SELECT id, project_id, name, description, document_format,
+                    document_version, document_json, content_hash, revision,
+                    created_at, updated_at
+             FROM canvases WHERE project_id = ?1 ORDER BY id",
+        )?;
+        let rows = statement.query_map([&metadata.project_id], |row| {
+            Ok(SnapshotCanvas {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                name: row.get(2)?,
+                description: row.get(3)?,
+                document_format: row.get(4)?,
+                document_version: row.get(5)?,
+                document_json: row.get(6)?,
+                content_hash: row.get(7)?,
+                revision: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row?);
+        }
+        values
+    };
+
     let ui_state = {
         let mut statement = connection.prepare(
             "SELECT project_id, key, value_json, updated_at
@@ -1530,6 +1578,7 @@ fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPa
         relation_types,
         entity_relations,
         scene_entity_links,
+        canvases,
     })
 }
 
@@ -1556,6 +1605,7 @@ fn insert_snapshot_payload(
 ) -> Result<NamedSnapshotSummary> {
     validate_non_empty("snapshot_id", snapshot_id)?;
     validate_snapshot_name_and_note(name, note)?;
+    validate_snapshot_payload(payload, &payload.project.id)?;
     let payload_blob = serde_json::to_vec(payload)?;
     let content_hash = hash_payload(&payload_blob);
     transaction.execute(
@@ -1722,6 +1772,7 @@ fn decode_snapshot_payload(
             "embedded payload identity is unsupported".to_owned(),
         ));
     }
+    validate_snapshot_payload(&payload, &payload.project.id)?;
     Ok(payload)
 }
 
@@ -2026,7 +2077,66 @@ fn diff_payloads(
             .keys()
             .filter(|key| !target_links.contains_key(*key))
             .count() as u64;
+
+    let target_canvases = target
+        .canvases
+        .iter()
+        .map(|canvas| (canvas.id.as_str(), canvas))
+        .collect::<HashMap<_, _>>();
+    let current_canvases = current
+        .canvases
+        .iter()
+        .map(|canvas| (canvas.id.as_str(), canvas))
+        .collect::<HashMap<_, _>>();
+    summary.added_canvases = current_canvases
+        .keys()
+        .filter(|canvas_id| !target_canvases.contains_key(**canvas_id))
+        .count() as u64;
+    summary.deleted_canvases = target_canvases
+        .keys()
+        .filter(|canvas_id| !current_canvases.contains_key(**canvas_id))
+        .count() as u64;
+    summary.changed_canvases = target_canvases
+        .iter()
+        .filter(|(canvas_id, canvas)| {
+            current_canvases
+                .get(**canvas_id)
+                .is_some_and(|current_canvas| {
+                    !snapshot_canvases_semantically_equal(canvas, current_canvas)
+                })
+        })
+        .count() as u64;
+    let (target_canvas_nodes, target_canvas_edges) = canvas_document_totals(&target.canvases);
+    let (current_canvas_nodes, current_canvas_edges) = canvas_document_totals(&current.canvases);
+    summary.canvas_node_count_delta = (current_canvas_nodes - target_canvas_nodes)
+        .clamp(i64::MIN as i128, i64::MAX as i128) as i64;
+    summary.canvas_edge_count_delta = (current_canvas_edges - target_canvas_edges)
+        .clamp(i64::MIN as i128, i64::MAX as i128) as i64;
     summary
+}
+
+fn snapshot_canvases_semantically_equal(left: &SnapshotCanvas, right: &SnapshotCanvas) -> bool {
+    left.id == right.id
+        && left.project_id == right.project_id
+        && left.name == right.name
+        && left.description == right.description
+        && left.document_format == right.document_format
+        && left.document_version == right.document_version
+        && left.document_json == right.document_json
+        && left.content_hash == right.content_hash
+        && left.created_at == right.created_at
+}
+
+fn canvas_document_totals(canvases: &[SnapshotCanvas]) -> (i128, i128) {
+    canvases.iter().fold((0_i128, 0_i128), |totals, canvas| {
+        let Ok(document) = serde_json::from_str::<MadiCanvasDocument>(&canvas.document_json) else {
+            return totals;
+        };
+        (
+            totals.0 + document.nodes.len() as i128,
+            totals.1 + document.edges.len() as i128,
+        )
+    })
 }
 
 fn snapshot_entities_semantically_equal(left: &SnapshotEntity, right: &SnapshotEntity) -> bool {
@@ -2174,6 +2284,11 @@ fn validate_snapshot_payload(payload: &LogicalSnapshotPayload, project_id: &str)
             "version 1 payload must not contain Story Bible data".to_owned(),
         ));
     }
+    if payload.version < 3 && !payload.canvases.is_empty() {
+        return Err(CoreError::SnapshotIntegrity(
+            "payload versions 1 and 2 must not contain Canvas data".to_owned(),
+        ));
+    }
 
     let mut entity_ids = HashSet::new();
     let mut entity_document_ids = HashSet::new();
@@ -2277,9 +2392,9 @@ fn validate_snapshot_payload(payload: &LogicalSnapshotPayload, project_id: &str)
             ));
         }
     }
-    if payload.version == 2 && !expected_builtin_relation_type_ids.is_empty() {
+    if payload.version >= 2 && !expected_builtin_relation_type_ids.is_empty() {
         return Err(CoreError::SnapshotIntegrity(
-            "version 2 payload is missing built-in relation types".to_owned(),
+            "payload is missing built-in relation types".to_owned(),
         ));
     }
 
@@ -2375,6 +2490,32 @@ fn validate_snapshot_payload(payload: &LogicalSnapshotPayload, project_id: &str)
             return Err(CoreError::SnapshotIntegrity(
                 "payload UI state is outside the supported workspace key".to_owned(),
             ));
+        }
+    }
+    let mut canvas_ids = HashSet::new();
+    for canvas in &payload.canvases {
+        if canvas.project_id != project_id
+            || canvas.document_format != "JSON_CANVAS"
+            || canvas.document_version != "1.0"
+            || canvas.revision < 0
+            || !canvas_ids.insert(canvas.id.as_str())
+        {
+            return Err(CoreError::SnapshotIntegrity(
+                "payload canvas identity, ownership, or revision is invalid".to_owned(),
+            ));
+        }
+        validate_non_empty("snapshot canvas id", &canvas.id)
+            .and_then(|_| validate_non_empty("snapshot canvas name", &canvas.name))
+            .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+        let document: MadiCanvasDocument = serde_json::from_str(&canvas.document_json)
+            .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+        let (canonical, content_hash) = canonical_canvas_document(&document)
+            .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+        if canonical != canvas.document_json || content_hash != canvas.content_hash {
+            return Err(CoreError::SnapshotIntegrity(format!(
+                "canvas {} canonical content hash is invalid",
+                canvas.id
+            )));
         }
     }
     Ok(())
@@ -2542,6 +2683,10 @@ fn take_character_lengths(lengths: &[(u64, u64)], selected_count: u64) -> Result
 }
 
 fn restore_payload(transaction: &Transaction<'_>, payload: &LogicalSnapshotPayload) -> Result<()> {
+    transaction.execute(
+        "DELETE FROM canvases WHERE project_id = ?1",
+        [&payload.project.id],
+    )?;
     transaction.execute(
         "DELETE FROM entities WHERE project_id = ?1",
         [&payload.project.id],
@@ -2740,6 +2885,28 @@ fn restore_payload(transaction: &Transaction<'_>, payload: &LogicalSnapshotPaylo
                 link.role,
                 link.note,
                 link.created_at
+            ],
+        )?;
+    }
+    for canvas in &payload.canvases {
+        transaction.execute(
+            "INSERT INTO canvases (
+                id, project_id, name, description, document_format,
+                document_version, document_json, content_hash, revision,
+                created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                canvas.id,
+                canvas.project_id,
+                canvas.name,
+                canvas.description,
+                canvas.document_format,
+                canvas.document_version,
+                canvas.document_json,
+                canvas.content_hash,
+                canvas.revision,
+                canvas.created_at,
+                canvas.updated_at
             ],
         )?;
     }

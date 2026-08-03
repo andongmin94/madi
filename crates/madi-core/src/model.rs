@@ -702,6 +702,11 @@ pub struct SnapshotDiffSummary {
     pub added_relation_types: u64,
     pub deleted_relation_types: u64,
     pub changed_relation_types: u64,
+    pub added_canvases: u64,
+    pub deleted_canvases: u64,
+    pub changed_canvases: u64,
+    pub canvas_node_count_delta: i64,
+    pub canvas_edge_count_delta: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -2,6 +2,7 @@ use std::io::{BufRead, Write};
 
 use serde_json::{json, Value};
 
+use crate::canvas::*;
 use crate::error::{CoreError, Result};
 use crate::hierarchy::{
     create_tree_node, delete_tree_node, load_project_tree, load_scene, load_ui_state,
@@ -77,6 +78,34 @@ pub fn dispatch(method: &str, params: Value) -> Result<Value> {
         "recover_plain_text" => {
             let request: RecoverPlainTextParams = parse_params(params)?;
             Ok(serde_json::to_value(recover_plain_text(request)?)?)
+        }
+        "list_canvases" => {
+            let request: ListCanvasesParams = parse_params(params)?;
+            Ok(serde_json::to_value(list_canvases(request)?)?)
+        }
+        "create_canvas" => {
+            let request: CreateCanvasParams = parse_params(params)?;
+            Ok(serde_json::to_value(create_canvas(request)?)?)
+        }
+        "update_canvas" => {
+            let request: UpdateCanvasParams = parse_params(params)?;
+            Ok(serde_json::to_value(update_canvas(request)?)?)
+        }
+        "duplicate_canvas" => {
+            let request: DuplicateCanvasParams = parse_params(params)?;
+            Ok(serde_json::to_value(duplicate_canvas(request)?)?)
+        }
+        "delete_canvas" => {
+            let request: DeleteCanvasParams = parse_params(params)?;
+            Ok(serde_json::to_value(delete_canvas(request)?)?)
+        }
+        "load_canvas" => {
+            let request: LoadCanvasParams = parse_params(params)?;
+            Ok(serde_json::to_value(load_canvas(request)?)?)
+        }
+        "save_canvas" => {
+            let request: SaveCanvasParams = parse_params(params)?;
+            Ok(serde_json::to_value(save_canvas(request)?)?)
         }
         "load_project_tree" => {
             let request: LoadProjectTreeParams = parse_params(params)?;
@@ -380,9 +409,9 @@ fn rpc_error(error: &CoreError, method: &str) -> (i64, String) {
     match error {
         CoreError::InvalidInput(_) | CoreError::Json(_) => (-32602, error.to_string()),
         CoreError::MethodNotFound(_) => (-32601, format!("Method not found: {method}")),
-        CoreError::RevisionConflict { .. } | CoreError::SourceContentConflict { .. } => {
-            (-32001, error.to_string())
-        }
+        CoreError::RevisionConflict { .. }
+        | CoreError::CanvasRevisionConflict { .. }
+        | CoreError::SourceContentConflict { .. } => (-32001, error.to_string()),
         CoreError::AlreadyExists(_) => (-32002, error.to_string()),
         CoreError::IdentifierConflict { .. } => (-32003, error.to_string()),
         CoreError::NotFound(_) | CoreError::NodeNotFound { .. } => (-32004, error.to_string()),

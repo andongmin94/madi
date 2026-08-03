@@ -4,31 +4,44 @@ import {
   type ApplyReplacementBatchResult,
   IPC_EVENTS,
   type CompleteCloseRequest,
+  type CanvasMutationResult,
+  type CanvasRecord,
+  type CreateCanvasRequest,
   type CreateNamedSnapshotRequest,
   type CreateNodeRequest,
   type CreateProjectRequest,
   type DeleteNodeRequest,
+  type DeleteCanvasRequest,
+  type DeleteCanvasResult,
   type DeleteNamedSnapshotRequest,
   type DeleteNamedSnapshotResult,
   type DiffNamedSnapshotRequest,
   type DiffNamedSnapshotResult,
+  type DuplicateCanvasRequest,
   type EntityGraphDetail,
   type EntityGraphRequest,
   type EntitySceneContext,
+  type ExportCanvasRequest,
+  type ExportCanvasResult,
   type LoadedSceneDocument,
   type LoadedDocument,
   type LoadSceneDocumentRequest,
   type LoadDocumentRequest,
+  type LoadCanvasRequest,
+  type LoadPlotCanvasUiStateResult,
   type LoadUiStateResult,
   type LoadWorldGraphUiStateResult,
   type ListDescendantScenesRequest,
   type ListDescendantScenesResult,
+  type ListCanvasesRequest,
+  type ListCanvasesResult,
   type ListNamedSnapshotsResult,
   type MadiDesktopApi,
   type NamedSnapshotMutationResult,
   type MoveNodeRequest,
   type OpenProjectRequest,
   type PlainTextRecovery,
+  type PickCanvasImportResult,
   type ProjectTree,
   type ProjectSession,
   type RecoverPlainTextRequest,
@@ -39,6 +52,9 @@ import {
   type SaveSceneDocumentResult,
   type SaveDocumentRequest,
   type SaveDocumentResult,
+  type SaveCanvasRequest,
+  type SaveCanvasResult,
+  type SavePlotCanvasUiStateRequest,
   type SaveUiStateRequest,
   type SaveWorldGraphUiStateRequest,
   type ScopeNodeRequest,
@@ -102,6 +118,7 @@ import type {
   SetEntityTagsResult,
   TagMutationResult,
   UpdateEntityRelationRequest,
+  UpdateCanvasRequest,
   UpdateEntityRequest,
   UpdateRelationTypeRequest,
   UpdateTagRequest
@@ -640,6 +657,95 @@ export function createMadiDesktopApi(
         IPC_CHANNELS.getEntitySceneContext,
         request
       )) as EntitySceneContext;
+    },
+
+    async listCanvases(
+      request: ListCanvasesRequest
+    ): Promise<ListCanvasesResult> {
+      return (await invoke(
+        IPC_CHANNELS.listCanvases,
+        request
+      )) as ListCanvasesResult;
+    },
+
+    async createCanvas(
+      request: CreateCanvasRequest
+    ): Promise<CanvasMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.createCanvas,
+        request
+      )) as CanvasMutationResult;
+    },
+
+    async updateCanvas(
+      request: UpdateCanvasRequest
+    ): Promise<CanvasMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.updateCanvas,
+        request
+      )) as CanvasMutationResult;
+    },
+
+    async duplicateCanvas(
+      request: DuplicateCanvasRequest
+    ): Promise<CanvasMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.duplicateCanvas,
+        request
+      )) as CanvasMutationResult;
+    },
+
+    async deleteCanvas(
+      request: DeleteCanvasRequest
+    ): Promise<DeleteCanvasResult> {
+      return (await invoke(
+        IPC_CHANNELS.deleteCanvas,
+        request
+      )) as DeleteCanvasResult;
+    },
+
+    async loadCanvas(request: LoadCanvasRequest): Promise<CanvasRecord> {
+      return (await invoke(
+        IPC_CHANNELS.loadCanvas,
+        request
+      )) as CanvasRecord;
+    },
+
+    async saveCanvas(request: SaveCanvasRequest): Promise<SaveCanvasResult> {
+      return (await invoke(
+        IPC_CHANNELS.saveCanvas,
+        request
+      )) as SaveCanvasResult;
+    },
+
+    async savePlotCanvasUiState(
+      request: SavePlotCanvasUiStateRequest
+    ): Promise<void> {
+      await invoke(IPC_CHANNELS.savePlotCanvasUiState, request);
+    },
+
+    async loadPlotCanvasUiState(
+      request: SessionRequest
+    ): Promise<LoadPlotCanvasUiStateResult> {
+      return (await invoke(
+        IPC_CHANNELS.loadPlotCanvasUiState,
+        request
+      )) as LoadPlotCanvasUiStateResult;
+    },
+
+    async pickCanvasImport(): Promise<PickCanvasImportResult | null> {
+      return (await invoke(
+        IPC_CHANNELS.pickCanvasImport
+      )) as PickCanvasImportResult | null;
+    },
+
+    async exportCanvas(
+      request: ExportCanvasRequest
+    ): Promise<ExportCanvasResult | null> {
+      return (await invoke(
+        IPC_CHANNELS.exportCanvas,
+        request
+      )) as ExportCanvasResult | null;
     },
 
     async getAppVersion(): Promise<string> {

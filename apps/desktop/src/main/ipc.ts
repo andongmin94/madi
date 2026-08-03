@@ -3,20 +3,28 @@ import type {
   IpcMain,
   IpcMainInvokeEvent
 } from "electron";
+import { performance } from "node:perf_hooks";
+import { deserialize, serialize } from "node:v8";
 import {
   IPC_CHANNELS,
   type ApplyReplacementBatchRequest,
   type CompleteCloseRequest,
+  type CreateCanvasRequest,
   type CreateNamedSnapshotRequest,
   type CreateNodeRequest,
   type CreateProjectRequest,
   type DeleteNodeRequest,
+  type DeleteCanvasRequest,
   type DeleteNamedSnapshotRequest,
   type DiffNamedSnapshotRequest,
+  type DuplicateCanvasRequest,
   type EntityGraphRequest,
+  type ExportCanvasRequest,
   type LoadSceneDocumentRequest,
   type LoadDocumentRequest,
   type ListDescendantScenesRequest,
+  type ListCanvasesRequest,
+  type LoadCanvasRequest,
   type MoveNodeRequest,
   type OpenProjectRequest,
   type RecoverPlainTextRequest,
@@ -25,6 +33,8 @@ import {
   type ReorderNodeRequest,
   type SaveSceneDocumentRequest,
   type SaveDocumentRequest,
+  type SaveCanvasRequest,
+  type SavePlotCanvasUiStateRequest,
   type SaveUiStateRequest,
   type SaveWorldGraphUiStateRequest,
   type ScopeNodeRequest,
@@ -58,6 +68,7 @@ import type {
   SearchEntitiesRequest,
   SetEntityTagsRequest,
   UpdateEntityRelationRequest,
+  UpdateCanvasRequest,
   UpdateEntityRequest,
   UpdateRelationTypeRequest,
   UpdateTagRequest
@@ -69,6 +80,19 @@ function requireObject(value: unknown): Record<string, unknown> {
     throw new Error("Invalid request");
   }
   return value as Record<string, unknown>;
+}
+
+function withIpcCloneTiming<T extends object>(
+  request: Readonly<Record<string, unknown>>,
+  result: T
+): T & { readonly ipcSerializeDeserializeMs: number } {
+  const startedAt = performance.now();
+  deserialize(serialize(request));
+  deserialize(serialize(result));
+  return {
+    ...result,
+    ipcSerializeDeserializeMs: performance.now() - startedAt
+  };
 }
 
 function normalizedUrl(value: string): string | undefined {
@@ -304,6 +328,87 @@ export function registerMadiIpc({
       );
     }
   );
+
+  ipcMain.handle(
+    IPC_CHANNELS.savePlotCanvasUiState,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      await service.savePlotCanvasUiState(
+        requireObject(rawRequest) as unknown as SavePlotCanvasUiStateRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.loadPlotCanvasUiState,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.loadPlotCanvasUiState(
+        requireObject(rawRequest) as unknown as SessionRequest
+      );
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.listCanvases, async (event, rawRequest) => {
+    authorize(event);
+    return service.listCanvases(
+      requireObject(rawRequest) as unknown as ListCanvasesRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.createCanvas, async (event, rawRequest) => {
+    authorize(event);
+    return service.createCanvas(
+      requireObject(rawRequest) as unknown as CreateCanvasRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.updateCanvas, async (event, rawRequest) => {
+    authorize(event);
+    return service.updateCanvas(
+      requireObject(rawRequest) as unknown as UpdateCanvasRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.duplicateCanvas, async (event, rawRequest) => {
+    authorize(event);
+    return service.duplicateCanvas(
+      requireObject(rawRequest) as unknown as DuplicateCanvasRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.deleteCanvas, async (event, rawRequest) => {
+    authorize(event);
+    return service.deleteCanvas(
+      requireObject(rawRequest) as unknown as DeleteCanvasRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.loadCanvas, async (event, rawRequest) => {
+    authorize(event);
+    return service.loadCanvas(
+      requireObject(rawRequest) as unknown as LoadCanvasRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.saveCanvas, async (event, rawRequest) => {
+    authorize(event);
+    return service.saveCanvas(
+      requireObject(rawRequest) as unknown as SaveCanvasRequest
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.pickCanvasImport, async (event) => {
+    authorize(event);
+    return service.pickCanvasImport();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.exportCanvas, async (event, rawRequest) => {
+    authorize(event);
+    return service.exportCanvas(
+      requireObject(rawRequest) as unknown as ExportCanvasRequest
+    );
+  });
 
   ipcMain.handle(
     IPC_CHANNELS.listDescendantScenes,
@@ -647,9 +752,11 @@ export function registerMadiIpc({
     IPC_CHANNELS.discoverEntityMentions,
     async (event, rawRequest) => {
       authorize(event);
-      return service.discoverEntityMentions(
-        requireObject(rawRequest) as unknown as DiscoverEntityMentionsRequest
+      const request = requireObject(rawRequest);
+      const result = await service.discoverEntityMentions(
+        request as unknown as DiscoverEntityMentionsRequest
       );
+      return withIpcCloneTiming(request, result);
     }
   );
 
@@ -684,9 +791,11 @@ export function registerMadiIpc({
     IPC_CHANNELS.getEntityGraphDetail,
     async (event, rawRequest) => {
       authorize(event);
-      return service.getEntityGraphDetail(
-        requireObject(rawRequest) as unknown as EntityGraphRequest
+      const request = requireObject(rawRequest);
+      const result = await service.getEntityGraphDetail(
+        request as unknown as EntityGraphRequest
       );
+      return withIpcCloneTiming(request, result);
     }
   );
 
@@ -694,9 +803,11 @@ export function registerMadiIpc({
     IPC_CHANNELS.getEntitySceneContext,
     async (event, rawRequest) => {
       authorize(event);
-      return service.getEntitySceneContext(
-        requireObject(rawRequest) as unknown as EntityGraphRequest
+      const request = requireObject(rawRequest);
+      const result = await service.getEntitySceneContext(
+        request as unknown as EntityGraphRequest
       );
+      return withIpcCloneTiming(request, result);
     }
   );
 

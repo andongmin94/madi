@@ -50,11 +50,12 @@ fn migrates_a_version_zero_project_and_records_the_migration() {
 
     assert_eq!(opened.metadata.format_version, FORMAT_VERSION);
     assert_eq!(opened.metadata.schema_version, SCHEMA_VERSION);
-    assert_eq!(opened.schema_migrations.len(), 4);
+    assert_eq!(opened.schema_migrations.len(), 5);
     assert_eq!(opened.schema_migrations[0].version, 1);
     assert_eq!(opened.schema_migrations[1].version, 2);
     assert_eq!(opened.schema_migrations[2].version, 3);
     assert_eq!(opened.schema_migrations[3].version, 4);
+    assert_eq!(opened.schema_migrations[4].version, 5);
     assert!(opened.documents.is_empty());
 
     let connection = Connection::open(path).unwrap();
@@ -147,8 +148,8 @@ fn migrates_format_zero_schema_one_document_into_default_chapter_scene() {
     assert_eq!(opened.metadata.schema_version, SCHEMA_VERSION);
     assert_eq!(opened.metadata.revision, 7);
     assert_eq!(opened.documents.len(), 1);
-    assert_eq!(opened.schema_migrations.len(), 4);
-    assert_eq!(opened.schema_migrations[3].version, 4);
+    assert_eq!(opened.schema_migrations.len(), 5);
+    assert_eq!(opened.schema_migrations[4].version, 5);
 
     let tree = load_project_tree(LoadProjectTreeParams {
         file_path: path.clone(),

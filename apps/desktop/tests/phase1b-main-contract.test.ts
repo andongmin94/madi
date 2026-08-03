@@ -468,7 +468,12 @@ describe("Phase 1B DesktopService RPC contract", () => {
       changedTags: 17,
       addedRelationTypes: 18,
       deletedRelationTypes: 19,
-      changedRelationTypes: 20
+      changedRelationTypes: 20,
+      addedCanvases: 0,
+      deletedCanvases: 0,
+      changedCanvases: 0,
+      canvasNodeCountDelta: 0,
+      canvasEdgeCountDelta: 0
     });
     expect(request.mock.calls).toEqual([
       [

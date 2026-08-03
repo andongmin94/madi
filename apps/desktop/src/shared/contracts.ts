@@ -16,6 +16,8 @@ export const IPC_CHANNELS = {
   loadUiState: "madi:load-ui-state",
   saveWorldGraphUiState: "madi:save-world-graph-ui-state",
   loadWorldGraphUiState: "madi:load-world-graph-ui-state",
+  savePlotCanvasUiState: "madi:save-plot-canvas-ui-state",
+  loadPlotCanvasUiState: "madi:load-plot-canvas-ui-state",
   listDescendantScenes: "madi:list-descendant-scenes",
   searchProject: "madi:search-project",
   getTextStatistics: "madi:get-text-statistics",
@@ -60,6 +62,15 @@ export const IPC_CHANNELS = {
   getWorldGraphStats: "madi:get-world-graph-stats",
   getEntityGraphDetail: "madi:get-entity-graph-detail",
   getEntitySceneContext: "madi:get-entity-scene-context",
+  listCanvases: "madi:list-canvases",
+  createCanvas: "madi:create-canvas",
+  updateCanvas: "madi:update-canvas",
+  duplicateCanvas: "madi:duplicate-canvas",
+  deleteCanvas: "madi:delete-canvas",
+  loadCanvas: "madi:load-canvas",
+  saveCanvas: "madi:save-canvas",
+  pickCanvasImport: "madi:pick-canvas-import",
+  exportCanvas: "madi:export-canvas",
   getAppVersion: "madi:get-app-version",
   completeCloseRequest: "madi:complete-close-request"
 } as const;
@@ -348,6 +359,11 @@ export interface SnapshotDiffSummary {
   readonly changedRelations: number;
   readonly changedSceneLinks: number;
   readonly changedEntityNotes: number;
+  readonly addedCanvases: number;
+  readonly deletedCanvases: number;
+  readonly changedCanvases: number;
+  readonly canvasNodeCountDelta: number;
+  readonly canvasEdgeCountDelta: number;
 }
 
 export interface DiffNamedSnapshotRequest extends SessionRequest {
@@ -832,6 +848,8 @@ export interface DiscoverEntityMentionsResult {
   readonly limit: number;
   readonly hasMore: boolean;
   readonly revision: number;
+  /** Numeric-only main-process structured-clone cost estimate. */
+  readonly ipcSerializeDeserializeMs?: number;
 }
 
 export interface PromoteEntityMentionRequest extends SessionRequest {
@@ -969,6 +987,8 @@ export interface EntityGraphDetail {
   readonly outgoingRelations: readonly EntityGraphRelationDetail[];
   readonly incomingRelations: readonly EntityGraphRelationDetail[];
   readonly undirectedRelations: readonly EntityGraphRelationDetail[];
+  /** Numeric-only main-process structured-clone cost estimate. */
+  readonly ipcSerializeDeserializeMs?: number;
 }
 
 export interface EntitySceneContextLink {
@@ -983,6 +1003,8 @@ export interface EntitySceneContext {
   readonly revision: number;
   readonly entityId: string;
   readonly links: readonly EntitySceneContextLink[];
+  /** Numeric-only main-process structured-clone cost estimate. */
+  readonly ipcSerializeDeserializeMs?: number;
 }
 
 export type WorldGraphMode = "FULL" | "FOCUSED";
@@ -1032,6 +1054,190 @@ export interface SaveWorldGraphUiStateRequest extends SessionRequest {
 
 export interface LoadWorldGraphUiStateResult {
   readonly state: WorldGraphUiState | null;
+}
+
+export type CanvasSort =
+  | "NAME_ASC"
+  | "NAME_DESC"
+  | "UPDATED_ASC"
+  | "UPDATED_DESC";
+export type JsonCanvasNodeType = "text" | "group";
+export type JsonCanvasNodeKind =
+  | "TEXT"
+  | "ENTITY_REFERENCE"
+  | "SCENE_REFERENCE"
+  | "GROUP";
+export type JsonCanvasSide = "top" | "right" | "bottom" | "left";
+export type JsonCanvasEnd = "none" | "arrow";
+export type JsonCanvasLineStyle = "SOLID" | "DASHED" | "DOTTED";
+
+export interface MadiCanvasNodeExtension {
+  readonly nodeKind?: JsonCanvasNodeKind;
+  readonly entityId?: string;
+  readonly sceneNodeId?: string;
+  readonly parentGroupId?: string;
+  readonly originalLabel?: string;
+}
+
+export interface MadiCanvasNode {
+  readonly id: string;
+  readonly type: JsonCanvasNodeType;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly text?: string;
+  readonly label?: string;
+  readonly color?: string;
+  readonly background?: string;
+  readonly backgroundStyle?: "cover" | "ratio" | "repeat";
+  readonly madi?: MadiCanvasNodeExtension;
+}
+
+export interface MadiCanvasEdgeExtension {
+  readonly lineStyle?: JsonCanvasLineStyle;
+}
+
+export interface MadiCanvasEdge {
+  readonly id: string;
+  readonly fromNode: string;
+  readonly toNode: string;
+  readonly fromSide?: JsonCanvasSide;
+  readonly toSide?: JsonCanvasSide;
+  readonly fromEnd?: JsonCanvasEnd;
+  readonly toEnd?: JsonCanvasEnd;
+  readonly color?: string;
+  readonly label?: string;
+  readonly madi?: MadiCanvasEdgeExtension;
+}
+
+/** JSON Canvas 1.0 document. React Flow runtime objects never cross IPC. */
+export interface MadiCanvasDocument {
+  readonly nodes: readonly MadiCanvasNode[];
+  readonly edges: readonly MadiCanvasEdge[];
+}
+
+export interface CanvasSummary {
+  readonly id: string;
+  readonly projectId: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly documentFormat: "JSON_CANVAS";
+  readonly documentVersion: "1.0";
+  readonly contentHash: string;
+  readonly revision: number;
+  readonly nodeCount: number;
+  readonly edgeCount: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface CanvasRecord extends CanvasSummary {
+  readonly document: MadiCanvasDocument;
+}
+
+export interface ListCanvasesRequest extends SessionRequest {
+  readonly sort?: CanvasSort;
+}
+
+export interface ListCanvasesResult {
+  readonly canvases: readonly CanvasSummary[];
+  readonly revision: number;
+}
+
+export interface CreateCanvasRequest extends SessionRequest {
+  readonly name: string;
+  readonly description?: string | null;
+  readonly document?: MadiCanvasDocument;
+}
+
+export interface UpdateCanvasRequest extends SessionRequest {
+  readonly canvasId: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly expectedCanvasRevision: number;
+}
+
+export interface DuplicateCanvasRequest extends SessionRequest {
+  readonly sourceCanvasId: string;
+  readonly name?: string;
+}
+
+export interface DeleteCanvasRequest extends SessionRequest {
+  readonly canvasId: string;
+  readonly expectedCanvasRevision: number;
+}
+
+export interface LoadCanvasRequest extends SessionRequest {
+  readonly canvasId: string;
+}
+
+export interface CanvasMutationResult {
+  readonly canvas: CanvasRecord;
+  readonly revision: number;
+  readonly noOp: boolean;
+}
+
+export interface DeleteCanvasResult {
+  readonly deletedCanvasId: string;
+  readonly revision: number;
+}
+
+export interface SaveCanvasRequest extends SessionRequest {
+  readonly canvasId: string;
+  readonly expectedCanvasRevision: number;
+  readonly generation: number;
+  readonly saveSequence: number;
+  readonly document: MadiCanvasDocument;
+}
+
+export interface SaveCanvasResult extends CanvasMutationResult {
+  readonly canvasId: string;
+  readonly generation: number;
+  readonly saveSequence: number;
+}
+
+export interface PlotCanvasViewport {
+  readonly x: number;
+  readonly y: number;
+  readonly zoom: number;
+}
+
+export interface PlotCanvasViewState {
+  readonly viewport: PlotCanvasViewport;
+  readonly selectedElementId: string | null;
+  readonly inspectorWidth: number;
+  readonly showGrid: boolean;
+  readonly showMinimap: boolean;
+  readonly snapToGrid: boolean;
+}
+
+export interface PlotCanvasUiState {
+  readonly lastCanvasId: string | null;
+  readonly canvasStates: Readonly<Record<string, PlotCanvasViewState>>;
+}
+
+export interface SavePlotCanvasUiStateRequest extends SessionRequest {
+  readonly state: PlotCanvasUiState;
+}
+
+export interface LoadPlotCanvasUiStateResult {
+  readonly state: PlotCanvasUiState | null;
+}
+
+export interface PickCanvasImportResult {
+  readonly fileName: string;
+  readonly source: string;
+}
+
+export interface ExportCanvasRequest extends SessionRequest {
+  readonly canvasId: string;
+  readonly suggestedFileName?: string;
+}
+
+export interface ExportCanvasResult {
+  readonly fileName: string;
+  readonly bytes: number;
 }
 
 export interface CreateProjectRequest {
@@ -1236,6 +1442,25 @@ export interface MadiDesktopApi {
   getEntitySceneContext(
     request: EntityGraphRequest
   ): Promise<EntitySceneContext>;
+  listCanvases(request: ListCanvasesRequest): Promise<ListCanvasesResult>;
+  createCanvas(request: CreateCanvasRequest): Promise<CanvasMutationResult>;
+  updateCanvas(request: UpdateCanvasRequest): Promise<CanvasMutationResult>;
+  duplicateCanvas(
+    request: DuplicateCanvasRequest
+  ): Promise<CanvasMutationResult>;
+  deleteCanvas(request: DeleteCanvasRequest): Promise<DeleteCanvasResult>;
+  loadCanvas(request: LoadCanvasRequest): Promise<CanvasRecord>;
+  saveCanvas(request: SaveCanvasRequest): Promise<SaveCanvasResult>;
+  savePlotCanvasUiState(
+    request: SavePlotCanvasUiStateRequest
+  ): Promise<void>;
+  loadPlotCanvasUiState(
+    request: SessionRequest
+  ): Promise<LoadPlotCanvasUiStateResult>;
+  pickCanvasImport(): Promise<PickCanvasImportResult | null>;
+  exportCanvas(
+    request: ExportCanvasRequest
+  ): Promise<ExportCanvasResult | null>;
   getAppVersion(): Promise<string>;
   onCloseRequested(listener: () => void): () => void;
   completeCloseRequest(request: CompleteCloseRequest): Promise<boolean>;

@@ -65,7 +65,14 @@ export const CORE_METHODS = [
   "get_world_graph",
   "get_world_graph_stats",
   "get_entity_graph_detail",
-  "get_entity_scene_context"
+  "get_entity_scene_context",
+  "list_canvases",
+  "create_canvas",
+  "update_canvas",
+  "duplicate_canvas",
+  "delete_canvas",
+  "load_canvas",
+  "save_canvas"
 ] as const;
 
 export type CoreMethod = (typeof CORE_METHODS)[number];

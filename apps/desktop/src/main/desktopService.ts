@@ -1,29 +1,45 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import type { BrowserWindow, SaveDialogOptions } from "electron";
 import type {
   ApplyReplacementBatchRequest,
   ApplyReplacementBatchResult,
+  CanvasMutationResult,
+  CanvasRecord,
+  CanvasSort,
+  CanvasSummary,
+  CreateCanvasRequest,
   CreateNamedSnapshotRequest,
   CreateNodeRequest,
   CreateProjectRequest,
+  DeleteCanvasRequest,
+  DeleteCanvasResult,
   DeleteNamedSnapshotRequest,
   DeleteNamedSnapshotResult,
   DeleteNodeRequest,
   DiffNamedSnapshotRequest,
   DiffNamedSnapshotResult,
+  DuplicateCanvasRequest,
+  ExportCanvasRequest,
+  ExportCanvasResult,
   LoadedSceneDocument,
   LoadedDocument,
   LoadSceneDocumentRequest,
   LoadDocumentRequest,
+  LoadCanvasRequest,
+  LoadPlotCanvasUiStateResult,
   LoadUiStateResult,
   ListDescendantScenesRequest,
   ListDescendantScenesResult,
+  ListCanvasesRequest,
+  ListCanvasesResult,
   ListNamedSnapshotsResult,
   MoveNodeRequest,
   NamedSnapshotKind,
   NamedSnapshotMutationResult,
   NamedSnapshotSummary,
+  PickCanvasImportResult,
   OpenProjectRequest,
   PlainTextRecovery,
   ProjectRecord,
@@ -39,6 +55,9 @@ import type {
   SaveSceneDocumentResult,
   SaveDocumentRequest,
   SaveDocumentResult,
+  SaveCanvasRequest,
+  SaveCanvasResult,
+  SavePlotCanvasUiStateRequest,
   SaveUiStateRequest,
   ScopeNodeRequest,
   SearchField,
@@ -93,6 +112,8 @@ import type {
   EntityStatus,
   EntitySceneContext,
   JsonObject,
+  MadiCanvasDocument,
+  PlotCanvasUiState,
   ListEntitiesRequest,
   ListEntitiesResult,
   ListEntityAliasesRequest,
@@ -124,6 +145,7 @@ import type {
   TagMutationResult,
   TagRecord,
   UpdateEntityRelationRequest,
+  UpdateCanvasRequest,
   UpdateEntityRequest,
   UpdateRelationTypeRequest,
   UpdateTagRequest,
@@ -154,6 +176,10 @@ const MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
 const MAX_RECOVERY_TEXT_CODE_UNITS = 32 * 1024 * 1024;
 const UI_STATE_KEY = "workspace.v1";
 const WORLD_GRAPH_UI_STATE_KEY = "world-graph.v1";
+const PLOT_CANVAS_UI_STATE_KEY = "plot-canvas.v1";
+const MAX_CANVAS_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_CANVAS_NODES = 500;
+const MAX_CANVAS_EDGES = 1_000;
 const MAX_WORLD_GRAPH_NODES = 500;
 const MAX_WORLD_GRAPH_EDGES = 2_000;
 const MAX_WORLD_GRAPH_ALIASES = 1_500;
@@ -228,6 +254,12 @@ const WORLD_GRAPH_RELATION_DIRECTIONS =
     "UNDIRECTED"
   ]);
 const WORLD_GRAPH_LAYOUTS = new Set<WorldGraphLayout>(["cose", "preset"]);
+const CANVAS_SORTS = new Set<CanvasSort>([
+  "NAME_ASC",
+  "NAME_DESC",
+  "UPDATED_ASC",
+  "UPDATED_DESC"
+]);
 const MAX_ATTRIBUTES_JSON_BYTES = 1024 * 1024;
 
 export interface DialogPort {
@@ -585,6 +617,16 @@ function parseSnapshotDiff(value: unknown): SnapshotDiffSummary {
   const summary = asRecord(value, "snapshot diff summary");
   const optionalCount = (key: string): number =>
     summary[key] === undefined ? 0 : requiredInteger(summary, key);
+  const optionalDelta = (key: string): number => {
+    if (summary[key] === undefined) {
+      return 0;
+    }
+    const value = requiredNumber(summary, key);
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(`The local core returned invalid ${key}`);
+    }
+    return value;
+  };
   return {
     added: parseSnapshotNodeCounts(summary.added),
     deleted: parseSnapshotNodeCounts(summary.deleted),
@@ -605,7 +647,12 @@ function parseSnapshotDiff(value: unknown): SnapshotDiffSummary {
     deletedRelations: optionalCount("deleted_relations"),
     changedRelations: optionalCount("changed_relations"),
     changedSceneLinks: optionalCount("changed_scene_links"),
-    changedEntityNotes: optionalCount("changed_entity_notes")
+    changedEntityNotes: optionalCount("changed_entity_notes"),
+    addedCanvases: optionalCount("added_canvases"),
+    deletedCanvases: optionalCount("deleted_canvases"),
+    changedCanvases: optionalCount("changed_canvases"),
+    canvasNodeCountDelta: optionalDelta("canvas_node_count_delta"),
+    canvasEdgeCountDelta: optionalDelta("canvas_edge_count_delta")
   };
 }
 
@@ -2078,6 +2125,261 @@ function validateSnapshotId(value: unknown): string {
   return validateShortText(value, "Snapshot id", 128);
 }
 
+function validateCanvasId(value: unknown, label = "Canvas id"): string {
+  return validateShortText(value, label, 128);
+}
+
+function validateCanvasRevision(value: unknown): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new Error("Invalid canvas revision");
+  }
+  return value as number;
+}
+
+function validateCanvasDocument(value: unknown): MadiCanvasDocument {
+  const document = asRecord(value, "JSON Canvas document");
+  if (!Array.isArray(document.nodes) || !Array.isArray(document.edges)) {
+    throw new Error("JSON Canvas requires nodes and edges arrays");
+  }
+  if (
+    document.nodes.length > MAX_CANVAS_NODES ||
+    document.edges.length > MAX_CANVAS_EDGES
+  ) {
+    throw new Error("JSON Canvas exceeds the supported element limit");
+  }
+  for (const nodeValue of document.nodes) {
+    const node = asRecord(nodeValue, "JSON Canvas node");
+    validateCanvasId(node.id, "Canvas node id");
+    if (node.type !== "text" && node.type !== "group") {
+      throw new Error("Only text and group JSON Canvas nodes are supported");
+    }
+    for (const key of ["x", "y", "width", "height"] as const) {
+      const maximum = key === "x" || key === "y" ? 10_000_000 : 100_000;
+      if (
+        typeof node[key] !== "number" ||
+        !Number.isSafeInteger(node[key]) ||
+        Math.abs(node[key] as number) > maximum
+      ) {
+        throw new Error(`Invalid JSON Canvas node ${key}`);
+      }
+    }
+    if ((node.width as number) <= 0 || (node.height as number) <= 0) {
+      throw new Error("JSON Canvas node dimensions must be positive");
+    }
+  }
+  for (const edgeValue of document.edges) {
+    const edge = asRecord(edgeValue, "JSON Canvas edge");
+    validateCanvasId(edge.id, "Canvas edge id");
+    validateCanvasId(edge.fromNode, "Canvas edge source id");
+    validateCanvasId(edge.toNode, "Canvas edge target id");
+  }
+  let encoded: string;
+  try {
+    encoded = JSON.stringify(document);
+  } catch {
+    throw new Error("JSON Canvas document is not serializable");
+  }
+  if (Buffer.byteLength(encoded, "utf8") > MAX_CANVAS_FILE_BYTES) {
+    throw new Error("JSON Canvas document is too large");
+  }
+  return document as unknown as MadiCanvasDocument;
+}
+
+function parseCanvasDescription(
+  record: Readonly<Record<string, unknown>>
+): string | null {
+  const value = record.description;
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "string" || value.length > 20_000) {
+    throw new Error("The local core returned invalid canvas description");
+  }
+  return value;
+}
+
+function parseCanvasSummary(
+  value: unknown,
+  expectedProjectId: string
+): CanvasSummary {
+  const canvas = asRecord(value, "canvas");
+  const projectId = requiredString(canvas, "project_id", "canvas project id");
+  if (projectId !== expectedProjectId) {
+    throw new Error("The local core returned a cross-project canvas");
+  }
+  if (
+    requiredString(canvas, "document_format") !== "JSON_CANVAS" ||
+    requiredString(canvas, "document_version") !== "1.0"
+  ) {
+    throw new Error("The local core returned an unsupported canvas format");
+  }
+  const nodeCount = requiredInteger(canvas, "node_count");
+  const edgeCount = requiredInteger(canvas, "edge_count");
+  if (nodeCount > MAX_CANVAS_NODES || edgeCount > MAX_CANVAS_EDGES) {
+    throw new Error("The local core returned an oversized canvas");
+  }
+  return {
+    id: requiredString(canvas, "id", "canvas id"),
+    projectId,
+    name: requiredString(canvas, "name", "canvas name"),
+    description: parseCanvasDescription(canvas),
+    documentFormat: "JSON_CANVAS",
+    documentVersion: "1.0",
+    contentHash: validateSha256(canvas.content_hash, "canvas content hash"),
+    revision: requiredInteger(canvas, "revision", "canvas revision"),
+    nodeCount,
+    edgeCount,
+    createdAt: requiredString(canvas, "created_at"),
+    updatedAt: requiredString(canvas, "updated_at")
+  };
+}
+
+function parseCanvasRecord(
+  value: unknown,
+  expectedProjectId: string
+): CanvasRecord {
+  const canvas = asRecord(value, "canvas record");
+  return {
+    ...parseCanvasSummary(canvas, expectedProjectId),
+    document: validateCanvasDocument(canvas.document)
+  };
+}
+
+function validatePlotCanvasUiState(value: unknown): PlotCanvasUiState {
+  const state = asRecord(value, "plot canvas UI state");
+  const lastCanvasId =
+    state.lastCanvasId === null
+      ? null
+      : validateCanvasId(state.lastCanvasId, "Last canvas id");
+  const states = asRecord(state.canvasStates, "plot canvas view states");
+  const entries = Object.entries(states);
+  if (entries.length > 1_000) {
+    throw new Error("Too many plot canvas UI states");
+  }
+  const canvasStates: Record<string, PlotCanvasUiState["canvasStates"][string]> = {};
+  for (const [canvasIdValue, viewValue] of entries) {
+    const canvasId = validateCanvasId(canvasIdValue, "Canvas UI state id");
+    const view = asRecord(viewValue, "plot canvas view state");
+    const viewport = asRecord(view.viewport, "plot canvas viewport");
+    const x = requiredNumber(viewport, "x");
+    const y = requiredNumber(viewport, "y");
+    const zoom = requiredNumber(viewport, "zoom");
+    const inspectorWidth = requiredNumber(view, "inspectorWidth");
+    if (
+      Math.abs(x) > 10_000_000 ||
+      Math.abs(y) > 10_000_000 ||
+      zoom < 0.02 ||
+      zoom > 10 ||
+      inspectorWidth < 240 ||
+      inspectorWidth > 720 ||
+      typeof view.showGrid !== "boolean" ||
+      typeof view.showMinimap !== "boolean" ||
+      typeof view.snapToGrid !== "boolean"
+    ) {
+      throw new Error("Invalid plot canvas UI state");
+    }
+    canvasStates[canvasId] = {
+      viewport: { x, y, zoom },
+      selectedElementId:
+        view.selectedElementId === null
+          ? null
+          : validateCanvasId(view.selectedElementId, "Selected canvas element id"),
+      inspectorWidth,
+      showGrid: view.showGrid,
+      showMinimap: view.showMinimap,
+      snapToGrid: view.snapToGrid
+    };
+  }
+  return { lastCanvasId, canvasStates };
+}
+
+function serializePlotCanvasUiState(
+  state: PlotCanvasUiState
+): Readonly<Record<string, unknown>> {
+  return {
+    last_canvas_id: state.lastCanvasId,
+    canvas_states: Object.fromEntries(
+      Object.entries(state.canvasStates).map(([canvasId, view]) => [
+        canvasId,
+        {
+          viewport: view.viewport,
+          selected_element_id: view.selectedElementId,
+          inspector_width: view.inspectorWidth,
+          show_grid: view.showGrid,
+          show_minimap: view.showMinimap,
+          snap_to_grid: view.snapToGrid
+        }
+      ])
+    )
+  };
+}
+
+function parseSavedPlotCanvasUiState(value: unknown): PlotCanvasUiState {
+  const state = asRecord(value, "saved plot canvas UI state");
+  const storedStates = asRecord(state.canvas_states, "saved plot canvas states");
+  return validatePlotCanvasUiState({
+    lastCanvasId: state.last_canvas_id,
+    canvasStates: Object.fromEntries(
+      Object.entries(storedStates).map(([canvasId, viewValue]) => {
+        const view = asRecord(viewValue, "saved plot canvas view state");
+        return [
+          canvasId,
+          {
+            viewport: view.viewport,
+            selectedElementId: view.selected_element_id,
+            inspectorWidth: view.inspector_width,
+            showGrid: view.show_grid,
+            showMinimap: view.show_minimap,
+            snapToGrid: view.snap_to_grid
+          }
+        ];
+      })
+    )
+  });
+}
+
+function parsePlotCanvasUiStateRecord(
+  value: unknown,
+  expectedProjectId: string
+): PlotCanvasUiState {
+  const record = asRecord(value, "plot canvas UI state record");
+  if (
+    requiredString(record, "project_id") !== expectedProjectId ||
+    requiredString(record, "key") !== PLOT_CANVAS_UI_STATE_KEY
+  ) {
+    throw new Error("The local core returned cross-project canvas UI state");
+  }
+  requiredString(record, "updated_at");
+  return parseSavedPlotCanvasUiState(record.value);
+}
+
+function safeCanvasFileName(value: unknown): string {
+  const raw = typeof value === "string" && value.trim() ? value.trim() : "새 캔버스";
+  const baseName = path.basename(raw).replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "_");
+  const limited = (baseName || "새 캔버스").slice(0, 180);
+  return limited.toLocaleLowerCase().endsWith(".canvas")
+    ? limited
+    : `${limited}.canvas`;
+}
+
+function canonicalCanvasJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalCanvasJson(item)).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalCanvasJson(record[key])}`)
+      .join(",")}}`;
+  }
+  const encoded = JSON.stringify(value);
+  if (encoded === undefined) {
+    throw new Error("Canvas contains a non-JSON value");
+  }
+  return encoded;
+}
+
 export class DesktopService {
   public constructor(
     private readonly window: BrowserWindow,
@@ -2802,6 +3104,318 @@ export class DesktopService {
     }
     return {
       state: parseWorldGraphUiStateRecord(stateRecord, session.projectId)
+    };
+  }
+
+  public async savePlotCanvasUiState(
+    input: SavePlotCanvasUiStateRequest
+  ): Promise<void> {
+    const session = this.sessions.require(validateSessionId(input?.sessionId));
+    const state = validatePlotCanvasUiState(input?.state);
+    const response = asRecord(
+      await this.core.request("save_ui_state", {
+        file_path: session.filePath,
+        key: PLOT_CANVAS_UI_STATE_KEY,
+        value: serializePlotCanvasUiState(state)
+      }),
+      "save plot canvas UI state response"
+    );
+    const saved = parsePlotCanvasUiStateRecord(
+      response.state,
+      session.projectId
+    );
+    if (
+      canonicalCanvasJson(serializePlotCanvasUiState(saved)) !==
+      canonicalCanvasJson(serializePlotCanvasUiState(state))
+    ) {
+      throw new Error("The local core saved different plot canvas UI state");
+    }
+  }
+
+  public async loadPlotCanvasUiState(
+    input: SessionRequest
+  ): Promise<LoadPlotCanvasUiStateResult> {
+    const session = this.sessions.require(validateSessionId(input?.sessionId));
+    const response = asRecord(
+      await this.core.request("load_ui_state", {
+        file_path: session.filePath,
+        key: PLOT_CANVAS_UI_STATE_KEY
+      }),
+      "load plot canvas UI state response"
+    );
+    const stateRecord = optionalRecord(response, "state");
+    return {
+      state: stateRecord
+        ? parsePlotCanvasUiStateRecord(stateRecord, session.projectId)
+        : null
+    };
+  }
+
+  public async listCanvases(
+    input: ListCanvasesRequest
+  ): Promise<ListCanvasesResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const sort = input.sort ?? "UPDATED_DESC";
+    if (!CANVAS_SORTS.has(sort)) {
+      throw new Error("Invalid canvas sort");
+    }
+    const response = asRecord(
+      await this.core.request("list_canvases", {
+        file_path: session.filePath,
+        sort
+      }),
+      "list canvases response"
+    );
+    if (!Array.isArray(response.canvases)) {
+      throw new Error("The local core returned invalid canvas list");
+    }
+    const revision = responseRevision(response, "list canvases");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      canvases: response.canvases.map((canvas) =>
+        parseCanvasSummary(canvas, session.projectId)
+      ),
+      revision
+    };
+  }
+
+  public async createCanvas(
+    input: CreateCanvasRequest
+  ): Promise<CanvasMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const name = validateShortText(input.name, "Canvas name", 500);
+    const description =
+      input.description === undefined || input.description === null
+        ? null
+        : validateExactText(input.description, "Canvas description", 20_000, true);
+    const document = validateCanvasDocument(
+      input.document ?? { nodes: [], edges: [] }
+    );
+    const response = asRecord(
+      await this.core.request("create_canvas", {
+        file_path: session.filePath,
+        canvas_id: randomUUID(),
+        name,
+        description,
+        document,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "create canvas response"
+    );
+    const revision = responseRevision(response, "create canvas");
+    const canvas = parseCanvasRecord(response.canvas, session.projectId);
+    this.sessions.updateProject(sessionId, { revision });
+    return { canvas, revision, noOp: false };
+  }
+
+  public async updateCanvas(
+    input: UpdateCanvasRequest
+  ): Promise<CanvasMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("update_canvas", {
+        file_path: session.filePath,
+        canvas_id: validateCanvasId(input.canvasId),
+        name: validateShortText(input.name, "Canvas name", 500),
+        description:
+          input.description === null
+            ? null
+            : validateExactText(
+                input.description,
+                "Canvas description",
+                20_000,
+                true
+              ),
+        expected_revision: session.revision,
+        expected_canvas_revision: validateCanvasRevision(
+          input.expectedCanvasRevision
+        ),
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "update canvas response"
+    );
+    const revision = responseRevision(response, "update canvas");
+    const canvas = parseCanvasRecord(response.canvas, session.projectId);
+    const noOp = requiredBoolean(response, "no_op");
+    this.sessions.updateProject(sessionId, { revision });
+    return { canvas, revision, noOp };
+  }
+
+  public async duplicateCanvas(
+    input: DuplicateCanvasRequest
+  ): Promise<CanvasMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("duplicate_canvas", {
+        file_path: session.filePath,
+        source_canvas_id: validateCanvasId(
+          input.sourceCanvasId,
+          "Source canvas id"
+        ),
+        canvas_id: randomUUID(),
+        ...(input.name === undefined
+          ? {}
+          : { name: validateShortText(input.name, "Canvas name", 500) }),
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "duplicate canvas response"
+    );
+    const revision = responseRevision(response, "duplicate canvas");
+    const canvas = parseCanvasRecord(response.canvas, session.projectId);
+    this.sessions.updateProject(sessionId, { revision });
+    return { canvas, revision, noOp: false };
+  }
+
+  public async deleteCanvas(
+    input: DeleteCanvasRequest
+  ): Promise<DeleteCanvasResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const canvasId = validateCanvasId(input.canvasId);
+    const response = asRecord(
+      await this.core.request("delete_canvas", {
+        file_path: session.filePath,
+        canvas_id: canvasId,
+        expected_revision: session.revision,
+        expected_canvas_revision: validateCanvasRevision(
+          input.expectedCanvasRevision
+        ),
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "delete canvas response"
+    );
+    const deletedCanvasId = requiredString(response, "deleted_canvas_id");
+    if (deletedCanvasId !== canvasId) {
+      throw new Error("The local core deleted another canvas");
+    }
+    const revision = responseRevision(response, "delete canvas");
+    this.sessions.updateProject(sessionId, { revision });
+    return { deletedCanvasId, revision };
+  }
+
+  public async loadCanvas(input: LoadCanvasRequest): Promise<CanvasRecord> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const canvasId = validateCanvasId(input.canvasId);
+    const response = asRecord(
+      await this.core.request("load_canvas", {
+        file_path: session.filePath,
+        canvas_id: canvasId
+      }),
+      "load canvas response"
+    );
+    const revision = responseRevision(response, "load canvas");
+    const canvas = parseCanvasRecord(response.canvas, session.projectId);
+    if (canvas.id !== canvasId) {
+      throw new Error("The local core loaded another canvas");
+    }
+    this.sessions.updateProject(sessionId, { revision });
+    return canvas;
+  }
+
+  public async saveCanvas(input: SaveCanvasRequest): Promise<SaveCanvasResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const canvasId = validateCanvasId(input.canvasId);
+    if (
+      !Number.isSafeInteger(input.generation) ||
+      input.generation < 0 ||
+      !Number.isSafeInteger(input.saveSequence) ||
+      input.saveSequence < 0
+    ) {
+      throw new Error("Invalid canvas save sequence");
+    }
+    const response = asRecord(
+      await this.core.request("save_canvas", {
+        file_path: session.filePath,
+        canvas_id: canvasId,
+        document: validateCanvasDocument(input.document),
+        expected_revision: session.revision,
+        expected_canvas_revision: validateCanvasRevision(
+          input.expectedCanvasRevision
+        ),
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "save canvas response"
+    );
+    const revision = responseRevision(response, "save canvas");
+    const canvas = parseCanvasRecord(response.canvas, session.projectId);
+    if (canvas.id !== canvasId) {
+      throw new Error("The local core saved another canvas");
+    }
+    const noOp = requiredBoolean(response, "no_op");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      canvas,
+      canvasId,
+      revision,
+      noOp,
+      generation: input.generation,
+      saveSequence: input.saveSequence
+    };
+  }
+
+  public async pickCanvasImport(): Promise<PickCanvasImportResult | null> {
+    const selection = await this.dialog.showOpenDialog(this.window, {
+      title: "JSON Canvas 가져오기",
+      filters: [{ name: "JSON Canvas", extensions: ["canvas"] }],
+      properties: ["openFile", "dontAddToRecent"]
+    });
+    if (selection.canceled || selection.filePaths.length !== 1) {
+      return null;
+    }
+    const filePath = selection.filePaths[0]!;
+    const fileStat = await stat(filePath);
+    if (!fileStat.isFile() || fileStat.size > MAX_CANVAS_FILE_BYTES) {
+      throw new Error("Canvas import file is too large or is not a file");
+    }
+    const bytes = await readFile(filePath);
+    let source: string;
+    try {
+      source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      throw new Error("Canvas import must be valid UTF-8");
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(source) as unknown;
+    } catch {
+      throw new Error("Canvas import is malformed JSON");
+    }
+    validateCanvasDocument(parsed);
+    return { fileName: path.basename(filePath), source };
+  }
+
+  public async exportCanvas(
+    input: ExportCanvasRequest
+  ): Promise<ExportCanvasResult | null> {
+    const canvas = await this.loadCanvas({
+      sessionId: input.sessionId,
+      canvasId: input.canvasId
+    });
+    const selection = await this.dialog.showSaveDialog(this.window, {
+      title: "JSON Canvas 내보내기",
+      defaultPath: safeCanvasFileName(input.suggestedFileName ?? canvas.name),
+      filters: [{ name: "JSON Canvas", extensions: ["canvas"] }],
+      properties: ["createDirectory", "showOverwriteConfirmation"]
+    });
+    if (selection.canceled || !selection.filePath) {
+      return null;
+    }
+    const filePath = selection.filePath.toLocaleLowerCase().endsWith(".canvas")
+      ? selection.filePath
+      : `${selection.filePath}.canvas`;
+    const source = `${canonicalCanvasJson(canvas.document)}\n`;
+    await writeFile(filePath, source, { encoding: "utf8", flag: "w" });
+    return {
+      fileName: path.basename(filePath),
+      bytes: Buffer.byteLength(source, "utf8")
     };
   }
 

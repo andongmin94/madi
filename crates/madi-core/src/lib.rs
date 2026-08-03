@@ -4,6 +4,7 @@
 //! snapshots cross the process boundary as base64, but are stored as SQLite
 //! BLOBs. Manuscript text is only returned by explicit load/recovery calls.
 
+pub mod canvas;
 pub mod error;
 pub mod hierarchy;
 pub mod model;
@@ -13,6 +14,7 @@ pub mod story_bible;
 pub mod workspace;
 pub mod world_graph;
 
+pub use canvas::*;
 pub use error::{CoreError, Result};
 pub use hierarchy::{
     create_tree_node, delete_tree_node, load_project_tree, load_scene, load_ui_state,

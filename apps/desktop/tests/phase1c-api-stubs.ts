@@ -42,6 +42,17 @@ export type Phase1cApi = Pick<
   | "getWorldGraphStats"
   | "getEntityGraphDetail"
   | "getEntitySceneContext"
+  | "listCanvases"
+  | "createCanvas"
+  | "updateCanvas"
+  | "duplicateCanvas"
+  | "deleteCanvas"
+  | "loadCanvas"
+  | "saveCanvas"
+  | "savePlotCanvasUiState"
+  | "loadPlotCanvasUiState"
+  | "pickCanvasImport"
+  | "exportCanvas"
 >;
 
 function unused(): never {
@@ -130,6 +141,17 @@ export function phase1cApiStubs(): Phase1cApi {
     })),
     getWorldGraphStats: vi.fn(async () => unused()),
     getEntityGraphDetail: vi.fn(async () => unused()),
-    getEntitySceneContext: vi.fn(async () => unused())
+    getEntitySceneContext: vi.fn(async () => unused()),
+    listCanvases: vi.fn(async () => ({ canvases: [], revision: 0 })),
+    createCanvas: vi.fn(async () => unused()),
+    updateCanvas: vi.fn(async () => unused()),
+    duplicateCanvas: vi.fn(async () => unused()),
+    deleteCanvas: vi.fn(async () => unused()),
+    loadCanvas: vi.fn(async () => unused()),
+    saveCanvas: vi.fn(async () => unused()),
+    savePlotCanvasUiState: vi.fn(async () => undefined),
+    loadPlotCanvasUiState: vi.fn(async () => ({ state: null })),
+    pickCanvasImport: vi.fn(async () => null),
+    exportCanvas: vi.fn(async () => null)
   };
 }

@@ -83,7 +83,7 @@ fn save_scene_text(fixture: &Fixture, text: &str) {
 }
 
 #[test]
-fn migrates_v3_to_v4_preserves_manuscript_and_seeds_project_scoped_builtins() {
+fn migrates_v3_to_v5_preserves_manuscript_and_seeds_project_scoped_builtins() {
     let (_directory, fixture) = fixture("migration-v3.madi");
     save_scene_text(&fixture, "이전 원고 보존");
     let connection = Connection::open(&fixture.path).unwrap();
@@ -115,9 +115,9 @@ fn migrates_v3_to_v4_preserves_manuscript_and_seeds_project_scoped_builtins() {
         file_path: fixture.path.clone(),
     })
     .unwrap();
-    assert_eq!(opened.metadata.schema_version, 4);
+    assert_eq!(opened.metadata.schema_version, SCHEMA_VERSION);
     assert_eq!(opened.metadata.format_version, 1);
-    assert_eq!(opened.schema_migrations.last().unwrap().version, 4);
+    assert_eq!(opened.schema_migrations.last().unwrap().version, SCHEMA_VERSION);
     let scene = load_scene(LoadSceneParams {
         file_path: fixture.path.clone(),
         scene_id: fixture.scene_id,
@@ -579,7 +579,7 @@ fn relations_inverse_semantics_scene_links_mentions_and_delete_are_safe() {
 }
 
 #[test]
-fn snapshot_v2_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins() {
+fn snapshot_v3_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins() {
     let (_directory, fixture) = fixture("snapshot-v2.madi");
     create_test_entity(&fixture.path, "leia", EntityKind::Character, "레이아");
     let note = load_entity_note(LoadEntityNoteParams {
@@ -653,7 +653,7 @@ fn snapshot_v2_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         saved_by: None,
     })
     .unwrap();
-    assert_eq!(baseline.snapshot.payload_version, 2);
+    assert_eq!(baseline.snapshot.payload_version, 3);
     update_entity(UpdateEntityParams {
         file_path: fixture.path.clone(),
         entity_id: "leia".to_owned(),
@@ -777,7 +777,13 @@ fn snapshot_v2_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         )
         .unwrap();
     let original_payload: serde_json::Value = serde_json::from_slice(&blob).unwrap();
-    let mut insert_failure_payload = original_payload.clone();
+    let mut legacy_v2_payload = original_payload.clone();
+    legacy_v2_payload["version"] = json!(2);
+    legacy_v2_payload
+        .as_object_mut()
+        .unwrap()
+        .remove("canvases");
+    let mut insert_failure_payload = legacy_v2_payload.clone();
     let duplicate_tag = {
         let tags = insert_failure_payload["tags"].as_array().unwrap();
         let mut duplicate = tags[0].clone();
@@ -801,7 +807,7 @@ fn snapshot_v2_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
             params![insert_failure_blob, insert_failure_hash],
         )
         .unwrap();
-    let mut invalid_alias_payload = original_payload.clone();
+    let mut invalid_alias_payload = legacy_v2_payload.clone();
     invalid_alias_payload["entity_aliases"][0]["normalized_alias"] = json!("위조 별칭");
     let invalid_alias_blob = serde_json::to_vec(&invalid_alias_payload).unwrap();
     let invalid_alias_hash = format!("{:x}", Sha256::digest(&invalid_alias_blob));
@@ -816,7 +822,7 @@ fn snapshot_v2_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
             params![invalid_alias_blob, invalid_alias_hash],
         )
         .unwrap();
-    let mut invalid_builtin_payload = original_payload.clone();
+    let mut invalid_builtin_payload = legacy_v2_payload;
     let builtin = invalid_builtin_payload["relation_types"]
         .as_array_mut()
         .unwrap()
@@ -984,6 +990,7 @@ fn snapshot_v2_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         "relation_types",
         "entity_relations",
         "scene_entity_links",
+        "canvases",
     ] {
         payload.as_object_mut().unwrap().remove(key);
     }
@@ -1015,6 +1022,17 @@ fn snapshot_v2_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         .unwrap();
     drop(connection);
 
+    create_canvas(CreateCanvasParams {
+        file_path: fixture.path.clone(),
+        canvas_id: Some("legacy-restore-canvas".to_owned()),
+        name: "구버전 복원 전 캔버스".to_owned(),
+        description: None,
+        document: MadiCanvasDocument::default(),
+        expected_revision: None,
+        saved_by: None,
+    })
+    .unwrap();
+
     restore_named_snapshot(RestoreNamedSnapshotParams {
         file_path: fixture.path.clone(),
         snapshot_id: "legacy-v1".to_owned(),
@@ -1033,6 +1051,13 @@ fn snapshot_v2_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
     })
     .unwrap()
     .entities
+    .is_empty());
+    assert!(list_canvases(ListCanvasesParams {
+        file_path: fixture.path.clone(),
+        sort: CanvasSort::UpdatedDesc,
+    })
+    .unwrap()
+    .canvases
     .is_empty());
     assert_eq!(
         list_relation_types(ListRelationTypesParams {
@@ -1184,7 +1209,7 @@ fn performance_fixture_handles_500_entities_1500_aliases_2000_relations_and_link
         .unwrap()
         .metadata
         .schema_version,
-        4
+        SCHEMA_VERSION
     );
     assert_eq!(
         list_scene_entity_links(ListSceneEntityLinksParams {
