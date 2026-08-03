@@ -9,7 +9,7 @@ Focused verification: PASS
 Integration/development/packaged Electron acceptance: PASS
 Final pnpm verify gate: PASS
 Windows native Korean IME: MANUAL VALIDATION PENDING
-License: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
+Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Public/paid/customer distribution: NOT AUTHORIZED
 ```
 

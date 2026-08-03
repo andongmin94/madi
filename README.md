@@ -1,7 +1,7 @@
 # madi
 
 `madi`는 한국어 장편소설 작가를 위한 local-first Windows desktop 저작도구다.
-현재 작업트리는 Phase 1A의 장면별 저작 기능 위에 Phase 1B Manuscript Workspace를
+현재 작업트리는 Phase 1B Manuscript Workspace 위에 Phase 1C Story Bible Foundation을
 구현한다.
 
 ```text
@@ -13,19 +13,26 @@ Phase 1B focused verification: PASS
 Phase 1B integration/development/packaged Electron acceptance: PASS
 Phase 1B final pnpm verify gate: PASS
 Phase 1B verdict: TECHNICAL GO — PRIVATE LOCAL
+Phase 1C implementation: COMPLETE IN WORKING TREE
+Phase 1C focused/integration/development/packaged Electron acceptance: PASS
+Phase 1C final pnpm verify gate: PASS
+Phase 1C verdict: TECHNICAL GO — PRIVATE LOCAL
 Windows native Korean IME: MANUAL VALIDATION PENDING
-License: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
-Public/paid/installer distribution: NOT AUTHORIZED
+Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
+Public/paid/customer distribution: NOT AUTHORIZED
 ```
 
-Phase 1B 집중 검증은 Rust 23/23, Desktop Vitest 16 files/88 tests, desktop
-typecheck, Typie semantic probe와 전체 integration을 통과했다. 실제 development
-Electron에서 11 SCENE Scrivenings/search/7-scene 치환/snapshot restore/reopen도
-통과했고 unpacked 생성과 packaged Electron의 같은 Phase 1B/reopen 시나리오도
-통과했다. 최종 aggregate `pnpm verify`를 포함한 모든 자동 gate가 통과했다.
-현재 증거와 조건은 [`docs/PHASE_1B_RESULT.md`](docs/PHASE_1B_RESULT.md)를 따른다.
+Phase 1C 최종 검증은 Rust 28/28, Desktop Vitest 21 files/106 tests, desktop typecheck,
+Typie semantic probe와 전체 integration을 통과했다. 실제 development와 unpacked
+Electron에서 Story Bible entity·alias·tag·Typie note·relation·scene link·mention
+승격·snapshot v2 restore와 second-process reopen도 통과했다. 지정된 완료 gate 6개가
+모두 exit code 0이며 현재 증거는
+[`docs/PHASE_1C_RESULT.md`](docs/PHASE_1C_RESULT.md)를 따른다. Phase 1B의 확정 판정과
+snapshot 기반 project-wide rollback 결정은
+[`docs/PHASE_1B_RESULT.md`](docs/PHASE_1B_RESULT.md)와
+[`ADR-0002`](docs/decisions/ADR-0002-project-wide-undo-via-snapshots.md)에 남아 있다.
 
-## Phase 1B에서 할 수 있는 일
+## Phase 1C에서 할 수 있는 일
 
 - 하나의 `.madi` SQLite 파일에 작품 구조와 장면별 Typie 문서를 함께 저장
 - `WORK → VOLUME → CHAPTER → SCENE` Binder
@@ -45,10 +52,18 @@ Electron에서 11 SCENE Scrivenings/search/7-scene 치환/snapshot restore/reope
 - 이름 있는 snapshot 생성·목록·이름 변경·삭제·요약 diff·안전 복원
 - 현재 SCENE과 선택 subtree의 공백 포함/제외 Unicode scalar 글자 수
 - Electron 없이 UTF-8 plain-text recovery를 꺼내는 Rust CLI
+- `원고`와 `설정` 작업 모드 전환
+- 등장인물·장소·조직·물건·사건·세계관 규칙·복선·기타 설정 CRUD
+- 설정별 별칭, 태그, 상태, 요약, 색상 토큰, 아이콘 키와 확장 JSON 속성
+- 설정별 독립 Typie 상세 노트와 장면과 같은 저장 안전성
+- 프로젝트별 built-in/custom 관계 타입과 directed/undirected/inverse 관계 CRUD
+- SCENE과 설정의 `APPEARS`, `POV`, `MENTIONED`, `RELATED` 명시적 연결
+- 이름·별칭 exact substring 기반의 본문 언급 후보와 명시적 연결 승격
+- Story Bible 전체와 entity note를 포함하는 named snapshot v2 및 v1 복원 호환
 
-등장인물, 세계관, 관계 그래프, plot Canvas, docking workspace, Reader Lab, EPUB,
-HWP/HWPX, LLM, cloud/sync, collaboration, mobile/web, 장면별 상세 diff와 플랫폼별
-출판 글자 수는 Phase 1B 범위가 아니다.
+관계 그래프 시각화, plot Canvas, docking workspace, Reader Lab, EPUB, HWP/HWPX,
+LLM 추출, cloud/sync, collaboration, mobile/web, 장면별 상세 diff와 플랫폼별 출판
+글자 수는 Phase 1C 범위가 아니다.
 
 ## 실제 사용 흐름
 
@@ -136,7 +151,10 @@ project 전체 작업은 하나의 지속 가능한 `Ctrl+Z` entry가 아니다.
 `Named snapshot` panel에서 이름과 선택 메모로 현재 logical project를 저장하고 목록,
 이름 변경, 삭제와 현재 상태 대비 요약 diff를 사용할 수 있다. restore 확인 뒤 core는
 현재 상태를 같은 transaction의 `AUTO_BEFORE_RESTORE` snapshot으로 먼저 보존한다.
-payload는 SQLite 복사본이 아니라 hash가 붙은 `MADI_LOGICAL_JSON` v1이다.
+payload는 SQLite 복사본이 아니라 hash가 붙은 `MADI_LOGICAL_JSON` v2다. v2에는 설정,
+별칭, 태그, 관계 타입, 관계, 장면 연결과 entity note document가 포함된다. 기존 v1
+snapshot은 계속 읽으며 복원 뒤 사용자 Story Bible은 빈 상태가 되고 built-in 관계
+타입만 다시 seed된다.
 
 복원 확인 순간에는 fresh diff를 다시 요청해 preview revision과 summary를 대조한다.
 달라졌으면 복원을 실행하지 않고 갱신된 차이를 다시 확인하게 한다. CURRENT 검색은
@@ -144,11 +162,29 @@ payload는 SQLite 복사본이 아니라 hash가 붙은 `MADI_LOGICAL_JSON` v1�
 node가 바뀌는 즉시 치환 preview가 무효화된다. 현재 live SCENE의 첫 BODY hit는
 editor focus를 빼앗지 않고 Typie selection으로 강조한다.
 
-### 7. 종료와 재열기
+### 7. Story Bible
+
+상단의 `설정`을 선택하면 설정 목록, 설정 상세, 관계·등장 위치의 3열 workspace가
+열린다. 설정을 만들고 이름·타입·상태·요약·별칭·태그를 편집할 수 있으며 가운데의
+Typie editor는 선택한 entity의 독립 상세 note document를 편집한다. 장면과 entity가
+같은 editor adapter를 공유하지만 controller는 `ownerKind`, `ownerId`, `documentId`,
+`generation`, `saveSequence`를 모두 확인해 서로의 오래된 저장 응답을 차단한다.
+
+오른쪽 열에서는 outgoing/incoming 관계, inverse label, 연결된 장면과 **본문에서 찾은
+후보**를 확인한다. 후보는 저장된 장면 recovery에서 entity 이름과 별칭을 exact
+substring으로 찾은 참고 결과이며 자동으로 canonical relation이나 scene link가 되지
+않는다. 사용자가 role을 고르고 승격한 결과만 `scene_entity_links`에 저장된다.
+
+원고 mode에서 `설정 연결` panel을 열면 현재 SCENE의 명시적 link를 추가·해제하고
+관련 설정으로 이동할 수 있다. 설정 mode의 장면/후보를 선택하면 원고 mode로 돌아가
+해당 장면과 첫 일치 범위를 연다.
+
+### 8. 종료와 재열기
 
 1. 현재 IME 조합을 끝낸다.
 2. 창을 닫는다.
-3. renderer는 dirty 장면과 `workspace.v1` UI state 저장을 먼저 요청한다.
+3. renderer는 현재 dirty 장면 또는 entity note와 `workspace.v1` UI state 저장을 먼저
+   요청한다.
 4. main process는 renderer가 저장 성공을 승인하기 전 창을 파괴하지 않는다.
 5. Electron process가 완전히 끝난 뒤 앱을 다시 실행한다.
 6. `.madi 열기`로 같은 파일을 선택한다.
@@ -162,11 +198,13 @@ tree 복원을 막지 않고 기본 선택·펼침·폭으로 격리한다. Bind
 
 - `PRAGMA application_id = 0x4D414449`
 - `app_meta.format_version = 1`
-- `app_meta.schema_version = 3`
-- `PRAGMA user_version = 3`
+- `app_meta.schema_version = 4`
+- `PRAGMA user_version = 4`
 - 기존 table: `app_meta`, `documents`, `schema_migrations`
 - Phase 1A table: `projects`, `tree_nodes`, `ui_state`
 - Phase 1B table: `search_documents`, `named_snapshots`
+- Phase 1C table: `entities`, `entity_aliases`, `tags`, `entity_tags`,
+  `relation_types`, `entity_relations`, `scene_entity_links`
 
 정규 hierarchy:
 
@@ -179,16 +217,19 @@ WORK
    └─ SCENE → documents.id
 ```
 
-project마다 WORK는 정확히 하나다. SCENE만 `document_id`를 가지며, SCENE 생성·
-이름 변경·저장·삭제는 연결 document와 같은 transaction에서 처리한다. 구조와
-장면 저장은 project-wide optimistic `revision`을 사용하고 pre-save backup을
-회전한다. UI state 저장은 manuscript revision을 올리지 않는다.
+project마다 WORK는 정확히 하나다. SCENE은 `tree_nodes.document_id`, entity는
+`entities.document_id`로 각각 독립 document를 정확히 하나 소유한다. 같은 document를
+SCENE과 entity가 공유할 수 없다. 생성·이름 변경·저장·삭제는 owner와 연결 document를
+같은 transaction에서 처리한다. 구조, 장면과 Story Bible 저장은 project-wide
+optimistic `revision`을 사용하고 pre-save backup을 회전한다. UI state 저장은
+manuscript revision을 올리지 않는다.
 
 `search_documents`는 `documents.plain_text_recovery`의 exact-search projection이며
 insert/update/delete trigger가 같은 transaction에서 갱신한다. `named_snapshots`는
 `MANUAL`, `AUTO_BEFORE_REPLACE`, `AUTO_BEFORE_RESTORE` logical payload와 SHA-256를
 저장한다. schema 2 file을 열면 기존 document를 잃지 않고 migration 3에서 projection을
-backfill한다. `format_version`은 계속 1이다.
+backfill한 뒤 migration 4가 Story Bible table과 built-in 관계 타입을 만든다.
+`format_version`은 계속 1이다.
 
 sibling 순서는 `REAL order_key`를 `1024.0` 간격으로 배정한다. 중간 삽입은
 midpoint를 사용하고 간격이 `0.000001` 이하이면 해당 sibling만 rebalance한다.
@@ -233,6 +274,14 @@ loadSceneDocument, saveSceneDocument, saveUiState, loadUiState,
 listDescendantScenes, searchProject, getTextStatistics, applyReplacementBatch,
 createNamedSnapshot, listNamedSnapshots, renameNamedSnapshot,
 deleteNamedSnapshot, diffNamedSnapshot, restoreNamedSnapshot,
+listEntities, searchEntities, createEntity, updateEntity,
+getEntityDeleteImpact, deleteEntity, loadEntityNote, saveEntityNote,
+listEntityAliases, createEntityAlias, deleteEntityAlias,
+listTags, createTag, updateTag, deleteTag, listEntityTags, setEntityTags,
+listRelationTypes, createRelationType, updateRelationType, deleteRelationType,
+listEntityRelations, createEntityRelation, updateEntityRelation,
+deleteEntityRelation, listSceneEntityLinks, createSceneEntityLink,
+deleteSceneEntityLink, discoverEntityMentions, promoteEntityMention,
 getAppVersion, onCloseRequested, completeCloseRequest
 ```
 
@@ -320,20 +369,23 @@ pnpm run typecheck
 pnpm run test:desktop
 pnpm run test:phase1a
 pnpm run test:phase1b
+pnpm run test:phase1c
 pnpm run test:integration
 
 # 최종 gate
 pnpm verify
-
-# unpacked Windows 폴더만 생성
 pnpm package:unpacked
-
-# unpacked를 다시 만들고 실제 packaged smoke 실행
+pnpm test:electron
 pnpm test:package
+pnpm check:repository
+pnpm format:check
+
+# 대화형 개발 실행은 최종 gate와 별도
+pnpm test:dev
 ```
 
 `pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust test, 실제 Typie
-probe, Phase 0.5/1A/1B `.madi` integration, production build, 일반 Electron smoke와
+probe, Phase 0.5/1A/1B/1C `.madi` integration, production build, 일반 Electron smoke와
 unpacked packaged smoke를 순서대로 실행한다. `pnpm test:dev`는 interactive
 Vite/Electron startup 성격 때문에 별도다.
 
@@ -352,15 +404,17 @@ output/madi-win32-x64/resources/licenses/
 
 | 항목 | 현재 기록 |
 |---|---|
-| Rust 전체 test | `23 / 23 PASS` |
-| renderer focused test | `16 files / 88 tests PASS` |
+| Rust 전체 test | `28 / 28 PASS` |
+| renderer 전체 test | `21 files / 106 tests PASS` |
 | desktop typecheck | `PASS` |
 | Typie semantic replacement probe | `PASS` |
-| Phase 1B 10+ SCENE/two-process integration | `PASS` |
-| Phase 1B 실제 development Electron acceptance | `PASS` — SCENE 11, one live, Korean exact 7 → semantic replace 7 → restore 7, reopen |
-| Phase 1B 변경 뒤 최종 `pnpm verify` | `PASS` — exit code 0 |
-| Phase 1B 변경 뒤 독립 `pnpm package:unpacked` | `PASS` |
-| Phase 1B 실제 unpacked Electron acceptance | `PASS` — SCENE 11, snapshot 3, second-process reopen/search 7 |
+| Phase 1C 10+ SCENE/19 entity/two-process integration | `PASS` — final revision 94 |
+| Phase 1C 실제 development Electron acceptance | `PASS` — entity 2, mention 7, relation/link/note/snapshot v2 restore/reopen |
+| Phase 1C 실제 unpacked Electron acceptance | `PASS` — packaged first/second process와 stable ID 복원 |
+| 최종 `pnpm verify` | `PASS` — exit code 0 |
+| 독립 `pnpm package:unpacked` | `PASS` — `output/madi-win32-x64/madi.exe` |
+| 독립 `pnpm test:electron` / `pnpm test:package` | `PASS` / `PASS` |
+| 독립 `pnpm check:repository` / `pnpm format:check` | `PASS` / `PASS` |
 
 ## Rust CLI와 JSON-RPC
 
@@ -395,6 +449,15 @@ list_descendant_scenes, search_project, get_text_statistics,
 apply_replacement_batch, create_named_snapshot, list_named_snapshots,
 rename_named_snapshot, delete_named_snapshot, diff_named_snapshot,
 restore_named_snapshot,
+list_entities, search_entities, create_entity, update_entity,
+get_entity_delete_impact, delete_entity, load_entity_note, save_entity_note,
+list_entity_aliases, create_entity_alias, delete_entity_alias,
+list_tags, create_tag, update_tag, delete_tag, list_entity_tags, set_entity_tags,
+list_relation_types, create_relation_type, update_relation_type,
+delete_relation_type, list_entity_relations, create_entity_relation,
+update_entity_relation, delete_entity_relation, list_scene_entity_links,
+create_scene_entity_link, delete_scene_entity_link, discover_entity_mentions,
+promote_entity_mention,
 save_document, load_document, recover_plain_text
 ```
 
@@ -434,7 +497,7 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 
 ## 후속 단계로 미룬 항목
 
-다음은 완료가 아니라 비공개 Phase 1B의 차단에서 후속 단계로 옮긴 것이다.
+다음은 Phase 1C 완료로 해소한 항목이 아니라 후속 지원·배포·hardening gate로 유지한다.
 
 - Windows native 한국어 IME 수동검증
 - installer/installed-state lifecycle
@@ -447,9 +510,16 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 - exact search 성능 benchmark/index 전략
 - named snapshot retention, compression과 quota
 - 장면별 상세 diff와 부분 restore
+- 관계 그래프 시각화, 시간축과 인물별 지식 시점 필터
+- 형태소/fuzzy mention 탐색과 자동 relation 추론
 
 ## 문서
 
+- [Phase 1C 범위와 완료 계약](docs/PHASE_1C_SCOPE.md)
+- [Phase 1C 저장소 결과](docs/PHASE_1C_RESULT.md)
+- [Story Bible 데이터 모델](docs/STORY_BIBLE_DATA_MODEL.md)
+- [Entity relation 의미 계약](docs/ENTITY_RELATION_SEMANTICS.md)
+- [Entity 본문 언급 후보 탐색](docs/ENTITY_MENTION_DISCOVERY.md)
 - [Phase 1B 범위와 완료 계약](docs/PHASE_1B_SCOPE.md)
 - [Phase 1B 저장소 결과](docs/PHASE_1B_RESULT.md)
 - [ADR-0002: project-wide Undo via snapshots](docs/decisions/ADR-0002-project-wide-undo-via-snapshots.md)

@@ -5,9 +5,9 @@
 ```text
 Input baseline: TECHNICAL GO — PRIVATE LOCAL (Phase 1A)
 Implementation branch: codex/phase-1b
-Provisional verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
+Final verdict: TECHNICAL GO — PRIVATE LOCAL
 Windows native Korean IME: MANUAL VALIDATION PENDING
-License: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
+Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Public/paid/customer distribution: NOT AUTHORIZED
 ```
 
@@ -185,12 +185,12 @@ pnpm test:package
 
 ## 6. 판정 경계
 
-현재 잠정 판정은 `CONDITIONAL TECHNICAL GO — PRIVATE LOCAL`이다. 의미 치환 경로와
-원자적 logical rollback은 구현됐지만, project-wide 치환을 하나의 지속 가능한
-사용자 `Ctrl+Z` history entry로 보존하지는 않는다. 각 장면의 headless Typie 변환은
-한 transaction/undo entry이지만 commit 뒤 현재 editor를 저장 snapshot으로 다시
-열면서 runtime history가 초기화된다. 따라서 여러 장면을 아우르는 사용자 rollback은
-자동 `AUTO_BEFORE_REPLACE` snapshot restore다.
+최종 판정은 `TECHNICAL GO — PRIVATE LOCAL`이다. Project-wide 치환을 하나의 지속
+가능한 사용자 `Ctrl+Z` history entry로 보존하지 않으며, 이는 미해결 구현 조건이
+아니라 확정된 제품 경계다. 각 장면의 headless Typie 변환은 한 transaction/undo
+entry이고 여러 장면을 아우르는 공식 rollback UX는 자동 `AUTO_BEFORE_REPLACE`
+snapshot restore다. 이 결정은
+[`ADR-0002`](decisions/ADR-0002-project-wide-undo-via-snapshots.md)에 기록돼 있다.
 
 또한 Windows native 한국어 IME는 `MANUAL VALIDATION PENDING`, Typie 라이선스 결정은
 `HUMAN DECISION REQUIRED BEFORE DISTRIBUTION`이다. 이 조건은 비공개 로컬 개발을

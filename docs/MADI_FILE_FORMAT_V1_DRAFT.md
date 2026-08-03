@@ -5,15 +5,15 @@
 ```text
 Specification status: DRAFT
 Logical format version: 1
-SQLite schema version: 3
-Implementation conformance: PHASE 1B INTEGRATION/DEV/PACKAGED ELECTRON/VERIFY PASS
-Migration/core-sidecar round-trip: SCHEMA 2 → 3 AND 10+ SCENE TWO-PROCESS PASS
+SQLite schema version: 4
+Implementation conformance: PHASE 1C STORY BIBLE FOUNDATION
+Migration/core-sidecar round-trip: SCHEMA 3 → 4
 ```
 
-이 문서는 Phase 1A의 저장 계약과 Phase 1B의 exact search/named snapshot 확장을
-기록한다. 이 명세의 문구만으로 구현 적합성을
+이 문서는 Phase 1A의 저장 계약, Phase 1B의 exact search/named snapshot 확장과
+Phase 1C의 Story Bible 저장 계약을 기록한다. 이 명세의 문구만으로 구현 적합성을
 증명하지는 않으며, 현재 migration·재열기 검증 증거와 제한은
-`PHASE_1B_RESULT.md`를 따른다. 배포 전에는 구현과 fixture를 다시 대조해 이 초안을
+`PHASE_1C_RESULT.md`를 따른다. 배포 전에는 구현과 fixture를 다시 대조해 이 초안을
 확정 문서로 승격해야 한다.
 
 `MUST`, `MUST NOT`, `SHOULD`는 각각 필수, 금지, 권고 요구사항이다.
@@ -26,8 +26,8 @@ Migration/core-sidecar round-trip: SCHEMA 2 → 3 AND 10+ SCENE TWO-PROCESS PASS
 - `PRAGMA application_id`: `0x4D414449` (`MADI`, decimal `1296122953`)
 - `app_meta.format_name`: `madi`
 - `app_meta.format_version`: `1`
-- `app_meta.schema_version`: `3`
-- `PRAGMA user_version`: `3`
+- `app_meta.schema_version`: `4`
+- `PRAGMA user_version`: `4`
 
 v0의 `application_id`와 container는 바꾸지 않는다. 확장자만 `.madi`인 임의
 SQLite 파일, 다른 `application_id`, 알 수 없는 format 또는 지원 값보다 높은
@@ -54,8 +54,9 @@ v1은 기존 row를 버리거나 snapshot을 다른 임시 형식으로 바꾸�
 
 ### `documents`의 v1 의미
 
-- 모든 document는 같은 project의 SCENE 하나와 정확히 1:1로 연결된다.
-- `documents.title`은 연결 SCENE title과 일치한다.
+- 모든 document는 같은 project의 SCENE 또는 entity 하나와 정확히 1:1로 연결된다.
+- 하나의 document를 SCENE과 entity가 공유할 수 없다.
+- `documents.title`은 연결 SCENE 또는 entity name과 일치한다.
 - `snapshot_blob`은 base64 text가 아니라 원본 Typie changeset bundle bytes다.
 - `plain_text_recovery`는 사람이 읽을 수 있는 UTF-8 긴급 복구 copy다.
 - `editor_engine`, `editor_engine_commit`, `editor_schema_version`은 snapshot을 해석할
@@ -63,17 +64,18 @@ v1은 기존 row를 버리거나 snapshot을 다른 임시 형식으로 바꾸�
 - `madi.scene-break.v1`은 Typie snapshot의 의미 node로 보존하고 recovery에서는
   기존 계약대로 `\n\n***\n\n` marker가 된다.
 
-새 SCENE의 document는 adapter가 첫 editor instance를 만들기 전까지
+새 SCENE 또는 entity note document는 adapter가 첫 editor instance를 만들기 전까지
 `editor_engine_commit = 'uninitialized'`와 빈 snapshot payload를 가질 수 있다.
 빈 payload를 유효한 Typie snapshot이라고 가장하지 않는다. 최초 load 시 adapter가
 빈 document를 만들고 최초 성공 save에서 실제 commit/schema/snapshot을 기록한다.
 
-## 3. schema v3
+## 3. schema v4
 
-schema 3은 Phase 1A schema 2의 `projects`, `tree_nodes`, `ui_state`를 그대로 유지하고
-Phase 1B의 exact-search projection과 named logical snapshot table을 추가한다. 아래 SQL은
-v1의 목표 schema다. 실제 migration은 `IF NOT EXISTS`만으로 성공을 판정하지 않고,
-migration record와 전체 불변식을 함께 검증해야 한다.
+schema 4는 Phase 1A schema 2의 `projects`, `tree_nodes`, `ui_state`, Phase 1B schema 3의
+exact-search projection과 named logical snapshot table을 그대로 유지하고 Phase 1C
+Story Bible table을 추가한다. 아래 SQL은 v1의 목표 schema다. 실제 migration은
+`IF NOT EXISTS`만으로 성공을 판정하지 않고 migration record와 전체 불변식을 함께
+검증해야 한다.
 
 ### `projects`
 
@@ -219,13 +221,115 @@ CREATE INDEX named_snapshots_project_created_idx
     ON named_snapshots(project_id, created_at DESC, id);
 ```
 
-현재 payload identity는 `MADI_LOGICAL_JSON` version 1이며 embedded JSON identity는
-`madi.logical-snapshot` version 1이다. `content_hash`는 exact uncompressed UTF-8
-payload bytes의 lowercase SHA-256 hex다. payload에는 project/tree/documents,
-Typie BLOB의 base64, recovery와 `workspace.v1`만 포함하고 named snapshot table과
-search projection은 포함하지 않는다.
+새 payload identity는 `MADI_LOGICAL_JSON` version 2이며 embedded JSON identity는
+`madi.logical-snapshot` version 2다. decoder는 version 1도 계속 지원한다.
+`content_hash`는 exact uncompressed UTF-8 payload bytes의 lowercase SHA-256 hex다.
+payload에는 project/tree/documents, Typie BLOB의 base64, recovery, `workspace.v1`과
+Story Bible logical row를 포함하고 named snapshot table과 search projection은 포함하지
+않는다.
 
 전체 payload와 restore 계약은 `docs/NAMED_SNAPSHOT_FORMAT.md`를 따른다.
+
+### Phase 1C Story Bible table
+
+```sql
+CREATE TABLE entities (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN (
+        'CHARACTER', 'LOCATION', 'ORGANIZATION', 'ITEM', 'EVENT',
+        'WORLD_RULE', 'FORESHADOWING', 'OTHER'
+    )),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    summary TEXT,
+    document_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'DRAFT', 'ARCHIVED')),
+    color_token TEXT,
+    icon_key TEXT,
+    attributes_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(attributes_json)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE entity_aliases (
+    id TEXT NOT NULL PRIMARY KEY,
+    entity_id TEXT NOT NULL,
+    alias TEXT NOT NULL CHECK (length(trim(alias)) > 0),
+    normalized_alias TEXT NOT NULL CHECK (length(trim(normalized_alias)) > 0),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+    UNIQUE (entity_id, normalized_alias)
+);
+
+CREATE TABLE tags (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    color_token TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE (project_id, name)
+);
+
+CREATE TABLE entity_tags (
+    entity_id TEXT NOT NULL,
+    tag_id TEXT NOT NULL,
+    PRIMARY KEY (entity_id, tag_id),
+    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+);
+
+CREATE TABLE relation_types (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    inverse_name TEXT,
+    directed INTEGER NOT NULL CHECK (directed IN (0, 1)),
+    color_token TEXT,
+    is_builtin INTEGER NOT NULL CHECK (is_builtin IN (0, 1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE (project_id, name)
+);
+
+CREATE TABLE entity_relations (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    source_entity_id TEXT NOT NULL,
+    relation_type_id TEXT NOT NULL,
+    target_entity_id TEXT NOT NULL,
+    note TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+    FOREIGN KEY (relation_type_id) REFERENCES relation_types(id) ON DELETE RESTRICT,
+    FOREIGN KEY (target_entity_id) REFERENCES entities(id) ON DELETE CASCADE,
+    CHECK (source_entity_id <> target_entity_id),
+    UNIQUE (project_id, source_entity_id, relation_type_id, target_entity_id)
+);
+
+CREATE TABLE scene_entity_links (
+    scene_node_id TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('APPEARS', 'POV', 'MENTIONED', 'RELATED')),
+    note TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (scene_node_id, entity_id, role),
+    FOREIGN KEY (scene_node_id) REFERENCES tree_nodes(id) ON DELETE CASCADE,
+    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE
+);
+```
+
+Schema trigger는 entity note document가 같은 project에 있고 SCENE 소유가 아닌지,
+entity-tag/relation/scene-link 구성원이 같은 project인지, link node가 실제 `SCENE`인지
+검사한다. Rust transaction은 같은 조건을 다시 검사하고 undirected relation의 역방향
+중복을 canonical endpoint order로 거부한다. 각 project에는 migration/create 시 10개의
+built-in relation type을 deterministic project-scoped ID로 idempotent하게 seed한다.
 
 ## 4. canonical hierarchy
 
@@ -249,9 +353,9 @@ WORK
 5. SCENE의 parent는 같은 project의 CHAPTER다.
 6. SCENE만 `document_id`를 가지며 SCENE은 반드시 하나를 가진다.
 7. `document_id UNIQUE`로 하나의 document가 둘 이상의 SCENE에 연결되지 않는다.
-8. 모든 documents row는 같은 project의 SCENE 하나에서 참조한다.
+8. 모든 documents row는 같은 project의 SCENE 또는 entity 하나에서 참조한다.
 9. parent와 child는 같은 project다.
-10. self-parent, cycle, 고아 node와 고아 document를 허용하지 않는다.
+10. self-parent, cycle, 고아 node, 고아 entity note와 고아 document를 허용하지 않는다.
 11. 모든 ID와 trim한 title은 비어 있지 않다.
 12. `order_key`는 유한한 수이며 같은 project/parent sibling 안에서 unique하다.
 13. node의 kind는 생성 뒤 바꾸지 않는다.
@@ -279,6 +383,21 @@ SCENE과 document의 lifecycle은 분리할 수 없다.
 Renderer가 보낸 `document_id`를 신뢰해 다른 장면을 저장하지 않는다. core는
 `scene_id`로 연결을 다시 조회하고, 요청의 document ID가 있다면 조회 결과와
 일치할 때만 저장한다.
+
+### ENTITY-document invariant
+
+- entity 생성: 빈/uninitialized documents row와 entity를 같은 transaction에서 생성
+- entity load/save: `owner_kind = ENTITY`, `owner_id`, `document_id`를 모두 재검증
+- entity 이름 변경: 연결 document title을 같은 transaction에서 갱신
+- entity 삭제: alias, entity-tag, relation, scene link와 entity row를 정리한 뒤 note
+  document를 같은 transaction에서 삭제
+- SCENE과 entity가 같은 `document_id`를 소유하는 상태를 trigger/core 양쪽에서 거부
+- open/snapshot restore: entity가 없는 note 또는 note가 없는 entity를 integrity 오류로
+  처리
+
+Renderer의 generation/save sequence는 stale response 억제용이며 canonical DB 값이
+아니다. SCENE과 ENTITY는 editor adapter instance를 공유할 수 있지만 owner tuple이
+일치하지 않는 save 응답을 현재 document 상태에 적용하지 않는다.
 
 ## 5. sparse `order_key`
 
@@ -323,22 +442,23 @@ transaction들을 적용한 뒤 canonical project row를 별도 transaction으�
 1. v0 table과 schema migration 1
 2. `projects`, `tree_nodes`, `ui_state`와 schema migration 2
 3. `search_documents`, trigger, `named_snapshots`와 schema migration 3
-4. `app_meta` 한 row
-5. 같은 ID의 `projects` 한 row
-6. project title을 가진 WORK 한 row
-7. WORK 아래 초기 document title을 가진 CHAPTER 한 row
-8. CHAPTER 아래 같은 title의 SCENE과 document 한 쌍
+4. Story Bible table, trigger와 schema migration 4
+5. `app_meta` 한 row
+6. 같은 ID의 `projects` 한 row와 built-in relation type 10개
+7. project title을 가진 WORK 한 row
+8. WORK 아래 초기 document title을 가진 CHAPTER 한 row
+9. CHAPTER 아래 같은 title의 SCENE과 document 한 쌍
 
 초기 VOLUME은 만들지 않는다. 기본 node/document는 기존 “새 파일을 만들면 바로 쓸
 수 있음” 동작을 유지하기 위한 최소값이다. core의 `document_title`을 생략하면 project
 title을 사용하며, 현재 desktop create path도 project title을 넘긴다. 이후 Binder의
 추가 동작은 `새 권`, `새 화`, `새 장면`을 기본 제목으로 사용한다.
 
-schema를 만들고 `application_id = 0x4D414449`, `user_version = 3`을 설정한 뒤 file을
+schema를 만들고 `application_id = 0x4D414449`, `user_version = 4`를 설정한 뒤 file을
 sync한다. destination이 이미 있으면 덮어쓰지 않는다. 완성된 임시 파일만 기존 v0의
 no-clobber publish 절차로 destination 이름에 연결한다.
 
-## 7. schema 1/2 → schema 3 migration
+## 7. schema 1/2/3 → schema 4 migration
 
 입력은 `format_version = 0`, `schema_version = 1`, `user_version = 1`인 유효한 v0
 파일 또는 schema 2 파일이다. 현재 open 순서는 migration 전에 application ID와
@@ -389,6 +509,22 @@ schema 2 → 3 실패는 table/backfill/version 변경을 함께 rollback한다.
 open할 때는 schema 2 transaction이 먼저 commit된 뒤 schema 3 transaction이 실행되므로
 두 migration을 하나의 outer transaction으로 원자화했다고 주장하지 않는다. 재open은
 현재 `user_version`에서 migration chain을 계속한다.
+
+### schema 3 → 4 절차
+
+1. 별도 `BEGIN IMMEDIATE`를 시작한다.
+2. `entities`, `entity_aliases`, `tags`, `entity_tags`, `relation_types`,
+   `entity_relations`, `scene_entity_links`와 index/validation trigger를 만든다.
+3. 기존 각 project에 10개의 built-in relation type을 project-scoped deterministic ID로
+   idempotent하게 seed한다.
+4. `schema_migrations(version = 4)`를 기록한다.
+5. `app_meta.schema_version = 4`로 바꾸고 `format_version = 1`을 유지한다.
+6. `PRAGMA user_version = 4`를 설정한다.
+7. foreign-key/integrity 검증이 성공하면 commit한다.
+
+schema 3 → 4는 기존 project/tree/document/search/snapshot row를 변경하거나 버리지
+않는다. 실패하면 신규 table, seed와 version 변경이 함께 rollback된다. 기존 payload
+v1 row는 schema migration에서 rewrite하지 않고 snapshot decoder가 복원 시 처리한다.
 
 현재 구현은 migration 전 `.bak`을 만들지 않으므로 pre-migration backup이 있다고
 주장하지 않는다. 손상된 row를 버리고 migration을 성공 처리하거나 빈 v1 project로
@@ -547,8 +683,10 @@ rollback한다. Typie 의미 transform 자체의 adapter 계약은
 manual create/rename/delete는 pre-operation backup, expected revision과 immediate
 transaction을 사용하고 revision을 한 번 올린다. diff는 read-only다. restore는 같은
 transaction 안에서 현재 logical payload를 `AUTO_BEFORE_RESTORE`로 insert하고 target을
-검증한 뒤 project/tree/documents/`workspace.v1`을 복원한다. 다른 UI key와 기존 named
-snapshot row는 보존한다. 자세한 payload는 `docs/NAMED_SNAPSHOT_FORMAT.md`를 따른다.
+검증한 뒤 project/tree/documents/Story Bible/`workspace.v1`을 복원한다. 다른 UI key와
+기존 named snapshot row는 보존한다. payload v1 복원은 사용자 Story Bible을 비우고
+built-in relation type만 다시 seed한다. 자세한 payload는
+`docs/NAMED_SNAPSHOT_FORMAT.md`를 따른다.
 
 ## 12. UI state 정규화
 
@@ -604,9 +742,9 @@ renderer는 장면 load 시 현재 Typie engine/commit/schema compatibility를 �
 
 현재 open-time scan은 orphan documents, cross-project parent/document pair,
 `app_meta/projects/WORK` title mirror 및 모든 SCENE-document 역방향 1:1을 별도 query로
-완전 검증하지 않는다. mutation API와 현재 한-project create/migration path는 이
-불변식을 유지하지만, 임의로 변조한 SQLite에 대한 추가 corruption test와 scan은
-별도 hardening 대상이다.
+완전 검증하지 않는다. schema v4의 FK/trigger와 Story Bible mutation/snapshot restore는
+entity note ownership과 cross-project relation/link를 검증하지만, 임의로 변조한 SQLite
+전체를 open 시 재구성해 audit하는 추가 corruption scan은 별도 hardening 대상이다.
 
 open 자체는 모든 document에 대응하는 `search_documents` row와 모든 named snapshot
 payload hash를 전수 decode하지 않는다. search는 projection 누락을 integrity 오류로
@@ -632,11 +770,12 @@ UI state write가 실패해도 마지막 성공 canonical manuscript는 유지�
 
 ## 15. compatibility
 
-- schema 1은 schema 2를 거쳐 schema 3으로, schema 2는 schema 3으로 migration한다.
+- schema 1은 schema 2와 3을 거쳐 schema 4로, schema 2는 schema 3과 4를 거쳐,
+  schema 3은 schema 4로 migration한다.
   migration 전 backup을 자동 생성한다고 주장하지 않는다.
 - v1 reader는 v0 snapshot bytes를 decode하지 않고 그대로 연결한 뒤 기존 adapter
   compatibility contract를 사용한다.
-- `user_version > 3`, `schema_version > 3` 또는 알 수 없는 format은 downgrade하지
+- `user_version > 4`, `schema_version > 4` 또는 알 수 없는 format은 downgrade하지
   않는다.
 - Typie commit/schema 변경은 별도 upgrade rehearsal과 migration 없이는 자동
   변환하지 않는다.
@@ -645,7 +784,7 @@ UI state write가 실패해도 마지막 성공 canonical manuscript는 유지�
 - v1 파일을 v0 앱이 쓸 수 있다고 약속하지 않는다.
 
 위 unknown-format 선거부는 목표 계약이다. 현재 open 순서는 `application_id`와
-`user_version`을 본 뒤 v2/v3 migration을 먼저 실행하고, 그 다음 `quick_check`와
+`user_version`을 본 뒤 v2/v3/v4 migration을 먼저 실행하고, 그 다음 `quick_check`와
 `app_meta` format/schema를 검증한다. 따라서 `user_version = 1`인 변조 파일의
 unknown `app_meta.format_version`을 migration 전에 거부하는 conformance는
 `PENDING`이다.
@@ -653,13 +792,14 @@ unknown `app_meta.format_version`을 migration 전에 거부하는 conformance�
 ## 16. 요구 test와 현재 결과
 
 집중 test와 최종 aggregate gate를 구분한다. 상세 결과와 구현 gap은
-`docs/PHASE_1B_RESULT.md`를 따른다.
+`docs/PHASE_1C_RESULT.md`를 따른다.
 
 | 영역 | 필수 검증 | 결과 |
 |---|---|---|
 | schema | 새 v1 create의 table/index/version | `PASS` — Rust |
 | migration | 실제 v0 fixture의 공통 `본문` CHAPTER backfill | `PASS` — failure rollback test와 pre-migration backup은 없음 |
 | migration 3 | schema 2 data/search projection backfill/version | `PASS` — Rust |
+| migration 4 | schema 3 data 보존, Story Bible table/trigger/built-in seed/version | `PASS` — Rust |
 | hierarchy | 허용 edge와 대표 금지 edge | `PASS` — Rust |
 | root | project당 WORK 정확히 하나 | `PASS` — Rust |
 | scene-document | create/rename/load/save/delete 연결 | `PASS` — Rust |
@@ -670,12 +810,19 @@ unknown `app_meta.format_version`을 migration 전에 거부하는 conformance�
 | exact search | Korean substring/save refresh/pagination/source hash | `PASS` — Rust |
 | replacement | revision/hash/transduction/atomic multi-document rollback | `PASS` — Rust/Typie focused |
 | snapshot | logical hash/CRUD/diff/restore/auto safety/rollback | `PASS` — Rust |
+| Story Bible | 8 kind CRUD, alias/tag/search, relation/link/delete integrity | `PASS` — Rust/Desktop |
+| entity note | owner-safe Typie save/switch/stale response/reopen | `PASS` — Rust/Desktop/sidecar |
+| snapshot v2 | Entity/tag/relation type/relation/link/note diff/restore와 v1 empty-state 호환 | `PASS` — Rust/sidecar |
+| Phase 1C scale | entity 500/alias 1,500/relation 2,000/link 2,000 | `PASS` — Rust/Desktop |
 | content | 10+ SCENE Korean/scene-break two-process fixture | `PASS` |
-| lifecycle | Phase 1B development Electron reopen | `PASS` — 11 SCENE/Scriv./search/replace/restore |
-| packaged lifecycle | Phase 1B unpacked Electron reopen | `PASS` — 11 SCENE/search 7/snapshot 3 |
+| lifecycle | Phase 1C development Electron reopen | `PASS` — entity/relation/link/mention/note/snapshot v2, stable ID |
+| packaged lifecycle | Phase 1C unpacked Electron reopen | `PASS` — 같은 first/second process 수명주기 |
 | regression | 변경 뒤 최종 `pnpm verify` | `PASS` — exit code 0 |
 | package | 변경 뒤 `pnpm package:unpacked` | `PASS` |
+| repository boundary | 독립 `pnpm check:repository` | `PASS` — exit code 0 |
+| source format | 독립 `pnpm format:check` | `PASS` — 86 files/issues 0 |
 
-Phase 1B 집중 test, integration, development/packaged Electron과 최종 aggregate
-`pnpm verify`는 모두 통과했다. 이 문서는 계속 v1 **초안**이며, 위 migration
+Phase 1C 최종 development/packaged Electron과 aggregate `pnpm verify`는 모두
+`PASS`이며 상세 증거는 `docs/PHASE_1C_RESULT.md`에 기록한다. 이 문서는 계속 v1
+**초안**이며, 위 migration
 preflight와 임의 변조 DB open audit도 hardening 과제로 남는다.
