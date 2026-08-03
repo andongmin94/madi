@@ -61,7 +61,11 @@ export const CORE_METHODS = [
   "create_scene_entity_link",
   "delete_scene_entity_link",
   "discover_entity_mentions",
-  "promote_entity_mention"
+  "promote_entity_mention",
+  "get_world_graph",
+  "get_world_graph_stats",
+  "get_entity_graph_detail",
+  "get_entity_scene_context"
 ] as const;
 
 export type CoreMethod = (typeof CORE_METHODS)[number];

@@ -13,6 +13,7 @@ import {
   type DeleteNodeRequest,
   type DeleteNamedSnapshotRequest,
   type DiffNamedSnapshotRequest,
+  type EntityGraphRequest,
   type LoadSceneDocumentRequest,
   type LoadDocumentRequest,
   type ListDescendantScenesRequest,
@@ -25,6 +26,7 @@ import {
   type SaveSceneDocumentRequest,
   type SaveDocumentRequest,
   type SaveUiStateRequest,
+  type SaveWorldGraphUiStateRequest,
   type ScopeNodeRequest,
   type SearchProjectRequest,
   type RestoreNamedSnapshotRequest,
@@ -278,6 +280,26 @@ export function registerMadiIpc({
     async (event, rawRequest: unknown) => {
       authorize(event);
       return service.loadUiState(
+        requireObject(rawRequest) as unknown as SessionRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.saveWorldGraphUiState,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      await service.saveWorldGraphUiState(
+        requireObject(rawRequest) as unknown as SaveWorldGraphUiStateRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.loadWorldGraphUiState,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.loadWorldGraphUiState(
         requireObject(rawRequest) as unknown as SessionRequest
       );
     }
@@ -637,6 +659,43 @@ export function registerMadiIpc({
       authorize(event);
       return service.promoteEntityMention(
         requireObject(rawRequest) as unknown as PromoteEntityMentionRequest
+      );
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.getWorldGraph, async (event, rawRequest) => {
+    authorize(event);
+    return service.getWorldGraph(
+      requireObject(rawRequest) as unknown as SessionRequest
+    );
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.getWorldGraphStats,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.getWorldGraphStats(
+        requireObject(rawRequest) as unknown as SessionRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.getEntityGraphDetail,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.getEntityGraphDetail(
+        requireObject(rawRequest) as unknown as EntityGraphRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.getEntitySceneContext,
+    async (event, rawRequest) => {
+      authorize(event);
+      return service.getEntitySceneContext(
+        requireObject(rawRequest) as unknown as EntityGraphRequest
       );
     }
   );

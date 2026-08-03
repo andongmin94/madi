@@ -11,6 +11,7 @@ pub mod rpc;
 pub mod storage;
 pub mod story_bible;
 pub mod workspace;
+pub mod world_graph;
 
 pub use error::{CoreError, Result};
 pub use hierarchy::{
@@ -28,4 +29,7 @@ pub use workspace::{
     apply_replacement_batch, create_named_snapshot, delete_named_snapshot, diff_named_snapshot,
     get_text_statistics, list_descendant_scenes, list_named_snapshots, rename_named_snapshot,
     restore_named_snapshot, search_project,
+};
+pub use world_graph::{
+    get_entity_graph_detail, get_entity_scene_context, get_world_graph, get_world_graph_stats,
 };

@@ -1608,3 +1608,191 @@ pub struct SearchEntitiesResult {
     pub has_more: bool,
     pub hits: Vec<EntitySearchHit>,
 }
+
+/// Read-only graph tag metadata derived from the Story Bible tag tables.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorldGraphTag {
+    pub id: String,
+    pub name: String,
+    pub color_token: Option<String>,
+}
+
+/// A graph node owned by Madi rather than by any renderer or layout library.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorldGraphNode {
+    pub id: String,
+    pub project_id: String,
+    pub label: String,
+    pub kind: EntityKind,
+    pub status: EntityStatus,
+    pub summary: Option<String>,
+    pub color_token: Option<String>,
+    pub icon_key: Option<String>,
+    pub aliases: Vec<String>,
+    pub tags: Vec<WorldGraphTag>,
+    pub explicit_scene_link_count: u64,
+    pub outgoing_relation_count: u64,
+    pub incoming_relation_count: u64,
+    pub undirected_relation_count: u64,
+}
+
+/// A single canonical relation projected into graph semantics.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorldGraphEdge {
+    pub id: String,
+    pub project_id: String,
+    pub source_entity_id: String,
+    pub target_entity_id: String,
+    pub relation_type_id: String,
+    pub forward_label: String,
+    pub inverse_label: Option<String>,
+    pub directed: bool,
+    pub color_token: Option<String>,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorldGraphEntityKindCount {
+    pub kind: EntityKind,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorldGraphRelationTypeCount {
+    pub relation_type_id: String,
+    pub name: String,
+    pub inverse_name: Option<String>,
+    pub directed: bool,
+    pub color_token: Option<String>,
+    pub is_builtin: bool,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorldGraphDegreeEntry {
+    pub entity_id: String,
+    pub label: String,
+    pub degree: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorldGraphStats {
+    pub entity_count: u64,
+    pub relation_count: u64,
+    pub entity_kind_counts: Vec<WorldGraphEntityKindCount>,
+    pub relation_type_counts: Vec<WorldGraphRelationTypeCount>,
+    pub isolated_entity_count: u64,
+    pub directed_relation_count: u64,
+    pub undirected_relation_count: u64,
+    pub top_degree_entities: Vec<WorldGraphDegreeEntry>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum WorldGraphDiagnosticCode {
+    SelfRelation,
+    CrossProjectRelation,
+    DanglingRelationMember,
+    DuplicateUndirectedRelation,
+    InvalidEntityTag,
+    InvalidSceneLink,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum WorldGraphDiagnosticSeverity {
+    Error,
+    Warning,
+}
+
+/// A corrupt canonical record is excluded from the rendered graph and reported here.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorldGraphDiagnostic {
+    pub code: WorldGraphDiagnosticCode,
+    pub severity: WorldGraphDiagnosticSeverity,
+    pub record_id: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GetWorldGraphParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+}
+
+/// Complete, non-paginated Phase 1D graph for one project revision.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorldGraphReadModel {
+    pub project_id: String,
+    pub revision: i64,
+    pub nodes: Vec<WorldGraphNode>,
+    pub edges: Vec<WorldGraphEdge>,
+    pub stats: WorldGraphStats,
+    pub diagnostics: Vec<WorldGraphDiagnostic>,
+}
+
+pub type GetWorldGraphStatsParams = GetWorldGraphParams;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GetWorldGraphStatsResult {
+    pub project_id: String,
+    pub revision: i64,
+    pub stats: WorldGraphStats,
+    pub diagnostics: Vec<WorldGraphDiagnostic>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GetEntityGraphDetailParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub entity_id: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum WorldGraphRelationPerspective {
+    Outgoing,
+    Incoming,
+    Undirected,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorldGraphRelationDetail {
+    pub edge: WorldGraphEdge,
+    pub counterpart_entity_id: String,
+    pub display_label: String,
+    pub perspective: WorldGraphRelationPerspective,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntityGraphDetail {
+    pub project_id: String,
+    pub revision: i64,
+    pub entity: WorldGraphNode,
+    pub outgoing_relations: Vec<WorldGraphRelationDetail>,
+    pub incoming_relations: Vec<WorldGraphRelationDetail>,
+    pub undirected_relations: Vec<WorldGraphRelationDetail>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GetEntitySceneContextParams {
+    #[serde(alias = "path")]
+    pub file_path: PathBuf,
+    pub entity_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorldGraphSceneLink {
+    pub scene_node_id: String,
+    pub scene_title: String,
+    pub role: SceneEntityRole,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EntitySceneContext {
+    pub project_id: String,
+    pub revision: i64,
+    pub entity_id: String,
+    pub links: Vec<WorldGraphSceneLink>,
+}

@@ -17,6 +17,9 @@ use crate::workspace::{
     get_text_statistics, list_descendant_scenes, list_named_snapshots, rename_named_snapshot,
     restore_named_snapshot, search_project,
 };
+use crate::world_graph::{
+    get_entity_graph_detail, get_entity_scene_context, get_world_graph, get_world_graph_stats,
+};
 
 const JSON_RPC_VERSION: &str = "2.0";
 
@@ -274,6 +277,22 @@ pub fn dispatch(method: &str, params: Value) -> Result<Value> {
         "promote_entity_mention" => {
             let request: PromoteEntityMentionParams = parse_params(params)?;
             Ok(serde_json::to_value(promote_entity_mention(request)?)?)
+        }
+        "get_world_graph" => {
+            let request: GetWorldGraphParams = parse_params(params)?;
+            Ok(serde_json::to_value(get_world_graph(request)?)?)
+        }
+        "get_world_graph_stats" => {
+            let request: GetWorldGraphStatsParams = parse_params(params)?;
+            Ok(serde_json::to_value(get_world_graph_stats(request)?)?)
+        }
+        "get_entity_graph_detail" => {
+            let request: GetEntityGraphDetailParams = parse_params(params)?;
+            Ok(serde_json::to_value(get_entity_graph_detail(request)?)?)
+        }
+        "get_entity_scene_context" => {
+            let request: GetEntitySceneContextParams = parse_params(params)?;
+            Ok(serde_json::to_value(get_entity_scene_context(request)?)?)
         }
         _ => Err(CoreError::MethodNotFound(method.to_owned())),
     }

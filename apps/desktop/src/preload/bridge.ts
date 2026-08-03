@@ -12,11 +12,15 @@ import {
   type DeleteNamedSnapshotResult,
   type DiffNamedSnapshotRequest,
   type DiffNamedSnapshotResult,
+  type EntityGraphDetail,
+  type EntityGraphRequest,
+  type EntitySceneContext,
   type LoadedSceneDocument,
   type LoadedDocument,
   type LoadSceneDocumentRequest,
   type LoadDocumentRequest,
   type LoadUiStateResult,
+  type LoadWorldGraphUiStateResult,
   type ListDescendantScenesRequest,
   type ListDescendantScenesResult,
   type ListNamedSnapshotsResult,
@@ -36,13 +40,16 @@ import {
   type SaveDocumentRequest,
   type SaveDocumentResult,
   type SaveUiStateRequest,
+  type SaveWorldGraphUiStateRequest,
   type ScopeNodeRequest,
   type SearchProjectRequest,
   type SearchProjectResult,
   type SessionRequest,
   type RestoreNamedSnapshotRequest,
   type RestoreNamedSnapshotResult,
-  type TextStatisticsResult
+  type TextStatisticsResult,
+  type WorldGraphReadModel,
+  type WorldGraphStatsResult
 } from "../shared/contracts";
 import type {
   CreateEntityAliasRequest,
@@ -241,6 +248,21 @@ export function createMadiDesktopApi(
         IPC_CHANNELS.loadUiState,
         request
       )) as LoadUiStateResult;
+    },
+
+    async saveWorldGraphUiState(
+      request: SaveWorldGraphUiStateRequest
+    ): Promise<void> {
+      await invoke(IPC_CHANNELS.saveWorldGraphUiState, request);
+    },
+
+    async loadWorldGraphUiState(
+      request: SessionRequest
+    ): Promise<LoadWorldGraphUiStateResult> {
+      return (await invoke(
+        IPC_CHANNELS.loadWorldGraphUiState,
+        request
+      )) as LoadWorldGraphUiStateResult;
     },
 
     async listDescendantScenes(
@@ -582,6 +604,42 @@ export function createMadiDesktopApi(
         IPC_CHANNELS.promoteEntityMention,
         request
       )) as SceneEntityLinkMutationResult;
+    },
+
+    async getWorldGraph(
+      request: SessionRequest
+    ): Promise<WorldGraphReadModel> {
+      return (await invoke(
+        IPC_CHANNELS.getWorldGraph,
+        request
+      )) as WorldGraphReadModel;
+    },
+
+    async getWorldGraphStats(
+      request: SessionRequest
+    ): Promise<WorldGraphStatsResult> {
+      return (await invoke(
+        IPC_CHANNELS.getWorldGraphStats,
+        request
+      )) as WorldGraphStatsResult;
+    },
+
+    async getEntityGraphDetail(
+      request: EntityGraphRequest
+    ): Promise<EntityGraphDetail> {
+      return (await invoke(
+        IPC_CHANNELS.getEntityGraphDetail,
+        request
+      )) as EntityGraphDetail;
+    },
+
+    async getEntitySceneContext(
+      request: EntityGraphRequest
+    ): Promise<EntitySceneContext> {
+      return (await invoke(
+        IPC_CHANNELS.getEntitySceneContext,
+        request
+      )) as EntitySceneContext;
     },
 
     async getAppVersion(): Promise<string> {

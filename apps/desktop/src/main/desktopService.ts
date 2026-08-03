@@ -74,6 +74,10 @@ import type {
   DeleteTagResult,
   DiscoverEntityMentionsRequest,
   DiscoverEntityMentionsResult,
+  EntityGraphDetail,
+  EntityGraphRelationDetail,
+  EntityGraphRelationPerspective,
+  EntityGraphRequest,
   EntityAliasMutationResult,
   EntityAliasRecord,
   EntityDeleteImpact,
@@ -87,6 +91,7 @@ import type {
   EntitySearchHit,
   EntitySort,
   EntityStatus,
+  EntitySceneContext,
   JsonObject,
   ListEntitiesRequest,
   ListEntitiesResult,
@@ -100,6 +105,7 @@ import type {
   ListSceneEntityLinksRequest,
   ListSceneEntityLinksResult,
   ListTagsResult,
+  LoadWorldGraphUiStateResult,
   LoadedEntityNote,
   LoadEntityNoteRequest,
   PromoteEntityMentionRequest,
@@ -107,6 +113,7 @@ import type {
   RelationTypeRecord,
   SaveEntityNoteRequest,
   SaveEntityNoteResult,
+  SaveWorldGraphUiStateRequest,
   SceneEntityLinkMutationResult,
   SceneEntityLinkRecord,
   SceneEntityRole,
@@ -119,7 +126,26 @@ import type {
   UpdateEntityRelationRequest,
   UpdateEntityRequest,
   UpdateRelationTypeRequest,
-  UpdateTagRequest
+  UpdateTagRequest,
+  WorldGraphDepth,
+  WorldGraphDiagnostic,
+  WorldGraphDiagnosticCode,
+  WorldGraphDiagnosticSeverity,
+  WorldGraphEdge,
+  WorldGraphFilterState,
+  WorldGraphLayout,
+  WorldGraphMode,
+  WorldGraphNode,
+  WorldGraphPoint,
+  WorldGraphReadModel,
+  WorldGraphRelationDirection,
+  WorldGraphRelationTypeCount,
+  WorldGraphStats,
+  WorldGraphStatsResult,
+  WorldGraphTag,
+  WorldGraphTagMode,
+  WorldGraphTopDegreeEntity,
+  WorldGraphUiState
 } from "../shared/contracts";
 import type { CoreClient } from "./coreClient";
 import { ProjectSessionRegistry } from "./projectSessions";
@@ -127,6 +153,14 @@ import { ProjectSessionRegistry } from "./projectSessions";
 const MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
 const MAX_RECOVERY_TEXT_CODE_UNITS = 32 * 1024 * 1024;
 const UI_STATE_KEY = "workspace.v1";
+const WORLD_GRAPH_UI_STATE_KEY = "world-graph.v1";
+const MAX_WORLD_GRAPH_NODES = 500;
+const MAX_WORLD_GRAPH_EDGES = 2_000;
+const MAX_WORLD_GRAPH_ALIASES = 1_500;
+const MAX_WORLD_GRAPH_SCENE_LINKS = 2_000;
+const MAX_WORLD_GRAPH_RELATION_TYPES = 2_000;
+const MAX_WORLD_GRAPH_DIAGNOSTICS = 2_000;
+const MAX_WORLD_GRAPH_COORDINATE = 1_000_000;
 const TREE_NODE_KINDS = new Set<TreeNodeKind>([
   "WORK",
   "VOLUME",
@@ -169,6 +203,31 @@ const ENTITY_SEARCH_FIELDS = new Set<EntitySearchHit["matchedFields"][number]>([
   "TAG",
   "NOTE"
 ]);
+const WORLD_GRAPH_DIAGNOSTIC_CODES = new Set<WorldGraphDiagnosticCode>([
+  "SELF_RELATION",
+  "CROSS_PROJECT_RELATION",
+  "DANGLING_RELATION_MEMBER",
+  "DUPLICATE_UNDIRECTED_RELATION",
+  "INVALID_ENTITY_TAG",
+  "INVALID_SCENE_LINK"
+]);
+const WORLD_GRAPH_DIAGNOSTIC_SEVERITIES =
+  new Set<WorldGraphDiagnosticSeverity>(["ERROR", "WARNING"]);
+const ENTITY_GRAPH_RELATION_PERSPECTIVES =
+  new Set<EntityGraphRelationPerspective>([
+    "OUTGOING",
+    "INCOMING",
+    "UNDIRECTED"
+  ]);
+const WORLD_GRAPH_MODES = new Set<WorldGraphMode>(["FULL", "FOCUSED"]);
+const WORLD_GRAPH_TAG_MODES = new Set<WorldGraphTagMode>(["ANY", "ALL"]);
+const WORLD_GRAPH_RELATION_DIRECTIONS =
+  new Set<WorldGraphRelationDirection>([
+    "ALL",
+    "DIRECTED",
+    "UNDIRECTED"
+  ]);
+const WORLD_GRAPH_LAYOUTS = new Set<WorldGraphLayout>(["cose", "preset"]);
 const MAX_ATTRIBUTES_JSON_BYTES = 1024 * 1024;
 
 export interface DialogPort {
@@ -786,6 +845,1175 @@ function requiredArray(
     throw new Error(`The local core returned invalid ${label}`);
   }
   return value;
+}
+
+function assertExactKeys(
+  record: Readonly<Record<string, unknown>>,
+  allowedKeys: readonly string[],
+  label: string
+): void {
+  const allowed = new Set(allowedKeys);
+  if (Object.keys(record).some((key) => !allowed.has(key))) {
+    throw new Error(`Invalid ${label}`);
+  }
+}
+
+function parseBoundedCoreText(
+  record: Readonly<Record<string, unknown>>,
+  key: string,
+  maximumLength: number,
+  label: string,
+  allowEmpty = false
+): string {
+  const value = record[key];
+  if (
+    typeof value !== "string" ||
+    (!allowEmpty && value.length === 0) ||
+    value.length > maximumLength
+  ) {
+    throw new Error(`The local core returned invalid ${label}`);
+  }
+  return value;
+}
+
+function parseCoreId(
+  record: Readonly<Record<string, unknown>>,
+  key: string,
+  label: string
+): string {
+  return parseBoundedCoreText(record, key, 128, label);
+}
+
+function parseRequiredNullableCoreText(
+  record: Readonly<Record<string, unknown>>,
+  key: string,
+  maximumLength: number,
+  label: string
+): string | null {
+  const value = record[key];
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "string" || value.length > maximumLength) {
+    throw new Error(`The local core returned invalid ${label}`);
+  }
+  return value;
+}
+
+function parseWorldGraphTag(value: unknown): WorldGraphTag {
+  const tag = asRecord(value, "world graph tag");
+  assertExactKeys(tag, ["id", "name", "color_token"], "world graph tag");
+  return {
+    id: parseCoreId(tag, "id", "world graph tag id"),
+    name: parseBoundedCoreText(tag, "name", 200, "world graph tag name"),
+    colorToken: parseRequiredNullableCoreText(
+      tag,
+      "color_token",
+      128,
+      "world graph tag color token"
+    )
+  };
+}
+
+function parseWorldGraphNode(value: unknown): WorldGraphNode {
+  const node = asRecord(value, "world graph node");
+  assertExactKeys(
+    node,
+    [
+      "id",
+      "project_id",
+      "label",
+      "kind",
+      "status",
+      "summary",
+      "color_token",
+      "icon_key",
+      "aliases",
+      "tags",
+      "explicit_scene_link_count",
+      "outgoing_relation_count",
+      "incoming_relation_count",
+      "undirected_relation_count"
+    ],
+    "world graph node"
+  );
+  const aliases = requiredArray(
+    node,
+    "aliases",
+    MAX_WORLD_GRAPH_ALIASES,
+    "world graph aliases"
+  ).map((alias) => {
+    if (typeof alias !== "string" || alias.length === 0 || alias.length > 500) {
+      throw new Error("The local core returned invalid world graph alias");
+    }
+    return alias;
+  });
+  if (new Set(aliases).size !== aliases.length) {
+    throw new Error("The local core returned duplicate world graph aliases");
+  }
+  const tags = requiredArray(
+    node,
+    "tags",
+    MAX_WORLD_GRAPH_NODES,
+    "world graph tags"
+  ).map(parseWorldGraphTag);
+  if (new Set(tags.map((tag) => tag.id)).size !== tags.length) {
+    throw new Error("The local core returned duplicate world graph tags");
+  }
+  return {
+    id: parseCoreId(node, "id", "world graph node id"),
+    projectId: parseCoreId(
+      node,
+      "project_id",
+      "world graph node project id"
+    ),
+    label: parseBoundedCoreText(
+      node,
+      "label",
+      500,
+      "world graph node label"
+    ),
+    kind: parseEnum(node.kind, ENTITY_KINDS, "world graph entity kind"),
+    status: parseEnum(
+      node.status,
+      ENTITY_STATUSES,
+      "world graph entity status"
+    ),
+    summary: parseRequiredNullableCoreText(
+      node,
+      "summary",
+      10_000,
+      "world graph entity summary"
+    ),
+    colorToken: parseRequiredNullableCoreText(
+      node,
+      "color_token",
+      128,
+      "world graph entity color token"
+    ),
+    iconKey: parseRequiredNullableCoreText(
+      node,
+      "icon_key",
+      128,
+      "world graph entity icon key"
+    ),
+    aliases,
+    tags,
+    explicitSceneLinkCount: requiredInteger(
+      node,
+      "explicit_scene_link_count"
+    ),
+    outgoingRelationCount: requiredInteger(
+      node,
+      "outgoing_relation_count"
+    ),
+    incomingRelationCount: requiredInteger(
+      node,
+      "incoming_relation_count"
+    ),
+    undirectedRelationCount: requiredInteger(
+      node,
+      "undirected_relation_count"
+    )
+  };
+}
+
+function parseWorldGraphEdge(value: unknown): WorldGraphEdge {
+  const edge = asRecord(value, "world graph edge");
+  assertExactKeys(
+    edge,
+    [
+      "id",
+      "project_id",
+      "source_entity_id",
+      "target_entity_id",
+      "relation_type_id",
+      "forward_label",
+      "inverse_label",
+      "directed",
+      "color_token",
+      "note"
+    ],
+    "world graph edge"
+  );
+  return {
+    id: parseCoreId(edge, "id", "world graph edge id"),
+    projectId: parseCoreId(
+      edge,
+      "project_id",
+      "world graph edge project id"
+    ),
+    sourceEntityId: parseCoreId(
+      edge,
+      "source_entity_id",
+      "world graph edge source entity id"
+    ),
+    targetEntityId: parseCoreId(
+      edge,
+      "target_entity_id",
+      "world graph edge target entity id"
+    ),
+    relationTypeId: parseCoreId(
+      edge,
+      "relation_type_id",
+      "world graph edge relation type id"
+    ),
+    forwardLabel: parseBoundedCoreText(
+      edge,
+      "forward_label",
+      200,
+      "world graph edge label"
+    ),
+    inverseLabel: parseRequiredNullableCoreText(
+      edge,
+      "inverse_label",
+      200,
+      "world graph edge inverse label"
+    ),
+    directed: requiredBoolean(edge, "directed"),
+    colorToken: parseRequiredNullableCoreText(
+      edge,
+      "color_token",
+      128,
+      "world graph edge color token"
+    ),
+    note: parseRequiredNullableCoreText(
+      edge,
+      "note",
+      10_000,
+      "world graph edge note"
+    )
+  };
+}
+
+function parseWorldGraphRelationTypeCount(
+  value: unknown
+): WorldGraphRelationTypeCount {
+  const count = asRecord(value, "world graph relation type count");
+  assertExactKeys(
+    count,
+    [
+      "relation_type_id",
+      "name",
+      "inverse_name",
+      "directed",
+      "color_token",
+      "is_builtin",
+      "count"
+    ],
+    "world graph relation type count"
+  );
+  return {
+    relationTypeId: parseCoreId(
+      count,
+      "relation_type_id",
+      "world graph relation type id"
+    ),
+    name: parseBoundedCoreText(
+      count,
+      "name",
+      200,
+      "world graph relation type name"
+    ),
+    inverseName: parseRequiredNullableCoreText(
+      count,
+      "inverse_name",
+      200,
+      "world graph relation type inverse name"
+    ),
+    directed: requiredBoolean(count, "directed"),
+    colorToken: parseRequiredNullableCoreText(
+      count,
+      "color_token",
+      128,
+      "world graph relation type color token"
+    ),
+    isBuiltin: requiredBoolean(count, "is_builtin"),
+    count: requiredInteger(count, "count")
+  };
+}
+
+function parseWorldGraphStats(value: unknown): WorldGraphStats {
+  const stats = asRecord(value, "world graph stats");
+  assertExactKeys(
+    stats,
+    [
+      "entity_count",
+      "relation_count",
+      "entity_kind_counts",
+      "relation_type_counts",
+      "top_degree_entities",
+      "isolated_entity_count",
+      "directed_relation_count",
+      "undirected_relation_count"
+    ],
+    "world graph stats"
+  );
+  const entityKindCounts = requiredArray(
+    stats,
+    "entity_kind_counts",
+    ENTITY_KINDS.size,
+    "world graph entity kind counts"
+  ).map((value, index) => {
+    const count = asRecord(value, "world graph entity kind count");
+    assertExactKeys(count, ["kind", "count"], "world graph entity kind count");
+    const kind = parseEnum(
+      count.kind,
+      ENTITY_KINDS,
+      "world graph entity kind count kind"
+    );
+    if (kind !== [...ENTITY_KINDS][index]) {
+      throw new Error("The local core returned unordered entity kind counts");
+    }
+    return { kind, count: requiredInteger(count, "count") };
+  });
+  if (entityKindCounts.length !== ENTITY_KINDS.size) {
+    throw new Error("The local core returned incomplete entity kind counts");
+  }
+  const relationTypeCounts = requiredArray(
+    stats,
+    "relation_type_counts",
+    MAX_WORLD_GRAPH_RELATION_TYPES,
+    "world graph relation type counts"
+  ).map(parseWorldGraphRelationTypeCount);
+  if (
+    new Set(relationTypeCounts.map((count) => count.relationTypeId)).size !==
+    relationTypeCounts.length
+  ) {
+    throw new Error("The local core returned duplicate relation type counts");
+  }
+  const topDegreeEntities: readonly WorldGraphTopDegreeEntity[] = requiredArray(
+    stats,
+    "top_degree_entities",
+    5,
+    "world graph top degree entities"
+  ).map((value) => {
+    const entity = asRecord(value, "world graph top degree entity");
+    assertExactKeys(
+      entity,
+      ["entity_id", "label", "degree"],
+      "world graph top degree entity"
+    );
+    const degree = requiredInteger(entity, "degree");
+    if (degree === 0) {
+      throw new Error("The local core returned an isolated top degree entity");
+    }
+    return {
+      entityId: parseCoreId(
+        entity,
+        "entity_id",
+        "world graph top degree entity id"
+      ),
+      label: parseBoundedCoreText(
+        entity,
+        "label",
+        500,
+        "world graph top degree entity label"
+      ),
+      degree
+    };
+  });
+  if (
+    new Set(topDegreeEntities.map((entity) => entity.entityId)).size !==
+      topDegreeEntities.length ||
+    topDegreeEntities.some(
+      (entity, index) =>
+        index > 0 && topDegreeEntities[index - 1]!.degree < entity.degree
+    )
+  ) {
+    throw new Error("The local core returned invalid top degree entities");
+  }
+  const parsed: WorldGraphStats = {
+    entityCount: requiredInteger(stats, "entity_count"),
+    relationCount: requiredInteger(stats, "relation_count"),
+    entityKindCounts,
+    relationTypeCounts,
+    topDegreeEntities,
+    isolatedEntityCount: requiredInteger(stats, "isolated_entity_count"),
+    directedRelationCount: requiredInteger(stats, "directed_relation_count"),
+    undirectedRelationCount: requiredInteger(
+      stats,
+      "undirected_relation_count"
+    )
+  };
+  if (
+    parsed.entityCount > MAX_WORLD_GRAPH_NODES ||
+    parsed.relationCount > MAX_WORLD_GRAPH_EDGES ||
+    parsed.isolatedEntityCount > parsed.entityCount ||
+    parsed.directedRelationCount + parsed.undirectedRelationCount !==
+      parsed.relationCount ||
+    entityKindCounts.reduce((sum, item) => sum + item.count, 0) !==
+      parsed.entityCount ||
+    relationTypeCounts.reduce((sum, item) => sum + item.count, 0) !==
+      parsed.relationCount
+  ) {
+    throw new Error("The local core returned inconsistent world graph stats");
+  }
+  return parsed;
+}
+
+function parseWorldGraphDiagnostic(value: unknown): WorldGraphDiagnostic {
+  const diagnostic = asRecord(value, "world graph diagnostic");
+  assertExactKeys(
+    diagnostic,
+    ["code", "severity", "record_id", "message"],
+    "world graph diagnostic"
+  );
+  const recordId = diagnostic.record_id;
+  return {
+    code: parseEnum(
+      diagnostic.code,
+      WORLD_GRAPH_DIAGNOSTIC_CODES,
+      "world graph diagnostic code"
+    ),
+    severity: parseEnum(
+      diagnostic.severity,
+      WORLD_GRAPH_DIAGNOSTIC_SEVERITIES,
+      "world graph diagnostic severity"
+    ),
+    recordId:
+      recordId === null
+        ? null
+        : parseCoreId(diagnostic, "record_id", "world graph diagnostic record id"),
+    message: parseBoundedCoreText(
+      diagnostic,
+      "message",
+      2_000,
+      "world graph diagnostic message"
+    )
+  };
+}
+
+function parseWorldGraphDiagnostics(
+  record: Readonly<Record<string, unknown>>
+): readonly WorldGraphDiagnostic[] {
+  return requiredArray(
+    record,
+    "diagnostics",
+    MAX_WORLD_GRAPH_DIAGNOSTICS,
+    "world graph diagnostics"
+  ).map(parseWorldGraphDiagnostic);
+}
+
+function validateWorldGraphRevision(
+  response: Readonly<Record<string, unknown>>,
+  sessionRevision: number
+): number {
+  const revision = requiredInteger(response, "revision", "world graph revision");
+  if (revision < sessionRevision) {
+    throw new Error("The local core returned a stale world graph response");
+  }
+  return revision;
+}
+
+function parseWorldGraphReadModel(
+  value: unknown,
+  expectedProjectId: string,
+  sessionRevision: number
+): WorldGraphReadModel {
+  const response = asRecord(value, "world graph response");
+  assertExactKeys(
+    response,
+    ["project_id", "revision", "nodes", "edges", "stats", "diagnostics"],
+    "world graph response"
+  );
+  const projectId = parseCoreId(response, "project_id", "world graph project id");
+  if (projectId !== expectedProjectId) {
+    throw new Error("The local core returned a cross-project world graph");
+  }
+  const nodes = requiredArray(
+    response,
+    "nodes",
+    MAX_WORLD_GRAPH_NODES,
+    "world graph nodes"
+  ).map(parseWorldGraphNode);
+  const edges = requiredArray(
+    response,
+    "edges",
+    MAX_WORLD_GRAPH_EDGES,
+    "world graph edges"
+  ).map(parseWorldGraphEdge);
+  const stats = parseWorldGraphStats(response.stats);
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const edgeIds = new Set(edges.map((edge) => edge.id));
+  const undirectedKeys = edges
+    .filter((edge) => !edge.directed)
+    .map((edge) => {
+      const [left, right] = [edge.sourceEntityId, edge.targetEntityId].sort();
+      return `${edge.relationTypeId}\u0000${left}\u0000${right}`;
+    });
+  const relationTypes = new Map(
+    stats.relationTypeCounts.map((count) => [count.relationTypeId, count])
+  );
+  const aggregateAliasCount = nodes.reduce(
+    (sum, node) => sum + node.aliases.length,
+    0
+  );
+  const aggregateTagCount = nodes.reduce((sum, node) => sum + node.tags.length, 0);
+  const aggregateSceneLinkCount = nodes.reduce(
+    (sum, node) => sum + node.explicitSceneLinkCount,
+    0
+  );
+  if (
+    nodeIds.size !== nodes.length ||
+    edgeIds.size !== edges.length ||
+    new Set(undirectedKeys).size !== undirectedKeys.length ||
+    aggregateAliasCount > MAX_WORLD_GRAPH_ALIASES ||
+    aggregateTagCount > MAX_WORLD_GRAPH_EDGES ||
+    aggregateSceneLinkCount > MAX_WORLD_GRAPH_SCENE_LINKS ||
+    nodes.some((node) => node.projectId !== projectId) ||
+    edges.some(
+      (edge) =>
+        edge.projectId !== projectId ||
+        edge.sourceEntityId === edge.targetEntityId ||
+        !nodeIds.has(edge.sourceEntityId) ||
+        !nodeIds.has(edge.targetEntityId)
+    ) ||
+    stats.entityCount !== nodes.length ||
+    stats.relationCount !== edges.length
+  ) {
+    throw new Error("The local core returned an inconsistent world graph");
+  }
+  for (const edge of edges) {
+    const type = relationTypes.get(edge.relationTypeId);
+    if (
+      !type ||
+      type.name !== edge.forwardLabel ||
+      type.inverseName !== edge.inverseLabel ||
+      type.directed !== edge.directed ||
+      type.colorToken !== edge.colorToken
+    ) {
+      throw new Error("The local core returned inconsistent graph edge metadata");
+    }
+  }
+  for (const kindCount of stats.entityKindCounts) {
+    if (nodes.filter((node) => node.kind === kindCount.kind).length !== kindCount.count) {
+      throw new Error("The local core returned inconsistent graph kind counts");
+    }
+  }
+  for (const typeCount of stats.relationTypeCounts) {
+    if (
+      edges.filter((edge) => edge.relationTypeId === typeCount.relationTypeId)
+        .length !== typeCount.count
+    ) {
+      throw new Error("The local core returned inconsistent graph relation counts");
+    }
+  }
+  for (const node of nodes) {
+    const outgoing = edges.filter(
+      (edge) => edge.directed && edge.sourceEntityId === node.id
+    ).length;
+    const incoming = edges.filter(
+      (edge) => edge.directed && edge.targetEntityId === node.id
+    ).length;
+    const undirected = edges.filter(
+      (edge) =>
+        !edge.directed &&
+        (edge.sourceEntityId === node.id || edge.targetEntityId === node.id)
+    ).length;
+    if (
+      node.outgoingRelationCount !== outgoing ||
+      node.incomingRelationCount !== incoming ||
+      node.undirectedRelationCount !== undirected
+    ) {
+      throw new Error("The local core returned inconsistent graph node degrees");
+    }
+  }
+  const positiveDegrees = nodes
+    .map((node) => ({
+      entityId: node.id,
+      label: node.label,
+      degree:
+        node.outgoingRelationCount +
+        node.incomingRelationCount +
+        node.undirectedRelationCount
+    }))
+    .filter((entity) => entity.degree > 0)
+    .sort((left, right) => right.degree - left.degree);
+  const topIds = new Set(
+    stats.topDegreeEntities.map((entity) => entity.entityId)
+  );
+  const lowestTopDegree = stats.topDegreeEntities.at(-1)?.degree ?? 0;
+  if (
+    stats.topDegreeEntities.length !== Math.min(5, positiveDegrees.length) ||
+    stats.topDegreeEntities.some((top) => {
+      const node = positiveDegrees.find(
+        (candidate) => candidate.entityId === top.entityId
+      );
+      return !node || node.label !== top.label || node.degree !== top.degree;
+    }) ||
+    positiveDegrees.some(
+      (entity) => !topIds.has(entity.entityId) && entity.degree > lowestTopDegree
+    )
+  ) {
+    throw new Error("The local core returned inconsistent top degree entities");
+  }
+  const isolated = nodes.filter(
+    (node) =>
+      node.outgoingRelationCount +
+        node.incomingRelationCount +
+        node.undirectedRelationCount ===
+      0
+  ).length;
+  if (isolated !== stats.isolatedEntityCount) {
+    throw new Error("The local core returned inconsistent isolated entity stats");
+  }
+  return {
+    projectId,
+    revision: validateWorldGraphRevision(response, sessionRevision),
+    nodes,
+    edges,
+    stats,
+    diagnostics: parseWorldGraphDiagnostics(response)
+  };
+}
+
+function parseWorldGraphStatsResult(
+  value: unknown,
+  expectedProjectId: string,
+  sessionRevision: number
+): WorldGraphStatsResult {
+  const response = asRecord(value, "world graph stats response");
+  assertExactKeys(
+    response,
+    ["project_id", "revision", "stats", "diagnostics"],
+    "world graph stats response"
+  );
+  const projectId = parseCoreId(
+    response,
+    "project_id",
+    "world graph stats project id"
+  );
+  if (projectId !== expectedProjectId) {
+    throw new Error("The local core returned cross-project graph stats");
+  }
+  return {
+    projectId,
+    revision: validateWorldGraphRevision(response, sessionRevision),
+    stats: parseWorldGraphStats(response.stats),
+    diagnostics: parseWorldGraphDiagnostics(response)
+  };
+}
+
+function parseEntityGraphRelationDetail(
+  value: unknown,
+  expectedEntityId: string,
+  expectedProjectId: string,
+  expectedPerspective: EntityGraphRelationPerspective
+): EntityGraphRelationDetail {
+  const detail = asRecord(value, "entity graph relation detail");
+  assertExactKeys(
+    detail,
+    ["edge", "counterpart_entity_id", "display_label", "perspective"],
+    "entity graph relation detail"
+  );
+  const edge = parseWorldGraphEdge(detail.edge);
+  const counterpartEntityId = parseCoreId(
+    detail,
+    "counterpart_entity_id",
+    "entity graph counterpart id"
+  );
+  const perspective = parseEnum(
+    detail.perspective,
+    ENTITY_GRAPH_RELATION_PERSPECTIVES,
+    "entity graph relation perspective"
+  );
+  const displayLabel = parseBoundedCoreText(
+    detail,
+    "display_label",
+    200,
+    "entity graph display label"
+  );
+  const expectedDisplayLabel =
+    perspective === "INCOMING"
+      ? (edge.inverseLabel ?? edge.forwardLabel)
+      : edge.forwardLabel;
+  const endpointsAreValid =
+    perspective === "OUTGOING"
+      ? edge.directed &&
+        edge.sourceEntityId === expectedEntityId &&
+        edge.targetEntityId === counterpartEntityId
+      : perspective === "INCOMING"
+        ? edge.directed &&
+          edge.targetEntityId === expectedEntityId &&
+          edge.sourceEntityId === counterpartEntityId
+        : !edge.directed &&
+          ((edge.sourceEntityId === expectedEntityId &&
+            edge.targetEntityId === counterpartEntityId) ||
+            (edge.targetEntityId === expectedEntityId &&
+              edge.sourceEntityId === counterpartEntityId));
+  if (
+    edge.projectId !== expectedProjectId ||
+    perspective !== expectedPerspective ||
+    counterpartEntityId === expectedEntityId ||
+    displayLabel !== expectedDisplayLabel ||
+    !endpointsAreValid
+  ) {
+    throw new Error("The local core returned inconsistent entity graph detail");
+  }
+  return { edge, counterpartEntityId, displayLabel, perspective };
+}
+
+function parseEntityGraphDetail(
+  value: unknown,
+  expectedEntityId: string,
+  expectedProjectId: string,
+  sessionRevision: number
+): EntityGraphDetail {
+  const response = asRecord(value, "entity graph detail response");
+  assertExactKeys(
+    response,
+    [
+      "project_id",
+      "revision",
+      "entity",
+      "outgoing_relations",
+      "incoming_relations",
+      "undirected_relations"
+    ],
+    "entity graph detail response"
+  );
+  const projectId = parseCoreId(
+    response,
+    "project_id",
+    "entity graph detail project id"
+  );
+  if (projectId !== expectedProjectId) {
+    throw new Error("The local core returned cross-project entity graph detail");
+  }
+  const entity = parseWorldGraphNode(response.entity);
+  if (entity.id !== expectedEntityId || entity.projectId !== projectId) {
+    throw new Error("The local core returned detail for another graph entity");
+  }
+  const parseRelations = (
+    key: string,
+    perspective: EntityGraphRelationPerspective
+  ): readonly EntityGraphRelationDetail[] =>
+    requiredArray(
+      response,
+      key,
+      MAX_WORLD_GRAPH_EDGES,
+      `entity graph ${key}`
+    ).map((relation) =>
+      parseEntityGraphRelationDetail(
+        relation,
+        expectedEntityId,
+        projectId,
+        perspective
+      )
+    );
+  const outgoingRelations = parseRelations("outgoing_relations", "OUTGOING");
+  const incomingRelations = parseRelations("incoming_relations", "INCOMING");
+  const undirectedRelations = parseRelations(
+    "undirected_relations",
+    "UNDIRECTED"
+  );
+  const relations = [
+    ...outgoingRelations,
+    ...incomingRelations,
+    ...undirectedRelations
+  ];
+  if (
+    relations.length > MAX_WORLD_GRAPH_EDGES ||
+    new Set(relations.map((relation) => relation.edge.id)).size !==
+      relations.length ||
+    entity.outgoingRelationCount !== outgoingRelations.length ||
+    entity.incomingRelationCount !== incomingRelations.length ||
+    entity.undirectedRelationCount !== undirectedRelations.length
+  ) {
+    throw new Error("The local core returned duplicate or incomplete graph detail");
+  }
+  return {
+    projectId,
+    revision: validateWorldGraphRevision(response, sessionRevision),
+    entity,
+    outgoingRelations,
+    incomingRelations,
+    undirectedRelations
+  };
+}
+
+function parseEntitySceneContext(
+  value: unknown,
+  expectedEntityId: string,
+  expectedProjectId: string,
+  sessionRevision: number
+): EntitySceneContext {
+  const response = asRecord(value, "entity scene context response");
+  assertExactKeys(
+    response,
+    ["project_id", "revision", "entity_id", "links"],
+    "entity scene context response"
+  );
+  const projectId = parseCoreId(
+    response,
+    "project_id",
+    "entity scene context project id"
+  );
+  const entityId = parseCoreId(
+    response,
+    "entity_id",
+    "entity scene context entity id"
+  );
+  if (projectId !== expectedProjectId || entityId !== expectedEntityId) {
+    throw new Error("The local core returned cross-project entity scene context");
+  }
+  const links = requiredArray(
+    response,
+    "links",
+    MAX_WORLD_GRAPH_SCENE_LINKS,
+    "entity scene context links"
+  ).map((value) => {
+    const link = asRecord(value, "entity scene context link");
+    assertExactKeys(
+      link,
+      ["scene_node_id", "scene_title", "role", "note"],
+      "entity scene context link"
+    );
+    return {
+      sceneNodeId: parseCoreId(
+        link,
+        "scene_node_id",
+        "entity scene context scene id"
+      ),
+      sceneTitle: parseBoundedCoreText(
+        link,
+        "scene_title",
+        500,
+        "entity scene context scene title"
+      ),
+      role: parseEnum(
+        link.role,
+        SCENE_ENTITY_ROLES,
+        "entity scene context role"
+      ),
+      note: parseRequiredNullableCoreText(
+        link,
+        "note",
+        10_000,
+        "entity scene context note"
+      )
+    };
+  });
+  if (
+    new Set(links.map((link) => `${link.sceneNodeId}\u0000${link.role}`)).size !==
+    links.length
+  ) {
+    throw new Error("The local core returned duplicate entity scene links");
+  }
+  return {
+    projectId,
+    revision: validateWorldGraphRevision(response, sessionRevision),
+    entityId,
+    links
+  };
+}
+
+function validateWorldGraphPoint(value: unknown, label: string): WorldGraphPoint {
+  const point = asRecord(value, label);
+  assertExactKeys(point, ["x", "y"], label);
+  const x = requiredNumber(point, "x", `${label} x`);
+  const y = requiredNumber(point, "y", `${label} y`);
+  if (
+    Math.abs(x) > MAX_WORLD_GRAPH_COORDINATE ||
+    Math.abs(y) > MAX_WORLD_GRAPH_COORDINATE
+  ) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return { x, y };
+}
+
+function validateNullableGraphEntityId(value: unknown, label: string): string | null {
+  return value === null ? null : validateNodeId(value, label);
+}
+
+function validateRequiredEnumArray<T extends string>(
+  value: unknown,
+  allowed: ReadonlySet<T>,
+  label: string
+): readonly T[] {
+  const parsed = validateEnumArray(value, allowed, label);
+  if (!parsed) {
+    throw new Error(`${label} is required`);
+  }
+  return parsed;
+}
+
+function validateRequiredStringArray(
+  value: unknown,
+  label: string,
+  maximumItems: number
+): readonly string[] {
+  const parsed = validateStringArray(value, label, maximumItems);
+  if (!parsed) {
+    throw new Error(`${label} is required`);
+  }
+  return parsed;
+}
+
+function validateWorldGraphUiState(value: unknown): WorldGraphUiState {
+  const state = asRecord(value, "world graph UI state");
+  assertExactKeys(
+    state,
+    [
+      "mode",
+      "focusedEntityId",
+      "depth",
+      "filters",
+      "layout",
+      "viewport",
+      "nodePositions",
+      "selectedEntityId"
+    ],
+    "world graph UI state"
+  );
+  const mode = validateEnum(state.mode, WORLD_GRAPH_MODES, "world graph mode");
+  const focusedEntityId = validateNullableGraphEntityId(
+    state.focusedEntityId,
+    "Focused graph entity id"
+  );
+  if (mode === "FOCUSED" && focusedEntityId === null) {
+    throw new Error("Focused graph mode requires an entity");
+  }
+  if (
+    !Number.isSafeInteger(state.depth) ||
+    (state.depth !== 1 && state.depth !== 2 && state.depth !== 3)
+  ) {
+    throw new Error("Invalid world graph depth");
+  }
+  const filters = asRecord(state.filters, "world graph filters");
+  assertExactKeys(
+    filters,
+    [
+      "kinds",
+      "statuses",
+      "tagIds",
+      "tagMode",
+      "relationTypeIds",
+      "relationDirection",
+      "showIsolated",
+      "showLabels"
+    ],
+    "world graph filters"
+  );
+  if (
+    typeof filters.showIsolated !== "boolean" ||
+    typeof filters.showLabels !== "boolean"
+  ) {
+    throw new Error("Invalid world graph filter flags");
+  }
+  const parsedFilters: WorldGraphFilterState = {
+    kinds: validateRequiredEnumArray(
+      filters.kinds,
+      ENTITY_KINDS,
+      "world graph entity kinds"
+    ),
+    statuses: validateRequiredEnumArray(
+      filters.statuses,
+      ENTITY_STATUSES,
+      "world graph entity statuses"
+    ),
+    tagIds: validateRequiredStringArray(
+      filters.tagIds,
+      "world graph tag ids",
+      MAX_WORLD_GRAPH_NODES
+    ),
+    tagMode: validateEnum(
+      filters.tagMode,
+      WORLD_GRAPH_TAG_MODES,
+      "world graph tag mode"
+    ),
+    relationTypeIds: validateRequiredStringArray(
+      filters.relationTypeIds,
+      "world graph relation type ids",
+      MAX_WORLD_GRAPH_RELATION_TYPES
+    ),
+    relationDirection: validateEnum(
+      filters.relationDirection,
+      WORLD_GRAPH_RELATION_DIRECTIONS,
+      "world graph relation direction"
+    ),
+    showIsolated: filters.showIsolated,
+    showLabels: filters.showLabels
+  };
+  const layout = validateEnum(
+    state.layout,
+    WORLD_GRAPH_LAYOUTS,
+    "world graph layout"
+  );
+  const viewport = asRecord(state.viewport, "world graph viewport");
+  assertExactKeys(viewport, ["zoom", "pan"], "world graph viewport");
+  const zoom = requiredNumber(viewport, "zoom", "world graph zoom");
+  if (zoom < 0.05 || zoom > 10) {
+    throw new Error("Invalid world graph zoom");
+  }
+  const nodePositions = asRecord(
+    state.nodePositions,
+    "world graph node positions"
+  );
+  const positionEntries = Object.entries(nodePositions);
+  if (positionEntries.length > MAX_WORLD_GRAPH_NODES) {
+    throw new Error("Invalid world graph node positions");
+  }
+  const parsedPositions = Object.fromEntries(
+    positionEntries.map(([entityId, point]) => [
+      validateNodeId(entityId, "Positioned entity id"),
+      validateWorldGraphPoint(point, "world graph node position")
+    ])
+  );
+  if (Object.keys(parsedPositions).length !== positionEntries.length) {
+    throw new Error("Invalid duplicate world graph node positions");
+  }
+  return {
+    mode,
+    focusedEntityId,
+    depth: state.depth as WorldGraphDepth,
+    filters: parsedFilters,
+    layout,
+    viewport: {
+      zoom,
+      pan: validateWorldGraphPoint(viewport.pan, "world graph viewport pan")
+    },
+    nodePositions: parsedPositions,
+    selectedEntityId: validateNullableGraphEntityId(
+      state.selectedEntityId,
+      "Selected graph entity id"
+    )
+  };
+}
+
+function serializeWorldGraphUiState(
+  state: WorldGraphUiState
+): Readonly<Record<string, unknown>> {
+  return {
+    mode: state.mode,
+    focused_entity_id: state.focusedEntityId,
+    depth: state.depth,
+    filters: {
+      kinds: state.filters.kinds,
+      statuses: state.filters.statuses,
+      tag_ids: state.filters.tagIds,
+      tag_mode: state.filters.tagMode,
+      relation_type_ids: state.filters.relationTypeIds,
+      relation_direction: state.filters.relationDirection,
+      show_isolated: state.filters.showIsolated,
+      show_labels: state.filters.showLabels
+    },
+    layout: state.layout,
+    viewport: {
+      zoom: state.viewport.zoom,
+      pan: state.viewport.pan
+    },
+    node_positions: state.nodePositions,
+    selected_entity_id: state.selectedEntityId
+  };
+}
+
+function parseSavedWorldGraphUiState(value: unknown): WorldGraphUiState {
+  const state = asRecord(value, "saved world graph UI state");
+  assertExactKeys(
+    state,
+    [
+      "mode",
+      "focused_entity_id",
+      "depth",
+      "filters",
+      "layout",
+      "viewport",
+      "node_positions",
+      "selected_entity_id"
+    ],
+    "saved world graph UI state"
+  );
+  const filters = asRecord(state.filters, "saved world graph filters");
+  assertExactKeys(
+    filters,
+    [
+      "kinds",
+      "statuses",
+      "tag_ids",
+      "tag_mode",
+      "relation_type_ids",
+      "relation_direction",
+      "show_isolated",
+      "show_labels"
+    ],
+    "saved world graph filters"
+  );
+  return validateWorldGraphUiState({
+    mode: state.mode,
+    focusedEntityId: state.focused_entity_id,
+    depth: state.depth,
+    filters: {
+      kinds: filters.kinds,
+      statuses: filters.statuses,
+      tagIds: filters.tag_ids,
+      tagMode: filters.tag_mode,
+      relationTypeIds: filters.relation_type_ids,
+      relationDirection: filters.relation_direction,
+      showIsolated: filters.show_isolated,
+      showLabels: filters.show_labels
+    },
+    layout: state.layout,
+    viewport: state.viewport,
+    nodePositions: state.node_positions,
+    selectedEntityId: state.selected_entity_id
+  });
+}
+
+function parseWorldGraphUiStateRecord(
+  value: unknown,
+  expectedProjectId: string
+): WorldGraphUiState {
+  const record = asRecord(value, "world graph UI state record");
+  assertExactKeys(
+    record,
+    ["project_id", "key", "value", "updated_at"],
+    "world graph UI state record"
+  );
+  if (
+    parseCoreId(record, "project_id", "world graph UI state project id") !==
+      expectedProjectId ||
+    parseBoundedCoreText(
+      record,
+      "key",
+      128,
+      "world graph UI state key"
+    ) !== WORLD_GRAPH_UI_STATE_KEY
+  ) {
+    throw new Error("The local core returned cross-project graph UI state");
+  }
+  parseBoundedCoreText(
+    record,
+    "updated_at",
+    128,
+    "world graph UI state timestamp"
+  );
+  return parseSavedWorldGraphUiState(record.value);
+}
+
+function worldGraphUiStateFingerprint(state: WorldGraphUiState): string {
+  const canonicalNumber = (value: number): number =>
+    Number(value.toFixed(9));
+  const canonicalPoint = (point: WorldGraphPoint): WorldGraphPoint => ({
+    x: canonicalNumber(point.x),
+    y: canonicalNumber(point.y)
+  });
+  return JSON.stringify({
+    ...state,
+    viewport: {
+      zoom: canonicalNumber(state.viewport.zoom),
+      pan: canonicalPoint(state.viewport.pan)
+    },
+    nodePositions: Object.fromEntries(
+      Object.entries(state.nodePositions)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([entityId, position]) => [
+          entityId,
+          canonicalPoint(position)
+        ])
+    )
+  });
 }
 
 function validateRequiredNullableInputText(
@@ -1513,6 +2741,67 @@ export class DesktopService {
         ),
         binderWidth
       }
+    };
+  }
+
+  public async saveWorldGraphUiState(
+    input: SaveWorldGraphUiStateRequest
+  ): Promise<void> {
+    if (!isRecord(input)) {
+      throw new Error("Invalid world graph UI state request");
+    }
+    assertExactKeys(
+      input,
+      ["sessionId", "state"],
+      "world graph UI state request"
+    );
+    const session = this.sessions.require(validateSessionId(input.sessionId));
+    const state = validateWorldGraphUiState(input.state);
+    const response = asRecord(
+      await this.core.request("save_ui_state", {
+        file_path: session.filePath,
+        key: WORLD_GRAPH_UI_STATE_KEY,
+        value: serializeWorldGraphUiState(state)
+      }),
+      "save world graph UI state response"
+    );
+    const stored = parseWorldGraphUiStateRecord(
+      response.state,
+      session.projectId
+    );
+    if (
+      worldGraphUiStateFingerprint(stored) !==
+      worldGraphUiStateFingerprint(state)
+    ) {
+      throw new Error("The local core saved different world graph UI state");
+    }
+  }
+
+  public async loadWorldGraphUiState(
+    input: SessionRequest
+  ): Promise<LoadWorldGraphUiStateResult> {
+    if (!isRecord(input)) {
+      throw new Error("Invalid world graph UI state request");
+    }
+    assertExactKeys(
+      input,
+      ["sessionId"],
+      "world graph UI state request"
+    );
+    const session = this.sessions.require(validateSessionId(input.sessionId));
+    const response = asRecord(
+      await this.core.request("load_ui_state", {
+        file_path: session.filePath,
+        key: WORLD_GRAPH_UI_STATE_KEY
+      }),
+      "load world graph UI state response"
+    );
+    const stateRecord = optionalRecord(response, "state");
+    if (!stateRecord) {
+      return { state: null };
+    }
+    return {
+      state: parseWorldGraphUiStateRecord(stateRecord, session.projectId)
     };
   }
 
@@ -2900,6 +4189,100 @@ export class DesktopService {
     input: PromoteEntityMentionRequest
   ): Promise<SceneEntityLinkMutationResult> {
     return this.mutateSceneEntityLink("promote_entity_mention", input);
+  }
+
+  public async getWorldGraph(
+    input: SessionRequest
+  ): Promise<WorldGraphReadModel> {
+    if (!isRecord(input)) {
+      throw new Error("Invalid world graph request");
+    }
+    assertExactKeys(input, ["sessionId"], "world graph request");
+    const sessionId = validateSessionId(input.sessionId);
+    const session = this.sessions.require(sessionId);
+    const graph = parseWorldGraphReadModel(
+      await this.core.request("get_world_graph", {
+        file_path: session.filePath
+      }),
+      session.projectId,
+      session.revision
+    );
+    this.sessions.updateProject(sessionId, { revision: graph.revision });
+    return graph;
+  }
+
+  public async getWorldGraphStats(
+    input: SessionRequest
+  ): Promise<WorldGraphStatsResult> {
+    if (!isRecord(input)) {
+      throw new Error("Invalid world graph stats request");
+    }
+    assertExactKeys(input, ["sessionId"], "world graph stats request");
+    const sessionId = validateSessionId(input.sessionId);
+    const session = this.sessions.require(sessionId);
+    const result = parseWorldGraphStatsResult(
+      await this.core.request("get_world_graph_stats", {
+        file_path: session.filePath
+      }),
+      session.projectId,
+      session.revision
+    );
+    this.sessions.updateProject(sessionId, { revision: result.revision });
+    return result;
+  }
+
+  public async getEntityGraphDetail(
+    input: EntityGraphRequest
+  ): Promise<EntityGraphDetail> {
+    if (!isRecord(input)) {
+      throw new Error("Invalid entity graph detail request");
+    }
+    assertExactKeys(
+      input,
+      ["sessionId", "entityId"],
+      "entity graph detail request"
+    );
+    const sessionId = validateSessionId(input.sessionId);
+    const session = this.sessions.require(sessionId);
+    const entityId = validateNodeId(input.entityId, "Graph entity id");
+    const detail = parseEntityGraphDetail(
+      await this.core.request("get_entity_graph_detail", {
+        file_path: session.filePath,
+        entity_id: entityId
+      }),
+      entityId,
+      session.projectId,
+      session.revision
+    );
+    this.sessions.updateProject(sessionId, { revision: detail.revision });
+    return detail;
+  }
+
+  public async getEntitySceneContext(
+    input: EntityGraphRequest
+  ): Promise<EntitySceneContext> {
+    if (!isRecord(input)) {
+      throw new Error("Invalid entity scene context request");
+    }
+    assertExactKeys(
+      input,
+      ["sessionId", "entityId"],
+      "entity scene context request"
+    );
+    const sessionId = validateSessionId(input.sessionId);
+    const session = this.sessions.require(sessionId);
+    const entityId = validateNodeId(input.entityId, "Graph entity id");
+    const context = parseEntitySceneContext(
+      await this.core.request("get_entity_scene_context", {
+        file_path: session.filePath,
+        entity_id: entityId
+      }),
+      entityId,
+      session.projectId,
+      session.revision
+    );
+    this.sessions.updateProject(sessionId, { revision: context.revision });
+    return context;
   }
 
   public async createNamedSnapshot(

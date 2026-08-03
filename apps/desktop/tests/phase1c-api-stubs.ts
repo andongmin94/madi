@@ -1,5 +1,8 @@
 import { vi } from "vitest";
-import type { MadiDesktopApi } from "../src/shared/contracts";
+import type {
+  MadiDesktopApi,
+  WorldGraphReadModel
+} from "../src/shared/contracts";
 
 export type Phase1cApi = Pick<
   MadiDesktopApi,
@@ -33,6 +36,12 @@ export type Phase1cApi = Pick<
   | "deleteSceneEntityLink"
   | "discoverEntityMentions"
   | "promoteEntityMention"
+  | "saveWorldGraphUiState"
+  | "loadWorldGraphUiState"
+  | "getWorldGraph"
+  | "getWorldGraphStats"
+  | "getEntityGraphDetail"
+  | "getEntitySceneContext"
 >;
 
 function unused(): never {
@@ -90,6 +99,37 @@ export function phase1cApiStubs(): Phase1cApi {
       hasMore: false,
       revision: 0
     })),
-    promoteEntityMention: vi.fn(async () => unused())
+    promoteEntityMention: vi.fn(async () => unused()),
+    saveWorldGraphUiState: vi.fn(async () => undefined),
+    loadWorldGraphUiState: vi.fn(async () => ({ state: null })),
+    getWorldGraph: vi.fn(async (): Promise<WorldGraphReadModel> => ({
+      projectId: "project-id",
+      revision: 0,
+      nodes: [],
+      edges: [],
+      stats: {
+        entityCount: 0,
+        relationCount: 0,
+        entityKindCounts: [
+          { kind: "CHARACTER", count: 0 },
+          { kind: "LOCATION", count: 0 },
+          { kind: "ORGANIZATION", count: 0 },
+          { kind: "ITEM", count: 0 },
+          { kind: "EVENT", count: 0 },
+          { kind: "WORLD_RULE", count: 0 },
+          { kind: "FORESHADOWING", count: 0 },
+          { kind: "OTHER", count: 0 }
+        ],
+        relationTypeCounts: [],
+        topDegreeEntities: [],
+        isolatedEntityCount: 0,
+        directedRelationCount: 0,
+        undirectedRelationCount: 0
+      },
+      diagnostics: []
+    })),
+    getWorldGraphStats: vi.fn(async () => unused()),
+    getEntityGraphDetail: vi.fn(async () => unused()),
+    getEntitySceneContext: vi.fn(async () => unused())
   };
 }

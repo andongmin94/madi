@@ -14,6 +14,8 @@ export const IPC_CHANNELS = {
   saveSceneDocument: "madi:save-scene-document",
   saveUiState: "madi:save-ui-state",
   loadUiState: "madi:load-ui-state",
+  saveWorldGraphUiState: "madi:save-world-graph-ui-state",
+  loadWorldGraphUiState: "madi:load-world-graph-ui-state",
   listDescendantScenes: "madi:list-descendant-scenes",
   searchProject: "madi:search-project",
   getTextStatistics: "madi:get-text-statistics",
@@ -54,6 +56,10 @@ export const IPC_CHANNELS = {
   deleteSceneEntityLink: "madi:delete-scene-entity-link",
   discoverEntityMentions: "madi:discover-entity-mentions",
   promoteEntityMention: "madi:promote-entity-mention",
+  getWorldGraph: "madi:get-world-graph",
+  getWorldGraphStats: "madi:get-world-graph-stats",
+  getEntityGraphDetail: "madi:get-entity-graph-detail",
+  getEntitySceneContext: "madi:get-entity-scene-context",
   getAppVersion: "madi:get-app-version",
   completeCloseRequest: "madi:complete-close-request"
 } as const;
@@ -835,6 +841,199 @@ export interface PromoteEntityMentionRequest extends SessionRequest {
   readonly note?: string | null;
 }
 
+/**
+ * Madi-owned graph DTOs. These types intentionally describe the derived,
+ * read-only domain model and do not expose Cytoscape elements or instances.
+ */
+export interface WorldGraphTag {
+  readonly id: string;
+  readonly name: string;
+  readonly colorToken: string | null;
+}
+
+export interface WorldGraphNode {
+  readonly id: string;
+  readonly projectId: string;
+  readonly label: string;
+  readonly kind: EntityKind;
+  readonly status: EntityStatus;
+  readonly summary: string | null;
+  readonly colorToken: string | null;
+  readonly iconKey: string | null;
+  readonly aliases: readonly string[];
+  readonly tags: readonly WorldGraphTag[];
+  readonly explicitSceneLinkCount: number;
+  readonly outgoingRelationCount: number;
+  readonly incomingRelationCount: number;
+  readonly undirectedRelationCount: number;
+}
+
+export interface WorldGraphEdge {
+  readonly id: string;
+  readonly projectId: string;
+  readonly sourceEntityId: string;
+  readonly targetEntityId: string;
+  readonly relationTypeId: string;
+  readonly forwardLabel: string;
+  readonly inverseLabel: string | null;
+  readonly directed: boolean;
+  readonly colorToken: string | null;
+  readonly note: string | null;
+}
+
+export interface WorldGraphEntityKindCount {
+  readonly kind: EntityKind;
+  readonly count: number;
+}
+
+export interface WorldGraphRelationTypeCount {
+  readonly relationTypeId: string;
+  readonly name: string;
+  readonly inverseName: string | null;
+  readonly directed: boolean;
+  readonly colorToken: string | null;
+  readonly isBuiltin: boolean;
+  readonly count: number;
+}
+
+export interface WorldGraphTopDegreeEntity {
+  readonly entityId: string;
+  readonly label: string;
+  readonly degree: number;
+}
+
+export interface WorldGraphStats {
+  readonly entityCount: number;
+  readonly relationCount: number;
+  readonly entityKindCounts: readonly WorldGraphEntityKindCount[];
+  readonly relationTypeCounts: readonly WorldGraphRelationTypeCount[];
+  readonly topDegreeEntities: readonly WorldGraphTopDegreeEntity[];
+  readonly isolatedEntityCount: number;
+  readonly directedRelationCount: number;
+  readonly undirectedRelationCount: number;
+}
+
+export type WorldGraphDiagnosticCode =
+  | "SELF_RELATION"
+  | "CROSS_PROJECT_RELATION"
+  | "DANGLING_RELATION_MEMBER"
+  | "DUPLICATE_UNDIRECTED_RELATION"
+  | "INVALID_ENTITY_TAG"
+  | "INVALID_SCENE_LINK";
+
+export type WorldGraphDiagnosticSeverity = "ERROR" | "WARNING";
+
+export interface WorldGraphDiagnostic {
+  readonly code: WorldGraphDiagnosticCode;
+  readonly severity: WorldGraphDiagnosticSeverity;
+  readonly recordId: string | null;
+  readonly message: string;
+}
+
+export interface WorldGraphReadModel {
+  readonly projectId: string;
+  readonly revision: number;
+  readonly nodes: readonly WorldGraphNode[];
+  readonly edges: readonly WorldGraphEdge[];
+  readonly stats: WorldGraphStats;
+  readonly diagnostics: readonly WorldGraphDiagnostic[];
+}
+
+export interface WorldGraphStatsResult {
+  readonly projectId: string;
+  readonly revision: number;
+  readonly stats: WorldGraphStats;
+  readonly diagnostics: readonly WorldGraphDiagnostic[];
+}
+
+export interface EntityGraphRequest extends SessionRequest {
+  readonly entityId: string;
+}
+
+export type EntityGraphRelationPerspective =
+  | "OUTGOING"
+  | "INCOMING"
+  | "UNDIRECTED";
+
+export interface EntityGraphRelationDetail {
+  readonly edge: WorldGraphEdge;
+  readonly counterpartEntityId: string;
+  readonly displayLabel: string;
+  readonly perspective: EntityGraphRelationPerspective;
+}
+
+export interface EntityGraphDetail {
+  readonly projectId: string;
+  readonly revision: number;
+  readonly entity: WorldGraphNode;
+  readonly outgoingRelations: readonly EntityGraphRelationDetail[];
+  readonly incomingRelations: readonly EntityGraphRelationDetail[];
+  readonly undirectedRelations: readonly EntityGraphRelationDetail[];
+}
+
+export interface EntitySceneContextLink {
+  readonly sceneNodeId: string;
+  readonly sceneTitle: string;
+  readonly role: SceneEntityRole;
+  readonly note: string | null;
+}
+
+export interface EntitySceneContext {
+  readonly projectId: string;
+  readonly revision: number;
+  readonly entityId: string;
+  readonly links: readonly EntitySceneContextLink[];
+}
+
+export type WorldGraphMode = "FULL" | "FOCUSED";
+export type WorldGraphDepth = 1 | 2 | 3;
+export type WorldGraphTagMode = "ANY" | "ALL";
+export type WorldGraphRelationDirection =
+  | "ALL"
+  | "DIRECTED"
+  | "UNDIRECTED";
+export type WorldGraphLayout = "cose" | "preset";
+
+export interface WorldGraphFilterState {
+  readonly kinds: readonly EntityKind[];
+  readonly statuses: readonly EntityStatus[];
+  readonly tagIds: readonly string[];
+  readonly tagMode: WorldGraphTagMode;
+  readonly relationTypeIds: readonly string[];
+  readonly relationDirection: WorldGraphRelationDirection;
+  readonly showIsolated: boolean;
+  readonly showLabels: boolean;
+}
+
+export interface WorldGraphPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface WorldGraphViewport {
+  readonly zoom: number;
+  readonly pan: WorldGraphPoint;
+}
+
+export interface WorldGraphUiState {
+  readonly mode: WorldGraphMode;
+  readonly focusedEntityId: string | null;
+  readonly depth: WorldGraphDepth;
+  readonly filters: WorldGraphFilterState;
+  readonly layout: WorldGraphLayout;
+  readonly viewport: WorldGraphViewport;
+  readonly nodePositions: Readonly<Record<string, WorldGraphPoint>>;
+  readonly selectedEntityId: string | null;
+}
+
+export interface SaveWorldGraphUiStateRequest extends SessionRequest {
+  readonly state: WorldGraphUiState;
+}
+
+export interface LoadWorldGraphUiStateResult {
+  readonly state: WorldGraphUiState | null;
+}
+
 export interface CreateProjectRequest {
   readonly title: string;
   readonly suggestedFileName?: string;
@@ -927,6 +1126,12 @@ export interface MadiDesktopApi {
   ): Promise<SaveSceneDocumentResult>;
   saveUiState(request: SaveUiStateRequest): Promise<void>;
   loadUiState(request: SessionRequest): Promise<LoadUiStateResult>;
+  saveWorldGraphUiState(
+    request: SaveWorldGraphUiStateRequest
+  ): Promise<void>;
+  loadWorldGraphUiState(
+    request: SessionRequest
+  ): Promise<LoadWorldGraphUiStateResult>;
   listDescendantScenes(
     request: ListDescendantScenesRequest
   ): Promise<ListDescendantScenesResult>;
@@ -1021,6 +1226,16 @@ export interface MadiDesktopApi {
   promoteEntityMention(
     request: PromoteEntityMentionRequest
   ): Promise<SceneEntityLinkMutationResult>;
+  getWorldGraph(request: SessionRequest): Promise<WorldGraphReadModel>;
+  getWorldGraphStats(
+    request: SessionRequest
+  ): Promise<WorldGraphStatsResult>;
+  getEntityGraphDetail(
+    request: EntityGraphRequest
+  ): Promise<EntityGraphDetail>;
+  getEntitySceneContext(
+    request: EntityGraphRequest
+  ): Promise<EntitySceneContext>;
   getAppVersion(): Promise<string>;
   onCloseRequested(listener: () => void): () => void;
   completeCloseRequest(request: CompleteCloseRequest): Promise<boolean>;
