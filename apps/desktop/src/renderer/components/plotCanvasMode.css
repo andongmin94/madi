@@ -1,0 +1,188 @@
+.plot-canvas-mode {
+  display: grid;
+  grid-template-columns: minmax(210px, 260px) minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+  background: #10161d;
+  color: #e7edf4;
+}
+
+.plot-canvas-list {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border-right: 1px solid #33404d;
+  background: #151d26;
+}
+
+.plot-canvas-list > header,
+.plot-canvas-metadata {
+  display: flex;
+  align-items: end;
+  gap: 0.5rem;
+}
+
+.plot-canvas-list h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.plot-canvas-list label,
+.plot-canvas-metadata label,
+.plot-canvas-import-preview label {
+  display: grid;
+  gap: 0.25rem;
+  color: #aebac7;
+  font-size: 0.76rem;
+}
+
+.plot-canvas-list select,
+.plot-canvas-metadata input,
+.plot-canvas-import-preview input {
+  min-width: 0;
+  padding: 0.48rem 0.58rem;
+  border: 1px solid #46586a;
+  border-radius: 0.35rem;
+  background: #0f151c;
+  color: #edf3f8;
+}
+
+.plot-canvas-list__items {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.35rem;
+  overflow: auto;
+}
+
+.plot-canvas-list__items > button {
+  display: grid;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.62rem;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  background: #1c2631;
+  color: #e8eef5;
+  text-align: left;
+}
+
+.plot-canvas-list__items > button[aria-current="true"] {
+  border-color: #6e9bc5;
+  background: #25384a;
+}
+
+.plot-canvas-list__items span,
+.plot-canvas-list__items small {
+  color: #9dabb9;
+  font-size: 0.72rem;
+}
+
+.plot-canvas-list__items small {
+  color: #efc078;
+}
+
+.plot-canvas-list__file-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.plot-canvas-mode button {
+  padding: 0.45rem 0.62rem;
+  border: 1px solid #4c6174;
+  border-radius: 0.35rem;
+  background: #263746;
+  color: #edf3f8;
+}
+
+.plot-canvas-mode button:hover:not(:disabled),
+.plot-canvas-mode button:focus-visible {
+  border-color: #8bb8df;
+  background: #30485d;
+}
+
+.plot-canvas-mode button.danger {
+  border-color: #805052;
+  color: #ffd6d6;
+}
+
+.plot-canvas-mode__editor {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.plot-canvas-metadata {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #33404d;
+  background: #151d26;
+}
+
+.plot-canvas-metadata label:first-child {
+  width: min(28%, 260px);
+}
+
+.plot-canvas-metadata label:nth-child(2) {
+  min-width: 180px;
+  flex: 1;
+}
+
+.plot-canvas-mode__error {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  background: #48282b;
+  color: #ffd8d8;
+}
+
+.plot-canvas-mode__save {
+  position: absolute;
+  right: 0.8rem;
+  bottom: 0.7rem;
+  z-index: 10;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid #536678;
+  border-radius: 999px;
+  background: rgb(16 22 29 / 88%);
+  color: #cdd8e2;
+  font-size: 0.72rem;
+}
+
+.plot-canvas-mode__save[data-phase="error"] {
+  border-color: #a96363;
+  color: #ffd4d4;
+}
+
+.plot-canvas-import-preview {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 100;
+  width: min(440px, calc(100vw - 2rem));
+  padding: 1rem;
+  border: 1px solid #60778b;
+  border-radius: 0.55rem;
+  background: #18232e;
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 45%);
+  transform: translate(-50%, -50%);
+}
+
+.plot-canvas-import-preview h2 {
+  margin-top: 0;
+}
+
+@media (max-width: 900px) {
+  .plot-canvas-mode {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
+  .plot-canvas-metadata {
+    flex-wrap: wrap;
+  }
+}

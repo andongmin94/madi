@@ -60,6 +60,20 @@ textarea:focus-visible,
   background: #e8e4da;
 }
 
+.app-shell > .phase1-workspace,
+.app-shell > .story-bible,
+.app-shell > .plot-canvas-mode,
+.app-shell > .world-graph-host,
+.app-shell > .workspace-empty {
+  grid-row: 3;
+  grid-column: 1;
+}
+
+.app-shell > .statusbar {
+  grid-row: 4;
+  grid-column: 1;
+}
+
 .titlebar {
   display: grid;
   grid-template-columns: 180px minmax(220px, 1fr) 180px;
@@ -392,10 +406,11 @@ button:disabled {
 }
 
 .inspector-drawer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
+  grid-row: 3;
+  grid-column: 1;
+  align-self: stretch;
+  justify-self: end;
   z-index: 8;
   width: 330px;
   min-height: 0;

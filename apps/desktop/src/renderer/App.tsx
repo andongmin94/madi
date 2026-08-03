@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -47,6 +49,7 @@ import {
 import { SaveStatusBadge } from "./components/SaveStatusBadge";
 import { ImeChecklist } from "./components/ImeChecklist";
 import type { CompositionEventSummary } from "./components/imeManualResults";
+import type { PlotCanvasModeHandle } from "./components/PlotCanvasMode";
 import { ScriveningsView } from "./components/ScriveningsView";
 import {
   SearchReplacePanel,
@@ -79,12 +82,21 @@ import {
   type StorySceneLink
 } from "./components/storyBible/StoryBibleWorkspace";
 import { SceneEntityInspector } from "./components/storyBible/SceneEntityInspector";
-import {
-  DEFAULT_WORLD_GRAPH_UI_STATE,
-  WorldGraphWorkspace,
-  normalizeWorldGraphUiState,
-  type WorldGraphPerformanceSample
-} from "./components/worldGraph";
+import { DEFAULT_WORLD_GRAPH_UI_STATE } from "./components/worldGraph/types";
+import { normalizeWorldGraphUiState } from "./components/worldGraph/graphModel";
+import type { WorldGraphPerformanceSample } from "./components/worldGraph/worldGraphInteraction";
+
+const WorldGraphWorkspace = lazy(async () => {
+  const module = await import(
+    "./components/worldGraph/WorldGraphWorkspace"
+  );
+  return { default: module.WorldGraphWorkspace };
+});
+
+const PlotCanvasMode = lazy(async () => {
+  const module = await import("./components/PlotCanvasMode");
+  return { default: module.PlotCanvasMode };
+});
 
 const INITIAL_WORKSPACE: WorkspaceState = {
   savePhase: "no-project",
@@ -114,7 +126,11 @@ export interface AppProps {
 
 type EnginePhase = "loading" | "ready" | "error";
 type Panel = "search" | "snapshots" | "scene-entities" | "development" | "ime";
-type AppMode = "MANUSCRIPT" | "STORY_BIBLE" | "WORLD_GRAPH";
+type AppMode =
+  | "MANUSCRIPT"
+  | "STORY_BIBLE"
+  | "WORLD_GRAPH"
+  | "PLOT_CANVAS";
 const AUTOSAVE_DELAY_MS = 550;
 const DEFAULT_BINDER_WIDTH = 300;
 const WORKSPACE_PAGE_LIMIT = 200;
@@ -275,7 +291,8 @@ async function searchAllEntities(
 async function discoverAllEntityMentions(
   api: MadiDesktopApi,
   sessionId: string,
-  entityId: string
+  entityId: string,
+  onIpcTiming?: (milliseconds: number) => void
 ): Promise<readonly EntityMentionCandidate[]> {
   const candidates: EntityMentionCandidate[] = [];
   const seenScenes = new Set<string>();
@@ -287,6 +304,9 @@ async function discoverAllEntityMentions(
       offset,
       limit: WORKSPACE_PAGE_LIMIT
     });
+    if (page.ipcSerializeDeserializeMs !== undefined) {
+      onIpcTiming?.(page.ipcSerializeDeserializeMs);
+    }
     for (const candidate of page.candidates) {
       if (!seenScenes.has(candidate.sceneNodeId)) {
         seenScenes.add(candidate.sceneNodeId);
@@ -492,6 +512,9 @@ export function App({
   const [worldGraphStateReady, setWorldGraphStateReady] = useState(false);
   const [worldGraphBusy, setWorldGraphBusy] = useState(false);
   const [worldGraphError, setWorldGraphError] = useState("");
+  const [pendingCanvasEntityId, setPendingCanvasEntityId] = useState<
+    string | null
+  >(null);
   const [worldGraphPerformance, setWorldGraphPerformance] = useState<
     WorldGraphPerformanceSample & { readonly ipcMs?: number }
   >({});
@@ -529,11 +552,34 @@ export function App({
   const worldGraphUiStateRef = useRef<WorldGraphUiState>(
     DEFAULT_WORLD_GRAPH_UI_STATE
   );
+  const plotCanvasModeRef = useRef<PlotCanvasModeHandle>(null);
   const projectStateSessionRef = useRef<string | null>(null);
   const compositionActiveRef = useRef(false);
+  const lifecycleContextRef = useRef({
+    appMode,
+    binderWidth,
+    collapsedNodeIds,
+    controller,
+    projectTree,
+    selectedNodeId,
+    session: workspace.session,
+    uiStateReady,
+    worldGraphStateReady
+  });
   const isComposing =
     compositionEventActive ?? workspace.isComposing;
   compositionActiveRef.current = isComposing;
+  lifecycleContextRef.current = {
+    appMode,
+    binderWidth,
+    collapsedNodeIds,
+    controller,
+    projectTree,
+    selectedNodeId,
+    session: workspace.session,
+    uiStateReady,
+    worldGraphStateReady
+  };
 
   const imeEnvironment = useMemo(
     () =>
@@ -811,6 +857,7 @@ export function App({
       setSceneEntityLinks([]);
       setEntityMentions([]);
       setSelectedEntityId(null);
+      setPendingCanvasEntityId(null);
       setStoryBibleError("");
       return;
     }
@@ -836,6 +883,7 @@ export function App({
       setSceneEntityLinks([]);
       setEntityMentions([]);
       setSelectedEntityId(null);
+      setPendingCanvasEntityId(null);
       setStoryBibleError("");
     }
     let cancelled = false;
@@ -1052,9 +1100,15 @@ export function App({
       if (!sessionId) {
         throw new Error("프로젝트가 열려 있지 않습니다.");
       }
-      return api.getEntityGraphDetail({ sessionId, entityId });
+      const result = await api.getEntityGraphDetail({ sessionId, entityId });
+      if (result.ipcSerializeDeserializeMs !== undefined) {
+        recordWorldGraphPerformance({
+          ipcSerializeDeserializeMs: result.ipcSerializeDeserializeMs
+        });
+      }
+      return result;
     },
-    [api, workspace.session?.sessionId]
+    [api, recordWorldGraphPerformance, workspace.session?.sessionId]
   );
 
   const loadWorldGraphSceneContext = useCallback(
@@ -1063,9 +1117,15 @@ export function App({
       if (!sessionId) {
         throw new Error("프로젝트가 열려 있지 않습니다.");
       }
-      return api.getEntitySceneContext({ sessionId, entityId });
+      const result = await api.getEntitySceneContext({ sessionId, entityId });
+      if (result.ipcSerializeDeserializeMs !== undefined) {
+        recordWorldGraphPerformance({
+          ipcSerializeDeserializeMs: result.ipcSerializeDeserializeMs
+        });
+      }
+      return result;
     },
-    [api, workspace.session?.sessionId]
+    [api, recordWorldGraphPerformance, workspace.session?.sessionId]
   );
 
   const loadWorldGraphMentionCount = useCallback(
@@ -1074,9 +1134,17 @@ export function App({
       if (!sessionId) {
         throw new Error("프로젝트가 열려 있지 않습니다.");
       }
-      return (await discoverAllEntityMentions(api, sessionId, entityId)).length;
+      return (
+        await discoverAllEntityMentions(
+          api,
+          sessionId,
+          entityId,
+          (ipcSerializeDeserializeMs) =>
+            recordWorldGraphPerformance({ ipcSerializeDeserializeMs })
+        )
+      ).length;
     },
-    [api, workspace.session?.sessionId]
+    [api, recordWorldGraphPerformance, workspace.session?.sessionId]
   );
 
   useEffect(() => {
@@ -1302,17 +1370,29 @@ export function App({
   useEffect(() => {
     const saveShortcut = (event: KeyboardEvent) => {
       if (
-        controller &&
-        (event.ctrlKey || event.metaKey) &&
-        event.key.toLocaleLowerCase() === "s"
+        !(event.ctrlKey || event.metaKey) ||
+        event.key.toLocaleLowerCase() !== "s" ||
+        event.defaultPrevented
       ) {
-        event.preventDefault();
-        void controller.save(() => compositionActiveRef.current);
+        return;
+      }
+      event.preventDefault();
+      const current = lifecycleContextRef.current;
+      if (current.appMode === "PLOT_CANVAS") {
+        void plotCanvasModeRef.current?.flush().catch((error) => {
+          setStoryBibleError(
+            publicError(error, "캔버스 변경사항을 저장하지 못했습니다.")
+          );
+        });
+        return;
+      }
+      if (current.controller) {
+        void current.controller.save(() => compositionActiveRef.current);
       }
     };
     window.addEventListener("keydown", saveShortcut);
     return () => window.removeEventListener("keydown", saveShortcut);
-  }, [controller]);
+  }, []);
 
   useEffect(() => {
     if (!controller || !searchResult || !workspace.activeSceneId) {
@@ -1337,30 +1417,41 @@ export function App({
   useEffect(() => {
     return api.onCloseRequested(() => {
       if (!closeAttemptRef.current) {
+        const current = lifecycleContextRef.current;
         closeAttemptRef.current = Promise.resolve(
-          controller?.prepareForClose(
+          current.controller?.prepareForClose(
             () => compositionActiveRef.current
           ) ?? true
         )
           .then(async (documentReady) => {
             let readyToClose = documentReady;
+            if (readyToClose && current.appMode === "PLOT_CANVAS") {
+              try {
+                await plotCanvasModeRef.current?.flush();
+              } catch (error) {
+                readyToClose = false;
+                setStoryBibleError(
+                  publicError(error, "캔버스 종료 전 저장에 실패했습니다.")
+                );
+              }
+            }
             if (
               readyToClose &&
-              !controller?.isEditorFailClosed() &&
-              uiStateReady &&
-              workspace.session &&
-              projectTree
+              !current.controller?.isEditorFailClosed() &&
+              current.uiStateReady &&
+              current.session &&
+              current.projectTree
             ) {
               try {
                 await api.saveUiState({
-                  sessionId: workspace.session.sessionId,
+                  sessionId: current.session.sessionId,
                   state: {
-                    selectedNodeId,
+                    selectedNodeId: current.selectedNodeId,
                     expandedNodeIds: expandedNodeIds(
-                      projectTree,
-                      collapsedNodeIds
+                      current.projectTree,
+                      current.collapsedNodeIds
                     ),
-                    binderWidth
+                    binderWidth: current.binderWidth
                   }
                 });
               } catch (error) {
@@ -1374,12 +1465,12 @@ export function App({
             }
             if (
               readyToClose &&
-              worldGraphStateReady &&
-              workspace.session
+              current.worldGraphStateReady &&
+              current.session
             ) {
               try {
                 await api.saveWorldGraphUiState({
-                  sessionId: workspace.session.sessionId,
+                  sessionId: current.session.sessionId,
                   state: worldGraphUiStateRef.current
                 });
               } catch (error) {
@@ -1414,17 +1505,7 @@ export function App({
           });
       }
     });
-  }, [
-    api,
-    binderWidth,
-    collapsedNodeIds,
-    controller,
-    projectTree,
-    selectedNodeId,
-    uiStateReady,
-    worldGraphStateReady,
-    workspace.session
-  ]);
+  }, [api]);
 
   useEffect(() => {
     if (
@@ -1863,6 +1944,9 @@ export function App({
     setSearchBusy(true);
     setSearchError("");
     try {
+      if (appMode === "PLOT_CANVAS") {
+        await plotCanvasModeRef.current?.flush();
+      }
       await persistCurrentUiState();
       const plans = replacementPlans(request.hits, request.replacement);
       const result = await controller.applySemanticReplacementBatch(
@@ -1925,6 +2009,12 @@ export function App({
     controller.adoptProjectRevision(result.revision);
   };
 
+  const flushPlotCanvasForSnapshot = async (): Promise<void> => {
+    if (appMode === "PLOT_CANVAS") {
+      await plotCanvasModeRef.current?.flush();
+    }
+  };
+
   const createNamedSnapshot = async (
     input: SnapshotCreateInput
   ): Promise<void> => {
@@ -1935,6 +2025,7 @@ export function App({
     setSnapshotBusy(true);
     setSnapshotError("");
     try {
+      await flushPlotCanvasForSnapshot();
       if (!(await flushBeforeStructureChange())) {
         throw new Error(
           controller.getState().errorMessage ||
@@ -1971,6 +2062,7 @@ export function App({
     setSnapshotBusy(true);
     setSnapshotError("");
     try {
+      await flushPlotCanvasForSnapshot();
       const result = await api.renameNamedSnapshot({
         sessionId: session.sessionId,
         snapshotId,
@@ -1999,6 +2091,7 @@ export function App({
     setSnapshotBusy(true);
     setSnapshotError("");
     try {
+      await flushPlotCanvasForSnapshot();
       const result = await api.deleteNamedSnapshot({
         sessionId: session.sessionId,
         snapshotId
@@ -2028,6 +2121,7 @@ export function App({
     setSnapshotBusy(true);
     setSnapshotError("");
     try {
+      await flushPlotCanvasForSnapshot();
       if (!(await flushBeforeStructureChange())) {
         throw new Error(
           controller.getState().errorMessage ||
@@ -2058,6 +2152,7 @@ export function App({
     setSnapshotBusy(true);
     setSnapshotError("");
     try {
+      await flushPlotCanvasForSnapshot();
       await controller.runExclusiveEditorOperation(async () => {
         await persistCurrentUiState();
         const freshDiff = await api.diffNamedSnapshot({
@@ -2198,8 +2293,23 @@ export function App({
   };
 
   const switchAppMode = async (nextMode: AppMode): Promise<void> => {
-    if (!controller || nextMode === appMode) {
+    if (
+      !controller ||
+      nextMode === appMode ||
+      snapshotBusy ||
+      searchBusy
+    ) {
       return;
+    }
+    if (appMode === "PLOT_CANVAS") {
+      try {
+        await plotCanvasModeRef.current?.flush();
+      } catch (error) {
+        setStoryBibleError(
+          publicError(error, "캔버스 변경사항을 저장하지 못했습니다.")
+        );
+        return;
+      }
     }
     if (!(await controller.flushPendingChanges(() => compositionActiveRef.current))) {
       return;
@@ -2213,6 +2323,13 @@ export function App({
         controller.relocateEditor(mountRef.current);
       }
       setAppMode("WORLD_GRAPH");
+      return;
+    }
+    if (nextMode === "PLOT_CANVAS") {
+      if (mountRef.current) {
+        controller.relocateEditor(mountRef.current);
+      }
+      setAppMode("PLOT_CANVAS");
       return;
     }
     if (nextMode === "STORY_BIBLE") {
@@ -2268,6 +2385,13 @@ export function App({
       }
     }
     setAppMode("MANUSCRIPT");
+  };
+
+  const addEntityToPlotCanvas = async (entityId: string): Promise<void> => {
+    setPendingCanvasEntityId(entityId);
+    if (appMode !== "PLOT_CANVAS") {
+      await switchAppMode("PLOT_CANVAS");
+    }
   };
 
   const selectStoryEntity = async (entityId: string): Promise<void> => {
@@ -2690,8 +2814,21 @@ export function App({
     sceneId: string,
     range?: { readonly start: number; readonly end: number }
   ): Promise<void> => {
+    if (snapshotBusy || searchBusy) {
+      return;
+    }
     if (!controller) {
       throw new Error("편집기가 준비되지 않았습니다.");
+    }
+    if (appMode === "PLOT_CANVAS") {
+      try {
+        await plotCanvasModeRef.current?.flush();
+      } catch (error) {
+        setStoryBibleError(
+          publicError(error, "장면 이동 전 캔버스를 저장하지 못했습니다.")
+        );
+        return;
+      }
     }
     if (!(await persistWorldGraphUiStateBeforeTransition())) {
       return;
@@ -2719,6 +2856,19 @@ export function App({
   };
 
   const openStoryEntity = async (entityId: string): Promise<void> => {
+    if (snapshotBusy || searchBusy) {
+      return;
+    }
+    if (appMode === "PLOT_CANVAS") {
+      try {
+        await plotCanvasModeRef.current?.flush();
+      } catch (error) {
+        setStoryBibleError(
+          publicError(error, "설정 이동 전 캔버스를 저장하지 못했습니다.")
+        );
+        return;
+      }
+    }
     if (!(await persistWorldGraphUiStateBeforeTransition())) {
       return;
     }
@@ -2733,6 +2883,19 @@ export function App({
   };
 
   const createProjectFromUi = async (): Promise<void> => {
+    if (snapshotBusy || searchBusy) {
+      return;
+    }
+    if (appMode === "PLOT_CANVAS") {
+      try {
+        await plotCanvasModeRef.current?.flush();
+      } catch (error) {
+        setStoryBibleError(
+          publicError(error, "새 프로젝트를 만들기 전 캔버스를 저장하지 못했습니다.")
+        );
+        return;
+      }
+    }
     if (!(await persistWorldGraphUiStateBeforeTransition())) {
       return;
     }
@@ -2740,6 +2903,19 @@ export function App({
   };
 
   const openProjectFromUi = async (): Promise<void> => {
+    if (snapshotBusy || searchBusy) {
+      return;
+    }
+    if (appMode === "PLOT_CANVAS") {
+      try {
+        await plotCanvasModeRef.current?.flush();
+      } catch (error) {
+        setStoryBibleError(
+          publicError(error, "다른 프로젝트를 열기 전 캔버스를 저장하지 못했습니다.")
+        );
+        return;
+      }
+    }
     if (!(await persistWorldGraphUiStateBeforeTransition())) {
       return;
     }
@@ -2777,22 +2953,29 @@ export function App({
   const hasActiveEntityNote =
     hasActiveOwnerDocument && workspace.activeOwnerKind === "ENTITY";
   const hasDocument =
-    appMode === "WORLD_GRAPH"
+    appMode === "WORLD_GRAPH" || appMode === "PLOT_CANVAS"
       ? false
       : appMode === "STORY_BIBLE"
       ? hasActiveEntityNote
       : hasActiveDocument &&
         (Boolean(selectedScene) || Boolean(visibleScriveningsLiveSceneId));
+  const modeSwitchReady =
+    Boolean(workspace.session) &&
+    projectStateSessionRef.current === workspace.session?.sessionId &&
+    uiStateReady &&
+    projectTree?.project.id === workspace.session?.projectId;
   const busy =
     workspace.savePhase === "saving" ||
-    workspace.savePhase === "restoring";
+    workspace.savePhase === "restoring" ||
+    snapshotBusy ||
+    searchBusy;
 
   return (
     <main className="app-shell">
       <header className="titlebar">
         <div className="wordmark" aria-label="madi">
           madi
-          <span>phase 1D</span>
+          <span>phase 1E</span>
         </div>
         <label className="document-title">
           <span className="sr-only">현재 작품명</span>
@@ -2858,7 +3041,7 @@ export function App({
           <button
             type="button"
             aria-pressed={appMode === "MANUSCRIPT"}
-            disabled={!workspace.session || busy}
+            disabled={!modeSwitchReady || busy}
             onClick={() => void switchAppMode("MANUSCRIPT")}
           >
             원고
@@ -2866,7 +3049,7 @@ export function App({
           <button
             type="button"
             aria-pressed={appMode === "STORY_BIBLE"}
-            disabled={!workspace.session || busy}
+            disabled={!modeSwitchReady || busy}
             onClick={() => void switchAppMode("STORY_BIBLE")}
           >
             설정
@@ -2874,10 +3057,18 @@ export function App({
           <button
             type="button"
             aria-pressed={appMode === "WORLD_GRAPH"}
-            disabled={!workspace.session || busy}
+            disabled={!modeSwitchReady || busy}
             onClick={() => void switchAppMode("WORLD_GRAPH")}
           >
             그래프
+          </button>
+          <button
+            type="button"
+            aria-pressed={appMode === "PLOT_CANVAS"}
+            disabled={!modeSwitchReady || busy}
+            onClick={() => void switchAppMode("PLOT_CANVAS")}
+          >
+            캔버스
           </button>
         </div>
         <div className="toolbar__spacer" />
@@ -3105,7 +3296,11 @@ export function App({
               </div>
             )}
         </section>
+      </section>
 
+      {(appMode === "MANUSCRIPT" ||
+        (appMode === "PLOT_CANVAS" &&
+          (panel === "search" || panel === "snapshots"))) && (
         <div className="inspector-drawer">
         {panel === "search" ? (
           <SearchReplacePanel
@@ -3248,7 +3443,7 @@ export function App({
           </aside>
         )}
         </div>
-      </section>
+      )}
 
       {appMode === "STORY_BIBLE" && workspace.session && (
         <StoryBibleWorkspace
@@ -3304,8 +3499,45 @@ export function App({
           onUpdateRelationType={updateStoryRelationType}
           onDeleteRelationType={deleteStoryRelationType}
           onOpenScene={openStoryScene}
+          onAddEntityToCanvas={addEntityToPlotCanvas}
           onPromoteMention={promoteStoryMention}
         />
+      )}
+
+      {appMode === "PLOT_CANVAS" && workspace.session && projectTree && (
+        <Suspense
+          fallback={
+            <section className="workspace-empty" aria-busy="true">
+              Plot Canvas 모듈 불러오는 중…
+            </section>
+          }
+        >
+          <PlotCanvasMode
+            ref={plotCanvasModeRef}
+            api={api}
+            sessionId={workspace.session.sessionId}
+            projectTree={projectTree}
+            entities={entities}
+            aliases={entityAliases}
+            tags={entityTags}
+            relations={entityRelations}
+            interactionBlocked={snapshotBusy || searchBusy}
+            pendingEntityId={pendingCanvasEntityId}
+            onPendingEntityHandled={(entityId, added) => {
+              if (pendingCanvasEntityId === entityId) {
+                setPendingCanvasEntityId(null);
+              }
+              if (!added) {
+                setStoryBibleError("캔버스 설정 노드를 추가하지 않았습니다.");
+              }
+            }}
+            onProjectRevision={(revision) =>
+              controller?.adoptProjectRevision(revision)
+            }
+            onOpenEntity={(entityId) => void openStoryEntity(entityId)}
+            onOpenScene={(sceneId) => void openStoryScene(sceneId)}
+          />
+        </Suspense>
       )}
 
       {appMode === "WORLD_GRAPH" && workspace.session && (
@@ -3321,24 +3553,73 @@ export function App({
           data-graph-search-ms={worldGraphPerformance.searchFocusMs?.toFixed(3)}
           data-graph-layout-ms={worldGraphPerformance.layoutMs?.toFixed(3)}
           data-graph-display-ms={worldGraphPerformance.displayMs?.toFixed(3)}
+          data-graph-search-click-handler-ms={
+            worldGraphPerformance.searchClickHandlerMs?.toFixed(3)
+          }
+          data-graph-react-selection-commit-ms={
+            worldGraphPerformance.reactSelectionCommitMs?.toFixed(3)
+          }
+          data-graph-cytoscape-node-lookup-ms={
+            worldGraphPerformance.cytoscapeNodeLookupMs?.toFixed(3)
+          }
+          data-graph-focus-animation-start-ms={
+            worldGraphPerformance.nodeFocusAnimationStartMs?.toFixed(3)
+          }
+          data-graph-neighbor-highlight-ms={
+            worldGraphPerformance.neighborHighlightMs?.toFixed(3)
+          }
+          data-graph-detail-shell-render-ms={
+            worldGraphPerformance.detailShellRenderMs?.toFixed(3)
+          }
+          data-graph-entity-detail-rpc-ms={
+            worldGraphPerformance.entityDetailRpcMs?.toFixed(3)
+          }
+          data-graph-scene-context-rpc-ms={
+            worldGraphPerformance.sceneContextRpcMs?.toFixed(3)
+          }
+          data-graph-mention-discovery-rpc-ms={
+            worldGraphPerformance.mentionDiscoveryRpcMs?.toFixed(3)
+          }
+          data-graph-ipc-serialize-deserialize-ms={
+            worldGraphPerformance.ipcSerializeDeserializeMs?.toFixed(3)
+          }
+          data-graph-lazy-rpc-round-trip-ms={
+            worldGraphPerformance.lazyRpcRoundTripMs?.toFixed(3)
+          }
+          data-graph-react-detail-commit-ms={
+            worldGraphPerformance.reactDetailCommitMs?.toFixed(3)
+          }
+          data-graph-full-lazy-detail-ms={
+            worldGraphPerformance.fullLazyDetailMs?.toFixed(3)
+          }
+          data-graph-detail-cache-hit={worldGraphPerformance.detailCacheHit}
         >
-          <WorldGraphWorkspace
-            model={worldGraphStateReady ? worldGraphModel : null}
-            initialUiState={worldGraphUiState}
-            busy={worldGraphBusy || !worldGraphStateReady}
-            errorMessage={worldGraphError}
-            onUiStateChange={acceptWorldGraphUiState}
-            onLoadEntityDetail={loadWorldGraphEntityDetail}
-            onLoadEntitySceneContext={loadWorldGraphSceneContext}
-            onLoadMentionCount={loadWorldGraphMentionCount}
-            onOpenEntity={openStoryEntity}
-            onOpenRelation={(_relationId, sourceEntityId) =>
-              openStoryEntity(sourceEntityId)
+          <Suspense
+            fallback={
+              <section className="workspace-empty" aria-busy="true">
+                그래프 모듈 불러오는 중…
+              </section>
             }
-            onOpenScene={(sceneId) => openStoryScene(sceneId)}
-            onSelectedEntityChange={setSelectedEntityId}
-            onPerformanceSample={recordWorldGraphPerformance}
-          />
+          >
+            <WorldGraphWorkspace
+              model={worldGraphStateReady ? worldGraphModel : null}
+              initialUiState={worldGraphUiState}
+              busy={worldGraphBusy || !worldGraphStateReady}
+              errorMessage={worldGraphError}
+              onUiStateChange={acceptWorldGraphUiState}
+              onLoadEntityDetail={loadWorldGraphEntityDetail}
+              onLoadEntitySceneContext={loadWorldGraphSceneContext}
+              onLoadMentionCount={loadWorldGraphMentionCount}
+              onOpenEntity={openStoryEntity}
+              onOpenRelation={(_relationId, sourceEntityId) =>
+                openStoryEntity(sourceEntityId)
+              }
+              onOpenScene={(sceneId) => openStoryScene(sceneId)}
+              onAddEntityToCanvas={addEntityToPlotCanvas}
+              onSelectedEntityChange={setSelectedEntityId}
+              onPerformanceSample={recordWorldGraphPerformance}
+            />
+          </Suspense>
         </div>
       )}
 

@@ -59,7 +59,12 @@ const summary: SnapshotDiffSummary = {
   deletedRelations: 0,
   changedRelations: 0,
   changedSceneLinks: 0,
-  changedEntityNotes: 0
+  changedEntityNotes: 0,
+  addedCanvases: 0,
+  deletedCanvases: 0,
+  changedCanvases: 0,
+  canvasNodeCountDelta: 0,
+  canvasEdgeCountDelta: 0
 };
 
 const diff: DiffNamedSnapshotResult = {
@@ -231,11 +236,15 @@ describe("Phase 1B named snapshot panel", () => {
     ).toBeNull();
   });
 
-  it("warns that restoring a legacy v1 snapshot clears Story Bible data", () => {
+  it("warns that restoring a legacy v1 snapshot clears Story Bible and Canvas data", () => {
     const onRequestDiff = vi.fn();
     render(<SnapshotPanel {...defaultProps({ onRequestDiff })} />);
 
-    expect(screen.getAllByText(/구버전 snapshot/)).toHaveLength(2);
+    expect(
+      screen.getAllByText(
+        /v1 snapshot · 복원하면 설정\(Story Bible\)과 Plot Canvas는 빈 상태/
+      )
+    ).toHaveLength(2);
     fireEvent.click(
       screen.getByRole("button", { name: "1차 퇴고 전 복원" })
     );

@@ -196,6 +196,9 @@ export interface StoryBibleWorkspaceProps {
     sceneId: string,
     range?: { readonly start: number; readonly end: number }
   ) => void | Promise<void>;
+  readonly onAddEntityToCanvas?: (
+    entityId: string
+  ) => void | Promise<void>;
   readonly onPromoteMention: (
     candidate: StoryMentionCandidate,
     role: SceneEntityRole
@@ -286,6 +289,7 @@ export function StoryBibleWorkspace({
   onUpdateRelationType,
   onDeleteRelationType,
   onOpenScene,
+  onAddEntityToCanvas,
   onPromoteMention
 }: StoryBibleWorkspaceProps) {
   const [kindFilter, setKindFilter] = useState<StoryEntityKind | "ALL">("ALL");
@@ -797,9 +801,25 @@ export function StoryBibleWorkspace({
                 <p className="eyebrow">{KIND_LABELS[selected.kind]}</p>
                 <h2>{selected.name}</h2>
               </div>
-              <button type="button" className="danger-button" onClick={requestDelete}>
-                설정 삭제
-              </button>
+              <div role="group" aria-label="설정 작업">
+                {onAddEntityToCanvas && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void safely(() => onAddEntityToCanvas(selected.id))
+                    }
+                  >
+                    캔버스에 추가
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="danger-button"
+                  onClick={requestDelete}
+                >
+                  설정 삭제
+                </button>
+              </div>
             </header>
 
             {(errorMessage || localError) && (

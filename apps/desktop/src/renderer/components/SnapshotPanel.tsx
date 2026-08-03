@@ -117,6 +117,20 @@ function SnapshotDiffDetails({
         <dt>설정 노트</dt>
         <dd>{summary.changedEntityNotes}개 설정 변화</dd>
       </div>
+      <div>
+        <dt>Plot Canvas</dt>
+        <dd>
+          +{summary.addedCanvases} · −{summary.deletedCanvases} · 변경{" "}
+          {summary.changedCanvases}
+        </dd>
+      </div>
+      <div>
+        <dt>Canvas node/edge</dt>
+        <dd>
+          node {signedNumber(summary.canvasNodeCountDelta)} · edge{" "}
+          {signedNumber(summary.canvasEdgeCountDelta)}
+        </dd>
+      </div>
     </dl>
   );
 }
@@ -289,7 +303,12 @@ export function SnapshotPanel({
                     {snapshot.note && <p>{snapshot.note}</p>}
                     {snapshot.payloadVersion === 1 && (
                       <p className="snapshot-legacy-warning">
-                        구버전 snapshot · 복원하면 설정(Story Bible)은 빈 상태가 됩니다.
+                        v1 snapshot · 복원하면 설정(Story Bible)과 Plot Canvas는 빈 상태가 됩니다.
+                      </p>
+                    )}
+                    {snapshot.payloadVersion === 2 && (
+                      <p className="snapshot-legacy-warning">
+                        v2 snapshot · 복원하면 Plot Canvas는 빈 상태가 됩니다.
                       </p>
                     )}
                     <dl className="snapshot-metadata">
@@ -400,6 +419,13 @@ export function SnapshotPanel({
               이 v1 snapshot에는 설정 데이터가 없습니다. 복원 후 Story Bible의
               설정·관계·장면 연결은 빈 상태가 됩니다. 현재 전체 상태는 복원 전에
               자동 안전 snapshot으로 보관됩니다.
+            </p>
+          )}
+          {restoreCandidate.payloadVersion === 2 && (
+            <p className="snapshot-legacy-warning" role="note">
+              이 v2 snapshot에는 Plot Canvas 데이터가 없습니다. 복원 후 캔버스
+              목록은 빈 상태가 되며, 현재 전체 상태는 복원 전에 자동 안전
+              snapshot으로 보관됩니다.
             </p>
           )}
           <div>

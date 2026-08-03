@@ -186,6 +186,27 @@ function props(
 }
 
 describe("Phase 1C Story Bible workspace", () => {
+  it("passes only the selected entity id to the optional Canvas entry point", async () => {
+    const onAddEntityToCanvas = vi.fn();
+    const rendered = render(
+      <StoryBibleWorkspace
+        {...props({ onAddEntityToCanvas })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "캔버스에 추가" }));
+    await waitFor(() =>
+      expect(onAddEntityToCanvas).toHaveBeenCalledWith(leia.id)
+    );
+    expect(onAddEntityToCanvas.mock.calls).toEqual([[leia.id]]);
+    expect(typeof onAddEntityToCanvas.mock.calls[0]?.[0]).toBe("string");
+
+    rendered.rerender(<StoryBibleWorkspace {...props()} />);
+    expect(
+      screen.queryByRole("button", { name: "캔버스에 추가" })
+    ).toBeNull();
+  });
+
   it("filters, creates, selects, renames and warns about duplicate names", async () => {
     const onCreate = vi.fn();
     const onSelect = vi.fn();
