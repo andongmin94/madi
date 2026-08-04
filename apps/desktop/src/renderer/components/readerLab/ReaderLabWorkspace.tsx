@@ -22,14 +22,14 @@ import { validatePublicationDocument } from "../../../shared/publicationValidati
 import { validateReaderRenderConfig } from "../../../shared/readerConfigValidation";
 import { BUILTIN_READER_PRESETS, DEFAULT_READER_PRESET } from "./builtinTemplates";
 import { ReaderDiagnostics } from "./ReaderDiagnostics";
-import { ReaderPreviewPane } from "./ReaderPreviewPane";
+import {
+  ReaderPreviewPane,
+  readerPreviewMeasurementKey
+} from "./ReaderPreviewPane";
 import { ReaderScopePresetPanel } from "./ReaderScopePresetPanel";
 import { ReaderSettingsPanel } from "./ReaderSettingsPanel";
 import { applyReaderOverrides } from "./readerConfig";
-import {
-  buildReaderDiagnostics,
-  estimateReaderStatistics
-} from "./readerStatistics";
+import { buildReaderDiagnostics } from "./readerStatistics";
 import {
   defaultReaderLabUiState,
   normalizeReaderLabUiState,
@@ -40,6 +40,7 @@ import {
 import type {
   ReaderLabModeHandle,
   ReaderLabModeProps,
+  ReaderLayoutDiagnostic,
   ReaderMeasuredBlockLayout,
   ReaderPresetOption,
   ReaderRenderStatistics
@@ -55,6 +56,25 @@ interface CompileEffectSuppression {
   readonly sessionId: string;
   readonly projectRevision: number;
   readonly scopeNodeId: string;
+}
+
+interface PaneStatisticsEntry {
+  readonly measurementKey: string;
+  readonly value: ReaderRenderStatistics;
+}
+
+interface PaneMeasuredBlocksEntry {
+  readonly measurementKey: string;
+  readonly value: readonly ReaderMeasuredBlockLayout[];
+}
+
+function scheduleIdleWork(work: () => void): () => void {
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(work, { timeout: 100 });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const handle = window.setTimeout(work, 0);
+  return () => window.clearTimeout(handle);
 }
 
 function compileEffectContextsEqual(
@@ -199,11 +219,18 @@ export const ReaderLabWorkspace = forwardRef<
   const [activePaneIndex, setActivePaneIndex] = useState(0);
   const [presetName, setPresetName] = useState(DEFAULT_READER_PRESET.name);
   const [paneStatistics, setPaneStatistics] = useState<
-    Readonly<Record<number, ReaderRenderStatistics>>
+    Readonly<Record<number, PaneStatisticsEntry>>
   >({});
   const [paneMeasuredBlocks, setPaneMeasuredBlocks] = useState<
-    Readonly<Record<number, readonly ReaderMeasuredBlockLayout[]>>
+    Readonly<Record<number, PaneMeasuredBlocksEntry>>
   >({});
+  const [layoutDiagnosticsState, setLayoutDiagnosticsState] = useState<{
+    readonly key: string;
+    readonly value: readonly ReaderLayoutDiagnostic[];
+  }>({ key: "", value: [] });
+  const layoutDiagnosticsCacheRef = useRef(
+    new Map<string, readonly ReaderLayoutDiagnostic[]>()
+  );
   const loadGenerationRef = useRef(0);
   const uiStatePersistGenerationRef = useRef(0);
   const loadedSessionRef = useRef<string | null>(null);
@@ -567,11 +594,23 @@ export const ReaderLabWorkspace = forwardRef<
     presetOptions.find((preset) => preset.id === activePane.presetId) ??
     DEFAULT_READER_PRESET;
   const activeConfig = resolvedConfigs[activePaneIndex] ?? DEFAULT_READER_PRESET.config;
+  const activeMeasurementKey = publication
+    ? readerPreviewMeasurementKey(publication.contentHash, activeConfig)
+    : null;
+  const activeStatisticsEntry = paneStatistics[activePaneIndex];
   const activeStatistics =
-    paneStatistics[activePaneIndex] ??
-    (publication
-      ? estimateReaderStatistics(publication.document, activeConfig)
-      : null);
+    activeMeasurementKey &&
+    activeStatisticsEntry?.measurementKey === activeMeasurementKey
+      ? activeStatisticsEntry.value
+      : null;
+  const activeMeasuredBlocksEntry = paneMeasuredBlocks[activePaneIndex];
+  const activeMeasuredBlocks =
+    activeMeasurementKey &&
+    activeMeasuredBlocksEntry?.measurementKey === activeMeasurementKey
+      ? activeMeasuredBlocksEntry.value
+      : [];
+  const activeMeasurementPending =
+    publication !== null && activeStatistics?.measurementStatus !== "COMPLETE";
   const presetDirty =
     presetName !== activePreset.name ||
     !configsEqual(activeConfig, activePreset.config);
@@ -772,31 +811,47 @@ export const ReaderLabWorkspace = forwardRef<
   );
 
   const onPaneStatistics = useCallback(
-    (paneIndex: number, statistics: ReaderRenderStatistics) => {
+    (
+      paneIndex: number,
+      statistics: ReaderRenderStatistics,
+      measurementKey: string
+    ) => {
       setPaneStatistics((current) => {
         const previous = current[paneIndex];
-        return previous && JSON.stringify(previous) === JSON.stringify(statistics)
+        return previous?.measurementKey === measurementKey &&
+          JSON.stringify(previous.value) === JSON.stringify(statistics)
           ? current
-          : { ...current, [paneIndex]: statistics };
+          : {
+              ...current,
+              [paneIndex]: { measurementKey, value: statistics }
+            };
       });
     },
     []
   );
 
   const onPaneMeasuredBlocks = useCallback(
-    (paneIndex: number, blocks: readonly ReaderMeasuredBlockLayout[]) => {
+    (
+      paneIndex: number,
+      blocks: readonly ReaderMeasuredBlockLayout[],
+      measurementKey: string
+    ) => {
       setPaneMeasuredBlocks((current) => {
-        const previous = current[paneIndex] ?? [];
+        const previous = current[paneIndex];
         if (
-          previous.length === blocks.length &&
-          previous.every(
+          previous?.measurementKey === measurementKey &&
+          previous.value.length === blocks.length &&
+          previous.value.every(
             (block, index) =>
               JSON.stringify(block) === JSON.stringify(blocks[index])
           )
         ) {
           return current;
         }
-        return { ...current, [paneIndex]: blocks };
+        return {
+          ...current,
+          [paneIndex]: { measurementKey, value: blocks }
+        };
       });
     },
     []
@@ -836,28 +891,55 @@ export const ReaderLabWorkspace = forwardRef<
     });
   }, []);
 
-  const layoutDiagnostics = useMemo(
-    () => {
-      if (!publication) {
-        return [];
+  const layoutDiagnosticsKey =
+    publication && activeMeasurementKey
+      ? [
+          activeMeasurementKey,
+          activeStatistics?.measurementStatus ?? "PENDING",
+          activeStatistics?.measuredSectionCount ?? 0,
+          activeMeasuredBlocks.length
+        ].join(":")
+      : "";
+  const layoutDiagnosticsRequestRef = useRef(layoutDiagnosticsKey);
+  layoutDiagnosticsRequestRef.current = layoutDiagnosticsKey;
+  const cachedLayoutDiagnostics = layoutDiagnosticsCacheRef.current.get(
+    layoutDiagnosticsKey
+  );
+  useEffect(() => {
+    if (
+      !publication ||
+      activeMeasurementPending ||
+      !layoutDiagnosticsKey ||
+      cachedLayoutDiagnostics
+    ) {
+      return;
+    }
+    const expectedKey = layoutDiagnosticsKey;
+    const expectedPublication = publication;
+    const expectedConfig = activeConfig;
+    const expectedBlocks = activeMeasuredBlocks;
+    return scheduleIdleWork(() => {
+      if (layoutDiagnosticsRequestRef.current !== expectedKey) {
+        return;
       }
-      const measuredBlocks = paneMeasuredBlocks[activePaneIndex] ?? [];
       const diagnostics = [
         ...buildReaderDiagnostics(
-          publication.document,
-          activeConfig,
+          expectedPublication.document,
+          expectedConfig,
           8,
-          measuredBlocks
+          expectedBlocks
         )
       ];
-      for (const measurement of measuredBlocks) {
+      const blocksById = new Map(
+        expectedPublication.document.sections.flatMap((section) =>
+          section.blocks.map((block) => [block.id, block] as const)
+        )
+      );
+      for (const measurement of expectedBlocks) {
         if (!measurement.horizontalOverflow) {
           continue;
         }
-        const blockId = measurement.blockId;
-        const block = publication.document.sections
-          .flatMap((section) => section.blocks)
-          .find((candidate) => candidate.id === blockId);
+        const block = blocksById.get(measurement.blockId);
         if (!block) {
           continue;
         }
@@ -869,9 +951,37 @@ export const ReaderLabWorkspace = forwardRef<
           source: block.source
         });
       }
-      return diagnostics;
-    }, [activeConfig, activePaneIndex, paneMeasuredBlocks, publication]
-  );
+      if (layoutDiagnosticsRequestRef.current === expectedKey) {
+        const cache = layoutDiagnosticsCacheRef.current;
+        cache.delete(expectedKey);
+        cache.set(expectedKey, diagnostics);
+        while (cache.size > 4) {
+          const oldest = cache.keys().next().value as string | undefined;
+          if (!oldest) {
+            break;
+          }
+          cache.delete(oldest);
+        }
+        setLayoutDiagnosticsState({ key: expectedKey, value: diagnostics });
+      }
+    });
+  }, [
+    activeConfig,
+    activeMeasuredBlocks,
+    activeMeasurementPending,
+    cachedLayoutDiagnostics,
+    layoutDiagnosticsKey,
+    publication
+  ]);
+  const layoutDiagnostics =
+    layoutDiagnosticsState.key === layoutDiagnosticsKey
+      ? layoutDiagnosticsState.value
+      : cachedLayoutDiagnostics ?? [];
+  const layoutDiagnosticsPending =
+    publication !== null &&
+    (activeMeasurementPending ||
+      (layoutDiagnosticsState.key !== layoutDiagnosticsKey &&
+        cachedLayoutDiagnostics === undefined));
   const panelStyle = {
     "--reader-left-panel": `${uiState.leftPanelWidth}px`,
     "--reader-right-panel": `${uiState.rightPanelWidth}px`
@@ -929,7 +1039,10 @@ export const ReaderLabWorkspace = forwardRef<
         (publication?.diagnostics.length ?? 0) + layoutDiagnostics.length
       }
       data-reader-diagnostic-measurement-status={
-        activeStatistics?.measurementStatus ?? ""
+        activeStatistics?.measurementStatus ?? (publication ? "MEASURING" : "")
+      }
+      data-reader-layout-diagnostics-status={
+        layoutDiagnosticsPending ? "measuring" : "complete"
       }
       data-reader-scroll-sync={String(uiState.scrollSync)}
       data-reader-left-panel-width={uiState.leftPanelWidth}
@@ -1117,6 +1230,7 @@ export const ReaderLabWorkspace = forwardRef<
           document={publication?.document ?? null}
           config={activeConfig}
           statistics={activeStatistics}
+          measurementPending={activeMeasurementPending}
           zoom={activePane.zoom}
           onOverrides={patchActiveOverrides}
           onZoom={(zoom) => patchActivePane({ zoom })}
@@ -1126,6 +1240,7 @@ export const ReaderLabWorkspace = forwardRef<
           document={publication?.document ?? null}
           coreDiagnostics={publication?.diagnostics ?? []}
           layoutDiagnostics={layoutDiagnostics}
+          measurementPending={layoutDiagnosticsPending}
           onExpanded={(diagnosticsExpanded) =>
             setUiState((current) => ({ ...current, diagnosticsExpanded }))
           }

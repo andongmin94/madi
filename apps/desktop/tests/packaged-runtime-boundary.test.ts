@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveCoreBinary } from "../src/main/coreClient";
+import { resolveEpubExporterBinary } from "../src/main/epubExportClient";
 import { resolveWindowTarget } from "../src/main/window";
 
 describe("packaged runtime boundary", () => {
@@ -27,6 +28,39 @@ describe("packaged runtime boundary", () => {
         environment: { MADI_CORE_BIN: maliciousOverride }
       })
     ).toBe(maliciousOverride);
+  });
+
+  it("resolves development sidecars only from their current crate targets", () => {
+    const appPath = path.resolve("apps", "desktop");
+    const resourcesPath = path.resolve("packaged-resources");
+
+    expect(
+      resolveCoreBinary({
+        appPath,
+        resourcesPath,
+        isPackaged: false,
+        platform: "win32",
+        environment: {}
+      })
+    ).toBe(path.resolve("crates", "madi-core", "target", "debug", "madi-core.exe"));
+
+    expect(
+      resolveEpubExporterBinary({
+        appPath,
+        resourcesPath,
+        isPackaged: false,
+        platform: "win32",
+        environment: {}
+      })
+    ).toBe(
+      path.resolve(
+        "crates",
+        "madi-export-epub",
+        "target",
+        "debug",
+        "madi-export-epub.exe"
+      )
+    );
   });
 
   it("always resolves the packaged renderer before parsing development URLs", () => {

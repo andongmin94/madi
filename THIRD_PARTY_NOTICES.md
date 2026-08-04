@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-이 파일은 Phase 1F 저장소에서 직접 포함하거나 주요 runtime/build dependency로
+이 파일은 Phase 1G 저장소에서 직접 포함하거나 주요 runtime/build dependency로
 사용하는 제3자 자료를 요약한다. 각 license 원문이 우선하며, 이 요약은 license
 조건을 대체하지 않는다.
 
@@ -181,6 +181,7 @@ pnpm licenses list --prod
 
 - `base64`
 - `clap`
+- `image` 0.25.10 with PNG/JPEG only
 - `rusqlite` with bundled SQLite
 - `serde`
 - `serde_json`
@@ -196,7 +197,8 @@ pnpm licenses list --prod
 - `sha2` 0.10.9
 - `thiserror` 2.0.18
 
-`madi-core`은 `thiserror` 1.0.69를 사용한다. `sha2`는 core의 canonical
+`madi-core`은 `thiserror` 1.0.69를, `madi-publication` 자체 lock은 2.0.18을,
+`madi-export-epub`의 통합 lock은 compatible 2.0.20을 사용한다. `sha2`는 core의 canonical
 document/snapshot/Canvas/Reader preset hash와 publication source/block/document hash에
 사용되는 production dependency다. `thiserror`는 두 crate의 typed Rust error derive에만
 사용하며 runtime plugin이나 executable content를 로드하지 않는다.
@@ -208,9 +210,10 @@ Resolved registry attribution과 license metadata:
 | `sha2` | 0.10.9 | RustCrypto Developers; license notice의 Graydon Hoare, Mozilla Foundation, Artyom Pavlov | MIT OR Apache-2.0 | `sha2-0.10.9/LICENSE-MIT`, `LICENSE-APACHE` |
 | `thiserror` | 1.0.69 | David Tolnay | MIT OR Apache-2.0 | `thiserror-1.0.69/LICENSE-MIT`, `LICENSE-APACHE` |
 | `thiserror` | 2.0.18 | David Tolnay | MIT OR Apache-2.0 | `thiserror-2.0.18/LICENSE-MIT`, `LICENSE-APACHE` |
+| `thiserror` | 2.0.20 | David Tolnay | MIT OR Apache-2.0 | `thiserror-2.0.20/LICENSE-MIT`, `LICENSE-APACHE` |
 
 Checked-in crate별 license 원문과 exact SHA-256는 다음과 같다. `sha2` 두 파일은 locked
-0.10.9 registry 원문과, `thiserror` 두 파일은 locked 1.0.69와 2.0.18 양쪽의 동일한
+0.10.9 registry 원문과, `thiserror` 두 파일은 locked 1.0.69, 2.0.18과 2.0.20의 동일한
 registry 원문과 각각 byte-identical하다.
 
 - `docs/licenses/SHA2-MIT.txt` →
@@ -251,11 +254,146 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 `
 ```
 
 현재 unpacked package는 `THIRD_PARTY_NOTICES.md`, Typie/Nanum/Cytoscape/React Flow/JSON
-Canvas 원문과 위 네 Rust crate license 원문을 `resources/licenses`에 복사한다. Package
-script는 checked-in source와 packaged copy를 위 SHA-256에 대조해 mismatch를 거부한다.
+Canvas 원문, 위 네 Rust license 원문과 아래 Phase 1G EPUB direct dependency/EPUBCheck 본체
+원문을 `resources/licenses`에 복사한다. Package script는 checked-in source와 packaged
+copy를 고정 SHA-256에 대조해 mismatch를 거부한다.
 Rust transitive dependency 전체의 자동 license report는 아직 생성하지 않으므로
 production 배포 전 `Cargo.lock` 기준 report를 계속 검토해야 한다. 이 원문 포함은 위
 Typie `HUMAN DECISION REQUIRED`보다 배포 권한을 넓히지 않는다.
+
+## Phase 1G EPUB Rust dependency
+
+`madi-export-epub` direct production dependency와 exporter lock의 resolved version은 다음과
+같다. Local `madi-publication`은 위 Typie/Rust bridge 고지를 따르며 Madi 자체 crate는
+`UNLICENSED`다.
+
+| Direct crate | Resolved version | 역할 | Upstream license expression |
+|---|---:|---|---|
+| `base64` | 0.22.1 | JSON cover bytes | MIT OR Apache-2.0 |
+| `image` | 0.25.10 | PNG/JPEG decode와 sanitized re-encode | MIT OR Apache-2.0 |
+| `quick-xml` | 0.37.5 | XML/XHTML internal validation | MIT |
+| `serde` | 1.0.229 | strict request/result DTO | MIT OR Apache-2.0 |
+| `serde_json` | 1.0.151 | utility JSON contract | MIT OR Apache-2.0 |
+| `sha2` | 0.10.9 | source/package/file hash | MIT OR Apache-2.0 |
+| `tempfile` | 3.27.0 | create-new same-directory temp | MIT OR Apache-2.0 |
+| `thiserror` | 2.0.20 | typed utility errors | MIT OR Apache-2.0 |
+| `zip` | 2.4.2 | EPUB ZIP package/reopen | MIT |
+
+Feature-selected image/ZIP/tempfile closure의 주요 resolved crate와 license expression은
+`crates/madi-export-epub/Cargo.lock` 및 registry package metadata에서 다음과 같이 확인했다.
+이 표는 local Typie/Publication closure와 generic serde/crypto proc-macro graph를 반복하지
+않는다.
+
+| Crate | Version | License expression |
+|---|---:|---|
+| `bytemuck` | 1.25.2 | Zlib OR Apache-2.0 OR MIT |
+| `byteorder-lite` | 0.1.0 | Unlicense OR MIT |
+| `moxcms` | 0.8.1 | BSD-3-Clause OR Apache-2.0 |
+| `num-traits` | 0.2.19 | MIT OR Apache-2.0 |
+| `pxfm` | 0.1.30 | BSD-3-Clause OR Apache-2.0 |
+| `png` | 0.18.1 | MIT OR Apache-2.0 |
+| `zune-core` | 0.5.3 | MIT OR Apache-2.0 OR Zlib |
+| `zune-jpeg` | 0.5.15 | MIT OR Apache-2.0 OR Zlib |
+| `bitflags` | 2.13.1 | MIT OR Apache-2.0 |
+| `crc32fast` | 1.5.0 | MIT OR Apache-2.0 |
+| `fdeflate` | 0.3.7 | MIT OR Apache-2.0 |
+| `flate2` | 1.1.9 | MIT OR Apache-2.0 |
+| `miniz_oxide` | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
+| `adler2` | 2.0.1 | 0BSD OR MIT OR Apache-2.0 |
+| `simd-adler32` | 0.3.10 | MIT |
+| `fastrand` | 2.5.0 | MIT OR Apache-2.0 |
+| `getrandom` | 0.4.3 | MIT OR Apache-2.0 |
+| `once_cell` | 1.21.4 | MIT OR Apache-2.0 |
+| `windows-sys` | 0.61.2 | MIT OR Apache-2.0 |
+| `windows-link` | 0.2.1 | MIT OR Apache-2.0 |
+| `indexmap` | 2.14.0 | Apache-2.0 OR MIT |
+| `equivalent` | 1.0.2 | Apache-2.0 OR MIT |
+| `hashbrown` | 0.17.1 | MIT OR Apache-2.0 |
+| `zopfli` | 0.8.3 | Apache-2.0 |
+| `bumpalo` | 3.20.3 | MIT OR Apache-2.0 |
+| `log` | 0.4.33 | MIT OR Apache-2.0 |
+
+Checked-in direct crate 원문과 LF-normalized SHA-256:
+
+- `docs/licenses/BASE64-MIT.txt` →
+  `0dd882e53de11566d50f8e8e2d5a651bcf3fabee4987d70f306233cf39094ba7`
+- `docs/licenses/BASE64-TEMPFILE-APACHE-2.0.txt` →
+  `a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2`
+- `docs/licenses/IMAGE-MIT.txt` →
+  `c77a4cf9da729987d0fe7ccd811e3bd27393914ddf3d23467c18cc22954513b3`
+- `docs/licenses/IMAGE-APACHE-2.0.txt` →
+  `0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594`
+- `docs/licenses/QUICK-XML-MIT.txt` →
+  `f0cf9b1c62bbe3bd3a69f5f79c7158f513f612b4940a0a812d1db39d605318bc`
+- `docs/licenses/TEMPFILE-MIT.txt` →
+  `8b427f5bc501764575e52ba4f9d95673cf8f6d80a86d0d06599852e1a9a20a36`
+- `docs/licenses/ZIP-MIT.txt` →
+  `13f16f8435b4242f494f038d761bd99c5af70395aa39274bd287d22c4d35c3b7`
+
+`quick-xml`과 `zip` source는 registry의 CRLF/line-ending 표현을 repository 정책에 따라 LF로
+normalization했으므로 byte hash는 registry file과 다르지만 license text와 attribution은
+동일하다. Package script는 checked-in bytes와 packaged copy를 위 hash로 검증한다.
+
+현재 unpacked package는 exporter direct crate의 위 원문, 기존 sha2/thiserror 원문과
+Third-Party Notices를 `resources/licenses`에 포함한다. 위 transitive 표의 crate별 개별
+license 원문 전체를 package에 자동 수집하는 완결된 Cargo license corpus는 아직 없다.
+따라서 이 package는 Phase 1G **PRIVATE LOCAL** actual에는 사용할 수 있지만 외부 배포의
+license-complete artifact라고 판정하지 않는다. 이 한계는 Typie의 더 강한
+`HUMAN DECISION REQUIRED BEFORE DISTRIBUTION`과 별개로 public/paid/customer distribution을
+계속 차단한다.
+
+## EPUBCheck 5.3.0과 test-only Java runtime
+
+- Project: EPUBCheck
+- Exact release: 5.3.0
+- Release: `https://github.com/w3c/epubcheck/releases/tag/v5.3.0`
+- License: BSD 3-Clause
+- Runtime role: 없음
+- Build/test role: EPUB 3.3 production validation, EPUB 3.4 공통 subset 보조 검사
+- Checked-in license text:
+  `docs/licenses/EPUBCHECK-5.3.0-BSD-3-CLAUSE.txt`
+- LF-normalized SHA-256:
+  `851180aaf3e14dddafb23f62abf46123aa354cc9379c650952073823ee6b128e`
+- Packaged notice path:
+  `resources/licenses/EPUBCHECK-5.3.0-BSD-3-CLAUSE.txt`
+
+Ignored local test tool identity:
+
+| Artifact | Exact identity |
+|---|---|
+| EPUBCheck distribution ZIP | 5.3.0, 33,071,108 bytes, SHA-256 `6c07e68584b2e2ce2f89fe06e1246dfead3eb36b46b340e7d93524f29dcff6c5` |
+| `epubcheck.jar` | 1,223,671 bytes, SHA-256 `f7f96617c929371821609b88c8484d6dc9f24fe916499863c46094c5fb778a65` |
+| Java runtime ZIP | Eclipse Adoptium Temurin 21.0.11+10-LTS Windows x64 HotSpot JRE, 49,005,708 bytes, SHA-256 `be26677aaa20b39a62edcaab4c8857a8b76673b0f45abc0b6143b142b62717e4` |
+| `java.exe` | 50,344 bytes, SHA-256 `5e0fab9f07952ceb6e71eb9fd33e1ed69959904ca00cf70869b7baf516a98016` |
+
+EPUBCheck distribution의 exact `THIRD-PARTY.txt`가 열거하는 component/version은 다음과
+같다.
+
+- Jackson annotations/core/databind 2.18.2
+- error-prone annotations 2.36.0
+- Guava failureaccess 1.0.3, Guava 33.4.8-jre, ListenableFuture 9999.0 empty artifact
+- J2ObjC annotations 3.0.0, JSpecify 1.0.0
+- ICU4J 77.1
+- json-path/json-path-assert 2.8.0
+- TwelveMonkeys common-image/common-io/common-lang/imageio-core/imageio-jpeg/imageio-metadata
+  3.9.4
+- Commons Codec 1.19.0, Commons IO 2.20.0, Commons Compress 1.28.0, Commons Lang 3.18.0
+- isorelax 20030108, accessors-smart 2.4.9, json-smart 2.4.10
+- Saxon-HE 11.4, galimatias 0.1.3, ASM 9.3, Jing 20181222
+- HttpClient/Core/Core-H2 5.1.3
+- SLF4J API/NOP 1.7.36, SAC 1.3
+- XML Resolver 4.4.3, Xerces2-j 2.12.2, XML APIs 1.4.01
+
+Upstream distribution은 이 corpus에 Apache-2.0, BSD-3-Clause, MIT, MPL-2.0, W3C,
+Unicode-3.0과 SAX license를 매핑하고 `licenses/` 및 JAR metadata를 함께 제공한다. Exact
+distribution directory는 ignored `.tools/phase1g-validation` 안에서 이 files와
+`THIRD-PARTY.txt`를 그대로 보존한다.
+
+EPUBCheck ZIP/JAR, 그 transitive JAR와 Temurin JRE는 source control 또는 unpacked app의
+runtime payload에 포함하지 않는다. 따라서 Java/JAR license corpus를 app runtime
+license로 가장하지 않는다. 향후 runtime bundle을 승인하려면 Temurin GPLv2 with Classpath
+Exception 및 assembly third-party notices, EPUBCheck 전체 transitive corpus, package size와
+security-update owner를 별도 재검토해야 한다.
 
 ## madi 자체 코드
 

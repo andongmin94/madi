@@ -1,10 +1,10 @@
 # madi
 
 `madi`는 한국어 장편소설 작가를 위한 local-first Windows desktop 저작도구다.
-현재 작업트리는 Phase 1D World Graph와 Phase 1E Plot Canvas 위에 Phase 1F Reader
-Lab을 구현한다. 저장된 Typie 원고는 Madi 소유의 engine-independent Publication IR로
-파생되고, 같은 IR을 모바일·태블릿·데스크톱 독서환경에서 비교한다. Plot Canvas와 Reader
-Lab은 각각 canonical planning data와 파생 publication read model이라는 서로 다른 경계를
+현재 작업트리는 Phase 1F Reader Lab 위에 Phase 1G EPUB Export & Validation을 구현한다.
+저장된 Typie 원고는 Madi 소유의 engine-independent Publication IR로 파생되고, Reader
+Lab과 EPUB exporter가 같은 IR을 소비한다. Plot Canvas의 canonical planning data,
+Publication IR의 파생 의미 모델과 generated EPUB artifact는 서로 다른 소유권 경계를
 유지한다.
 
 ```text
@@ -32,6 +32,10 @@ Phase 1F implementation: COMPLETE
 Phase 1F development/fresh packaged Electron Reader gates: PASS
 Phase 1F final pnpm verify gate: PASS
 Phase 1F verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
+Phase 1G repository implementation: COMPLETE
+Phase 1G development/fresh-unpacked EPUB actual: PASS
+Phase 1G final verdict: CONDITIONAL TECHNICAL GO — RUNTIME EPUBCHECK PACKAGING PENDING
+Phase 1G boundary: PRIVATE LOCAL ONLY
 Windows native Korean IME: MANUAL VALIDATION PENDING
 Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Public/paid/customer distribution: NOT AUTHORIZED
@@ -42,7 +46,10 @@ DTO로 파생하고 전체 또는 특정 entity 중심 1~3 hop으로 보여주�
 화면이다. Plot Canvas는 작가가 node/edge/group과 배치를 직접 만드는 canonical planning
 data다. Canvas edge는 Story Bible relation을 만들지 않는다. Reader Lab은 canonical
 Typie snapshot을 Publication IR로 compile해 read-only Shadow DOM preview에 표시하고
-Story Bible/Canvas/Graph를 출판 원고로 섞지 않는다. Phase 1F 경계와 실제 검증은
+Story Bible/Canvas/Graph를 출판 원고로 섞지 않는다. EPUB exporter도 Typie/Reader DOM을
+읽지 않고 Publication IR만 소비한다. Phase 1G 경계와 실행 결과는
+[`docs/PHASE_1G_SCOPE.md`](docs/PHASE_1G_SCOPE.md)와
+[`docs/PHASE_1G_RESULT.md`](docs/PHASE_1G_RESULT.md)를 따른다. Phase 1F 경계와 실제 검증은
 [`docs/PHASE_1F_SCOPE.md`](docs/PHASE_1F_SCOPE.md)와
 [`docs/PHASE_1F_RESULT.md`](docs/PHASE_1F_RESULT.md)를 따른다. Phase 1E의 근거는
 [`docs/PHASE_1E_SCOPE.md`](docs/PHASE_1E_SCOPE.md)와
@@ -74,14 +81,15 @@ Story Bible/Canvas/Graph를 출판 원고로 섞지 않는다. Phase 1F 경계�
 - 이름 있는 snapshot 생성·목록·이름 변경·삭제·요약 diff·안전 복원
 - 현재 SCENE과 선택 subtree의 공백 포함/제외 Unicode scalar 글자 수
 - Electron 없이 UTF-8 plain-text recovery를 꺼내는 Rust CLI
-- `원고`, `설정`, `그래프`, `캔버스`, `읽기 실험실` 작업 모드 전환
+- `원고`, `설정`, `그래프`, `캔버스`, `읽기 실험실`, `EPUB 내보내기` 작업 모드 전환
 - 등장인물·장소·조직·물건·사건·세계관 규칙·복선·기타 설정 CRUD
 - 설정별 별칭, 태그, 상태, 요약, 색상 토큰, 아이콘 키와 확장 JSON 속성
 - 설정별 독립 Typie 상세 노트와 장면과 같은 저장 안전성
 - 프로젝트별 built-in/custom 관계 타입과 directed/undirected/inverse 관계 CRUD
 - SCENE과 설정의 `APPEARS`, `POV`, `MENTIONED`, `RELATED` 명시적 연결
 - 이름·별칭 exact substring 기반의 본문 언급 후보와 명시적 연결 승격
-- Reader preset까지 포함하는 named snapshot v4와 기존 v1/v2/v3 decode·복원
+- publication metadata/cover/export preset까지 포함하는 named snapshot v5와 기존
+  v1/v2/v3/v4 decode·복원
 - Story Bible canonical data에서 파생한 읽기 전용 World Graph
 - 8종 entity kind shape/color, directed arrow, undirected 단일 edge와 inverse detail label
 - kind/status/tag ANY·ALL/relation type/direction/고립 node/label filter
@@ -106,9 +114,16 @@ Story Bible/Canvas/Graph를 출판 원고로 섞지 않는다. Phase 1F 경계�
 - source/render 통계, 전체 scope incremental measurement와 “검토 후보” diagnostics
 - section virtualization과 preview block→원고 SCENE/exact range 이동
 - 마지막 Reader scope/pane/preset/config/zoom/scroll/panel 상태의 새 process 복원
+- Publication IR 기반 EPUB 3.4 Draft / EPUB 3.3 compatibility export
+- WORK/VOLUME/CHAPTER/SCENE scope와 CHAPTER/SCENE content split
+- deterministic `mimetype`/container/OPF/nav/XHTML/CSS/optional PNG·JPEG cover package
+- metadata와 closed-token EPUB preset CRUD, snapshot/close/reopen 복원
+- 내부 ZIP/package/nav/XHTML/asset/content-coverage validator
+- staged atomic no-clobber/confirmed replace, progress/cancel, JSON/Markdown report와 reveal
+- build/test-only exact EPUBCheck 5.3.0 validation; 앱 runtime의 Java/JAR bundle 없음
 
 그래프 canonical 관계 편집, Canvas edge의 Story Bible relation 자동 승격, docking
-workspace, 시간축/지식 시점 graph, 실제 EPUB/HWP/HWPX/PDF/DOCX export, 플랫폼 upload,
+workspace, 시간축/지식 시점 graph, EPUB import/edit, HWP/HWPX/PDF/DOCX export, 플랫폼 upload,
 LLM 추출, cloud/sync, collaboration, mobile/web, 장면별 상세 diff와 공식 플랫폼 page
 수 재현은 Phase 1F 범위가 아니다.
 
@@ -304,7 +319,30 @@ Platform-like 6종은 `UNVERIFIED_SIMULATION`이며 실제 카카오페이지·�
 [`docs/READER_LAB_ARCHITECTURE.md`](docs/READER_LAB_ARCHITECTURE.md)와
 [`docs/READER_PROFILE_FORMAT_V1.md`](docs/READER_PROFILE_FORMAT_V1.md)를 따른다.
 
-### 11. 종료와 재열기
+### 11. EPUB 내보내기
+
+상단 `EPUB 내보내기`를 누르면 metadata와 closed export options, 사전 검사와 output
+operation 화면이 lazy-load된다.
+
+1. 제목, 작가, 언어, stable identifier와 optional 출판사/설명/권리/주제를 확인한다.
+2. WORK/VOLUME/CHAPTER/SCENE scope와 `EPUB 3.4 Draft` 또는 `EPUB 3.3 호환`을 고른다.
+3. CHAPTER/SCENE split, TOC depth, chapter/scene title, scene-break/body/stylesheet token을
+   고르거나 저장 EPUB preset을 사용한다.
+4. 필요하면 PNG/JPEG cover를 선택한다. 원본 경로는 저장하지 않으며 검증·재인코딩된
+   bytes만 사용한다.
+5. `검사`로 internal validation report를 확인한다.
+6. `EPUB 내보내기`에서 destination을 고른다. 기존 file은 native save dialog에서 사용자가
+   확인한 경우에만 교체한다.
+7. Progress를 보거나 cancel하고, 성공 뒤 file 위치를 열거나 JSON/Markdown report를
+   저장한다.
+
+3.4는 Candidate Recommendation Draft target이며 3.4 전용 feature를 사용하지 않는다.
+EPUBCheck 5.3.0은 `pnpm test:epubcheck`의 3.3 build/test validator이고 앱 runtime에는
+Java/JAR가 없다. 자세한 경계는
+[`docs/EPUB_EXPORT_ARCHITECTURE.md`](docs/EPUB_EXPORT_ARCHITECTURE.md)와
+[`docs/EPUB_VALIDATION_STRATEGY.md`](docs/EPUB_VALIDATION_STRATEGY.md)를 따른다.
+
+### 12. 종료와 재열기
 
 1. 현재 IME 조합을 끝낸다.
 2. 창을 닫는다.
@@ -323,8 +361,8 @@ tree 복원을 막지 않고 기본 선택·펼침·폭으로 격리한다. Bind
 
 - `PRAGMA application_id = 0x4D414449`
 - `app_meta.format_version = 1`
-- `app_meta.schema_version = 6`
-- `PRAGMA user_version = 6`
+- `app_meta.schema_version = 7`
+- `PRAGMA user_version = 7`
 - 기존 table: `app_meta`, `documents`, `schema_migrations`
 - Phase 1A table: `projects`, `tree_nodes`, `ui_state`
 - Phase 1B table: `search_documents`, `named_snapshots`
@@ -332,6 +370,7 @@ tree 복원을 막지 않고 기본 선택·펼침·폭으로 격리한다. Bind
   `relation_types`, `entity_relations`, `scene_entity_links`
 - Phase 1E table: `canvases`
 - Phase 1F table: `reader_presets`
+- Phase 1G table: `publication_metadata`, `publication_assets`, `export_presets`
 
 정규 hierarchy:
 
@@ -356,7 +395,8 @@ insert/update/delete trigger가 같은 transaction에서 갱신한다. `named_sn
 `MANUAL`, `AUTO_BEFORE_REPLACE`, `AUTO_BEFORE_RESTORE` logical payload와 SHA-256를
 저장한다. schema 2 file을 열면 기존 document를 잃지 않고 migration 3에서 projection을
 backfill한 뒤 migration 4가 Story Bible table과 built-in 관계 타입을 만들고 migration
-5가 Canvas table/index를, migration 6이 Reader preset table/index를 추가한다.
+5가 Canvas table/index를, migration 6이 Reader preset table/index를, migration 7이
+publication metadata/cover/export preset table/index/trigger와 seeded metadata를 추가한다.
 `format_version`은 계속 1이다. Phase 1D World Graph와 Publication IR은 canonical
 schema/table을 추가하지 않는다.
 
@@ -370,6 +410,12 @@ content save는 no-op이다.
 저장한다. Strict shape/range/provenance validation과 cross-project 금지를 transaction에서
 강제하고 같은 canonical content update는 no-op이다. Publication IR과 render statistics는
 이 table이나 다른 canonical table에 저장하지 않는다.
+
+`publication_metadata`는 출판 제목/작가/언어/stable identifier와 optional metadata/cover
+reference를, `publication_assets`는 검증된 PNG/JPEG COVER bytes/hash/dimension을,
+`export_presets`는 closed `MADI_EXPORT_PRESET` v1 JSON/hash/revision을 저장한다. Generated
+EPUB, output path, report/validation cache/last export는 저장하지 않는다. 이 canonical
+publication state는 named snapshot v5에 포함된다.
 
 sibling 순서는 `REAL order_key`를 `1024.0` 간격으로 배정한다. 중간 삽입은
 midpoint를 사용하고 간격이 `0.000001` 이하이면 해당 sibling만 rebalance한다.
@@ -392,12 +438,12 @@ payload에도 포함되지 않으므로 snapshot restore 뒤 현재 사용자 �
 
 Plot Canvas 상태는 `ui_state.key = 'plot-canvas.v1'`에 마지막 Canvas ID와 Canvas별
 viewport, selected element, inspector 폭, grid/minimap/snap 값을 저장한다. 이 row도
-project revision을 올리지 않고 named snapshot v4에 포함되지 않는다. Canvas node
+project revision을 올리지 않고 named snapshot v5에 포함되지 않는다. Canvas node
 geometry, group과 edge는 UI state가 아니라 `canvases.document_json`에 저장한다.
 
 Reader Lab 상태는 `ui_state.key = 'reader-lab.v1'`에 마지막 scope, pane count, pane별
 preset/config/zoom/scroll, scroll sync, panel 폭, selected source block과 diagnostic 펼침을
-저장한다. Project revision을 올리거나 named snapshot v4에 들어가지 않는다. 삭제된
+저장한다. Project revision을 올리거나 named snapshot v5에 들어가지 않는다. 삭제된
 scope/preset reference는 open/restore 때 첫 유효 scope 또는 안전한 built-in으로
 normalize한다.
 
@@ -410,6 +456,7 @@ normalize한다.
 - TypeScript strict mode
 - Rust `madi-core` persistent JSON-RPC sidecar
 - Rust `madi-publication` private Typie semantic decoder와 engine-independent IR compiler
+- Rust `madi-export-epub` Publication IR-only compiler/internal validator utility process
 - SQLite `.madi`
 - Cytoscape.js `3.34.0` renderer와 내장 `cose` layout
 - `@xyflow/react` exact `12.11.2` Plot Canvas renderer
@@ -453,13 +500,21 @@ saveReaderLabUiState, loadReaderLabUiState,
 compilePublication, getPublicationStats, validatePublication,
 listReaderPresets, createReaderPreset, updateReaderPreset,
 duplicateReaderPreset, deleteReaderPreset,
+getPublicationExportState, updatePublicationMetadata,
+choosePublicationCover, removePublicationCover,
+createEpubExportPreset, updateEpubExportPreset,
+duplicateEpubExportPreset, deleteEpubExportPreset,
+chooseEpubOutput, validateEpubExport, runEpubExport, cancelEpubExport,
+saveEpubExportReport, revealEpubExport, onEpubExportProgress,
 getAppVersion, onCloseRequested, completeCloseRequest
 ```
 
 World Graph DTO는 madi가 소유하며 Cytoscape type은 renderer 변환 계층 밖으로 누출되지
 않는다. Plot Canvas DTO도 madi가 소유하며 React Flow type은 renderer adapter 밖으로
 누출되지 않는다. Publication DTO도 madi가 소유하며 Typie `Dot`, `DocView`, changeset과
-modifier runtime type은 private decoder 밖으로 누출되지 않는다. Label·summary·relation
+modifier runtime type은 private decoder 밖으로 누출되지 않는다. EPUB utility도 이 Madi
+소유 Publication DTO와 closed request만 받고 Typie/editor/Reader DOM을 읽지 않는다.
+Label·summary·relation
 note/Canvas/원고 text는 text/data로만 전달하고 `innerHTML`을 사용하지 않는다.
 Core/main/preload 오류에는 snapshot과 원고 본문을 출력하지 않는다. Import/export는 고정
 dialog capability이며 renderer에 generic filesystem/path API를 제공하지 않는다.
@@ -565,7 +620,8 @@ pnpm format:check
 pnpm test:dev
 ```
 
-`pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust Publication test,
+`pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust Publication/EPUB test,
+exact build/test-only EPUBCheck 5.3.0,
 실제 Typie probe, `.madi` integration, production build, build 뒤 lazy bundle artifact
 test, 일반·scale development Electron과 fresh unpacked packaged smoke를 순서대로
 실행한다. Phase 1F smoke는 일반·675,000자 장편 Reader fixture를 각각 5회 측정하고 새
@@ -578,6 +634,7 @@ unpacked 출력:
 output/madi-win32-x64/madi.exe
 output/madi-win32-x64/resources/app/dist/
 output/madi-win32-x64/resources/bin/madi-core.exe
+output/madi-win32-x64/resources/bin/madi-export-epub.exe
 output/madi-win32-x64/resources/licenses/
 ```
 
@@ -591,6 +648,8 @@ output/madi-win32-x64/resources/licenses/
 Phase 1D verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
 Phase 1E verdict: TECHNICAL GO — PRIVATE LOCAL
 Phase 1F verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
+Phase 1G verdict: CONDITIONAL TECHNICAL GO — RUNTIME EPUBCHECK PACKAGING PENDING
+Phase 1G boundary: PRIVATE LOCAL ONLY
 ```
 
 Phase 1D World Graph의 Playwright search focus/selection 누적 clock과 Phase 1E Plot Canvas
@@ -599,14 +658,35 @@ cold `Ctrl+K` 약 0.52초·autosave 누적값은 기록을 유지하되
 debounce가 다른 경계이므로 실제 사용 중 새 오류나 명백한 지연이 발견되기 전에는 다음
 단계를 차단하거나 해당 최적화만 반복하지 않는다.
 
-Node.js `26.3.1`/pnpm `11.9.0`의 최종 `pnpm verify`는 `2,001.7 s`, exit `0`으로 끝났다.
-Desktop `49 files / 281 tests`, `madi-publication` `14/14`, `madi-core` `49/49`와 기존
-Phase 1A–1E regression, development/fresh packaged 실제 Electron, lazy bundle, snapshot
-v4와 새 process Reader 복원을 통과했다. 이어 독립 `pnpm package:unpacked`,
-`pnpm test:electron`, `pnpm test:package`, `pnpm test:bundle`, repository/format gate도 모두
-PASS다. 5회 median/maximum, packaged artifact와 renderer-session network 경계는
-[`docs/PHASE_1F_RESULT.md`](docs/PHASE_1F_RESULT.md)와
-[`docs/READER_LAB_PERFORMANCE.md`](docs/READER_LAB_PERFORMANCE.md)에 기록한다.
+Node.js `26.3.1`/pnpm `11.9.0`의 최종 Phase 1G `pnpm verify`는 `2,969.3 s`, exit `0`으로
+끝났다. Desktop 전체 `58 files / 404 tests`, Rust Publication/EPUB/core, exact EPUBCheck
+5.3.0, Typie probe, Phase 1A–1F regression, development/fresh-unpacked Electron과 package/
+lazy-bundle gate를 통과했다. 이어 독립 실행한 `pnpm package:unpacked` `6.826 s`,
+`pnpm test:electron` `1,955.6 s`, `pnpm test:package` `740.5 s`, `pnpm test:bundle`
+`1.973 s`(`1 file / 3 tests`), `pnpm check:repository` `0.642 s`, `pnpm format:check`
+`0.681 s`(`200 files`)도 모두 exit `0`이다.
+
+최종 Phase 1F-named Reader actual은 Phase 1G interaction 최적화가 반영된 같은 worktree를
+측정했다. Fresh-unpacked 장편 setting visible은 5회 median/maximum
+`184.10/200.46 ms`, first visible은 `2,259.50/2,345.10 ms`로 각각 약 250ms/3초 목표를
+통과했다. Full measurement+layout diagnostics는 반복 분포가 아닌 단일 관측이며 packaged
+`7,827.55 ms`였다. Stale generation drop은 별도 focused test에서 검증했다. 자세한 경계와
+raw evidence identity는 [`docs/READER_LAB_PERFORMANCE.md`](docs/READER_LAB_PERFORMANCE.md)에
+기록한다.
+
+Phase 1G의 development/fresh-unpacked Electron actual은 모두 `status=PASS`다. 675,000자,
+2,411 block 장편의 exporter total 5회 median/maximum은 development `493/532 ms`, fresh
+unpacked `57/58 ms`였다. Fresh unpacked의 15초 잠정 hard gate는 5/5회 통과했고 source
+section/block/Unicode character loss, rejected/fallback block과 외부 runtime request는 모두
+0이었다. Development의 end-to-end wall `52,289.60/53,407.21 ms`는 debug core compile을
+포함하므로 exporter total이나 packaged 제품 성능으로 재해석하지 않는다.
+
+EPUBCheck 5.3.0은 actual이 보존한 3.3 EPUB를 build/test harness에서 fatal/error/warning/info
+0으로 검증했다. 그러나 unpacked app에는 EPUBCheck/JRE가 없고 internal validator만 있으므로
+최종 판정은 **CONDITIONAL TECHNICAL GO — RUNTIME EPUBCHECK PACKAGING PENDING**이다. Evidence
+파일의 exact hash, package binary hash와 전체 수치는
+[`docs/PHASE_1G_RESULT.md`](docs/PHASE_1G_RESULT.md)와
+[`docs/EPUB_EXPORT_PERFORMANCE.md`](docs/EPUB_EXPORT_PERFORMANCE.md)에 고정한다.
 
 ## Rust CLI와 JSON-RPC
 
@@ -657,6 +737,10 @@ delete_canvas, load_canvas, save_canvas,
 compile_publication, get_publication_stats, validate_publication,
 list_reader_presets, create_reader_preset, update_reader_preset,
 duplicate_reader_preset, delete_reader_preset,
+get_publication_export_state, update_publication_metadata,
+set_publication_cover, remove_publication_cover,
+list_export_presets, create_export_preset, update_export_preset,
+duplicate_export_preset, delete_export_preset,
 save_document, load_document, recover_plain_text
 ```
 
@@ -710,7 +794,9 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 - screen reader·keyboard-only 접근성 및 native 후보창 위치
 - 실제 후보 Typie commit upgrade rehearsal
 - remote recursive clean clone: `DEFERRED TO PRE-RELEASE`
-- Publication IR을 공유하는 실제 exporter format/검증 계약
+- Runtime EPUBCheck/JRE packaging과 security-update/license owner 결정
+- EPUB 3.4 final Recommendation/validator 지원 시 새 profile migration
+- Publication IR v1에 authored manuscript image block/asset ownership을 추가하는 별도 결정
 - exact search 성능 benchmark/index 전략
 - named snapshot retention, compression과 quota
 - 장면별 상세 diff와 부분 restore
@@ -725,6 +811,17 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 
 ## 문서
 
+- [Phase 1G 범위](docs/PHASE_1G_SCOPE.md)
+- [Phase 1G 저장소/actual 결과](docs/PHASE_1G_RESULT.md)
+- [EPUB export architecture](docs/EPUB_EXPORT_ARCHITECTURE.md)
+- [EPUB 3.4 Draft profile](docs/EPUB_34_DRAFT_PROFILE.md)
+- [EPUB 3.3 compatibility profile](docs/EPUB_33_COMPATIBILITY_PROFILE.md)
+- [EPUB validation strategy](docs/EPUB_VALIDATION_STRATEGY.md)
+- [EPUB package layout](docs/EPUB_PACKAGE_LAYOUT.md)
+- [Export preset format v1](docs/EXPORT_PRESET_FORMAT_V1.md)
+- [EPUB export performance](docs/EPUB_EXPORT_PERFORMANCE.md)
+- [ADR-0007: Exporters consume Publication IR only](docs/decisions/ADR-0007-exporters-consume-publication-ir-only.md)
+- [ADR-0008: EPUB 3.4 Draft / 3.3 compatibility dual profile](docs/decisions/ADR-0008-epub-34-draft-and-33-compatibility-dual-profile.md)
 - [Phase 1F 범위](docs/PHASE_1F_SCOPE.md)
 - [Phase 1F 저장소 결과](docs/PHASE_1F_RESULT.md)
 - [Publication IR v1](docs/PUBLICATION_IR_V1.md)

@@ -20,7 +20,8 @@ import {
   buildSectionLayout,
   computeSectionWindow,
   estimateSectionHeight,
-  shouldVirtualizeSections
+  shouldVirtualizeSections,
+  type SectionLayoutItem
 } from "./sectionWindowing";
 import type {
   ReaderMeasuredBlockLayout,
@@ -90,11 +91,13 @@ interface ReaderPreviewPaneProps {
   readonly onOpenSource: (source: PublicationSourceReference) => void | Promise<void>;
   readonly onStatistics: (
     paneIndex: number,
-    statistics: ReaderRenderStatistics
+    statistics: ReaderRenderStatistics,
+    measurementKey: string
   ) => void;
   readonly onMeasuredBlocks: (
     paneIndex: number,
-    blocks: readonly ReaderMeasuredBlockLayout[]
+    blocks: readonly ReaderMeasuredBlockLayout[],
+    measurementKey: string
   ) => void;
   readonly onFirstVisible: (paneIndex: number, contentHash: string) => void;
 }
@@ -145,8 +148,112 @@ interface FullScopeMeasurementProps {
 }
 
 const MEASUREMENT_PROGRESS_INTERVAL = 25;
+const PROVISIONAL_SECTION_COUNT = 4;
+const MEASUREMENT_CACHE_LIMIT = 4;
 const ignoreBlockSelection = () => undefined;
 const ignoreSourceNavigation = () => undefined;
+
+interface ReaderAnalysisSnapshot {
+  readonly key: string;
+  readonly contentHash: string;
+  readonly config: ReaderRenderConfig;
+  readonly estimated: ReaderRenderStatistics;
+  readonly layout: readonly SectionLayoutItem[];
+}
+
+interface ReaderMeasurementCacheEntry {
+  readonly analysis?: ReaderAnalysisSnapshot;
+  readonly statistics?: ReaderRenderStatistics;
+  readonly measuredBlocks?: readonly ReaderMeasuredBlockLayout[];
+}
+
+interface ReaderConfigStageTimings {
+  readonly key: string;
+  readonly visibleUpdateMs: number | null;
+  readonly analysisStartMs: number | null;
+  readonly analysisReadyMs: number | null;
+  readonly measurementCompleteMs: number | null;
+  readonly analysisStatus:
+    | "PENDING_ANALYSIS"
+    | "MEASURING"
+    | "COMPLETE"
+    | "CACHED";
+}
+
+function scheduleIdleWork(work: () => void): () => void {
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(work, { timeout: 100 });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const handle = window.setTimeout(work, 0);
+  return () => window.clearTimeout(handle);
+}
+
+export function readerPreviewMeasurementKey(
+  contentHash: string,
+  config: ReaderRenderConfig
+): string {
+  return `${contentHash}:${JSON.stringify(config)}`;
+}
+
+function provisionalLayout(
+  document: PublicationDocument,
+  config: ReaderRenderConfig,
+  virtualized: boolean
+): readonly SectionLayoutItem[] {
+  return buildSectionLayout(
+    virtualized
+      ? document.sections.slice(0, PROVISIONAL_SECTION_COUNT)
+      : document.sections,
+    config
+  );
+}
+
+function pendingStatistics(
+  document: PublicationDocument,
+  config: ReaderRenderConfig,
+  previous: ReaderRenderStatistics | null
+): ReaderRenderStatistics {
+  const viewportHeight = Math.max(
+    1,
+    config.device.viewportHeight -
+      config.device.safeAreaTop -
+      config.device.safeAreaBottom -
+      config.device.readerChromeHeight
+  );
+  return {
+    measurementStatus: "MEASURING",
+    measuredSectionCount: 0,
+    measuredBlockCount: 0,
+    totalSectionCount: document.sections.length,
+    renderedContentHeight: previous?.renderedContentHeight ?? viewportHeight,
+    viewportHeight,
+    estimatedScreenCount: previous?.estimatedScreenCount ?? 1,
+    averageCharactersPerScreen:
+      previous?.averageCharactersPerScreen ?? document.stats.withSpaces,
+    longestParagraphLineCount: previous?.longestParagraphLineCount ?? 0,
+    paragraphsAtLeastEightLines: previous?.paragraphsAtLeastEightLines ?? 0,
+    consecutiveEmptyParagraphRuns: previous?.consecutiveEmptyParagraphRuns ?? 0,
+    horizontalOverflowCount: 0
+  };
+}
+
+function updateMeasurementCache(
+  cache: Map<string, ReaderMeasurementCacheEntry>,
+  key: string,
+  patch: ReaderMeasurementCacheEntry
+): void {
+  const current = cache.get(key) ?? {};
+  cache.delete(key);
+  cache.set(key, { ...current, ...patch });
+  while (cache.size > MEASUREMENT_CACHE_LIMIT) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (!oldest) {
+      break;
+    }
+    cache.delete(oldest);
+  }
+}
 
 function FullScopeMeasurement({
   document,
@@ -172,8 +279,7 @@ function FullScopeMeasurement({
     if (document.sections.length === 0) {
       return;
     }
-    const timer = window.setTimeout(() => setMeasurementStarted(true), 0);
-    return () => window.clearTimeout(timer);
+    return scheduleIdleWork(() => setMeasurementStarted(true));
   }, [document.sections.length]);
 
   useLayoutEffect(() => {
@@ -310,11 +416,7 @@ function FullScopeMeasurement({
       }
     }
 
-    const timer = window.setTimeout(
-      () => setSectionIndex(nextSectionIndex),
-      0
-    );
-    return () => window.clearTimeout(timer);
+    return scheduleIdleWork(() => setSectionIndex(nextSectionIndex));
   }, [config, document, estimated, onMeasuredBlocks, onStatistics, section, sectionIndex]);
 
   if (!measurementStarted) {
@@ -407,34 +509,69 @@ export function ReaderPreviewPane({
   const [activeSourceBlockId, setActiveSourceBlockId] = useState<string | null>(
     selectedBlockId
   );
-  const measurementKey = useMemo(
-    () => `${contentHash}:${JSON.stringify(config)}`,
+  const requestedMeasurementKey = useMemo(
+    () => readerPreviewMeasurementKey(contentHash, config),
     [config, contentHash]
   );
-  const measurementGenerationRef = useRef({
-    key: measurementKey,
-    generation: 1
+  const measurementRequestRef = useRef({
+    key: requestedMeasurementKey,
+    generation: 1,
+    startedAt: performance.now()
   });
-  if (measurementGenerationRef.current.key !== measurementKey) {
-    measurementGenerationRef.current = {
-      key: measurementKey,
-      generation: measurementGenerationRef.current.generation + 1
+  if (measurementRequestRef.current.key !== requestedMeasurementKey) {
+    measurementRequestRef.current = {
+      key: requestedMeasurementKey,
+      generation: measurementRequestRef.current.generation + 1,
+      startedAt: performance.now()
     };
   }
-  const measurementGeneration = measurementGenerationRef.current.generation;
-  const measurementInstanceKey = `${measurementGeneration}:${measurementKey}`;
-  const estimatedStatistics = useMemo(
-    () => estimateReaderStatistics(document, config),
-    [measurementKey]
+  const measurementGeneration = measurementRequestRef.current.generation;
+  const measurementCacheRef = useRef(
+    new Map<string, ReaderMeasurementCacheEntry>()
   );
+  const [visibleSnapshot, setVisibleSnapshot] = useState(() => ({
+    key: requestedMeasurementKey,
+    generation: measurementGeneration,
+    config
+  }));
+  const visibleSnapshotRef = useRef(visibleSnapshot);
+  visibleSnapshotRef.current = visibleSnapshot;
+  const visibleConfig = visibleSnapshot.config;
+  const visibleMeasurementKey = visibleSnapshot.key;
+  const visibleMeasurementGeneration = visibleSnapshot.generation;
+  const measurementInstanceKey = `${visibleMeasurementGeneration}:${visibleMeasurementKey}`;
+  const [analysisSnapshot, setAnalysisSnapshot] = useState<ReaderAnalysisSnapshot | null>(
+    null
+  );
+  const [stageTimings, setStageTimings] = useState<ReaderConfigStageTimings>(() => ({
+    key: requestedMeasurementKey,
+    visibleUpdateMs: 0,
+    analysisStartMs: null,
+    analysisReadyMs: null,
+    measurementCompleteMs: null,
+    analysisStatus: "PENDING_ANALYSIS"
+  }));
   const [observedStatistics, setObservedStatistics] = useState<{
     readonly key: string;
     readonly value: ReaderRenderStatistics;
-  }>(() => ({ key: measurementInstanceKey, value: estimatedStatistics }));
-  const paneStatistics =
-    observedStatistics.key === measurementInstanceKey
+  } | null>(null);
+  const cachedMeasurement = measurementCacheRef.current.get(visibleMeasurementKey);
+  const completedStatistics =
+    observedStatistics?.key === visibleMeasurementKey
       ? observedStatistics.value
-      : estimatedStatistics;
+      : cachedMeasurement?.statistics;
+  const paneStatistics = useMemo(
+    () =>
+      completedStatistics ??
+      pendingStatistics(document, visibleConfig, observedStatistics?.value ?? null),
+    [completedStatistics, document, observedStatistics?.value, visibleConfig]
+  );
+  const visibleConfigPending =
+    visibleMeasurementKey !== requestedMeasurementKey ||
+    visibleMeasurementGeneration !== measurementGeneration;
+  const renderedPaneStatistics = visibleConfigPending
+    ? pendingStatistics(document, config, paneStatistics)
+    : paneStatistics;
   const canonicalBlockCount = useMemo(
     () =>
       document.sections.reduce(
@@ -447,10 +584,15 @@ export function ReaderPreviewPane({
     document.sections,
     document.stats.withSpaces
   );
-  const layout = useMemo(
-    () => buildSectionLayout(document.sections, config, measuredHeights),
-    [config, document.sections, measuredHeights]
+  const initialLayout = useMemo(
+    () => provisionalLayout(document, visibleConfig, virtualized),
+    [document, visibleConfig, virtualized]
   );
+  const layout =
+    analysisSnapshot?.key === visibleMeasurementKey ||
+    analysisSnapshot?.contentHash === contentHash
+      ? analysisSnapshot.layout
+      : initialLayout;
   const selectedSectionIndex = blockSectionIndex(document, selectedBlockId);
   const navigableBlockIds = useMemo(
     () =>
@@ -459,17 +601,17 @@ export function ReaderPreviewPane({
           .filter((block) => {
             if (block.kind === "SCENE_BREAK") {
               return (
-                config.settings.showSceneBreak &&
-                config.workStyle.sceneBreakStyleToken !== "HIDDEN"
+                visibleConfig.settings.showSceneBreak &&
+                visibleConfig.workStyle.sceneBreakStyleToken !== "HIDDEN"
               );
             }
             if (block.kind === "HEADING" && block.level === 3) {
-              return config.settings.showChapterTitle;
+              return visibleConfig.settings.showChapterTitle;
             }
             if (block.kind === "HEADING" && block.level === 4) {
               return (
-                config.settings.showSceneTitle &&
-                config.workStyle.sceneTitleStyleToken !== "SCENE_HIDDEN"
+                visibleConfig.settings.showSceneTitle &&
+                visibleConfig.workStyle.sceneTitleStyleToken !== "SCENE_HIDDEN"
               );
             }
             return true;
@@ -477,11 +619,11 @@ export function ReaderPreviewPane({
           .map((block) => block.id)
       ),
     [
-      config.settings.showChapterTitle,
-      config.settings.showSceneBreak,
-      config.settings.showSceneTitle,
-      config.workStyle.sceneBreakStyleToken,
-      config.workStyle.sceneTitleStyleToken,
+      visibleConfig.settings.showChapterTitle,
+      visibleConfig.settings.showSceneBreak,
+      visibleConfig.settings.showSceneTitle,
+      visibleConfig.workStyle.sceneBreakStyleToken,
+      visibleConfig.workStyle.sceneTitleStyleToken,
       document.sections
     ]
   );
@@ -498,7 +640,7 @@ export function ReaderPreviewPane({
         ? computeSectionWindow(
             layout,
             scrollTop,
-            config.device.viewportHeight,
+            visibleConfig.device.viewportHeight,
             900
           )
         : {
@@ -507,7 +649,7 @@ export function ReaderPreviewPane({
             paddingAfter: 0,
             totalHeight: layout.at(-1)?.end ?? 0
           },
-    [config.device.viewportHeight, layout, scrollTop, virtualized]
+    [layout, scrollTop, virtualized, visibleConfig.device.viewportHeight]
   );
   const mountedNavigableBlockIds = useMemo(() => {
     const navigable = new Set(navigableBlockIds);
@@ -532,16 +674,153 @@ export function ReaderPreviewPane({
   }, [mountedNavigableBlockIds, selectedBlockId]);
 
   useLayoutEffect(() => {
+    if (
+      visibleMeasurementKey === requestedMeasurementKey &&
+      visibleMeasurementGeneration === measurementGeneration
+    ) {
+      return;
+    }
+    applyingExternalScrollRef.current = false;
+    const request = measurementRequestRef.current;
+    const nextConfig = config;
+    const frame = window.requestAnimationFrame(() => {
+      if (
+        measurementRequestRef.current.key !== request.key ||
+        measurementRequestRef.current.generation !== request.generation
+      ) {
+        return;
+      }
+      setVisibleSnapshot({
+        key: request.key,
+        generation: request.generation,
+        config: nextConfig
+      });
+      setStageTimings({
+        key: request.key,
+        visibleUpdateMs: Math.max(0, performance.now() - request.startedAt),
+        analysisStartMs: null,
+        analysisReadyMs: null,
+        measurementCompleteMs: null,
+        analysisStatus: "PENDING_ANALYSIS"
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    config,
+    measurementGeneration,
+    requestedMeasurementKey,
+    visibleMeasurementKey
+  ]);
+
+  useEffect(() => {
+    const request = measurementRequestRef.current;
+    if (
+      request.key !== visibleMeasurementKey ||
+      request.generation !== visibleMeasurementGeneration
+    ) {
+      return;
+    }
+    const cached = measurementCacheRef.current.get(visibleMeasurementKey);
+    if (cached?.analysis) {
+      setAnalysisSnapshot(cached.analysis);
+      if (cached.statistics && cached.measuredBlocks) {
+        setObservedStatistics({
+          key: visibleMeasurementKey,
+          value: cached.statistics
+        });
+        onStatistics(paneIndex, cached.statistics, visibleMeasurementKey);
+        onMeasuredBlocks(
+          paneIndex,
+          cached.measuredBlocks,
+          visibleMeasurementKey
+        );
+        setStageTimings((current) =>
+          current.key === visibleMeasurementKey
+            ? {
+                ...current,
+                analysisReadyMs: Math.max(
+                  0,
+                  performance.now() - request.startedAt
+                ),
+                measurementCompleteMs: Math.max(
+                  0,
+                  performance.now() - request.startedAt
+                ),
+                analysisStatus: "CACHED"
+              }
+            : current
+        );
+        return;
+      }
+    }
+    setMeasuredHeights((current) =>
+      current.size === 0 ? current : new Map()
+    );
+    return scheduleIdleWork(() => {
+      if (
+        measurementRequestRef.current.key !== visibleMeasurementKey ||
+        measurementRequestRef.current.generation !== visibleMeasurementGeneration ||
+        visibleSnapshotRef.current.key !== visibleMeasurementKey
+      ) {
+        return;
+      }
+      const analysisStartedAt = performance.now();
+      setStageTimings((current) =>
+        current.key === visibleMeasurementKey
+          ? {
+              ...current,
+              analysisStartMs: Math.max(0, analysisStartedAt - request.startedAt)
+            }
+          : current
+      );
+      const snapshot: ReaderAnalysisSnapshot = {
+        key: visibleMeasurementKey,
+        contentHash,
+        config: visibleConfig,
+        estimated: estimateReaderStatistics(document, visibleConfig),
+        layout: buildSectionLayout(document.sections, visibleConfig)
+      };
+      if (
+        measurementRequestRef.current.key !== visibleMeasurementKey ||
+        measurementRequestRef.current.generation !== visibleMeasurementGeneration ||
+        visibleSnapshotRef.current.key !== visibleMeasurementKey
+      ) {
+        return;
+      }
+      updateMeasurementCache(
+        measurementCacheRef.current,
+        visibleMeasurementKey,
+        { analysis: snapshot }
+      );
+      setAnalysisSnapshot(snapshot);
+      setStageTimings((current) =>
+        current.key === visibleMeasurementKey
+          ? {
+              ...current,
+              analysisReadyMs: Math.max(0, performance.now() - request.startedAt),
+              analysisStatus: "MEASURING"
+            }
+          : current
+      );
+    });
+  }, [
+    contentHash,
+    document,
+    onMeasuredBlocks,
+    onStatistics,
+    paneIndex,
+    visibleConfig,
+    visibleMeasurementGeneration,
+    visibleMeasurementKey
+  ]);
+
+  useLayoutEffect(() => {
     const host = hostRef.current;
     if (!host) {
       return;
     }
     setShadowRoot(host.shadowRoot ?? host.attachShadow({ mode: "open" }));
   }, []);
-
-  useEffect(() => {
-    setMeasuredHeights(new Map());
-  }, [measurementInstanceKey]);
 
   useLayoutEffect(() => {
     const next = new Map(measuredHeights);
@@ -559,7 +838,51 @@ export function ReaderPreviewPane({
     if (changed) {
       setMeasuredHeights(next);
     }
-  }, [selectedBlockId, shadowRoot, windowed.items]);
+  }, [
+    selectedBlockId,
+    shadowRoot,
+    visibleMeasurementKey,
+    windowed.items
+  ]);
+
+  useEffect(() => {
+    if (
+      analysisSnapshot?.key !== visibleMeasurementKey ||
+      measuredHeights.size === 0
+    ) {
+      return;
+    }
+    const expectedAnalysis = analysisSnapshot;
+    return scheduleIdleWork(() => {
+      if (
+        visibleSnapshotRef.current.key !== visibleMeasurementKey ||
+        measurementRequestRef.current.key !== visibleMeasurementKey
+      ) {
+        return;
+      }
+      const nextAnalysis = {
+        ...expectedAnalysis,
+        layout: buildSectionLayout(
+          document.sections,
+          expectedAnalysis.config,
+          measuredHeights
+        )
+      };
+      setAnalysisSnapshot((current) =>
+        current?.key === expectedAnalysis.key ? nextAnalysis : current
+      );
+      updateMeasurementCache(
+        measurementCacheRef.current,
+        visibleMeasurementKey,
+        { analysis: nextAnalysis }
+      );
+    });
+  }, [
+    analysisSnapshot?.key,
+    document.sections,
+    measuredHeights,
+    visibleMeasurementKey
+  ]);
 
   useLayoutEffect(() => {
     const blockId = pendingKeyboardFocusRef.current;
@@ -578,20 +901,27 @@ export function ReaderPreviewPane({
   useLayoutEffect(() => {
     if (
       !shadowRoot ||
-      firstVisibleKeyRef.current === measurementKey ||
+      firstVisibleKeyRef.current === visibleMeasurementKey ||
       !shadowRoot.querySelector(".reader-document")
     ) {
       return;
     }
     const frame = window.requestAnimationFrame(() => {
-      if (firstVisibleKeyRef.current === measurementKey) {
+      if (firstVisibleKeyRef.current === visibleMeasurementKey) {
         return;
       }
-      firstVisibleKeyRef.current = measurementKey;
+      firstVisibleKeyRef.current = visibleMeasurementKey;
       onFirstVisible(paneIndex, contentHash);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [contentHash, measurementKey, onFirstVisible, paneIndex, shadowRoot, windowed.items]);
+  }, [
+    contentHash,
+    onFirstVisible,
+    paneIndex,
+    shadowRoot,
+    visibleMeasurementKey,
+    windowed.items
+  ]);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -647,6 +977,7 @@ export function ReaderPreviewPane({
       applyingExternalScrollRef.current = false;
     };
   }, [
+    config,
     layout,
     onSelectionScrollProgress,
     paneIndex,
@@ -657,47 +988,79 @@ export function ReaderPreviewPane({
   ]);
 
   const customProperties = {
-    "--reader-background": config.settings.backgroundColor,
-    "--reader-text": config.settings.textColor,
-    "--reader-font": READER_FONT_STACKS[config.settings.fontFamilyToken],
-    "--reader-font-size": `${config.settings.fontSize}px`,
-    "--reader-line-height": String(config.settings.lineHeight),
-    "--reader-paragraph-spacing": `${config.settings.paragraphSpacing}px`,
-    "--reader-indent": `${config.settings.firstLineIndent}px`,
-    "--reader-padding-h": `${config.settings.horizontalPadding}px`,
-    "--reader-padding-v": `${config.settings.verticalPadding}px`,
-    "--reader-align": config.settings.textAlign === "JUSTIFY" ? "justify" : "left"
+    "--reader-background": visibleConfig.settings.backgroundColor,
+    "--reader-text": visibleConfig.settings.textColor,
+    "--reader-font": READER_FONT_STACKS[visibleConfig.settings.fontFamilyToken],
+    "--reader-font-size": `${visibleConfig.settings.fontSize}px`,
+    "--reader-line-height": String(visibleConfig.settings.lineHeight),
+    "--reader-paragraph-spacing": `${visibleConfig.settings.paragraphSpacing}px`,
+    "--reader-indent": `${visibleConfig.settings.firstLineIndent}px`,
+    "--reader-padding-h": `${visibleConfig.settings.horizontalPadding}px`,
+    "--reader-padding-v": `${visibleConfig.settings.verticalPadding}px`,
+    "--reader-align":
+      visibleConfig.settings.textAlign === "JUSTIFY" ? "justify" : "left"
   } as CSSProperties;
   const reportStatistics = useCallback(
     (statistics: ReaderRenderStatistics) => {
       if (
-        measurementGenerationRef.current.key !== measurementKey ||
-        measurementGenerationRef.current.generation !== measurementGeneration
+        measurementRequestRef.current.key !== visibleMeasurementKey ||
+        measurementRequestRef.current.generation !== visibleMeasurementGeneration ||
+        visibleSnapshotRef.current.key !== visibleMeasurementKey
       ) {
         return;
       }
-      setObservedStatistics({ key: measurementInstanceKey, value: statistics });
-      onStatistics(paneIndex, statistics);
+      setObservedStatistics({ key: visibleMeasurementKey, value: statistics });
+      if (statistics.measurementStatus === "COMPLETE") {
+        updateMeasurementCache(
+          measurementCacheRef.current,
+          visibleMeasurementKey,
+          { statistics }
+        );
+        const request = measurementRequestRef.current;
+        setStageTimings((current) =>
+          current.key === visibleMeasurementKey
+            ? {
+                ...current,
+                measurementCompleteMs: Math.max(
+                  0,
+                  performance.now() - request.startedAt
+                ),
+                analysisStatus: "COMPLETE"
+              }
+            : current
+        );
+      }
+      onStatistics(paneIndex, statistics, visibleMeasurementKey);
     },
     [
-      measurementGeneration,
-      measurementInstanceKey,
-      measurementKey,
       onStatistics,
-      paneIndex
+      paneIndex,
+      visibleMeasurementGeneration,
+      visibleMeasurementKey
     ]
   );
   const reportMeasuredBlocks = useCallback(
     (blocks: readonly ReaderMeasuredBlockLayout[]) => {
       if (
-        measurementGenerationRef.current.key !== measurementKey ||
-        measurementGenerationRef.current.generation !== measurementGeneration
+        measurementRequestRef.current.key !== visibleMeasurementKey ||
+        measurementRequestRef.current.generation !== visibleMeasurementGeneration ||
+        visibleSnapshotRef.current.key !== visibleMeasurementKey
       ) {
         return;
       }
-      onMeasuredBlocks(paneIndex, blocks);
+      updateMeasurementCache(
+        measurementCacheRef.current,
+        visibleMeasurementKey,
+        { measuredBlocks: blocks }
+      );
+      onMeasuredBlocks(paneIndex, blocks, visibleMeasurementKey);
     },
-    [measurementGeneration, measurementKey, onMeasuredBlocks, paneIndex]
+    [
+      onMeasuredBlocks,
+      paneIndex,
+      visibleMeasurementGeneration,
+      visibleMeasurementKey
+    ]
   );
 
   const onScroll = () => {
@@ -769,6 +1132,10 @@ export function ReaderPreviewPane({
       );
     }
   };
+  const measurementCached =
+    !visibleConfigPending &&
+    cachedMeasurement?.statistics?.measurementStatus === "COMPLETE" &&
+    cachedMeasurement.measuredBlocks !== undefined;
 
   return (
     <section
@@ -779,27 +1146,54 @@ export function ReaderPreviewPane({
       data-reader-canonical-section-count={document.sections.length}
       data-reader-canonical-block-count={canonicalBlockCount}
       data-reader-mounted-section-count={windowed.items.length}
-      data-reader-measurement-status={paneStatistics.measurementStatus.toLocaleLowerCase()}
-      data-reader-measured-section-count={paneStatistics.measuredSectionCount}
-      data-reader-measured-block-count={paneStatistics.measuredBlockCount}
-      data-reader-total-section-count={paneStatistics.totalSectionCount}
+      data-reader-measurement-status={renderedPaneStatistics.measurementStatus.toLocaleLowerCase()}
+      data-reader-measured-section-count={renderedPaneStatistics.measuredSectionCount}
+      data-reader-measured-block-count={renderedPaneStatistics.measuredBlockCount}
+      data-reader-total-section-count={renderedPaneStatistics.totalSectionCount}
       data-reader-measurement-generation={measurementGeneration}
-      data-reader-rendered-height={paneStatistics.renderedContentHeight}
-      data-reader-screen-count={paneStatistics.estimatedScreenCount}
-      data-reader-longest-paragraph-lines={paneStatistics.longestParagraphLineCount}
-      data-reader-eight-line-paragraph-count={paneStatistics.paragraphsAtLeastEightLines}
-      data-reader-overflow-count={paneStatistics.horizontalOverflowCount}
-      data-reader-device-category={config.device.category}
-      data-reader-device-profile-id={config.device.id}
-      data-reader-viewport-width={config.device.viewportWidth}
-      data-reader-viewport-height={config.device.viewportHeight}
-      data-reader-font-token={config.settings.fontFamilyToken}
-      data-reader-font-size={config.settings.fontSize}
-      data-reader-line-height={config.settings.lineHeight}
-      data-reader-horizontal-padding={config.settings.horizontalPadding}
-      data-reader-vertical-padding={config.settings.verticalPadding}
-      data-reader-theme={config.settings.theme}
-      data-reader-scene-break-style={config.workStyle.sceneBreakStyleToken}
+      data-reader-config-stage={
+        visibleConfigPending
+          ? "pending-visible"
+          : stageTimings.key === visibleMeasurementKey
+            ? stageTimings.analysisStatus.toLocaleLowerCase()
+            : "pending-analysis"
+      }
+      data-reader-visible-update-ms={
+        stageTimings.key === visibleMeasurementKey
+          ? stageTimings.visibleUpdateMs?.toFixed(3)
+          : undefined
+      }
+      data-reader-analysis-start-ms={
+        stageTimings.key === visibleMeasurementKey
+          ? stageTimings.analysisStartMs?.toFixed(3)
+          : undefined
+      }
+      data-reader-analysis-ready-ms={
+        stageTimings.key === visibleMeasurementKey
+          ? stageTimings.analysisReadyMs?.toFixed(3)
+          : undefined
+      }
+      data-reader-measurement-complete-ms={
+        stageTimings.key === visibleMeasurementKey
+          ? stageTimings.measurementCompleteMs?.toFixed(3)
+          : undefined
+      }
+      data-reader-rendered-height={renderedPaneStatistics.renderedContentHeight}
+      data-reader-screen-count={renderedPaneStatistics.estimatedScreenCount}
+      data-reader-longest-paragraph-lines={renderedPaneStatistics.longestParagraphLineCount}
+      data-reader-eight-line-paragraph-count={renderedPaneStatistics.paragraphsAtLeastEightLines}
+      data-reader-overflow-count={renderedPaneStatistics.horizontalOverflowCount}
+      data-reader-device-category={visibleConfig.device.category}
+      data-reader-device-profile-id={visibleConfig.device.id}
+      data-reader-viewport-width={visibleConfig.device.viewportWidth}
+      data-reader-viewport-height={visibleConfig.device.viewportHeight}
+      data-reader-font-token={visibleConfig.settings.fontFamilyToken}
+      data-reader-font-size={visibleConfig.settings.fontSize}
+      data-reader-line-height={visibleConfig.settings.lineHeight}
+      data-reader-horizontal-padding={visibleConfig.settings.horizontalPadding}
+      data-reader-vertical-padding={visibleConfig.settings.verticalPadding}
+      data-reader-theme={visibleConfig.settings.theme}
+      data-reader-scene-break-style={visibleConfig.workStyle.sceneBreakStyleToken}
       data-reader-zoom={zoom.toFixed(4)}
       data-reader-scroll-progress={scrollProgress.toFixed(6)}
       data-reader-selected-source-block-id={selectedBlockId ?? ""}
@@ -807,19 +1201,21 @@ export function ReaderPreviewPane({
       <header className="reader-preview-pane__header">
         <strong>{paneName}</strong>
         <span>
-          {config.device.category} · {config.device.viewportWidth}×{config.device.viewportHeight}
+          {visibleConfig.device.category} · {visibleConfig.device.viewportWidth}×
+          {visibleConfig.device.viewportHeight}
         </span>
         <span>
-          {paneStatistics.measurementStatus === "COMPLETE" ? "측정" : "예상"}{" "}
-          {paneStatistics.estimatedScreenCount}화면
+          {renderedPaneStatistics.measurementStatus === "COMPLETE"
+            ? `측정 ${renderedPaneStatistics.estimatedScreenCount}화면`
+            : "측정 중…"}
         </span>
       </header>
       <div className="reader-device-stage">
         <div
           className="reader-device-frame"
           style={{
-            width: config.device.viewportWidth * zoom,
-            height: config.device.viewportHeight * zoom
+            width: visibleConfig.device.viewportWidth * zoom,
+            height: visibleConfig.device.viewportHeight * zoom
           }}
         >
           <div
@@ -827,8 +1223,8 @@ export function ReaderPreviewPane({
             className="reader-shadow-host"
             data-testid={`reader-shadow-host-${paneIndex + 1}`}
             style={{
-              width: config.device.viewportWidth,
-              height: config.device.viewportHeight,
+              width: visibleConfig.device.viewportWidth,
+              height: visibleConfig.device.viewportHeight,
               transform: `scale(${zoom})`
             }}
           />
@@ -840,21 +1236,21 @@ export function ReaderPreviewPane({
             <style>{SHADOW_PREVIEW_CSS}</style>
             <div
               className="reader-device-shell"
-              style={{ backgroundColor: config.settings.backgroundColor }}
+              style={{ backgroundColor: visibleConfig.settings.backgroundColor }}
             >
               <div
                 className="reader-device-chrome"
-                style={{ height: config.device.readerChromeHeight }}
+                style={{ height: visibleConfig.device.readerChromeHeight }}
                 aria-hidden="true"
               />
               <div
                 className="reader-safe-viewport"
                 style={{
                   height:
-                    config.device.viewportHeight -
-                    config.device.readerChromeHeight,
-                  paddingTop: config.device.safeAreaTop,
-                  paddingBottom: config.device.safeAreaBottom
+                    visibleConfig.device.viewportHeight -
+                    visibleConfig.device.readerChromeHeight,
+                  paddingTop: visibleConfig.device.safeAreaTop,
+                  paddingBottom: visibleConfig.device.safeAreaBottom
                 }}
               >
                 <div
@@ -889,7 +1285,7 @@ export function ReaderPreviewPane({
                           <PublicationBlockView
                             key={block.id}
                             block={block}
-                            config={config}
+                            config={visibleConfig}
                             selected={block.id === selectedBlockId}
                             tabIndex={block.id === activeSourceBlockId ? 0 : -1}
                             onSelect={selectSourceBlock}
@@ -906,15 +1302,32 @@ export function ReaderPreviewPane({
                       />
                     )}
                   </div>
-                  <FullScopeMeasurement
-                    key={measurementInstanceKey}
-                    document={document}
-                    config={config}
-                    estimated={estimatedStatistics}
-                    customProperties={customProperties}
-                    onStatistics={reportStatistics}
-                    onMeasuredBlocks={reportMeasuredBlocks}
-                  />
+                  {!visibleConfigPending &&
+                    analysisSnapshot?.key === visibleMeasurementKey &&
+                    !measurementCached && (
+                      <FullScopeMeasurement
+                        key={measurementInstanceKey}
+                        document={document}
+                        config={analysisSnapshot.config}
+                        estimated={analysisSnapshot.estimated}
+                        customProperties={customProperties}
+                        onStatistics={reportStatistics}
+                        onMeasuredBlocks={reportMeasuredBlocks}
+                      />
+                    )}
+                  {measurementCached && (
+                    <span
+                      hidden
+                      data-reader-measurement-status="complete"
+                      data-reader-measured-section-count={
+                        cachedMeasurement.statistics?.measuredSectionCount ?? 0
+                      }
+                      data-reader-measured-block-count={
+                        cachedMeasurement.statistics?.measuredBlockCount ?? 0
+                      }
+                      data-reader-total-section-count={document.sections.length}
+                    />
+                  )}
                 </div>
               </div>
             </div>

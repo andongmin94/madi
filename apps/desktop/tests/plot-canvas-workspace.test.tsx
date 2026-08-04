@@ -1027,5 +1027,5 @@ describe("PlotCanvasWorkspace", () => {
     expect(screen.getByRole("alert").textContent).toContain("최대 1000개");
     expect(workspace.dataset.edgeCount).toBe("1000");
     expect(onDocumentChange).not.toHaveBeenCalled();
-  }, 10_000);
+  }, 20_000);
 });

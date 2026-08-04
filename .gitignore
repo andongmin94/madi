@@ -18,6 +18,7 @@ test-results/
 playwright-report/
 output/playwright/
 output/madi-win32-x64/
+output/test-fixtures/
 
 # Local editor and OS files
 .DS_Store

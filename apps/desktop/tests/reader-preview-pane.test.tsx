@@ -1,7 +1,10 @@
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_READER_PRESETS } from "../src/renderer/components/readerLab/builtinTemplates";
-import { ReaderPreviewPane } from "../src/renderer/components/readerLab/ReaderPreviewPane";
+import {
+  ReaderPreviewPane,
+  readerPreviewMeasurementKey
+} from "../src/renderer/components/readerLab/ReaderPreviewPane";
 import { estimateReaderStatistics } from "../src/renderer/components/readerLab/readerStatistics";
 import {
   readerPublication,
@@ -10,6 +13,14 @@ import {
   readerSection,
   readerSource
 } from "./reader-lab-fixtures";
+
+async function nextAnimationFrame(): Promise<void> {
+  await act(async () => {
+    await new Promise<void>((resolve) =>
+      window.requestAnimationFrame(() => resolve())
+    );
+  });
+}
 
 describe("Reader Lab isolated semantic preview", () => {
   it("renders manuscript markup as text in Shadow DOM without executable or external nodes", async () => {
@@ -653,6 +664,211 @@ describe("Reader Lab isolated semantic preview", () => {
     );
     expect(pane.dataset.readerMeasuredBlockCount).toBe("0");
   }, 15_000);
+
+  it("applies visible config on the next frame before async full-scope statistics complete", async () => {
+    const document = readerPublication({
+      sections: Array.from({ length: 30 }, (_, index) =>
+        readerSection(index + 1, `비동기 측정 장면 ${index + 1}`)
+      )
+    });
+    const baseConfig = BUILTIN_READER_PRESETS[0]!.config;
+    const nextConfig = {
+      ...baseConfig,
+      settings: {
+        ...baseConfig.settings,
+        fontSize: baseConfig.settings.fontSize + 3
+      }
+    };
+    const onStatistics = vi.fn();
+    const onMeasuredBlocks = vi.fn();
+    const stableProps = {
+      paneIndex: 0,
+      paneName: "visible stage",
+      contentHash: "f".repeat(64),
+      document,
+      zoom: 1,
+      selectedBlockId: null,
+      scrollProgress: 0,
+      scrollSync: false,
+      onScrollProgress: vi.fn(),
+      onSelectionScrollProgress: vi.fn(),
+      onSelectBlock: vi.fn(),
+      onOpenSource: vi.fn(),
+      onStatistics,
+      onMeasuredBlocks,
+      onFirstVisible: vi.fn()
+    } as const;
+    const rendered = render(
+      <ReaderPreviewPane {...stableProps} config={baseConfig} />
+    );
+    const host = rendered.getByTestId("reader-shadow-host-1");
+    await waitFor(() => expect(host.shadowRoot).not.toBeNull());
+    const pane = host.closest<HTMLElement>("[data-reader-pane]")!;
+    await waitFor(
+      () => expect(pane.dataset.readerMeasurementStatus).toBe("complete"),
+      { timeout: 10_000 }
+    );
+    onStatistics.mockClear();
+    onMeasuredBlocks.mockClear();
+
+    rendered.rerender(
+      <ReaderPreviewPane {...stableProps} config={nextConfig} />
+    );
+    expect(pane.dataset.readerConfigStage).toBe("pending-visible");
+    expect(pane.dataset.readerFontSize).toBe(
+      String(baseConfig.settings.fontSize)
+    );
+    expect(pane.dataset.readerMeasuredBlockCount).toBe("0");
+
+    await nextAnimationFrame();
+    await waitFor(() =>
+      expect(pane.dataset.readerFontSize).toBe(String(nextConfig.settings.fontSize))
+    );
+    const scroller = host.shadowRoot!.querySelector<HTMLElement>(
+      ".reader-scroll"
+    )!;
+    expect(scroller.style.getPropertyValue("--reader-font-size")).toBe(
+      `${nextConfig.settings.fontSize}px`
+    );
+    expect(pane.textContent).toContain("측정 중…");
+    expect(
+      onStatistics.mock.calls.some(
+        ([, statistics]) => statistics.measurementStatus === "COMPLETE"
+      )
+    ).toBe(false);
+    expect(Number.isFinite(Number(pane.dataset.readerVisibleUpdateMs))).toBe(
+      true
+    );
+
+    await waitFor(
+      () => {
+        expect(pane.dataset.readerMeasurementStatus).toBe("complete");
+        expect(pane.dataset.readerMeasuredBlockCount).toBe(
+          pane.dataset.readerCanonicalBlockCount
+        );
+      },
+      { timeout: 10_000 }
+    );
+    expect(onMeasuredBlocks).toHaveBeenCalled();
+    expect(Number.isFinite(Number(pane.dataset.readerAnalysisReadyMs))).toBe(
+      true
+    );
+    expect(
+      Number.isFinite(Number(pane.dataset.readerMeasurementCompleteMs))
+    ).toBe(true);
+  }, 15_000);
+
+  it("drops stale generations, preserves every block, and reuses a completed config cache", async () => {
+    const document = readerPublication({
+      sections: Array.from({ length: 60 }, (_, index) =>
+        readerSection(index + 1, `세대 취소 장면 ${index + 1}`)
+      )
+    });
+    const baseConfig = BUILTIN_READER_PRESETS[0]!.config;
+    const intermediateConfig = {
+      ...baseConfig,
+      settings: {
+        ...baseConfig.settings,
+        fontSize: baseConfig.settings.fontSize + 1
+      }
+    };
+    const finalConfig = {
+      ...baseConfig,
+      settings: {
+        ...baseConfig.settings,
+        fontSize: baseConfig.settings.fontSize + 2
+      }
+    };
+    const contentHash = "9".repeat(64);
+    const intermediateKey = readerPreviewMeasurementKey(
+      contentHash,
+      intermediateConfig
+    );
+    const finalKey = readerPreviewMeasurementKey(contentHash, finalConfig);
+    const onStatistics = vi.fn();
+    const onMeasuredBlocks = vi.fn();
+    const stableProps = {
+      paneIndex: 0,
+      paneName: "stale generation",
+      contentHash,
+      document,
+      zoom: 1,
+      selectedBlockId: null,
+      scrollProgress: 0,
+      scrollSync: false,
+      onScrollProgress: vi.fn(),
+      onSelectionScrollProgress: vi.fn(),
+      onSelectBlock: vi.fn(),
+      onOpenSource: vi.fn(),
+      onStatistics,
+      onMeasuredBlocks,
+      onFirstVisible: vi.fn()
+    } as const;
+    const rendered = render(
+      <ReaderPreviewPane {...stableProps} config={baseConfig} />
+    );
+    const host = rendered.getByTestId("reader-shadow-host-1");
+    await waitFor(() => expect(host.shadowRoot).not.toBeNull());
+    const pane = host.closest<HTMLElement>("[data-reader-pane]")!;
+    await waitFor(
+      () => expect(pane.dataset.readerMeasurementStatus).toBe("complete"),
+      { timeout: 10_000 }
+    );
+
+    onStatistics.mockClear();
+    rendered.rerender(
+      <ReaderPreviewPane {...stableProps} config={intermediateConfig} />
+    );
+    await nextAnimationFrame();
+    await waitFor(() =>
+      expect(
+        onStatistics.mock.calls.some(
+          ([, statistics, key]) =>
+            key === intermediateKey && statistics.measurementStatus === "MEASURING"
+        )
+      ).toBe(true)
+    );
+
+    const callsBeforeFinal = onStatistics.mock.calls.length;
+    rendered.rerender(
+      <ReaderPreviewPane {...stableProps} config={finalConfig} />
+    );
+    expect(pane.dataset.readerMeasuredBlockCount).toBe("0");
+    await nextAnimationFrame();
+    await waitFor(
+      () => {
+        expect(pane.dataset.readerMeasurementStatus).toBe("complete");
+        expect(pane.dataset.readerMeasuredBlockCount).toBe("120");
+        expect(pane.dataset.readerCanonicalBlockCount).toBe("120");
+      },
+      { timeout: 10_000 }
+    );
+    expect(
+      onStatistics.mock.calls
+        .slice(callsBeforeFinal)
+        .every(([, , key]) => key === finalKey)
+    ).toBe(true);
+    expect(
+      onStatistics.mock.calls
+        .slice(callsBeforeFinal)
+        .some(([, , key]) => key === intermediateKey)
+    ).toBe(false);
+
+    onStatistics.mockClear();
+    rendered.rerender(
+      <ReaderPreviewPane {...stableProps} config={baseConfig} />
+    );
+    expect(pane.dataset.readerMeasuredBlockCount).toBe("0");
+    await nextAnimationFrame();
+    await waitFor(() => expect(pane.dataset.readerConfigStage).toBe("cached"));
+    expect(pane.dataset.readerMeasurementStatus).toBe("complete");
+    expect(pane.dataset.readerMeasuredBlockCount).toBe("120");
+    expect(
+      onStatistics.mock.calls.every(
+        ([, statistics]) => statistics.measurementStatus === "COMPLETE"
+      )
+    ).toBe(true);
+  }, 20_000);
 
   it("isolates repeated config generations and replaces replayed section measurements", async () => {
     const sections = Array.from({ length: 60 }, (_, index) => {

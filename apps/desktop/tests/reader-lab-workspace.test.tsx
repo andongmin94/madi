@@ -786,6 +786,22 @@ describe("Reader Lab workspace orchestration", () => {
     fireEvent.keyDown(tabs[0]!, { key: "End" });
     await waitFor(() => expect(document.activeElement).toBe(tabs[2]));
     expect(tabs[2]?.getAttribute("aria-selected")).toBe("true");
+    const panes = screen
+      .getAllByTestId(/reader-shadow-host-/)
+      .map((host) => host.closest<HTMLElement>("[data-reader-pane]")!);
+    const fontSizesBefore = panes.map((pane) => pane.dataset.readerFontSize);
+    const nextThirdPaneFontSize = Number(fontSizesBefore[2]) + 2;
+    fireEvent.change(screen.getByLabelText("글자 크기"), {
+      target: { value: String(nextThirdPaneFontSize) }
+    });
+    await waitFor(() =>
+      expect(panes[2]?.dataset.readerFontSize).toBe(
+        String(nextThirdPaneFontSize)
+      )
+    );
+    expect(panes[0]?.dataset.readerFontSize).toBe(fontSizesBefore[0]);
+    expect(panes[1]?.dataset.readerFontSize).toBe(fontSizesBefore[1]);
+    expect(compilePublication).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText("Reader 범위").tagName).toBe("SELECT");
     expect(presetSelect.tagName).toBe("SELECT");
   });

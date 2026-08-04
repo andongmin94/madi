@@ -8,6 +8,8 @@ const roots = [
   "apps/desktop/tests",
   "crates/madi-core/src",
   "crates/madi-publication/src",
+  "crates/madi-export-epub/src",
+  "crates/madi-export-epub/tests",
   "scripts",
 ];
 const extensions = new Set([

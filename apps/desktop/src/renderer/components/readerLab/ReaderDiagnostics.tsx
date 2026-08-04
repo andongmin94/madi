@@ -17,6 +17,7 @@ interface ReaderDiagnosticsProps {
   readonly document: PublicationDocument | null;
   readonly coreDiagnostics: readonly PublicationDiagnostic[];
   readonly layoutDiagnostics: readonly ReaderLayoutDiagnostic[];
+  readonly measurementPending: boolean;
   readonly onExpanded: (expanded: boolean) => void;
   readonly onOpenSource: (source: PublicationSourceReference) => void | Promise<void>;
   readonly onSelectBlock: (blockId: string) => void;
@@ -27,6 +28,7 @@ export function ReaderDiagnostics({
   document,
   coreDiagnostics,
   layoutDiagnostics,
+  measurementPending,
   onExpanded,
   onOpenSource,
   onSelectBlock
@@ -39,10 +41,14 @@ export function ReaderDiagnostics({
         aria-expanded={expanded}
         onClick={() => onExpanded(!expanded)}
       >
-        검토 후보 · {coreDiagnostics.length + layoutDiagnostics.length}
+        검토 후보 ·{" "}
+        {measurementPending
+          ? "측정 중…"
+          : coreDiagnostics.length + layoutDiagnostics.length}
       </button>
       {expanded && (
         <div>
+          {measurementPending && <p role="status">측정 중…</p>}
           {coreDiagnostics.map((diagnostic, index) => {
             const matchedBlock = diagnostic.blockId
               ? document?.sections
@@ -96,9 +102,11 @@ export function ReaderDiagnostics({
               <span>{diagnostic.message}</span>
             </button>
           ))}
-          {coreDiagnostics.length === 0 && layoutDiagnostics.length === 0 && (
-            <p>현재 설정에서 표시할 검토 후보가 없습니다.</p>
-          )}
+          {!measurementPending &&
+            coreDiagnostics.length === 0 &&
+            layoutDiagnostics.length === 0 && (
+              <p>현재 설정에서 표시할 검토 후보가 없습니다.</p>
+            )}
           <p className="reader-diagnostics__note">검토 후보는 문장 품질 판정이 아니며 측정 환경에 따라 달라질 수 있습니다.</p>
         </div>
       )}

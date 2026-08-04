@@ -16,6 +16,7 @@ interface ReaderSettingsPanelProps {
   readonly document: PublicationDocument | null;
   readonly config: ReaderRenderConfig;
   readonly statistics: ReaderRenderStatistics | null;
+  readonly measurementPending: boolean;
   readonly zoom: number;
   readonly onOverrides: (patch: ReaderPaneOverrides) => void;
   readonly onZoom: (zoom: number) => void;
@@ -60,6 +61,7 @@ export function ReaderSettingsPanel({
   document,
   config,
   statistics,
+  measurementPending,
   zoom,
   onOverrides,
   onZoom
@@ -80,8 +82,10 @@ export function ReaderSettingsPanel({
     config.device.readerChromeHeight -
     config.device.safeAreaTop -
     config.device.safeAreaBottom;
-  const measurementComplete = statistics?.measurementStatus === "COMPLETE";
-  const measurementRunning = statistics?.measurementStatus === "MEASURING";
+  const measurementComplete =
+    !measurementPending && statistics?.measurementStatus === "COMPLETE";
+  const measurementRunning =
+    measurementPending || statistics?.measurementStatus === "MEASURING";
   const maximumVerticalPadding = Math.min(
     READER_LIMITS.padding.max,
     Math.floor((effectiveViewportHeight - 1) / 2)
@@ -242,10 +246,12 @@ export function ReaderSettingsPanel({
 
       <section className="reader-statistics" aria-label="독서환경 통계">
         <h3>통계</h3>
-        {measurementRunning && statistics && (
+        {measurementRunning && (
           <p role="status">
-            전체 scope 실제 render 측정 중 · {statistics.measuredSectionCount}/
-            {statistics.totalSectionCount} section
+            측정 중…
+            {statistics
+              ? ` · ${statistics.measuredSectionCount}/${statistics.totalSectionCount} section`
+              : ""}
           </p>
         )}
         <dl>

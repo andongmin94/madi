@@ -23,6 +23,12 @@ const publicationRoot = resolve(
   "madi-publication",
   "src",
 );
+const epubExporterRoot = resolve(
+  repositoryRoot,
+  "crates",
+  "madi-export-epub",
+  "src",
+);
 
 async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -109,6 +115,28 @@ for (const path of coreFiles) {
       )}`,
     );
   }
+}
+
+const epubExporterFiles = (await walk(epubExporterRoot)).filter((path) =>
+  path.endsWith(".rs"),
+);
+for (const path of epubExporterFiles) {
+  const source = await readFile(path, "utf8");
+  if (/\btypie::|editor_ffi|vendor[\\/]typie/i.test(source)) {
+    throw new Error(
+      `EPUB exporter directly references Typie internals: ${relative(
+        repositoryRoot,
+        path,
+      )}`,
+    );
+  }
+}
+const epubExporterManifest = await readFile(
+  resolve(repositoryRoot, "crates", "madi-export-epub", "Cargo.toml"),
+  "utf8",
+);
+if (/\b(?:typie|editor-(?:codec|model|crdt|state|ffi))\b/i.test(epubExporterManifest)) {
+  throw new Error("EPUB exporter Cargo manifest directly depends on Typie internals");
 }
 
 const buildInfoPath = resolve(
@@ -241,6 +269,7 @@ const hygieneRoots = [
   resolve(repositoryRoot, "scripts"),
   resolve(repositoryRoot, "crates", "madi-core", "src"),
   publicationRoot,
+  epubExporterRoot,
 ];
 const hygieneFiles = (
   await Promise.all(hygieneRoots.map((directory) => walk(directory)))
@@ -264,6 +293,7 @@ process.stdout.write(
       artifactHashesVerified: assets.length,
       adapterBoundaryFilesScanned: boundaryFiles.length,
       rustCoreFilesScanned: coreFiles.length,
+      epubExporterFilesScanned: epubExporterFiles.length,
       negativeBoundaryFixture: "rejected",
       sourceHygieneFilesScanned: hygieneFiles.length,
     },

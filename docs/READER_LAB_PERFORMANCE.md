@@ -1,10 +1,12 @@
 # Reader Lab 성능과 실제 Electron 증거
 
-기준일: 2026-08-09
+기준일: 2026-08-12
 
 ```text
-Verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
-Reason: packaged long-WORK setting visible median 538.35 ms > 약 250 ms target
+Historical Phase 1F verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
+Phase 1G Reader interaction optimization actual: PASS
+Phase 1G final verdict: CONDITIONAL TECHNICAL GO — RUNTIME EPUBCHECK PACKAGING PENDING
+Boundary: PRIVATE LOCAL ONLY
 ```
 
 ## 1. 측정 환경과 증거
@@ -24,14 +26,15 @@ output/playwright/madi-electron-phase1f-evidence.json
 output/playwright/madi-packaged-phase1f-evidence.json
 ```
 
-두 evidence 모두 `status=PASS`, `phase=1F`, `measurementRuns=5`, schema `6`, logical format
-`1`, snapshot payload `4`였다. 수치는 이 PC와 당시 process 부하의 관측값이며 다른
+두 evidence 모두 `status=PASS`, `phase=1F`, `measurementRuns=5`, schema `7`, logical format
+`1`, snapshot payload `5`였다. Phase 1F-named harness를 Phase 1G interaction 최적화가 반영된
+최종 worktree에서 다시 실행한 결과다. 수치는 이 PC와 당시 process 부하의 관측값이며 다른
 hardware의 보장값이 아니다.
 
 | Runtime | Evidence bytes | SHA-256 | Scenario elapsed |
 |---|---:|---|---:|
-| Development | 17,117 | `9a548c11f32059750c5dc91721c548064000dc25fac846acb1203cef02d0f8a6` | 692,195.83 ms |
-| Fresh unpacked | 17,078 | `56e028a0f3d00f7cb6e6e09f954841c1f07a0857bab3c8fc8066878980ed7860` | 70,291.31 ms |
+| Development | 17,175 | `1a987e2596e3a417dc9186c639e4fa6f15881640e0d705092d7bd72bf66c4d46` | 803,351.24 ms |
+| Fresh unpacked | 17,121 | `e6aeaf4d14216b23806adcf358c319e62d70c3d60970fd4bf102a5a40737fe06` | 111,998.16 ms |
 
 ## 2. Metric 경계
 
@@ -59,13 +62,13 @@ round-trip은 core duration을 포함한다. Development와 packaged도 build mo
 
 | Fixture | 파일 크기 | 구조 | 문자/semantic inventory | Publication inventory |
 |---|---:|---|---|---|
-| 일반 | 2,994,176 B | 2권 / 20화 / 60장면 | 180,000자 / 180 paragraph / 60 scene break | 60 section / 323 block |
-| 장편 | 10,694,656 B | 10권 / 150화 / 450장면 | 675,000자 / 1,350 paragraph / 450 scene break | 450 section / 2,411 block |
+| 일반 | 2,916,352 B | 2권 / 20화 / 60장면 | 180,000자 / 180 paragraph / 60 scene break | 60 section / 323 block |
+| 장편 | 10,739,712 B | 10권 / 150화 / 450장면 | 675,000자 / 1,350 paragraph / 450 scene break | 450 section / 2,411 block |
 
 | Runtime | 일반 fixture SHA-256 | 장편 fixture SHA-256 |
 |---|---|---|
-| Development | `c3e08a09b83415f86159b3f538d466b16c13e4df4e6e7a054ef9e522c43a3070` | `2e15e2e87b69de1cc76404dd56c285daaed2f024a014ee0e29c2e088bdb289ff` |
-| Fresh unpacked | `c05ed560be589b8fdcaac83060bbe1098a35d1a0c66b7617604c3d07f49f965c` | `4ebb54b706b135f608d493111ab8ccb12b8a8b359532162a86ceb5a6c9e5f090` |
+| Development | `84903de99136490ca5ade827aaa4bde7810955871df6eca28d2cbefd0945cfcf` | `24f91f8f8e41c82b6d7d8a0f3e6f9bf642f63205b070b69cab1f14ffa32ff9c5` |
+| Fresh unpacked | `363b41bc85950f8716d3b243af3d75733774b8a47b0b3f243172a043455d95d1` | `7e66ab598aca7cfb40395de89c11a402504432df50a77cb9529b5d2d42906bb7` |
 
 Fixture는 한국어 UTF-8 본문, 긴 paragraph, 빈 paragraph와 scene break를 포함한다. Generator는
 고정 timestamp와 `VACUUM`을 사용하지만 동일 semantic ID/revision/inventory를 다시 만든
@@ -81,10 +84,10 @@ statistics를 함께 사용했다.
 
 | Scope | Development elapsed / first visible | Packaged elapsed / first visible | Section / block |
 |---|---:|---:|---:|
-| SCENE | 475.79 / 398.20 ms | 99.20 / 32.70 ms | 1 / 8 |
-| CHAPTER | 1,236.85 / 1,182.20 ms | 123.19 / 70.40 ms | 3 / 18 |
-| VOLUME | 11,618.22 / 11,553.40 ms | 566.68 / 496.30 ms | 30 / 162 |
-| WORK | 23,190.06 / 23,153.10 ms | 983.19 / 953.30 ms | 60 / 323 |
+| SCENE | 486.77 / 431.20 ms | 99.60 / 26.70 ms | 1 / 8 |
+| CHAPTER | 1,323.10 / 1,268.80 ms | 115.30 / 71.50 ms | 3 / 18 |
+| VOLUME | 12,528.60 / 12,449.30 ms | 593.81 / 495.20 ms | 30 / 162 |
+| WORK | 24,837.17 / 24,820.80 ms | 1,047.07 / 1,014.50 ms | 60 / 323 |
 
 Packaged SCENE/CHAPTER first visible은 1초 목표 안이다. Development CHAPTER의 debug
 sidecar 단일 관측은 1초를 넘지만 packaged release 결과와 분리한다. 모든 scope의
@@ -94,52 +97,53 @@ section/block과 공백 포함/제외 문자, paragraph/scene/chapter 수는 man
 
 | Metric | Development median / max | Packaged median / max |
 |---|---:|---:|
-| external compile | 22,986.03 / 23,138.38 ms | 1,001.91 / 1,074.78 ms |
-| core compile | 22,828.42 / 22,964.22 ms | 849.18 / 863.31 ms |
-| `compilePublication` RPC round-trip (core 포함) | 22,855.60 / 22,990.10 ms | 864.10 / 874.50 ms |
-| runtime validation | 13.60 / 14.90 ms | 12.90 / 13.90 ms |
-| first visible | 22,896.10 / 23,031.90 ms | 906.10 / 914.30 ms |
-| cached IR 3-pane visible | 88.60 / 106.07 ms | 88.76 / 104.63 ms |
-| preset visible | 116.48 / 116.82 ms | 116.66 / 138.23 ms |
-| font-size setting visible | 105.99 / 125.72 ms | 109.27 / 118.25 ms |
-| same-source selection | 23.33 / 36.39 ms | 20.26 / 23.81 ms |
-| source SCENE/range navigation | 201.47 / 252.74 ms | 201.24 / 214.85 ms |
-| normalized scroll state 수렴 | 13.34 / 21.11 ms | 13.31 / 14.44 ms |
+| external compile | 25,031.88 / 27,643.43 ms | 986.29 / 998.38 ms |
+| core compile | 24,923.36 / 27,485.36 ms | 883.51 / 908.12 ms |
+| `compilePublication` RPC round-trip (core 포함) | 24,951.40 / 27,520.00 ms | 896.50 / 920.90 ms |
+| runtime validation | 14.80 / 17.90 ms | 14.00 / 14.50 ms |
+| first visible | 24,970.40 / 27,542.80 ms | 915.60 / 938.40 ms |
+| cached IR 3-pane visible | 73.32 / 125.01 ms | 72.35 / 84.64 ms |
+| preset visible | 99.74 / 184.62 ms | 165.22 / 168.36 ms |
+| font-size setting visible | 68.23 / 131.61 ms | 75.09 / 129.91 ms |
+| same-source selection | 6.95 / 32.01 ms | 7.37 / 14.49 ms |
+| source SCENE/range navigation | 189.97 / 216.34 ms | 189.50 / 230.07 ms |
+| normalized scroll state 수렴 | 19.82 / 27.87 ms | 14.20 / 16.10 ms |
 
 Preset 측정은 desktop↔small-phone의 실제 config/paint 전환 다섯 번이며 초기값과 같은
 no-op을 표본으로 세지 않았다. Font-size 측정도 18↔19의 실제 structural/computed-style
 변화를 확인했다. Source selection은 세 pane의 같은 source identity를 확인했고 navigation은
 원고 SCENE과 exact range를 확인했다.
 
-일반 full-scope diagnostics는 development `259.87 ms`, packaged `197.01 ms`의 단일
-관측으로 60 section/323 block을 세 pane에서 모두 측정하고 검토 후보 `240`개를 만들었다.
-Keyboard diagnostic activation은 세 pane highlight와 원고 이동까지 통과했다.
+일반 full measurement+layout diagnostics는 development `1,138.70 ms`, packaged
+`1,130.22 ms`의 단일 관측으로 60 section/323 block을 세 pane에서 모두 측정하고 검토 후보
+`240`개를 만들었다. 이는 5회 median이 아니다. Keyboard diagnostic activation은 각각
+`134.20/134.44 ms`의 단일 관측으로 세 pane highlight와 원고 이동까지 통과했다.
 
 ## 6. 장편 WORK 5회
 
 | Metric | Development median / max | Packaged median / max |
 |---|---:|---:|
-| external compile | 47,907.98 / 49,250.22 ms | 2,784.73 / 2,853.33 ms |
-| core compile | 47,151.22 / 48,442.99 ms | 2,016.90 / 2,033.04 ms |
-| `compilePublication` RPC round-trip (core 포함) | 47,286.20 / 48,590.30 ms | 2,081.40 / 2,099.60 ms |
-| runtime validation | 46.70 / 49.60 ms | 46.20 / 47.80 ms |
-| first visible | 47,509.30 / 48,844.70 ms | **2,380.00 / 2,409.50 ms** |
-| cached IR 3-pane visible | 446.54 / 511.54 ms | 425.07 / 441.00 ms |
-| font-size setting visible | **567.52 / 606.32 ms** | **538.35 / 562.87 ms** |
-| normalized scroll state 수렴 | 38.62 / 40.97 ms | 40.75 / 49.07 ms |
+| external compile | 51,793.15 / 52,007.85 ms | 2,591.93 / 2,716.37 ms |
+| core compile | 51,160.38 / 51,408.65 ms | 2,102.28 / 2,190.88 ms |
+| `compilePublication` RPC round-trip (core 포함) | 51,324.70 / 51,584.30 ms | 2,192.90 / 2,278.00 ms |
+| runtime validation | 48.30 / 56.50 ms | 51.80 / 54.10 ms |
+| first visible | 51,384.30 / 51,648.20 ms | **2,259.50 / 2,345.10 ms** |
+| cached IR 3-pane visible | 418.02 / 443.81 ms | 439.75 / 455.49 ms |
+| font-size setting visible | **148.32 / 150.54 ms** | **184.10 / 200.46 ms** |
+| normalized scroll state 수렴 | 33.38 / 43.25 ms | 33.50 / 35.01 ms |
 
 Fresh packaged 장편 first visible은 3초 목표를 만족한다. Debug sidecar compile은 약
-47초로 실사용 release 수치가 아니지만 development feedback loop의 명확한 비용으로
-남긴다. 장편 setting visible은 development 약 0.57초, package 약 0.54초로 잠정 250ms
-목표를 넘으며
-Phase 1F conditional 판정의 직접 원인이다.
+51초로 실사용 release 수치가 아니지만 development feedback loop의 명확한 비용으로
+남긴다. Phase 1G interaction 최적화 뒤 장편 setting visible은 development와 package 모두
+잠정 약 250ms 목표를 통과했다.
 
 장편의 첫 WORK scope 단일 transition은 development elapsed/first-visible
-`47,316.54/47,190.10 ms`, packaged `2,503.63/2,393.10 ms`였다. 장편 full measurement와
-diagnostics는 config 변경 뒤 development `1,849.01 ms`, packaged `1,781.02 ms`의 단일
-관측이다. 각 pane에서 450 section/2,411 block이 모두 측정됐고
-diagnostic 후보는 `900`, horizontal overflow는 `0`이었다. 이 시간은 first visible을
-막지 않는 background completion 경계다.
+`51,153.78/51,091.30 ms`, packaged `2,347.79/2,305.70 ms`였다. 장편 full
+measurement+layout diagnostics는 config 변경 뒤 development `7,734.38 ms`, packaged
+`7,827.55 ms`의 환경별 단일 관측이다. 반복 median/maximum이 아니다. 각 pane에서 450
+section/2,411 block이 모두 측정됐고 diagnostic 후보는 `900`, horizontal overflow는
+`0`, measurement/layout status는 complete였다. 이 시간은 first visible을 막지 않는
+background completion 경계다.
 
 ## 7. Virtualization과 scroll
 
@@ -155,9 +159,9 @@ section의 paint completion이나 exact 줄 정렬 지표는 아니다.
 
 ## 8. 상태 복원과 snapshot
 
-일반 작품에서 preset CRUD, named snapshot v4 변경/restore, WORK/3 pane UI state를 실제로
-검증했다. 새 process ready 단일 관측은 development `24,430.54 ms`, packaged
-`2,353.52 ms`였다.
+일반 작품에서 preset CRUD, named snapshot v5 변경/restore, WORK/3 pane UI state를 실제로
+검증했다. 새 process ready 단일 관측은 development `26,108.15 ms`, packaged
+`2,390.81 ms`였다.
 
 다음 값은 저장 전과 재실행 뒤 exact 일치했다.
 
@@ -168,7 +172,7 @@ section의 paint completion이나 exact 줄 정렬 지표는 아니다.
 - scroll sync off, panel width `333/444`, diagnostics collapsed
 - 세 pane의 동일 selected source block
 
-Snapshot diff는 Reader preset changed `1`, v4 restore 뒤 font size `20`, restore 전 safety
+Snapshot diff는 Reader preset changed `1`, v5 restore 뒤 font size `20`, restore 전 safety
 snapshot 생성까지 확인했다. Reader UI state는 snapshot payload에 포함하지 않고 별도
 `reader-lab.v1`에서 복원됐다.
 
@@ -179,10 +183,10 @@ snapshot 생성까지 확인했다. Reader UI state는 snapshot payload에 포�
 
 | Scenario | Working set delta | Private bytes delta |
 |---|---:|---:|
-| Development 일반 | +161.71 MiB | +421.77 MiB |
-| Packaged 일반 | +227.33 MiB | +453.15 MiB |
-| Development 장편 | +261.91 MiB | +368.30 MiB |
-| Packaged 장편 | +336.20 MiB | +431.42 MiB |
+| Development 일반 | +104.04 MiB | +398.37 MiB |
+| Packaged 일반 | +173.25 MiB | +429.47 MiB |
+| Development 장편 | +134.57 MiB | +228.71 MiB |
+| Packaged 장편 | +288.14 MiB | +385.14 MiB |
 
 각 scenario는 compile 반복, 세 pane, full measurement, screenshot과 automation state까지
 포함한다. Sample 수가 1이므로 leak, steady-state heap, peak resident set 또는 장시간
@@ -239,17 +243,54 @@ World Graph/Canvas 최적화만 반복하는 기준으로 사용하지 않는다
 | packaged SCENE/CHAPTER first visible ≤ 1초 | PASS |
 | packaged 675,000자 WORK first visible ≤ 3초 | PASS |
 | preset visible 약 250ms | 일반 PASS |
-| setting visible 약 250ms | 일반 PASS, 장편 FAIL (`538.35/562.87 ms`) |
+| setting visible 약 250ms | 일반/장편 PASS; packaged 장편 `184.10/200.46 ms` |
 | source highlight 약 250ms | PASS |
 | scroll sync state+actual `scrollTop` convergence | PASS |
 | distant-progress virtual window source change | PASS (untimed correctness gate) |
 | 설정 변경이 원고/IR compile을 변경하지 않음 | PASS |
 | external renderer HTTP/WS request 0 | PASS |
 
-따라서 최종 판정은 **CONDITIONAL TECHNICAL GO — PRIVATE LOCAL**이다. 다음 성능 작업은
-장편 config 변경 직후 visible pane update와 full measurement invalidation 경계를 profile해
-화면 반영을 우선하고 background 재측정을 분리하는 것이다. Canonical block을 줄이거나
-설정 변경 때 IR을 재compile하는 방식은 허용하지 않는다.
+Phase 1G Reader interaction 최적화 actual은 PASS다. Historical Phase 1F conditional 원인이던
+장편 setting-visible 목표 초과는 해소됐다. Phase 1G 전체 판정은 Reader 때문이 아니라
+runtime EPUBCheck/JRE가 package에 없어서 **CONDITIONAL TECHNICAL GO — RUNTIME EPUBCHECK
+PACKAGING PENDING**이며 허용 범위는 **PRIVATE LOCAL ONLY**다. Canonical block을 줄이거나
+설정 변경 때 IR을 재compile하는 방식은 계속 허용하지 않는다.
+
+## 13. Phase 1G interaction 최적화 구현
+
+Phase 1G는 위 장편 setting visible 관측을 `NON-BLOCKING INTERACTION OPTIMIZATION`으로
+수용하고 다음 경계를 구현했다.
+
+- resolved typography/layout key별 visible config를 rAF generation으로 batch한다.
+- CSS variable과 visible/windowed section commit을 full-scope measurement보다 먼저 수행한다.
+- 전체 scope statistics와 hidden section measurement는 `requestIdleCallback` 또는 bounded
+  timeout scheduler로 실행한다.
+- Pane별 generation/key guard가 이전 config의 analysis/measurement callback을 버린다.
+- Publication hash+resolved config measurement cache와 layout diagnostic cache를 각각
+  insertion-order LRU 4개로 제한한다.
+- 새 key의 complete measurement 전에는 `측정 중…`과 추정 상태를 표시하고 이전 complete
+  값을 최신처럼 재사용하지 않는다.
+- Diagnostic은 같은 measurement key의 complete block set에서만 생성한다.
+- Reader setting 변경은 Publication IR compile을 다시 시작하지 않는다.
+
+최종 Phase 1F-named raw evidence는 Phase 1G 최적화가 반영된 worktree의 Reader actual이다.
+장편 visible metrics는 위 5회 표본에서, full measurement/layout diagnostics는 환경별 단일
+관측에서 가져왔다. Electron evidence는 `measurementStatus=COMPLETE`,
+`layoutStatus=complete`, block/overflow 결과를 기록하지만 stale callback count는 기록하지
+않는다. 따라서 actual stale-result 0이라고 주장하지 않는다.
+
+Exact Node 26 toolchain으로 `reader-preview-pane.test.tsx`를 별도 실행한 결과는 1 file/11
+tests PASS였다. 이 focused test는 다음 correctness를 확인한다.
+
+- visible config가 다음 animation frame에 적용되고 full-scope statistics는 이후 완료됨
+- 중간 generation의 callback이 final key 결과로 들어오지 않음
+- config cache 재사용 전에는 measured block을 0으로 reset하고 완료 뒤 120/120을 복원함
+- 반복 generation 전환 뒤 60 section/300 block을 중복 없이 300/300으로 완료함
+- 동시에 유지하는 hidden measurement section은 1개 이하임
+
+이 결과는 jsdom의 synthetic scheduler와 DOM을 사용한 focused stale/caching correctness
+qualification이다. 테스트의 개별 millisecond는 실제 Electron paint/interaction 성능이나
+development/fresh-packaged median으로 사용하지 않는다.
 
 ## 관련 문서
 
@@ -258,3 +299,5 @@ World Graph/Canvas 최적화만 반복하는 기준으로 사용하지 않는다
 - [Reader Lab architecture](./READER_LAB_ARCHITECTURE.md)
 - [Reader Lab visual diagnostics](./READER_LAB_VISUAL_DIAGNOSTICS.md)
 - [Publication IR v1](./PUBLICATION_IR_V1.md)
+- [Phase 1G result](./PHASE_1G_RESULT.md)
+- [EPUB export performance](./EPUB_EXPORT_PERFORMANCE.md)
