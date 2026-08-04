@@ -53,6 +53,16 @@ export type Phase1cApi = Pick<
   | "loadPlotCanvasUiState"
   | "pickCanvasImport"
   | "exportCanvas"
+  | "saveReaderLabUiState"
+  | "loadReaderLabUiState"
+  | "compilePublication"
+  | "getPublicationStats"
+  | "validatePublication"
+  | "listReaderPresets"
+  | "createReaderPreset"
+  | "updateReaderPreset"
+  | "duplicateReaderPreset"
+  | "deleteReaderPreset"
 >;
 
 function unused(): never {
@@ -152,6 +162,20 @@ export function phase1cApiStubs(): Phase1cApi {
     savePlotCanvasUiState: vi.fn(async () => undefined),
     loadPlotCanvasUiState: vi.fn(async () => ({ state: null })),
     pickCanvasImport: vi.fn(async () => null),
-    exportCanvas: vi.fn(async () => null)
+    exportCanvas: vi.fn(async () => null),
+    saveReaderLabUiState: vi.fn(async () => undefined),
+    loadReaderLabUiState: vi.fn(async () => ({ state: null })),
+    compilePublication: vi.fn(async () => unused()),
+    getPublicationStats: vi.fn(async () => unused()),
+    validatePublication: vi.fn(async () => unused()),
+    listReaderPresets: vi.fn(async () => ({
+      presets: [],
+      duplicateNames: [],
+      revision: 0
+    })),
+    createReaderPreset: vi.fn(async () => unused()),
+    updateReaderPreset: vi.fn(async () => unused()),
+    duplicateReaderPreset: vi.fn(async () => unused()),
+    deleteReaderPreset: vi.fn(async () => unused())
   };
 }

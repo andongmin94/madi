@@ -79,7 +79,15 @@ const coreDiff = {
   changed_tags: 17,
   added_relation_types: 18,
   deleted_relation_types: 19,
-  changed_relation_types: 20
+  changed_relation_types: 20,
+  added_canvases: 21,
+  deleted_canvases: 22,
+  changed_canvases: 23,
+  canvas_node_count_delta: -24,
+  canvas_edge_count_delta: 25,
+  added_reader_presets: 26,
+  deleted_reader_presets: 27,
+  changed_reader_presets: 28
 };
 
 function createHarness(
@@ -469,11 +477,14 @@ describe("Phase 1B DesktopService RPC contract", () => {
       addedRelationTypes: 18,
       deletedRelationTypes: 19,
       changedRelationTypes: 20,
-      addedCanvases: 0,
-      deletedCanvases: 0,
-      changedCanvases: 0,
-      canvasNodeCountDelta: 0,
-      canvasEdgeCountDelta: 0
+      addedCanvases: 21,
+      deletedCanvases: 22,
+      changedCanvases: 23,
+      canvasNodeCountDelta: -24,
+      canvasEdgeCountDelta: 25,
+      addedReaderPresets: 26,
+      deletedReaderPresets: 27,
+      changedReaderPresets: 28
     });
     expect(request.mock.calls).toEqual([
       [
@@ -772,22 +783,16 @@ describe("Phase 1B DesktopService RPC contract", () => {
       changed_relation_types: _changedRelationTypes,
       ...legacyDiff
     } = coreDiff;
-    const legacyDiffHarness = createHarness(() => ({
+    const incompleteDiffHarness = createHarness(() => ({
       snapshot: coreSnapshot("snapshot-legacy-diff"),
       summary: legacyDiff,
       metadata: { revision: 3 }
     }));
-    const parsedLegacyDiff = await legacyDiffHarness.service.diffNamedSnapshot({
-      sessionId: legacyDiffHarness.session.sessionId,
-      snapshotId: "snapshot-legacy-diff"
-    });
-    expect(parsedLegacyDiff.summary).toMatchObject({
-      addedTags: 0,
-      deletedTags: 0,
-      changedTags: 0,
-      addedRelationTypes: 0,
-      deletedRelationTypes: 0,
-      changedRelationTypes: 0
-    });
+    await expect(
+      incompleteDiffHarness.service.diffNamedSnapshot({
+        sessionId: incompleteDiffHarness.session.sessionId,
+        snapshotId: "snapshot-legacy-diff"
+      })
+    ).rejects.toThrow("invalid added_tags");
   });
 });

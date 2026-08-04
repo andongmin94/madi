@@ -9,15 +9,19 @@ import {
   IPC_CHANNELS,
   type ApplyReplacementBatchRequest,
   type CompleteCloseRequest,
+  type CompilePublicationRequest,
   type CreateCanvasRequest,
+  type CreateReaderPresetRequest,
   type CreateNamedSnapshotRequest,
   type CreateNodeRequest,
   type CreateProjectRequest,
   type DeleteNodeRequest,
   type DeleteCanvasRequest,
   type DeleteNamedSnapshotRequest,
+  type DeleteReaderPresetRequest,
   type DiffNamedSnapshotRequest,
   type DuplicateCanvasRequest,
+  type DuplicateReaderPresetRequest,
   type EntityGraphRequest,
   type ExportCanvasRequest,
   type LoadSceneDocumentRequest,
@@ -35,12 +39,15 @@ import {
   type SaveDocumentRequest,
   type SaveCanvasRequest,
   type SavePlotCanvasUiStateRequest,
+  type SaveReaderLabUiStateRequest,
   type SaveUiStateRequest,
   type SaveWorldGraphUiStateRequest,
   type ScopeNodeRequest,
   type SearchProjectRequest,
   type RestoreNamedSnapshotRequest,
-  type SessionRequest
+  type SessionRequest,
+  type UpdateReaderPresetRequest,
+  type ValidatePublicationRequest
 } from "../shared/contracts";
 import type {
   CreateEntityAliasRequest,
@@ -345,6 +352,106 @@ export function registerMadiIpc({
       authorize(event);
       return service.loadPlotCanvasUiState(
         requireObject(rawRequest) as unknown as SessionRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.saveReaderLabUiState,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      await service.saveReaderLabUiState(
+        requireObject(rawRequest) as unknown as SaveReaderLabUiStateRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.loadReaderLabUiState,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.loadReaderLabUiState(
+        requireObject(rawRequest) as unknown as SessionRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.compilePublication,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.compilePublication(
+        requireObject(rawRequest) as unknown as CompilePublicationRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.getPublicationStats,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.getPublicationStats(
+        requireObject(rawRequest) as unknown as CompilePublicationRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.validatePublication,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.validatePublication(
+        requireObject(rawRequest) as unknown as ValidatePublicationRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.listReaderPresets,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.listReaderPresets(
+        requireObject(rawRequest) as unknown as SessionRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.createReaderPreset,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.createReaderPreset(
+        requireObject(rawRequest) as unknown as CreateReaderPresetRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.updateReaderPreset,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.updateReaderPreset(
+        requireObject(rawRequest) as unknown as UpdateReaderPresetRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.duplicateReaderPreset,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.duplicateReaderPreset(
+        requireObject(rawRequest) as unknown as DuplicateReaderPresetRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.deleteReaderPreset,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.deleteReaderPreset(
+        requireObject(rawRequest) as unknown as DeleteReaderPresetRequest
       );
     }
   );

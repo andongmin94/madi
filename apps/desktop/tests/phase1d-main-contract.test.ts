@@ -434,7 +434,7 @@ describe("Phase 1D DesktopService graph contracts", () => {
     expect(loaded.state).toEqual(graphUiState);
   });
 
-  it("tolerates sub-1e-9 JSON float drift but rejects meaningful state changes", async () => {
+  it("tolerates sub-1e-9 JSON float drift without rounding-boundary false positives", async () => {
     const tinyFloatDrift = createGraphUiRoundTripHarness((stored) => {
       stored.viewport.zoom += 5e-14;
       stored.viewport.pan.x += 5e-14;
@@ -448,6 +448,31 @@ describe("Phase 1D DesktopService graph contracts", () => {
         state: graphUiState
       })
     ).resolves.toBeUndefined();
+
+    const roundingBoundaryState: WorldGraphUiState = {
+      ...graphUiState,
+      nodePositions: {
+        ...graphUiState.nodePositions,
+        "entity-1": { x: -999_425.9970870885, y: 200 }
+      }
+    };
+    const jsonRoundTripDrift = createGraphUiRoundTripHarness((stored) => {
+      stored.node_positions["entity-1"]!.x = -999_425.9970870884;
+    });
+    expect(
+      roundingBoundaryState.nodePositions["entity-1"]!.x.toFixed(9)
+    ).not.toBe(
+      (-999_425.9970870884).toFixed(9)
+    );
+    await expect(
+      jsonRoundTripDrift.service.saveWorldGraphUiState({
+        sessionId: jsonRoundTripDrift.session.sessionId,
+        state: roundingBoundaryState
+      })
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects meaningful graph UI state changes returned by the core", async () => {
 
     const meaningfulPositionDrift = createGraphUiRoundTripHarness((stored) => {
       stored.node_positions["entity-1"]!.x += 2e-9;

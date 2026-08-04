@@ -9,7 +9,10 @@ import type {
   CanvasRecord,
   CanvasSort,
   CanvasSummary,
+  CompilePublicationRequest,
+  CompilePublicationResult,
   CreateCanvasRequest,
+  CreateReaderPresetRequest,
   CreateNamedSnapshotRequest,
   CreateNodeRequest,
   CreateProjectRequest,
@@ -18,9 +21,12 @@ import type {
   DeleteNamedSnapshotRequest,
   DeleteNamedSnapshotResult,
   DeleteNodeRequest,
+  DeleteReaderPresetRequest,
+  DeleteReaderPresetResult,
   DiffNamedSnapshotRequest,
   DiffNamedSnapshotResult,
   DuplicateCanvasRequest,
+  DuplicateReaderPresetRequest,
   ExportCanvasRequest,
   ExportCanvasResult,
   LoadedSceneDocument,
@@ -29,12 +35,15 @@ import type {
   LoadDocumentRequest,
   LoadCanvasRequest,
   LoadPlotCanvasUiStateResult,
+  LoadReaderLabUiStateResult,
   LoadUiStateResult,
   ListDescendantScenesRequest,
   ListDescendantScenesResult,
   ListCanvasesRequest,
   ListCanvasesResult,
   ListNamedSnapshotsResult,
+  ListReaderPresetsRequest,
+  ListReaderPresetsResult,
   MoveNodeRequest,
   NamedSnapshotKind,
   NamedSnapshotMutationResult,
@@ -45,6 +54,19 @@ import type {
   ProjectRecord,
   ProjectTree,
   ProjectSession,
+  PublicationDiagnostic,
+  PublicationDiagnosticCode,
+  PublicationDiagnosticSeverity,
+  PublicationSourceStatistics,
+  PublicationStatsResult,
+  ReaderPresetMutationResult,
+  ReaderPresetRecord,
+  ReaderPresetSourceKind,
+  ReaderLabUiState,
+  ReaderPaneOverrides,
+  ReaderPaneUiState,
+  ReaderRenderConfig,
+  ReaderVerificationStatus,
   RecoverPlainTextRequest,
   RenameNamedSnapshotRequest,
   RenameNodeRequest,
@@ -58,6 +80,7 @@ import type {
   SaveCanvasRequest,
   SaveCanvasResult,
   SavePlotCanvasUiStateRequest,
+  SaveReaderLabUiStateRequest,
   SaveUiStateRequest,
   ScopeNodeRequest,
   SearchField,
@@ -70,7 +93,10 @@ import type {
   SnapshotNodeCounts,
   TextStatisticsResult,
   TreeNodeKind,
-  TreeNodeRecord
+  TreeNodeRecord,
+  UpdateReaderPresetRequest,
+  ValidatePublicationRequest,
+  ValidatePublicationResult
 } from "../shared/contracts";
 import type {
   CreateEntityAliasRequest,
@@ -171,12 +197,16 @@ import type {
 } from "../shared/contracts";
 import type { CoreClient } from "./coreClient";
 import { ProjectSessionRegistry } from "./projectSessions";
+import { validatePublicationDocument } from "../shared/publicationValidation";
+import { validateReaderRenderConfig } from "../shared/readerConfigValidation";
+import { validateReaderLabUiState } from "../shared/readerLabStateValidation";
 
 const MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
 const MAX_RECOVERY_TEXT_CODE_UNITS = 32 * 1024 * 1024;
 const UI_STATE_KEY = "workspace.v1";
 const WORLD_GRAPH_UI_STATE_KEY = "world-graph.v1";
 const PLOT_CANVAS_UI_STATE_KEY = "plot-canvas.v1";
+const READER_LAB_UI_STATE_KEY = "reader-lab.v1";
 const MAX_CANVAS_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_CANVAS_NODES = 500;
 const MAX_CANVAS_EDGES = 1_000;
@@ -187,6 +217,7 @@ const MAX_WORLD_GRAPH_SCENE_LINKS = 2_000;
 const MAX_WORLD_GRAPH_RELATION_TYPES = 2_000;
 const MAX_WORLD_GRAPH_DIAGNOSTICS = 2_000;
 const MAX_WORLD_GRAPH_COORDINATE = 1_000_000;
+const WORLD_GRAPH_UI_STATE_NUMBER_TOLERANCE = 1e-9;
 const TREE_NODE_KINDS = new Set<TreeNodeKind>([
   "WORK",
   "VOLUME",
@@ -199,6 +230,25 @@ const SNAPSHOT_KINDS = new Set<NamedSnapshotKind>([
   "MANUAL",
   "AUTO_BEFORE_REPLACE",
   "AUTO_BEFORE_RESTORE"
+]);
+const PUBLICATION_DIAGNOSTIC_CODES = new Set<PublicationDiagnosticCode>([
+  "UNSUPPORTED_BLOCK",
+  "UNSUPPORTED_INLINE_MODIFIER",
+  "INVALID_SEMANTIC_DOCUMENT",
+  "EMPTY_SCOPE"
+]);
+const PUBLICATION_DIAGNOSTIC_SEVERITIES =
+  new Set<PublicationDiagnosticSeverity>(["INFO", "WARNING", "ERROR"]);
+const READER_PRESET_SOURCE_KINDS = new Set<ReaderPresetSourceKind>([
+  "BUILTIN_TEMPLATE",
+  "CUSTOM",
+  "DUPLICATED",
+  "IMPORTED"
+]);
+const READER_VERIFICATION_STATUSES = new Set<ReaderVerificationStatus>([
+  "GENERIC",
+  "UNVERIFIED_SIMULATION",
+  "USER_DEFINED"
 ]);
 const ENTITY_KINDS = new Set<EntityKind>([
   "CHARACTER",
@@ -542,11 +592,19 @@ function responseRevision(
   response: Readonly<Record<string, unknown>>,
   label: string
 ): number {
-  return requiredInteger(
+  const revision = requiredInteger(
     asRecord(response.metadata, `${label} metadata`),
     "revision",
     `${label} revision`
   );
+  if (
+    response.revision !== undefined &&
+    requiredInteger(response, "revision", `${label} top-level revision`) !==
+      revision
+  ) {
+    throw new Error(`The local core returned mismatched ${label} revisions`);
+  }
+  return revision;
 }
 
 function validateExactText(
@@ -606,6 +664,7 @@ function parseNamedSnapshot(value: unknown): NamedSnapshotSummary {
 
 function parseSnapshotNodeCounts(value: unknown): SnapshotNodeCounts {
   const counts = asRecord(value, "snapshot node counts");
+  assertExactKeys(counts, ["volumes", "chapters", "scenes"], "snapshot node counts");
   return {
     volumes: requiredInteger(counts, "volumes"),
     chapters: requiredInteger(counts, "chapters"),
@@ -615,12 +674,38 @@ function parseSnapshotNodeCounts(value: unknown): SnapshotNodeCounts {
 
 function parseSnapshotDiff(value: unknown): SnapshotDiffSummary {
   const summary = asRecord(value, "snapshot diff summary");
-  const optionalCount = (key: string): number =>
-    summary[key] === undefined ? 0 : requiredInteger(summary, key);
-  const optionalDelta = (key: string): number => {
-    if (summary[key] === undefined) {
-      return 0;
-    }
+  const keys = [
+    "added",
+    "deleted",
+    "renamed_nodes",
+    "reordered_nodes",
+    "changed_scene_bodies",
+    "character_count_delta",
+    "added_entities",
+    "deleted_entities",
+    "changed_entities",
+    "added_tags",
+    "deleted_tags",
+    "changed_tags",
+    "added_relation_types",
+    "deleted_relation_types",
+    "changed_relation_types",
+    "added_relations",
+    "deleted_relations",
+    "changed_relations",
+    "changed_scene_links",
+    "changed_entity_notes",
+    "added_canvases",
+    "deleted_canvases",
+    "changed_canvases",
+    "canvas_node_count_delta",
+    "canvas_edge_count_delta",
+    "added_reader_presets",
+    "deleted_reader_presets",
+    "changed_reader_presets"
+  ] as const;
+  assertExactKeys(summary, keys, "snapshot diff summary");
+  const signedDelta = (key: string): number => {
     const value = requiredNumber(summary, key);
     if (!Number.isSafeInteger(value)) {
       throw new Error(`The local core returned invalid ${key}`);
@@ -633,26 +718,29 @@ function parseSnapshotDiff(value: unknown): SnapshotDiffSummary {
     renamedNodes: requiredInteger(summary, "renamed_nodes"),
     reorderedNodes: requiredInteger(summary, "reordered_nodes"),
     changedSceneBodies: requiredInteger(summary, "changed_scene_bodies"),
-    characterCountDelta: requiredNumber(summary, "character_count_delta"),
-    addedEntities: optionalCount("added_entities"),
-    deletedEntities: optionalCount("deleted_entities"),
-    changedEntities: optionalCount("changed_entities"),
-    addedTags: optionalCount("added_tags"),
-    deletedTags: optionalCount("deleted_tags"),
-    changedTags: optionalCount("changed_tags"),
-    addedRelationTypes: optionalCount("added_relation_types"),
-    deletedRelationTypes: optionalCount("deleted_relation_types"),
-    changedRelationTypes: optionalCount("changed_relation_types"),
-    addedRelations: optionalCount("added_relations"),
-    deletedRelations: optionalCount("deleted_relations"),
-    changedRelations: optionalCount("changed_relations"),
-    changedSceneLinks: optionalCount("changed_scene_links"),
-    changedEntityNotes: optionalCount("changed_entity_notes"),
-    addedCanvases: optionalCount("added_canvases"),
-    deletedCanvases: optionalCount("deleted_canvases"),
-    changedCanvases: optionalCount("changed_canvases"),
-    canvasNodeCountDelta: optionalDelta("canvas_node_count_delta"),
-    canvasEdgeCountDelta: optionalDelta("canvas_edge_count_delta")
+    characterCountDelta: signedDelta("character_count_delta"),
+    addedEntities: requiredInteger(summary, "added_entities"),
+    deletedEntities: requiredInteger(summary, "deleted_entities"),
+    changedEntities: requiredInteger(summary, "changed_entities"),
+    addedTags: requiredInteger(summary, "added_tags"),
+    deletedTags: requiredInteger(summary, "deleted_tags"),
+    changedTags: requiredInteger(summary, "changed_tags"),
+    addedRelationTypes: requiredInteger(summary, "added_relation_types"),
+    deletedRelationTypes: requiredInteger(summary, "deleted_relation_types"),
+    changedRelationTypes: requiredInteger(summary, "changed_relation_types"),
+    addedRelations: requiredInteger(summary, "added_relations"),
+    deletedRelations: requiredInteger(summary, "deleted_relations"),
+    changedRelations: requiredInteger(summary, "changed_relations"),
+    changedSceneLinks: requiredInteger(summary, "changed_scene_links"),
+    changedEntityNotes: requiredInteger(summary, "changed_entity_notes"),
+    addedCanvases: requiredInteger(summary, "added_canvases"),
+    deletedCanvases: requiredInteger(summary, "deleted_canvases"),
+    changedCanvases: requiredInteger(summary, "changed_canvases"),
+    canvasNodeCountDelta: signedDelta("canvas_node_count_delta"),
+    canvasEdgeCountDelta: signedDelta("canvas_edge_count_delta"),
+    addedReaderPresets: requiredInteger(summary, "added_reader_presets"),
+    deletedReaderPresets: requiredInteger(summary, "deleted_reader_presets"),
+    changedReaderPresets: requiredInteger(summary, "changed_reader_presets")
   };
 }
 
@@ -2039,27 +2127,45 @@ function parseWorldGraphUiStateRecord(
   return parseSavedWorldGraphUiState(record.value);
 }
 
-function worldGraphUiStateFingerprint(state: WorldGraphUiState): string {
-  const canonicalNumber = (value: number): number =>
-    Number(value.toFixed(9));
-  const canonicalPoint = (point: WorldGraphPoint): WorldGraphPoint => ({
-    x: canonicalNumber(point.x),
-    y: canonicalNumber(point.y)
-  });
-  return JSON.stringify({
-    ...state,
-    viewport: {
-      zoom: canonicalNumber(state.viewport.zoom),
-      pan: canonicalPoint(state.viewport.pan)
-    },
-    nodePositions: Object.fromEntries(
-      Object.entries(state.nodePositions)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([entityId, position]) => [
-          entityId,
-          canonicalPoint(position)
-        ])
-    )
+function worldGraphUiStateMatches(
+  stored: WorldGraphUiState,
+  requested: WorldGraphUiState
+): boolean {
+  const sameNumber = (left: number, right: number): boolean =>
+    Math.abs(left - right) <= WORLD_GRAPH_UI_STATE_NUMBER_TOLERANCE;
+  const samePoint = (left: WorldGraphPoint, right: WorldGraphPoint): boolean =>
+    sameNumber(left.x, right.x) && sameNumber(left.y, right.y);
+  const sameArray = <T>(left: readonly T[], right: readonly T[]): boolean =>
+    left.length === right.length &&
+    left.every((value, index) => value === right[index]);
+  const storedPositionEntries = Object.entries(stored.nodePositions);
+  const requestedPositionEntries = Object.entries(requested.nodePositions);
+  if (
+    stored.mode !== requested.mode ||
+    stored.focusedEntityId !== requested.focusedEntityId ||
+    stored.depth !== requested.depth ||
+    stored.layout !== requested.layout ||
+    stored.selectedEntityId !== requested.selectedEntityId ||
+    stored.filters.tagMode !== requested.filters.tagMode ||
+    stored.filters.relationDirection !== requested.filters.relationDirection ||
+    stored.filters.showIsolated !== requested.filters.showIsolated ||
+    stored.filters.showLabels !== requested.filters.showLabels ||
+    !sameArray(stored.filters.kinds, requested.filters.kinds) ||
+    !sameArray(stored.filters.statuses, requested.filters.statuses) ||
+    !sameArray(stored.filters.tagIds, requested.filters.tagIds) ||
+    !sameArray(
+      stored.filters.relationTypeIds,
+      requested.filters.relationTypeIds
+    ) ||
+    !sameNumber(stored.viewport.zoom, requested.viewport.zoom) ||
+    !samePoint(stored.viewport.pan, requested.viewport.pan) ||
+    storedPositionEntries.length !== requestedPositionEntries.length
+  ) {
+    return false;
+  }
+  return requestedPositionEntries.every(([entityId, position]) => {
+    const storedPosition = stored.nodePositions[entityId];
+    return storedPosition !== undefined && samePoint(storedPosition, position);
   });
 }
 
@@ -2378,6 +2484,137 @@ function canonicalCanvasJson(value: unknown): string {
     throw new Error("Canvas contains a non-JSON value");
   }
   return encoded;
+}
+
+function parsePublicationDiagnostic(value: unknown): PublicationDiagnostic {
+  const diagnostic = asRecord(value, "publication diagnostic");
+  const diagnosticKeys = [
+    "code",
+    "severity",
+    "scene_node_id",
+    "document_id",
+    "block_id"
+  ] as const;
+  assertExactKeys(
+    diagnostic,
+    diagnosticKeys,
+    "publication diagnostic"
+  );
+  if (diagnosticKeys.some((key) => !Object.hasOwn(diagnostic, key))) {
+    throw new Error("The local core omitted a publication diagnostic field");
+  }
+  return {
+    code: parseEnum(
+      diagnostic.code,
+      PUBLICATION_DIAGNOSTIC_CODES,
+      "publication diagnostic code"
+    ),
+    severity: parseEnum(
+      diagnostic.severity,
+      PUBLICATION_DIAGNOSTIC_SEVERITIES,
+      "publication diagnostic severity"
+    ),
+    sceneNodeId: optionalNullableText(diagnostic, "scene_node_id"),
+    documentId: optionalNullableText(diagnostic, "document_id"),
+    blockId: optionalNullableText(diagnostic, "block_id")
+  };
+}
+
+function parsePublicationDiagnostics(value: unknown): PublicationDiagnostic[] {
+  if (!Array.isArray(value) || value.length > 100_000) {
+    throw new Error("The local core returned invalid publication diagnostics");
+  }
+  return value.map(parsePublicationDiagnostic);
+}
+
+function parsePublicationSourceStatistics(
+  value: unknown
+): PublicationSourceStatistics {
+  const stats = asRecord(value, "publication source statistics");
+  assertExactKeys(
+    stats,
+    ["withSpaces", "withoutSpaces", "paragraphCount", "sceneCount", "chapterCount"],
+    "publication source statistics"
+  );
+  return {
+    withSpaces: requiredInteger(stats, "withSpaces"),
+    withoutSpaces: requiredInteger(stats, "withoutSpaces"),
+    paragraphCount: requiredInteger(stats, "paragraphCount"),
+    sceneCount: requiredInteger(stats, "sceneCount"),
+    chapterCount: requiredInteger(stats, "chapterCount")
+  };
+}
+
+function parseReaderPreset(
+  value: unknown,
+  expectedProjectId: string,
+  validateConfig: (value: unknown) => ReaderRenderConfig
+): ReaderPresetRecord {
+  const preset = asRecord(value, "reader preset");
+  const presetKeys = [
+    "id",
+    "project_id",
+    "name",
+    "source_kind",
+    "source_id",
+    "source_version",
+    "verification_status",
+    "preset_format",
+    "preset_version",
+    "preset_json",
+    "content_hash",
+    "revision",
+    "created_at",
+    "updated_at"
+  ] as const;
+  assertExactKeys(
+    preset,
+    presetKeys,
+    "reader preset"
+  );
+  if (presetKeys.some((key) => !Object.hasOwn(preset, key))) {
+    throw new Error("The local core omitted a reader preset field");
+  }
+  const projectId = requiredString(preset, "project_id");
+  if (projectId !== expectedProjectId) {
+    throw new Error("The local core returned a cross-project reader preset");
+  }
+  const presetFormat = requiredString(preset, "preset_format");
+  const presetVersion = requiredInteger(preset, "preset_version");
+  if (presetFormat !== "MADI_READER_PRESET" || presetVersion !== 1) {
+    throw new Error("The local core returned an unsupported reader preset");
+  }
+  const verificationStatus = parseEnum(
+    preset.verification_status,
+    READER_VERIFICATION_STATUSES,
+    "reader preset verification status"
+  );
+  const config = validateConfig(preset.preset_json);
+  if (config.platform.verificationStatus !== verificationStatus) {
+    throw new Error(
+      "The local core returned inconsistent reader preset verification status"
+    );
+  }
+  return {
+    id: requiredString(preset, "id"),
+    projectId,
+    name: requiredString(preset, "name"),
+    sourceKind: parseEnum(
+      preset.source_kind,
+      READER_PRESET_SOURCE_KINDS,
+      "reader preset source kind"
+    ),
+    sourceId: optionalNullableText(preset, "source_id"),
+    sourceVersion: optionalNullableText(preset, "source_version"),
+    verificationStatus,
+    presetFormat: "MADI_READER_PRESET",
+    presetVersion: 1,
+    config,
+    contentHash: validateSha256(preset.content_hash, "reader preset hash"),
+    revision: requiredInteger(preset, "revision"),
+    createdAt: requiredString(preset, "created_at"),
+    updatedAt: requiredString(preset, "updated_at")
+  };
 }
 
 export class DesktopService {
@@ -3071,10 +3308,7 @@ export class DesktopService {
       response.state,
       session.projectId
     );
-    if (
-      worldGraphUiStateFingerprint(stored) !==
-      worldGraphUiStateFingerprint(state)
-    ) {
+    if (!worldGraphUiStateMatches(stored, state)) {
       throw new Error("The local core saved different world graph UI state");
     }
   }
@@ -3149,6 +3383,355 @@ export class DesktopService {
         ? parsePlotCanvasUiStateRecord(stateRecord, session.projectId)
         : null
     };
+  }
+
+  public async saveReaderLabUiState(
+    input: SaveReaderLabUiStateRequest
+  ): Promise<void> {
+    const session = this.sessions.require(validateSessionId(input?.sessionId));
+    const state = validateReaderLabUiState(input?.state);
+    const response = asRecord(
+      await this.core.request("save_ui_state", {
+        file_path: session.filePath,
+        key: READER_LAB_UI_STATE_KEY,
+        value: state
+      }),
+      "save reader lab UI state response"
+    );
+    const savedRecord = asRecord(response.state, "reader lab UI state record");
+    if (
+      requiredString(savedRecord, "project_id") !== session.projectId ||
+      requiredString(savedRecord, "key") !== READER_LAB_UI_STATE_KEY
+    ) {
+      throw new Error("The local core returned cross-project Reader Lab UI state");
+    }
+    const saved = validateReaderLabUiState(savedRecord.value);
+    if (canonicalCanvasJson(saved) !== canonicalCanvasJson(state)) {
+      throw new Error("The local core saved different Reader Lab UI state");
+    }
+  }
+
+  public async loadReaderLabUiState(
+    input: SessionRequest
+  ): Promise<LoadReaderLabUiStateResult> {
+    const session = this.sessions.require(validateSessionId(input?.sessionId));
+    const response = asRecord(
+      await this.core.request("load_ui_state", {
+        file_path: session.filePath,
+        key: READER_LAB_UI_STATE_KEY
+      }),
+      "load reader lab UI state response"
+    );
+    const stateRecord = optionalRecord(response, "state");
+    if (!stateRecord) {
+      return { state: null };
+    }
+    if (
+      requiredString(stateRecord, "project_id") !== session.projectId ||
+      requiredString(stateRecord, "key") !== READER_LAB_UI_STATE_KEY
+    ) {
+      throw new Error("The local core returned cross-project Reader Lab UI state");
+    }
+    return { state: validateReaderLabUiState(stateRecord.value) };
+  }
+
+  public async compilePublication(
+    input: CompilePublicationRequest
+  ): Promise<CompilePublicationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const scopeNodeId = validateNodeId(input.scopeNodeId, "Publication scope node id");
+    if (
+      !Number.isSafeInteger(input.expectedProjectRevision) ||
+      input.expectedProjectRevision < 0 ||
+      input.expectedProjectRevision !== session.revision
+    ) {
+      throw new Error("Publication compile project revision is stale");
+    }
+    const response = asRecord(
+      await this.core.request("compile_publication", {
+        file_path: session.filePath,
+        scope_node_id: scopeNodeId,
+        expected_revision: input.expectedProjectRevision
+      }),
+      "compile publication response"
+    );
+    const revision = responseRevision(response, "compile publication");
+    const document = validatePublicationDocument(response.document);
+    if (
+      document.projectId !== session.projectId ||
+      document.projectRevision !== revision ||
+      document.scopeNodeId !== scopeNodeId
+    ) {
+      throw new Error("The local core compiled another Publication scope");
+    }
+    const compileTimingMs = requiredNumber(response, "compile_timing_ms");
+    if (compileTimingMs < 0) {
+      throw new Error("The local core returned invalid publication timing");
+    }
+    const result: CompilePublicationResult = {
+      document,
+      contentHash: validateSha256(response.content_hash, "publication content hash"),
+      diagnostics: parsePublicationDiagnostics(response.diagnostics),
+      compileTimingMs,
+      revision
+    };
+    this.sessions.updateProject(sessionId, { revision });
+    return result;
+  }
+
+  public async getPublicationStats(
+    input: CompilePublicationRequest
+  ): Promise<PublicationStatsResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const scopeNodeId = validateNodeId(input.scopeNodeId, "Publication scope node id");
+    if (
+      !Number.isSafeInteger(input.expectedProjectRevision) ||
+      input.expectedProjectRevision < 0 ||
+      input.expectedProjectRevision !== session.revision
+    ) {
+      throw new Error("Publication stats project revision is stale");
+    }
+    const response = asRecord(
+      await this.core.request("get_publication_stats", {
+        file_path: session.filePath,
+        scope_node_id: scopeNodeId,
+        expected_revision: input.expectedProjectRevision
+      }),
+      "publication stats response"
+    );
+    const revision = responseRevision(response, "publication stats");
+    const compileTimingMs = requiredNumber(response, "compile_timing_ms");
+    if (compileTimingMs < 0) {
+      throw new Error("The local core returned invalid publication stats timing");
+    }
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      stats: parsePublicationSourceStatistics(response.stats),
+      contentHash: validateSha256(response.content_hash, "publication stats hash"),
+      diagnostics: parsePublicationDiagnostics(response.diagnostics),
+      compileTimingMs,
+      revision
+    };
+  }
+
+  public async validatePublication(
+    input: ValidatePublicationRequest
+  ): Promise<ValidatePublicationResult> {
+    const document = validatePublicationDocument(input?.document);
+    const response = asRecord(
+      await this.core.request("validate_publication", { document }),
+      "validate publication response"
+    );
+    return {
+      valid: requiredBoolean(response, "valid"),
+      contentHash: validateSha256(response.content_hash, "validated publication hash"),
+      diagnostics: parsePublicationDiagnostics(response.diagnostics)
+    };
+  }
+
+  public async listReaderPresets(
+    input: ListReaderPresetsRequest
+  ): Promise<ListReaderPresetsResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("list_reader_presets", {
+        file_path: session.filePath
+      }),
+      "list reader presets response"
+    );
+    if (!Array.isArray(response.presets)) {
+      throw new Error("The local core returned invalid reader preset list");
+    }
+    const presets = response.presets.map((preset) =>
+      parseReaderPreset(preset, session.projectId, validateReaderRenderConfig)
+    );
+    const nameCounts = new Map<string, number>();
+    for (const preset of presets) {
+      nameCounts.set(preset.name, (nameCounts.get(preset.name) ?? 0) + 1);
+    }
+    const revision = responseRevision(response, "list reader presets");
+    if (!Array.isArray(response.duplicate_names)) {
+      throw new Error("The local core returned invalid duplicate reader preset names");
+    }
+    const duplicateNames = response.duplicate_names.map((name) =>
+      validateShortText(name, "Duplicate Reader preset name", 500)
+    );
+    const computedDuplicateNames = [...nameCounts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([name]) => name)
+      .sort();
+    if (
+      canonicalCanvasJson([...new Set(duplicateNames)].sort()) !==
+      canonicalCanvasJson(computedDuplicateNames)
+    ) {
+      throw new Error("The local core returned inconsistent duplicate reader preset names");
+    }
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      presets,
+      duplicateNames: computedDuplicateNames,
+      revision
+    };
+  }
+
+  public async createReaderPreset(
+    input: CreateReaderPresetRequest
+  ): Promise<ReaderPresetMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const sourceKind = validateEnum(
+      input.sourceKind,
+      READER_PRESET_SOURCE_KINDS,
+      "reader preset source kind"
+    );
+    const verificationStatus = validateEnum(
+      input.verificationStatus,
+      READER_VERIFICATION_STATUSES,
+      "reader preset verification status"
+    );
+    const config = validateReaderRenderConfig(input.config);
+    const response = asRecord(
+      await this.core.request("create_reader_preset", {
+        file_path: session.filePath,
+        preset_id: randomUUID(),
+        name: validateShortText(input.name, "Reader preset name", 500),
+        source_kind: sourceKind,
+        source_id:
+          input.sourceId === undefined || input.sourceId === null
+            ? null
+            : validateShortText(input.sourceId, "Reader preset source id", 256),
+        source_version:
+          input.sourceVersion === undefined || input.sourceVersion === null
+            ? null
+            : validateShortText(
+                input.sourceVersion,
+                "Reader preset source version",
+                128
+              ),
+        verification_status: verificationStatus,
+        preset_format: "MADI_READER_PRESET",
+        preset_version: 1,
+        preset_json: config,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "create reader preset response"
+    );
+    const revision = responseRevision(response, "create reader preset");
+    const preset = parseReaderPreset(
+      response.preset,
+      session.projectId,
+      validateReaderRenderConfig
+    );
+    const noOp = requiredBoolean(response, "no_op");
+    this.sessions.updateProject(sessionId, { revision });
+    return { preset, revision, noOp };
+  }
+
+  public async updateReaderPreset(
+    input: UpdateReaderPresetRequest
+  ): Promise<ReaderPresetMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    if (
+      !Number.isSafeInteger(input.expectedPresetRevision) ||
+      input.expectedPresetRevision < 0
+    ) {
+      throw new Error("Invalid expected Reader preset revision");
+    }
+    const response = asRecord(
+      await this.core.request("update_reader_preset", {
+        file_path: session.filePath,
+        preset_id: validateShortText(input.presetId, "Reader preset id", 128),
+        name: validateShortText(input.name, "Reader preset name", 500),
+        verification_status: validateEnum(
+          input.verificationStatus,
+          READER_VERIFICATION_STATUSES,
+          "reader preset verification status"
+        ),
+        preset_json: validateReaderRenderConfig(input.config),
+        expected_revision: session.revision,
+        expected_preset_revision: input.expectedPresetRevision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "update reader preset response"
+    );
+    const revision = responseRevision(response, "update reader preset");
+    const preset = parseReaderPreset(
+      response.preset,
+      session.projectId,
+      validateReaderRenderConfig
+    );
+    const noOp = requiredBoolean(response, "no_op");
+    this.sessions.updateProject(sessionId, { revision });
+    return { preset, revision, noOp };
+  }
+
+  public async duplicateReaderPreset(
+    input: DuplicateReaderPresetRequest
+  ): Promise<ReaderPresetMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("duplicate_reader_preset", {
+        file_path: session.filePath,
+        source_preset_id: validateShortText(
+          input.sourcePresetId,
+          "Source Reader preset id",
+          128
+        ),
+        preset_id: randomUUID(),
+        ...(input.name === undefined
+          ? {}
+          : { name: validateShortText(input.name, "Reader preset name", 500) }),
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "duplicate reader preset response"
+    );
+    const revision = responseRevision(response, "duplicate reader preset");
+    const preset = parseReaderPreset(
+      response.preset,
+      session.projectId,
+      validateReaderRenderConfig
+    );
+    const noOp = requiredBoolean(response, "no_op");
+    this.sessions.updateProject(sessionId, { revision });
+    return { preset, revision, noOp };
+  }
+
+  public async deleteReaderPreset(
+    input: DeleteReaderPresetRequest
+  ): Promise<DeleteReaderPresetResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const presetId = validateShortText(input.presetId, "Reader preset id", 128);
+    if (
+      !Number.isSafeInteger(input.expectedPresetRevision) ||
+      input.expectedPresetRevision < 0
+    ) {
+      throw new Error("Invalid expected Reader preset revision");
+    }
+    const response = asRecord(
+      await this.core.request("delete_reader_preset", {
+        file_path: session.filePath,
+        preset_id: presetId,
+        expected_revision: session.revision,
+        expected_preset_revision: input.expectedPresetRevision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "delete reader preset response"
+    );
+    const deletedPresetId = requiredString(response, "deleted_preset_id");
+    if (deletedPresetId !== presetId) {
+      throw new Error("The local core deleted another Reader preset");
+    }
+    const revision = responseRevision(response, "delete reader preset");
+    this.sessions.updateProject(sessionId, { revision });
+    return { deletedPresetId, revision };
   }
 
   public async listCanvases(

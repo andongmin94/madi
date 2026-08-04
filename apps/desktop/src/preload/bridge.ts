@@ -4,20 +4,26 @@ import {
   type ApplyReplacementBatchResult,
   IPC_EVENTS,
   type CompleteCloseRequest,
+  type CompilePublicationRequest,
+  type CompilePublicationResult,
   type CanvasMutationResult,
   type CanvasRecord,
   type CreateCanvasRequest,
+  type CreateReaderPresetRequest,
   type CreateNamedSnapshotRequest,
   type CreateNodeRequest,
   type CreateProjectRequest,
   type DeleteNodeRequest,
   type DeleteCanvasRequest,
   type DeleteCanvasResult,
+  type DeleteReaderPresetRequest,
+  type DeleteReaderPresetResult,
   type DeleteNamedSnapshotRequest,
   type DeleteNamedSnapshotResult,
   type DiffNamedSnapshotRequest,
   type DiffNamedSnapshotResult,
   type DuplicateCanvasRequest,
+  type DuplicateReaderPresetRequest,
   type EntityGraphDetail,
   type EntityGraphRequest,
   type EntitySceneContext,
@@ -29,6 +35,7 @@ import {
   type LoadDocumentRequest,
   type LoadCanvasRequest,
   type LoadPlotCanvasUiStateResult,
+  type LoadReaderLabUiStateResult,
   type LoadUiStateResult,
   type LoadWorldGraphUiStateResult,
   type ListDescendantScenesRequest,
@@ -36,6 +43,8 @@ import {
   type ListCanvasesRequest,
   type ListCanvasesResult,
   type ListNamedSnapshotsResult,
+  type ListReaderPresetsRequest,
+  type ListReaderPresetsResult,
   type MadiDesktopApi,
   type NamedSnapshotMutationResult,
   type MoveNodeRequest,
@@ -55,6 +64,7 @@ import {
   type SaveCanvasRequest,
   type SaveCanvasResult,
   type SavePlotCanvasUiStateRequest,
+  type SaveReaderLabUiStateRequest,
   type SaveUiStateRequest,
   type SaveWorldGraphUiStateRequest,
   type ScopeNodeRequest,
@@ -64,6 +74,11 @@ import {
   type RestoreNamedSnapshotRequest,
   type RestoreNamedSnapshotResult,
   type TextStatisticsResult,
+  type PublicationStatsResult,
+  type ReaderPresetMutationResult,
+  type UpdateReaderPresetRequest,
+  type ValidatePublicationRequest,
+  type ValidatePublicationResult,
   type WorldGraphReadModel,
   type WorldGraphStatsResult
 } from "../shared/contracts";
@@ -731,6 +746,93 @@ export function createMadiDesktopApi(
         IPC_CHANNELS.loadPlotCanvasUiState,
         request
       )) as LoadPlotCanvasUiStateResult;
+    },
+
+    async saveReaderLabUiState(
+      request: SaveReaderLabUiStateRequest
+    ): Promise<void> {
+      await invoke(IPC_CHANNELS.saveReaderLabUiState, request);
+    },
+
+    async loadReaderLabUiState(
+      request: SessionRequest
+    ): Promise<LoadReaderLabUiStateResult> {
+      return (await invoke(
+        IPC_CHANNELS.loadReaderLabUiState,
+        request
+      )) as LoadReaderLabUiStateResult;
+    },
+
+    async compilePublication(
+      request: CompilePublicationRequest
+    ): Promise<CompilePublicationResult> {
+      return (await invoke(
+        IPC_CHANNELS.compilePublication,
+        request
+      )) as CompilePublicationResult;
+    },
+
+    async getPublicationStats(
+      request: CompilePublicationRequest
+    ): Promise<PublicationStatsResult> {
+      return (await invoke(
+        IPC_CHANNELS.getPublicationStats,
+        request
+      )) as PublicationStatsResult;
+    },
+
+    async validatePublication(
+      request: ValidatePublicationRequest
+    ): Promise<ValidatePublicationResult> {
+      return (await invoke(
+        IPC_CHANNELS.validatePublication,
+        request
+      )) as ValidatePublicationResult;
+    },
+
+    async listReaderPresets(
+      request: ListReaderPresetsRequest
+    ): Promise<ListReaderPresetsResult> {
+      return (await invoke(
+        IPC_CHANNELS.listReaderPresets,
+        request
+      )) as ListReaderPresetsResult;
+    },
+
+    async createReaderPreset(
+      request: CreateReaderPresetRequest
+    ): Promise<ReaderPresetMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.createReaderPreset,
+        request
+      )) as ReaderPresetMutationResult;
+    },
+
+    async updateReaderPreset(
+      request: UpdateReaderPresetRequest
+    ): Promise<ReaderPresetMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.updateReaderPreset,
+        request
+      )) as ReaderPresetMutationResult;
+    },
+
+    async duplicateReaderPreset(
+      request: DuplicateReaderPresetRequest
+    ): Promise<ReaderPresetMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.duplicateReaderPreset,
+        request
+      )) as ReaderPresetMutationResult;
+    },
+
+    async deleteReaderPreset(
+      request: DeleteReaderPresetRequest
+    ): Promise<DeleteReaderPresetResult> {
+      return (await invoke(
+        IPC_CHANNELS.deleteReaderPreset,
+        request
+      )) as DeleteReaderPresetResult;
     },
 
     async pickCanvasImport(): Promise<PickCanvasImportResult | null> {

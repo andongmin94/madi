@@ -72,7 +72,15 @@ export const CORE_METHODS = [
   "duplicate_canvas",
   "delete_canvas",
   "load_canvas",
-  "save_canvas"
+  "save_canvas",
+  "compile_publication",
+  "get_publication_stats",
+  "validate_publication",
+  "list_reader_presets",
+  "create_reader_preset",
+  "update_reader_preset",
+  "duplicate_reader_preset",
+  "delete_reader_preset"
 ] as const;
 
 export type CoreMethod = (typeof CORE_METHODS)[number];
@@ -111,6 +119,18 @@ export interface ResolveCoreBinaryOptions {
 
 const MAX_RPC_LINE_BYTES = 128 * 1024 * 1024;
 const RPC_TIMEOUT_MS = 30_000;
+const PUBLICATION_RPC_TIMEOUT_MS = 5 * 60_000;
+const PUBLICATION_RPC_METHODS = new Set<CoreMethod>([
+  "compile_publication",
+  "get_publication_stats",
+  "validate_publication"
+]);
+
+export function coreRequestTimeoutMs(method: CoreMethod): number {
+  return PUBLICATION_RPC_METHODS.has(method)
+    ? PUBLICATION_RPC_TIMEOUT_MS
+    : RPC_TIMEOUT_MS;
+}
 
 export function resolveCoreBinary({
   appPath,
@@ -119,16 +139,16 @@ export function resolveCoreBinary({
   platform = process.platform,
   environment = process.env
 }: ResolveCoreBinaryOptions): string {
-  const override = environment.MADI_CORE_BIN?.trim();
-  if (override) {
-    return path.resolve(override);
-  }
-
   const executable = platform === "win32" ? "madi-core.exe" : "madi-core";
   const packagedCandidate = path.join(resourcesPath, "bin", executable);
 
   if (isPackaged) {
     return packagedCandidate;
+  }
+
+  const override = environment.MADI_CORE_BIN?.trim();
+  if (override) {
+    return path.resolve(override);
   }
 
   const candidates = [
@@ -185,7 +205,7 @@ export class JsonRpcCoreClient implements CoreClient {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`Core command ${method} timed out`));
-      }, RPC_TIMEOUT_MS);
+      }, coreRequestTimeoutMs(method));
 
       this.pending.set(id, { method, resolve, reject, timeout });
 

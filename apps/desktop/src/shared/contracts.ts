@@ -1,3 +1,23 @@
+import type {
+  CompilePublicationRequest,
+  CompilePublicationResult,
+  CreateReaderPresetRequest,
+  DeleteReaderPresetRequest,
+  DeleteReaderPresetResult,
+  DuplicateReaderPresetRequest,
+  ListReaderPresetsRequest,
+  ListReaderPresetsResult,
+  LoadReaderLabUiStateResult,
+  PublicationStatsResult,
+  ReaderPresetMutationResult,
+  SaveReaderLabUiStateRequest,
+  UpdateReaderPresetRequest,
+  ValidatePublicationRequest,
+  ValidatePublicationResult
+} from "./publication";
+
+export * from "./publication";
+
 export const IPC_CHANNELS = {
   createProject: "madi:create-project",
   openProject: "madi:open-project",
@@ -18,6 +38,16 @@ export const IPC_CHANNELS = {
   loadWorldGraphUiState: "madi:load-world-graph-ui-state",
   savePlotCanvasUiState: "madi:save-plot-canvas-ui-state",
   loadPlotCanvasUiState: "madi:load-plot-canvas-ui-state",
+  saveReaderLabUiState: "madi:save-reader-lab-ui-state",
+  loadReaderLabUiState: "madi:load-reader-lab-ui-state",
+  compilePublication: "madi:compile-publication",
+  getPublicationStats: "madi:get-publication-stats",
+  validatePublication: "madi:validate-publication",
+  listReaderPresets: "madi:list-reader-presets",
+  createReaderPreset: "madi:create-reader-preset",
+  updateReaderPreset: "madi:update-reader-preset",
+  duplicateReaderPreset: "madi:duplicate-reader-preset",
+  deleteReaderPreset: "madi:delete-reader-preset",
   listDescendantScenes: "madi:list-descendant-scenes",
   searchProject: "madi:search-project",
   getTextStatistics: "madi:get-text-statistics",
@@ -364,6 +394,9 @@ export interface SnapshotDiffSummary {
   readonly changedCanvases: number;
   readonly canvasNodeCountDelta: number;
   readonly canvasEdgeCountDelta: number;
+  readonly addedReaderPresets: number;
+  readonly deletedReaderPresets: number;
+  readonly changedReaderPresets: number;
 }
 
 export interface DiffNamedSnapshotRequest extends SessionRequest {
@@ -1457,6 +1490,36 @@ export interface MadiDesktopApi {
   loadPlotCanvasUiState(
     request: SessionRequest
   ): Promise<LoadPlotCanvasUiStateResult>;
+  saveReaderLabUiState(
+    request: SaveReaderLabUiStateRequest
+  ): Promise<void>;
+  loadReaderLabUiState(
+    request: SessionRequest
+  ): Promise<LoadReaderLabUiStateResult>;
+  compilePublication(
+    request: CompilePublicationRequest
+  ): Promise<CompilePublicationResult>;
+  getPublicationStats(
+    request: CompilePublicationRequest
+  ): Promise<PublicationStatsResult>;
+  validatePublication(
+    request: ValidatePublicationRequest
+  ): Promise<ValidatePublicationResult>;
+  listReaderPresets(
+    request: ListReaderPresetsRequest
+  ): Promise<ListReaderPresetsResult>;
+  createReaderPreset(
+    request: CreateReaderPresetRequest
+  ): Promise<ReaderPresetMutationResult>;
+  updateReaderPreset(
+    request: UpdateReaderPresetRequest
+  ): Promise<ReaderPresetMutationResult>;
+  duplicateReaderPreset(
+    request: DuplicateReaderPresetRequest
+  ): Promise<ReaderPresetMutationResult>;
+  deleteReaderPreset(
+    request: DeleteReaderPresetRequest
+  ): Promise<DeleteReaderPresetResult>;
   pickCanvasImport(): Promise<PickCanvasImportResult | null>;
   exportCanvas(
     request: ExportCanvasRequest
