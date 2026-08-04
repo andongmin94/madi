@@ -1,9 +1,11 @@
 # madi
 
 `madi`는 한국어 장편소설 작가를 위한 local-first Windows desktop 저작도구다.
-현재 작업트리는 Phase 1D World Graph의 파생 read model과 읽기 전용 Cytoscape
-탐색 화면 위에 Phase 1E의 작가 소유 Plot Canvas를 구현한다. Plot Canvas는 JSON
-Canvas 1.0 기반 canonical document를 사용하고 React Flow는 renderer 표현으로만 쓴다.
+현재 작업트리는 Phase 1D World Graph와 Phase 1E Plot Canvas 위에 Phase 1F Reader
+Lab을 구현한다. 저장된 Typie 원고는 Madi 소유의 engine-independent Publication IR로
+파생되고, 같은 IR을 모바일·태블릿·데스크톱 독서환경에서 비교한다. Plot Canvas와 Reader
+Lab은 각각 canonical planning data와 파생 publication read model이라는 서로 다른 경계를
+유지한다.
 
 ```text
 Phase 0.5 baseline: CONDITIONAL TECHNICAL GO
@@ -26,6 +28,10 @@ Phase 1E implementation: COMPLETE
 Phase 1E development/packaged Electron and process-reopen gates: PASS
 Phase 1E final pnpm verify gate: PASS
 Phase 1E verdict: TECHNICAL GO — PRIVATE LOCAL
+Phase 1F implementation: COMPLETE
+Phase 1F development/fresh packaged Electron Reader gates: PASS
+Phase 1F final pnpm verify gate: PASS
+Phase 1F verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
 Windows native Korean IME: MANUAL VALIDATION PENDING
 Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Public/paid/customer distribution: NOT AUTHORIZED
@@ -34,8 +40,12 @@ Public/paid/customer distribution: NOT AUTHORIZED
 World Graph는 기존 Story Bible의 canonical entity/relation을 Rust가 revision-tagged
 DTO로 파생하고 전체 또는 특정 entity 중심 1~3 hop으로 보여주는 읽기 전용 분석
 화면이다. Plot Canvas는 작가가 node/edge/group과 배치를 직접 만드는 canonical planning
-data다. Canvas edge는 Story Bible relation을 만들지 않는다. Phase 1E 경계와 실제
-검증은 [`docs/PHASE_1E_SCOPE.md`](docs/PHASE_1E_SCOPE.md)와
+data다. Canvas edge는 Story Bible relation을 만들지 않는다. Reader Lab은 canonical
+Typie snapshot을 Publication IR로 compile해 read-only Shadow DOM preview에 표시하고
+Story Bible/Canvas/Graph를 출판 원고로 섞지 않는다. Phase 1F 경계와 실제 검증은
+[`docs/PHASE_1F_SCOPE.md`](docs/PHASE_1F_SCOPE.md)와
+[`docs/PHASE_1F_RESULT.md`](docs/PHASE_1F_RESULT.md)를 따른다. Phase 1E의 근거는
+[`docs/PHASE_1E_SCOPE.md`](docs/PHASE_1E_SCOPE.md)와
 [`docs/PHASE_1E_RESULT.md`](docs/PHASE_1E_RESULT.md)를 따른다. World Graph의 기존 근거는
 [`docs/PHASE_1D_RESULT.md`](docs/PHASE_1D_RESULT.md)와
 [`docs/WORLD_GRAPH_PERFORMANCE.md`](docs/WORLD_GRAPH_PERFORMANCE.md)를 따른다. Phase 1C의
@@ -64,14 +74,14 @@ data다. Canvas edge는 Story Bible relation을 만들지 않는다. Phase 1E �
 - 이름 있는 snapshot 생성·목록·이름 변경·삭제·요약 diff·안전 복원
 - 현재 SCENE과 선택 subtree의 공백 포함/제외 Unicode scalar 글자 수
 - Electron 없이 UTF-8 plain-text recovery를 꺼내는 Rust CLI
-- `원고`, `설정`, `그래프`, `캔버스` 작업 모드 전환
+- `원고`, `설정`, `그래프`, `캔버스`, `읽기 실험실` 작업 모드 전환
 - 등장인물·장소·조직·물건·사건·세계관 규칙·복선·기타 설정 CRUD
 - 설정별 별칭, 태그, 상태, 요약, 색상 토큰, 아이콘 키와 확장 JSON 속성
 - 설정별 독립 Typie 상세 노트와 장면과 같은 저장 안전성
 - 프로젝트별 built-in/custom 관계 타입과 directed/undirected/inverse 관계 CRUD
 - SCENE과 설정의 `APPEARS`, `POV`, `MENTIONED`, `RELATED` 명시적 연결
 - 이름·별칭 exact substring 기반의 본문 언급 후보와 명시적 연결 승격
-- Canvas까지 포함하는 named snapshot v3와 기존 v1/v2 decode·복원
+- Reader preset까지 포함하는 named snapshot v4와 기존 v1/v2/v3 decode·복원
 - Story Bible canonical data에서 파생한 읽기 전용 World Graph
 - 8종 entity kind shape/color, directed arrow, undirected 단일 edge와 inverse detail label
 - kind/status/tag ANY·ALL/relation type/direction/고립 node/label filter
@@ -88,11 +98,19 @@ data다. Canvas edge는 Story Bible relation을 만들지 않는다. Phase 1E �
 - Story Bible/World Graph 선택 entity를 ID만 전달해 Canvas에 추가
 - `.canvas` import preview/새 Canvas 생성과 deterministic UTF-8 export
 - 마지막 Canvas, viewport, selection, inspector/grid/minimap/snap을 작품별 UI state로 복원
+- 저장된 Typie 원고에서 파생하는 engine-independent Publication IR v1
+- SCENE/CHAPTER/VOLUME/WORK 범위의 read-only Reader Lab
+- 11종 built-in 독서환경과 fully resolved 사용자 Reader preset CRUD
+- 허용된 font·viewport·spacing·theme·WorkStyle token의 즉시 preview
+- 1/2/3 pane 비교, 동일 source block 강조와 선택적 normalized scroll sync
+- source/render 통계, 전체 scope incremental measurement와 “검토 후보” diagnostics
+- section virtualization과 preview block→원고 SCENE/exact range 이동
+- 마지막 Reader scope/pane/preset/config/zoom/scroll/panel 상태의 새 process 복원
 
 그래프 canonical 관계 편집, Canvas edge의 Story Bible relation 자동 승격, docking
-workspace, 시간축/지식 시점 graph, Reader Lab,
-EPUB, HWP/HWPX, LLM 추출, cloud/sync, collaboration, mobile/web, 장면별 상세 diff와
-플랫폼별 출판 글자 수는 Phase 1E 범위가 아니다.
+workspace, 시간축/지식 시점 graph, 실제 EPUB/HWP/HWPX/PDF/DOCX export, 플랫폼 upload,
+LLM 추출, cloud/sync, collaboration, mobile/web, 장면별 상세 diff와 공식 플랫폼 page
+수 재현은 Phase 1F 범위가 아니다.
 
 ## 실제 사용 흐름
 
@@ -180,11 +198,13 @@ project 전체 작업은 하나의 지속 가능한 `Ctrl+Z` entry가 아니다.
 `Named snapshot` panel에서 이름과 선택 메모로 현재 logical project를 저장하고 목록,
 이름 변경, 삭제와 현재 상태 대비 요약 diff를 사용할 수 있다. restore 확인 뒤 core는
 현재 상태를 같은 transaction의 `AUTO_BEFORE_RESTORE` snapshot으로 먼저 보존한다.
-Payload는 SQLite 복사본이 아니라 hash가 붙은 `MADI_LOGICAL_JSON` v3다. V3에는 설정,
-별칭, 태그, 관계 타입, 관계, 장면 연결, entity note document와 Canvas
-metadata/document/hash/revision이 포함된다. 기존 v1/v2 snapshot도 계속 읽는다. V1
-restore는 Story Bible과 Canvas를, v2 restore는 Canvas를 빈 상태로 재현하며 restore
-직전 현재 상태는 Canvas까지 포함한 v3 safety snapshot으로 남는다.
+Payload는 SQLite 복사본이 아니라 hash가 붙은 `MADI_LOGICAL_JSON` v4다. V4에는 설정,
+별칭, 태그, 관계 타입, 관계, 장면 연결, entity note document, Canvas와 canonical Reader
+preset metadata/config/hash/revision이 포함된다. 기존 v1/v2/v3 snapshot도 계속 읽는다.
+V1 restore는 Story Bible/Canvas/Reader preset을, v2 restore는 Canvas/Reader preset을,
+v3 restore는 Reader preset을 빈 상태로 재현하며 restore 직전 현재 상태는 v4 safety
+snapshot으로 남는다. Reader의 현재 pane, scroll, selection과 render cache는 snapshot에
+들어가지 않는다.
 
 복원 확인 순간에는 fresh diff를 다시 요청해 preview revision과 summary를 대조한다.
 달라졌으면 복원을 실행하지 않고 갱신된 차이를 다시 확인하게 한다. CURRENT 검색은
@@ -257,12 +277,39 @@ Canvas 연결선은 Story Bible의 공식 관계와 별개다. Entity reference�
 [`PLOT_CANVAS_INTERACTION_SEMANTICS.md`](docs/PLOT_CANVAS_INTERACTION_SEMANTICS.md)를
 따른다.
 
-### 10. 종료와 재열기
+### 10. Reader Lab
+
+상단 `읽기 실험실`을 누르면 scope/preset, preview, 독서 설정·통계의 3열 workspace가
+열린다.
+
+1. 현재 SCENE/CHAPTER/VOLUME 또는 작품 전체를 Reader 범위에서 고른다.
+2. 1/2/3 pane을 고르고 pane tab마다 built-in 또는 저장된 preset을 선택한다.
+3. PHONE/TABLET/DESKTOP viewport, font token, 글자 크기·줄간격·문단간격·들여쓰기·여백,
+   정렬, theme와 title/scene-break 표현을 조정한다.
+4. `scroll sync`를 켜 같은 normalized progress를 보거나 끄고 독립 scroll을 비교한다.
+5. Preview block을 클릭하거나 keyboard로 활성화해 모든 pane의 동일 source를 강조하고
+   원고 SCENE/exact range로 이동한다.
+6. 화면 수·line·overflow 통계와 “검토 후보”를 확인한다. 이는 현재 local font/viewport의
+   측정이며 문장 품질이나 플랫폼 공식 page 수 판정이 아니다.
+7. Built-in에서 사용자 preset을 만들거나 저장 preset을 rename/duplicate/delete한다.
+
+Reader 진입/refresh 전에 dirty SCENE 또는 entity note를 먼저 저장한다. 저장이 실패하면
+오래된 내용을 최신 preview처럼 표시하지 않고 재저장 또는 명시적인 마지막 저장본 보기를
+제공한다. Preset/설정 변경은 원고 Publication IR을 다시 compile하지 않는다. 12 section
+또는 100,000자를 넘는 scope는 section windowing을 쓰고 full statistics는 section 하나씩
+background에서 측정한다.
+
+Platform-like 6종은 `UNVERIFIED_SIMULATION`이며 실제 카카오페이지·네이버 시리즈·문피아
+앱의 공식 기본값이나 pixel-exact clone이 아니다. 상세 계약은
+[`docs/READER_LAB_ARCHITECTURE.md`](docs/READER_LAB_ARCHITECTURE.md)와
+[`docs/READER_PROFILE_FORMAT_V1.md`](docs/READER_PROFILE_FORMAT_V1.md)를 따른다.
+
+### 11. 종료와 재열기
 
 1. 현재 IME 조합을 끝낸다.
 2. 창을 닫는다.
 3. Renderer는 현재 dirty 장면/entity note/Canvas와 `workspace.v1`, `world-graph.v1`,
-   `plot-canvas.v1` UI state 저장을 먼저 요청한다.
+   `plot-canvas.v1`, `reader-lab.v1` UI state 저장을 먼저 요청한다.
 4. main process는 renderer가 저장 성공을 승인하기 전 창을 파괴하지 않는다.
 5. Electron process가 완전히 끝난 뒤 앱을 다시 실행한다.
 6. `.madi 열기`로 같은 파일을 선택한다.
@@ -276,14 +323,15 @@ tree 복원을 막지 않고 기본 선택·펼침·폭으로 격리한다. Bind
 
 - `PRAGMA application_id = 0x4D414449`
 - `app_meta.format_version = 1`
-- `app_meta.schema_version = 5`
-- `PRAGMA user_version = 5`
+- `app_meta.schema_version = 6`
+- `PRAGMA user_version = 6`
 - 기존 table: `app_meta`, `documents`, `schema_migrations`
 - Phase 1A table: `projects`, `tree_nodes`, `ui_state`
 - Phase 1B table: `search_documents`, `named_snapshots`
 - Phase 1C table: `entities`, `entity_aliases`, `tags`, `entity_tags`,
   `relation_types`, `entity_relations`, `scene_entity_links`
 - Phase 1E table: `canvases`
+- Phase 1F table: `reader_presets`
 
 정규 hierarchy:
 
@@ -308,13 +356,20 @@ insert/update/delete trigger가 같은 transaction에서 갱신한다. `named_sn
 `MANUAL`, `AUTO_BEFORE_REPLACE`, `AUTO_BEFORE_RESTORE` logical payload와 SHA-256를
 저장한다. schema 2 file을 열면 기존 document를 잃지 않고 migration 3에서 projection을
 backfill한 뒤 migration 4가 Story Bible table과 built-in 관계 타입을 만들고 migration
-5가 Canvas table/index를 추가한다. `format_version`은 계속 1이다. Phase 1D World Graph는
+5가 Canvas table/index를, migration 6이 Reader preset table/index를 추가한다.
+`format_version`은 계속 1이다. Phase 1D World Graph와 Publication IR은 canonical
 schema/table을 추가하지 않는다.
 
 `canvases`는 name/description, `JSON_CANVAS` 1.0 canonical JSON, SHA-256 content hash,
 Canvas별 revision과 timestamp를 저장한다. Canvas create/update/duplicate/delete/save는
 project-wide revision과 Canvas revision을 transaction에서 대조한다. 같은 canonical
 content save는 no-op이다.
+
+`reader_presets`는 project 소유권, name/provenance/verification, fully resolved
+`MADI_READER_PRESET` v1 JSON, SHA-256 content hash, preset별 revision과 timestamp를
+저장한다. Strict shape/range/provenance validation과 cross-project 금지를 transaction에서
+강제하고 같은 canonical content update는 no-op이다. Publication IR과 render statistics는
+이 table이나 다른 canonical table에 저장하지 않는다.
 
 sibling 순서는 `REAL order_key`를 `1024.0` 간격으로 배정한다. 중간 삽입은
 midpoint를 사용하고 간격이 `0.000001` 이하이면 해당 sibling만 rebalance한다.
@@ -337,8 +392,14 @@ payload에도 포함되지 않으므로 snapshot restore 뒤 현재 사용자 �
 
 Plot Canvas 상태는 `ui_state.key = 'plot-canvas.v1'`에 마지막 Canvas ID와 Canvas별
 viewport, selected element, inspector 폭, grid/minimap/snap 값을 저장한다. 이 row도
-project revision을 올리지 않고 named snapshot v3에 포함되지 않는다. Canvas node
+project revision을 올리지 않고 named snapshot v4에 포함되지 않는다. Canvas node
 geometry, group과 edge는 UI state가 아니라 `canvases.document_json`에 저장한다.
+
+Reader Lab 상태는 `ui_state.key = 'reader-lab.v1'`에 마지막 scope, pane count, pane별
+preset/config/zoom/scroll, scroll sync, panel 폭, selected source block과 diagnostic 펼침을
+저장한다. Project revision을 올리거나 named snapshot v4에 들어가지 않는다. 삭제된
+scope/preset reference는 open/restore 때 첫 유효 scope 또는 안전한 built-in으로
+normalize한다.
 
 전체 계약과 migration 규칙은
 [`docs/MADI_FILE_FORMAT_V1_DRAFT.md`](docs/MADI_FILE_FORMAT_V1_DRAFT.md)를 따른다.
@@ -348,17 +409,20 @@ geometry, group과 edge는 UI state가 아니라 `canvases.document_json`에 저
 - Electron main / sandboxed preload / React renderer
 - TypeScript strict mode
 - Rust `madi-core` persistent JSON-RPC sidecar
+- Rust `madi-publication` private Typie semantic decoder와 engine-independent IR compiler
 - SQLite `.madi`
 - Cytoscape.js `3.34.0` renderer와 내장 `cose` layout
 - `@xyflow/react` exact `12.11.2` Plot Canvas renderer
 - JSON Canvas 1.0 기반 `MadiCanvasDocument`
+- React semantic node + Shadow DOM Reader preview와 bounded section windowing
 - Typie browser WASM, ICU 및 한국어 font를 local asset으로 사용
 - `MadiEditorAdapter` / `TypieEditorAdapter` 경계
 - `nodeIntegration: false`
 - `contextIsolation: true`
 - `sandbox: true`
 - `webSecurity: true`
-- production external network 차단과 local `madi://app` protocol
+- main process의 production navigation/outgoing-request guard와 local `madi://app` protocol
+- packaged mode에서 개발용 renderer/core environment override 무시와 production-only CSP
 
 일반 madi code와 Rust core는 Typie 내부 type을 직접 import하지 않는다. renderer에는
 generic IPC, filesystem path, process, shell 또는 임의 RPC method를 노출하지 않는다.
@@ -385,15 +449,20 @@ getEntitySceneContext, saveWorldGraphUiState, loadWorldGraphUiState,
 listCanvases, createCanvas, updateCanvas, duplicateCanvas, deleteCanvas,
 loadCanvas, saveCanvas, savePlotCanvasUiState, loadPlotCanvasUiState,
 pickCanvasImport, exportCanvas,
+saveReaderLabUiState, loadReaderLabUiState,
+compilePublication, getPublicationStats, validatePublication,
+listReaderPresets, createReaderPreset, updateReaderPreset,
+duplicateReaderPreset, deleteReaderPreset,
 getAppVersion, onCloseRequested, completeCloseRequest
 ```
 
 World Graph DTO는 madi가 소유하며 Cytoscape type은 renderer 변환 계층 밖으로 누출되지
 않는다. Plot Canvas DTO도 madi가 소유하며 React Flow type은 renderer adapter 밖으로
-누출되지 않는다. Label·summary·relation note/Canvas text는 text/data로만 전달하고
-`innerHTML`을 사용하지 않는다. Core/main/preload 오류에는 snapshot과 원고 본문을
-출력하지 않는다. Import/export는 고정 dialog capability이며 renderer에 generic
-filesystem/path API를 제공하지 않는다.
+누출되지 않는다. Publication DTO도 madi가 소유하며 Typie `Dot`, `DocView`, changeset과
+modifier runtime type은 private decoder 밖으로 누출되지 않는다. Label·summary·relation
+note/Canvas/원고 text는 text/data로만 전달하고 `innerHTML`을 사용하지 않는다.
+Core/main/preload 오류에는 snapshot과 원고 본문을 출력하지 않는다. Import/export는 고정
+dialog capability이며 renderer에 generic filesystem/path API를 제공하지 않는다.
 
 ## 고정된 Typie 기준
 
@@ -472,6 +541,7 @@ pnpm dev
 pnpm build
 
 # 집중 검증
+pnpm run test:publication
 pnpm run test:core
 pnpm run typecheck
 pnpm run test:desktop
@@ -480,6 +550,7 @@ pnpm run test:phase1b
 pnpm run test:phase1c
 pnpm run test:phase1d
 pnpm run test:integration
+pnpm run fixture:phase1f-reader
 
 # 최종 gate
 pnpm verify
@@ -494,10 +565,12 @@ pnpm format:check
 pnpm test:dev
 ```
 
-`pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust test, 실제 Typie
-probe, `.madi` integration, production build, build 뒤 lazy bundle artifact test, 일반·scale
-development Electron과 fresh unpacked packaged smoke를 순서대로 실행한다. `pnpm test:dev`는
-interactive Vite/Electron startup 성격 때문에 별도다.
+`pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust Publication test,
+실제 Typie probe, `.madi` integration, production build, build 뒤 lazy bundle artifact
+test, 일반·scale development Electron과 fresh unpacked packaged smoke를 순서대로
+실행한다. Phase 1F smoke는 일반·675,000자 장편 Reader fixture를 각각 5회 측정하고 새
+process 복원까지 확인한다. `pnpm test:dev`는 interactive Vite/Electron startup 성격
+때문에 별도다.
 
 unpacked 출력:
 
@@ -512,23 +585,28 @@ output/madi-win32-x64/resources/licenses/
 
 ### 현재 검증 상태
 
-Phase 1D의 승인된 진입 판정은 다음과 같다.
+현재 승인된 기술 판정은 다음과 같다.
 
 ```text
 Phase 1D verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
 Phase 1E verdict: TECHNICAL GO — PRIVATE LOCAL
+Phase 1F verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
 ```
 
-Node.js `26.3.1`/pnpm `11.9.0`의 최종 `pnpm verify`는 294.354초에 exit `0`으로
-끝났다. Desktop `39 files / 219 tests`, Rust `41 tests`, Phase 1A–E integration,
-development/packaged 실제 Electron과 새 process 복원을 통과했다. 독립
-`pnpm package:unpacked`, `pnpm test:electron`, `pnpm test:package`, `pnpm test:bundle`,
-repository/format gate도 exit `0`이다.
+Phase 1D World Graph의 Playwright search focus/selection 누적 clock과 Phase 1E Plot Canvas
+cold `Ctrl+K` 약 0.52초·autosave 누적값은 기록을 유지하되
+`NON-BLOCKING HARNESS-LEVEL OBSERVATION`으로 재분류한다. 내부 처리와 locator/poll/paint/
+debounce가 다른 경계이므로 실제 사용 중 새 오류나 명백한 지연이 발견되기 전에는 다음
+단계를 차단하거나 해당 최적화만 반복하지 않는다.
 
-Phase 1E의 세부 5회 median/max, development/packaged Electron, reopen, network와
-artifact 결과는 실행 로그를 근거로
-[`docs/PHASE_1E_RESULT.md`](docs/PHASE_1E_RESULT.md)와
-[`docs/PLOT_CANVAS_PERFORMANCE.md`](docs/PLOT_CANVAS_PERFORMANCE.md)에 기록한다.
+Node.js `26.3.1`/pnpm `11.9.0`의 최종 `pnpm verify`는 `2,001.7 s`, exit `0`으로 끝났다.
+Desktop `49 files / 281 tests`, `madi-publication` `14/14`, `madi-core` `49/49`와 기존
+Phase 1A–1E regression, development/fresh packaged 실제 Electron, lazy bundle, snapshot
+v4와 새 process Reader 복원을 통과했다. 이어 독립 `pnpm package:unpacked`,
+`pnpm test:electron`, `pnpm test:package`, `pnpm test:bundle`, repository/format gate도 모두
+PASS다. 5회 median/maximum, packaged artifact와 renderer-session network 경계는
+[`docs/PHASE_1F_RESULT.md`](docs/PHASE_1F_RESULT.md)와
+[`docs/READER_LAB_PERFORMANCE.md`](docs/READER_LAB_PERFORMANCE.md)에 기록한다.
 
 ## Rust CLI와 JSON-RPC
 
@@ -576,6 +654,9 @@ get_world_graph, get_world_graph_stats, get_entity_graph_detail,
 get_entity_scene_context,
 list_canvases, create_canvas, update_canvas, duplicate_canvas,
 delete_canvas, load_canvas, save_canvas,
+compile_publication, get_publication_stats, validate_publication,
+list_reader_presets, create_reader_preset, update_reader_preset,
+duplicate_reader_preset, delete_reader_preset,
 save_document, load_document, recover_plain_text
 ```
 
@@ -608,6 +689,10 @@ Typie runtime의 `AGPL-3.0-only` 표기와 현재 결합 구조 때문에 배포
 - app store/package registry 배포
 - proprietary production 배포의 승인 근거로 사용
 
+또한 `pnpm-lock.yaml`/`Cargo.lock` 전체 transitive license corpus는 아직 완결되지 않았고
+unpacked executable은 Authenticode unsigned다. 이는 PRIVATE LOCAL 검증은 막지 않지만
+Typie 결정과 별도로 모든 외부 배포를 계속 차단한다.
+
 AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor 독립 구현 중
 하나를 제품 책임자와 법률 전문가가 서면 결정해야 이 경계를 바꿀 수 있다.
 [`docs/LICENSE_DECISION_REQUIRED.md`](docs/LICENSE_DECISION_REQUIRED.md)는 법률
@@ -615,16 +700,17 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 
 ## 후속 단계로 미룬 항목
 
-다음은 Phase 1E 구현으로 해소한 항목이 아니라 후속 지원·배포·hardening gate로 유지한다.
+다음은 Phase 1F 구현으로 해소한 항목이 아니라 후속 지원·배포·hardening gate로 유지한다.
 
 - Windows native 한국어 IME 수동검증
 - installer/installed-state lifecycle
-- 장편·장시간·DPI·다중 monitor 성능과 memory 기준
+- 장편 Reader setting visible update 약 0.54초의 measurement/paint 경계 profiling
+- 장시간·DPI·다중 monitor 성능과 memory 기준
 - 저장 중 crash/power-loss fault injection
 - screen reader·keyboard-only 접근성 및 native 후보창 위치
 - 실제 후보 Typie commit upgrade rehearsal
 - remote recursive clean clone: `DEFERRED TO PRE-RELEASE`
-- 대형 원고 preview page cache와 완전한 virtual list
+- Publication IR을 공유하는 실제 exporter format/검증 계약
 - exact search 성능 benchmark/index 전략
 - named snapshot retention, compression과 quota
 - 장면별 상세 diff와 부분 restore
@@ -634,11 +720,20 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 - JSON Canvas color preset/hex만을 요구하는 선택적 strict interoperability mode
 - Canvas 세부 node-by-node snapshot diff와 persistent Undo history
 - Canvas edge의 명시적 Story Bible relation 승격 workflow
-- Plot Canvas cold `Ctrl+K`와 pointer gesture/autosave end-to-end latency 최적화
+- World Graph/Plot Canvas 누적 harness clock은 실제 제품 지연 재현 시에만 재최적화
 - Entity rename→delete→broken→relink의 한 실제 Electron 연속 workflow
 
 ## 문서
 
+- [Phase 1F 범위](docs/PHASE_1F_SCOPE.md)
+- [Phase 1F 저장소 결과](docs/PHASE_1F_RESULT.md)
+- [Publication IR v1](docs/PUBLICATION_IR_V1.md)
+- [Reader Lab 아키텍처](docs/READER_LAB_ARCHITECTURE.md)
+- [Reader profile format v1](docs/READER_PROFILE_FORMAT_V1.md)
+- [Reader Lab visual diagnostics](docs/READER_LAB_VISUAL_DIAGNOSTICS.md)
+- [Reader Lab 성능](docs/READER_LAB_PERFORMANCE.md)
+- [ADR-0005: Publication IR is derived engine-independent model](docs/decisions/ADR-0005-publication-ir-is-derived-engine-independent-model.md)
+- [ADR-0006: Reader Lab rendering is isolated and non-executable](docs/decisions/ADR-0006-reader-lab-rendering-is-isolated-and-non-executable.md)
 - [Phase 1E 범위](docs/PHASE_1E_SCOPE.md)
 - [Phase 1E 저장소 결과](docs/PHASE_1E_RESULT.md)
 - [Plot Canvas 데이터 모델](docs/PLOT_CANVAS_DATA_MODEL.md)

@@ -1,13 +1,13 @@
 # Named snapshot logical payload 형식
 
-기준일: 2026-08-08
+기준일: 2026-08-09
 
 ```text
 Storage table: named_snapshots
 payload_format: MADI_LOGICAL_JSON
-payload_version: 3 (decoder accepts 1, 2 and 3)
+payload_version: 4 (decoder accepts 1, 2, 3 and 4)
 embedded format: madi.logical-snapshot
-embedded version: 3 (decoder accepts 1, 2 and 3)
+embedded version: 4 (decoder accepts 1, 2, 3 and 4)
 encoding: UTF-8 JSON, uncompressed
 integrity: SHA-256 of exact payload_blob bytes
 ```
@@ -18,7 +18,7 @@ projection을 재귀적으로 포함하지 않는다.
 
 ## 1. table 계약
 
-Schema 5의 `named_snapshots` row는 다음 값을 가진다.
+Schema 6의 `named_snapshots` row는 다음 값을 가진다.
 
 | column | 의미 |
 |---|---|
@@ -28,7 +28,7 @@ Schema 5의 `named_snapshots` row는 다음 값을 가진다.
 | `note` | nullable 사용자 메모 |
 | `kind` | `MANUAL`, `AUTO_BEFORE_REPLACE`, `AUTO_BEFORE_RESTORE` |
 | `payload_format` | `MADI_LOGICAL_JSON` |
-| `payload_version` | 새 snapshot은 `3`; 기존 `1`, `2`도 decode/restore 가능 |
+| `payload_version` | 새 snapshot은 `4`; 기존 `1`, `2`, `3`도 decode/restore 가능 |
 | `payload_blob` | uncompressed UTF-8 JSON bytes |
 | `content_hash` | payload bytes의 lowercase 64자리 SHA-256 hex |
 | `created_at` | UTC timestamp |
@@ -44,7 +44,7 @@ version, byte length와 hash만 반환한다.
 ```json
 {
   "format": "madi.logical-snapshot",
-  "version": 3,
+  "version": 4,
   "app": {
     "project_id": "...",
     "title": "...",
@@ -68,7 +68,8 @@ version, byte length와 hash만 반환한다.
   "relation_types": [],
   "entity_relations": [],
   "scene_entity_links": [],
-  "canvases": []
+  "canvases": [],
+  "reader_presets": []
 }
 ```
 
@@ -112,14 +113,30 @@ Payload v3의 `canvases`는 다음을 저장한다.
 
 Canvas node/edge count는 document에서 파생하며 snapshot row에 중복 저장하지 않는다.
 
+Payload v4의 `reader_presets`는 저장된 canonical Reader preset row를
+`name COLLATE NOCASE, id` 순서로 보존한다.
+
+- id, project_id, name과 source kind/ID/version
+- envelope와 config의 동일한 verification status
+- `preset_format = MADI_READER_PRESET`, `preset_version = 1`
+- shared camelCase `ReaderRenderConfig` object인 `preset_json`
+- canonical config bytes의 lowercase SHA-256 `content_hash`
+- preset별 revision과 created/updated timestamp
+
+Renderer bundle의 immutable built-in option은 SQLite row가 아니라서 이 배열에 들어가지
+않는다. 다만 canonical table에 provenance가 검증된 `BUILTIN_TEMPLATE` row가 실제로
+존재하면 다른 저장 row와 동일하게 capture한다. Config validation과 provenance 규칙은
+`READER_PROFILE_FORMAT_V1.md`를 따른다.
+
 ## 3. 의도적으로 제외하는 값
 
 - `named_snapshots` row와 이전 payload
 - `search_documents` projection 및 trigger-derived cache
 - `schema_migrations`
-- `world-graph.v1`, `plot-canvas.v1`과 다른/future UI-state key
+- `world-graph.v1`, `plot-canvas.v1`, `reader-lab.v1`과 다른/future UI-state key
 - Canvas viewport, selection, inspector 폭, grid/minimap/snap 옵션
 - Canvas session Undo/Redo history와 temporary drag state
+- Reader pane 수/slot, scope, preset selection, pane override, scroll/zoom, source selection
 - React Flow/Cytoscape object, renderer cache, DOM, timer와 active composition
 - Electron window 위치
 - Typie runtime cache와 undo stack
@@ -127,7 +144,9 @@ Canvas node/edge count는 document에서 파생하며 snapshot row에 중복 저
 - `.bak`, temporary save 또는 SQLite container bytes
 
 Restore는 `workspace.v1`만 교체한다. Snapshot에 포함하지 않은 UI-state key는 그대로
-남으므로 World Graph/Canvas viewport와 panel 배치는 현재 사용자 상태를 유지한다.
+남으므로 World Graph/Canvas viewport와 Reader pane/layout/selection은 현재 사용자 상태를
+유지한다. Restore 뒤 유효하지 않은 Reader preset 참조를 고치는 것은 renderer의 UI-state
+정규화이며 snapshot payload의 일부가 아니다.
 
 ## 4. 생성 종류
 
@@ -145,8 +164,9 @@ replacement와 occurrence 수를 note에 기록한다.
 ### `AUTO_BEFORE_RESTORE`
 
 대상 snapshot restore transaction 안에서 core가 현재 logical state를 먼저 capture한다.
-기본 이름은 `복원 전 자동 저장 — <timestamp>`다. Current schema 5에서 생성되므로 v1/v2
-target을 복원할 때도 safety snapshot 자체는 Canvas를 포함한 v3다.
+기본 이름은 `복원 전 자동 저장 — <timestamp>`다. Current schema 6에서 생성되므로
+v1/v2/v3 target을 복원할 때도 safety snapshot 자체는 Canvas와 Reader preset을 포함한
+v4다.
 
 ## 5. 생성과 revision
 
@@ -183,9 +203,16 @@ content-addressed deduplication 형식은 아니다.
 - 추가·삭제·변경된 Canvas 수
 - `현재 전체 Canvas node 수 - snapshot Canvas node 수`
 - `현재 전체 Canvas edge 수 - snapshot Canvas edge 수`
+- 추가된 Reader preset 수: `added_reader_presets`
+- 삭제된 Reader preset 수: `deleted_reader_presets`
+- 공통 ID에서 canonical envelope/config/hash 의미가 바뀐 Reader preset 수:
+  `changed_reader_presets`
 
 Canvas changed 비교에는 name/description, document identity/JSON/hash와 creation identity가
 포함되고 Canvas revision과 `updated_at`만 다른 경우는 semantic change로 세지 않는다.
+Reader preset changed 비교에는 name, provenance, verification, format/version, canonical
+config, content hash와 `created_at` identity가 포함되고 preset revision과 `updated_at`만
+다른 경우는 semantic change로 세지 않는다.
 세부 node-by-node patch, Canvas별 diff, 본문 line/style diff와 merge는
 제공하지 않는다. 기존 `changed_scene_bodies`와 character delta는 SCENE document만
 계산하며 entity note나 Canvas text를 원고 통계에 섞지 않는다.
@@ -204,13 +231,16 @@ Core는 다음을 검증한다.
 4. JSON decode와 payload project ID 확인
 5. node ID/title/order, hierarchy, WORK와 SCENE-document 1:1 확인
 6. entity/document owner와 alias/tag/relation/link 무결성 확인
-7. v2/v3의 built-in relation type 10개와 v1 빈 Story Bible 계약 확인
+7. v2/v3/v4의 built-in relation type 10개와 v1 빈 Story Bible 계약 확인
 8. document project/editor metadata/base64 확인
 9. UI state가 `workspace.v1`뿐인지 확인
 10. v1/v2가 Canvas array를 위조하지 않았는지 확인
 11. v3 Canvas ID/project/metadata/document identity/revision/timestamp 확인
 12. 각 Canvas JSON 구조, canonical serialization, content hash, geometry/group/edge
     endpoint와 count/size limit 확인
+13. v1/v2/v3가 Reader preset array를 위조하지 않았는지 확인
+14. v4 Reader preset의 project, ID, provenance, verification, exact config shape,
+    canonical hash, revision과 timestamp 확인
 
 검증 실패는 `SnapshotIntegrity` 오류이며 현재 project를 바꾸지 않는다.
 
@@ -225,12 +255,12 @@ Core restore는 pre-operation SQLite backup 뒤 하나의 `BEGIN IMMEDIATE` 안�
 
 1. expected revision 재확인
 2. target row load
-3. 현재 logical v3 payload capture
+3. 현재 logical v4 payload capture
 4. 현재 payload를 `AUTO_BEFORE_RESTORE`로 insert
 5. target hash/decode/구조 검증
-6. 현재 tree, documents, Story Bible, canvases와 `workspace.v1` 삭제
-7. project/app metadata, documents, tree, Story Bible, Canvas와 `workspace.v1`을 FK 순서로
-   재생성
+6. 현재 tree, documents, Story Bible, canvases, reader presets와 `workspace.v1` 삭제
+7. project/app metadata, documents, tree, Story Bible, Canvas, Reader preset과
+   `workspace.v1`을 FK 순서로 재생성
 8. documents trigger를 통한 search projection 재구성
 9. project revision 한 번 증가
 10. commit 및 file sync
@@ -244,42 +274,57 @@ exclusive lock을 해제하지 않는다. Canvas reference display는 reload한 
 tree 기준으로 broken 여부를 다시 파생한다. Commit 뒤 reload 실패는 임시 editor graph를
 canonical DB에 저장하지 못하게 fail-closed 처리한다.
 
-## 9. v1/v2/v3 호환
+## 9. v1/v2/v3 호환과 current v4
 
-Decoder는 payload version 1, 2, 3만 수용한다. Missing newer arrays are decoded as empty,
-but an older payload cannot claim newer data.
+Decoder는 payload version 1, 2, 3, 4만 수용한다. 명시적으로 지원하는 older payload의
+newer array는 빈 값으로 decode하지만, older payload가 더 최신 데이터를 위조할 수는 없다.
 
 ### Payload v1
 
 - project/tree/SCENE documents/`workspace.v1`만 의미가 있다.
-- 비어 있지 않은 Story Bible 또는 Canvas array는 integrity 오류다.
-- Restore는 사용자 Story Bible과 Canvas를 빈 상태로 만들고 built-in relation type
-  10개만 다시 seed한다.
+- 비어 있지 않은 Story Bible, Canvas 또는 Reader preset array는 integrity 오류다.
+- Restore는 사용자 Story Bible, Canvas와 Reader preset을 빈 상태로 만들고 built-in
+  relation type 10개만 다시 seed한다.
 
 ### Payload v2
 
 - Story Bible과 entity note를 포함한다.
-- 비어 있지 않은 Canvas array는 integrity 오류다.
-- Restore는 v2 Story Bible을 복원하고 Canvas는 빈 상태로 만든다.
+- 비어 있지 않은 Canvas 또는 Reader preset array는 integrity 오류다.
+- Restore는 v2 Story Bible을 복원하고 Canvas와 Reader preset은 빈 상태로 만든다.
 
 ### Payload v3
 
 - v2 전체와 Canvas canonical row를 포함한다.
 - Canvas metadata/document/hash/revision까지 logical restore한다.
 - Canvas UI state와 session Undo history는 포함하지 않는다.
+- 비어 있지 않은 Reader preset array는 integrity 오류이며 restore 결과는 preset이 빈
+  상태다.
 
-V1/v2 restore가 현재 Canvas를 암묵적으로 유지하거나 merge하지 않는 이유는 snapshot
-target을 정확히 재현하기 위해서다. Restore 직전 현재 schema 5 state는 Canvas까지 담은
-v3 `AUTO_BEFORE_RESTORE`로 보존되므로 사용자는 safety snapshot으로 돌아갈 수 있다.
+### Payload v4
+
+- v3 전체와 canonical `reader_presets` row를 포함한다.
+- Reader preset envelope/config/hash/revision/timestamp를 logical restore한다.
+- `reader-lab.v1` pane/layout/selection UI state는 포함하지 않는다.
+
+V1/v2 restore가 현재 Canvas를, v1/v2/v3 restore가 현재 Reader preset을 암묵적으로
+유지하거나 merge하지 않는 이유는 snapshot target을 정확히 재현하기 위해서다. Restore
+직전 현재 schema 6 state는 Canvas와 Reader preset을 담은 v4
+`AUTO_BEFORE_RESTORE`로 보존되므로 사용자는 safety snapshot으로 돌아갈 수 있다.
 
 ## 10. 한계
 
 - unknown format/version은 자동 변환하지 않는다.
 - payload는 압축하지 않아 Typie base64와 Canvas JSON 크기에 비례해 커진다.
-- named snapshot마다 SCENE/ENTITY note/Canvas document를 복제하므로 저장 공간은
+- named snapshot마다 SCENE/ENTITY note/Canvas document/Reader preset을 복제하므로 저장 공간은
   snapshot 수와 project 크기에 비례한다.
 - hash는 무결성 검사용이며 서명, 인증, 암호화 또는 비밀성 보장이 아니다.
 - runtime Undo history는 payload에 포함하지 않는다.
 - partial restore, merge, per-scene/Canvas restore와 automatic pruning은 없다.
 
-검증 결과와 test 수는 실제 실행 로그가 있는 `PHASE_1E_RESULT.md`에서만 보고한다.
+검증 결과와 test 수는 실제 실행 로그가 있는 Phase 결과 문서에서만 보고한다.
+
+## 11. 관련 문서
+
+- [Phase 1F result](./PHASE_1F_RESULT.md)
+- [`.madi` file format v1 draft](./MADI_FILE_FORMAT_V1_DRAFT.md)
+- [Reader profile format v1](./READER_PROFILE_FORMAT_V1.md)

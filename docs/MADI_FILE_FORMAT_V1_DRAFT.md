@@ -1,20 +1,20 @@
 # `.madi` 파일 포맷 v1 초안
 
-기준일: 2026-08-08
+기준일: 2026-08-09
 
 ```text
 Specification status: DRAFT
 Logical format version: 1
-SQLite schema version: 5
-Implementation conformance: PHASE 1E PLOT CANVAS CANONICAL DATA
-Migration/core-sidecar round-trip: SCHEMA 4 → 5
+SQLite schema version: 6
+Implementation conformance: PHASE 1F READER PRESET/PUBLICATION CORE DATA
+Migration/core-sidecar round-trip: SCHEMA 5 → 6
 ```
 
 이 문서는 Phase 1A의 저장 계약, Phase 1B의 exact search/named snapshot 확장,
 Phase 1C의 Story Bible 저장 계약, Phase 1D의 파생 World Graph UI state 경계와 Phase
-1E의 작가 소유 Plot Canvas 저장 계약을 기록한다. 이 명세의 문구만으로 구현
-적합성을 증명하지는 않으며, Phase 1E migration·재열기 검증 증거와 제한은
-`PHASE_1E_RESULT.md`를 따른다. 배포 전에는
+1E의 작가 소유 Plot Canvas 저장 계약, Phase 1F의 canonical Reader preset과 read-only
+Publication compiler 경계를 기록한다. 이 명세의 문구만으로 구현 적합성을 증명하지
+않으며, 실행 증거와 제한은 각 Phase 결과 문서를 따른다. 배포 전에는
 구현과 fixture를 다시 대조해 이 초안을 확정 문서로 승격해야 한다.
 
 `MUST`, `MUST NOT`, `SHOULD`는 각각 필수, 금지, 권고 요구사항이다.
@@ -27,8 +27,8 @@ Phase 1C의 Story Bible 저장 계약, Phase 1D의 파생 World Graph UI state �
 - `PRAGMA application_id`: `0x4D414449` (`MADI`, decimal `1296122953`)
 - `app_meta.format_name`: `madi`
 - `app_meta.format_version`: `1`
-- `app_meta.schema_version`: `5`
-- `PRAGMA user_version`: `5`
+- `app_meta.schema_version`: `6`
+- `PRAGMA user_version`: `6`
 
 v0의 `application_id`와 container는 바꾸지 않는다. 확장자만 `.madi`인 임의
 SQLite 파일, 다른 `application_id`, 알 수 없는 format 또는 지원 값보다 높은
@@ -70,12 +70,18 @@ v1은 기존 row를 버리거나 snapshot을 다른 임시 형식으로 바꾸�
 빈 payload를 유효한 Typie snapshot이라고 가장하지 않는다. 최초 load 시 adapter가
 빈 document를 만들고 최초 성공 save에서 실제 commit/schema/snapshot을 기록한다.
 
-## 3. schema v5
+Phase 1F Publication compiler는 `plain_text_recovery`를 semantic fallback으로 사용하지
+않는다. `editor_engine = typie`, pinned commit
+`fbe5c4bf860d1717a66e66bea2374a2e39f0dd26`, schema version `1`인 snapshot만 private
+`madi-publication` bridge에서 lossless decode한다. Unknown/lossy/degraded projection은
+read-only compile 오류 또는 code diagnostic이며 원고나 database를 수정하지 않는다.
 
-Schema 5는 Phase 1A schema 2의 `projects`, `tree_nodes`, `ui_state`, Phase 1B schema 3의
+## 3. schema v6
+
+Schema 6은 Phase 1A schema 2의 `projects`, `tree_nodes`, `ui_state`, Phase 1B schema 3의
 exact-search projection과 named logical snapshot table, Phase 1C schema 4의 Story Bible
-table을 그대로 유지하고 Phase 1E의 `canvases` table을 추가한다. 아래 SQL은 v1의 목표
-schema다. 실제 migration은
+table, Phase 1E schema 5의 `canvases` table을 그대로 유지하고 Phase 1F의
+`reader_presets` table을 추가한다. 아래 SQL은 v1의 목표 schema다. 실제 migration은
 `IF NOT EXISTS`만으로 성공을 판정하지 않고 migration record와 전체 불변식을 함께
 검증해야 한다.
 
@@ -180,13 +186,22 @@ Canvas node 위치·크기·z-order·group과 edge는 이 UI state가 아니라 
 `canvases.document_json`에 저장한다. `plot-canvas.v1`은 Canvas document, session Undo
 history 또는 React Flow object를 저장하지 않는다.
 
+Phase 1F의 예약 key는 `reader-lab.v1`이다. 마지막 scope, active pane count와 정확히 세
+pane slot, pane별 preset 선택과 safe override, scroll/zoom, source selection, scroll
+sync와 panel 폭을 저장한다.
+Publication IR, 원고 text, compiled block/section, Reader preset config/hash 또는 측정 DOM은
+저장하지 않는다. 이 row는 재생성 가능한 renderer preference이며 named snapshot에서
+제외한다.
+
 `value_json`은 cache나 임의 renderer object 저장소가 아니다. Rust core의
 `ui_state` API는 versioned key와 JSON value를 보존하는 generic 저장 경계다.
 Electron main이 `workspace.v1`의 snake_case shape, node ID, 최대 1,000개 expanded
 ID와 Binder 폭을 검증한다. `world-graph.v1`은 별도 고정 schema와 유한 좌표·viewport,
 지원 enum, bounded string array/position map을 검증한다. `plot-canvas.v1`도 dedicated
 main/preload capability가 유한 viewport, bounded inspector 폭, boolean option과 최대
-1,000개 Canvas state를 검증한다. Renderer는 원고 text, snapshot, DOM,
+1,000개 Canvas state를 검증한다. `reader-lab.v1`도 dedicated capability가 exact version,
+bounded scope/preset ID, pane count/slot, finite scroll/zoom/override와 panel 폭을 검증한다.
+Renderer는 원고 text, snapshot, DOM,
 Cytoscape/React Flow instance, composition payload 또는 timer state를 어느 UI state에도
 넣지 않는다.
 
@@ -238,13 +253,15 @@ CREATE INDEX named_snapshots_project_created_idx
     ON named_snapshots(project_id, created_at DESC, id);
 ```
 
-새 payload identity는 `MADI_LOGICAL_JSON` version 3이며 embedded JSON identity는
-`madi.logical-snapshot` version 3이다. Decoder는 version 1과 2도 계속 지원한다.
+새 payload identity는 `MADI_LOGICAL_JSON` version 4이며 embedded JSON identity는
+`madi.logical-snapshot` version 4이다. Decoder는 명시된 compatibility 범위인 version
+1, 2, 3도 계속 지원한다.
 `content_hash`는 exact uncompressed UTF-8 payload bytes의 lowercase SHA-256 hex다.
 payload에는 project/tree/documents, Typie BLOB의 base64, recovery, `workspace.v1`과
-Story Bible logical row, Canvas metadata/document/hash/revision을 포함하고 named snapshot
-table, search projection, `world-graph.v1`, `plot-canvas.v1`, Canvas Undo/viewport/selection과
-renderer runtime object는 포함하지 않는다.
+Story Bible logical row, Canvas metadata/document/hash/revision, canonical Reader preset
+row를 포함하고 named snapshot table, search projection, `world-graph.v1`,
+`plot-canvas.v1`, `reader-lab.v1`, Canvas Undo/viewport/selection과 renderer runtime
+object는 포함하지 않는다.
 
 전체 payload와 restore 계약은 `docs/NAMED_SNAPSHOT_FORMAT.md`를 따른다.
 
@@ -393,6 +410,54 @@ model에서 표시를 파생한다. Target 삭제는 Canvas row를 cascade-delet
 reference로 남긴다. Canvas edge는 `entity_relations`와 별개다. 전체 JSON 구조와
 호환성은 `PLOT_CANVAS_DATA_MODEL.md`와 `JSON_CANVAS_COMPATIBILITY.md`를 따른다.
 
+### Phase 1F `reader_presets`
+
+```sql
+CREATE TABLE reader_presets (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    source_kind TEXT NOT NULL CHECK (source_kind IN (
+        'BUILTIN_TEMPLATE', 'CUSTOM', 'DUPLICATED', 'IMPORTED'
+    )),
+    source_id TEXT,
+    source_version TEXT,
+    verification_status TEXT NOT NULL CHECK (verification_status IN (
+        'GENERIC', 'UNVERIFIED_SIMULATION', 'USER_DEFINED'
+    )),
+    preset_format TEXT NOT NULL CHECK (preset_format = 'MADI_READER_PRESET'),
+    preset_version INTEGER NOT NULL CHECK (preset_version = 1),
+    preset_json TEXT NOT NULL CHECK (json_valid(preset_json)),
+    content_hash TEXT NOT NULL CHECK (
+        length(content_hash) = 64
+        AND content_hash = lower(content_hash)
+        AND content_hash NOT GLOB '*[^0-9a-f]*'
+    ),
+    revision INTEGER NOT NULL CHECK (revision >= 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX reader_presets_project_name_idx
+    ON reader_presets(project_id, name COLLATE NOCASE, id);
+CREATE INDEX reader_presets_project_updated_idx
+    ON reader_presets(project_id, updated_at DESC, id);
+```
+
+`preset_json`은 `ReaderRenderConfig` v1 object이며 nested field는 shared renderer contract와
+같은 camelCase다. Core는 unknown field/token, UTF-16 길이, safe number/range, viewport와
+padding 관계, provenance/verification 관계를 strict하게 검증하고 color를 lowercase로
+normalize한 뒤 object key를 결정적으로 정렬한다. `content_hash`는 이 canonical compact
+UTF-8 JSON bytes의 SHA-256다.
+
+Preset 이름은 같은 project에서 중복할 수 있고 목록 응답은 duplicate name을 별도로
+진단한다. Create/duplicate는 preset revision `0`으로 시작한다. Update/delete는 project
+revision과 `expected_preset_revision >= 0`을 모두 대조한다. Update의 canonical config와
+name/status가 같으면 no-op이며 timestamp, preset revision과 project revision을 올리지
+않는다. Cross-project ID와 malformed config/hash는 transaction을 바꾸지 않고 거부한다.
+전체 envelope/config 계약은 `READER_PROFILE_FORMAT_V1.md`를 따른다.
+
 ## 4. canonical hierarchy
 
 허용 graph는 다음뿐이다.
@@ -506,22 +571,23 @@ transaction들을 적용한 뒤 canonical project row를 별도 transaction으�
 3. `search_documents`, trigger, `named_snapshots`와 schema migration 3
 4. Story Bible table, trigger와 schema migration 4
 5. `canvases` table/index와 schema migration 5
-6. `app_meta` 한 row
-7. 같은 ID의 `projects` 한 row와 built-in relation type 10개
-8. project title을 가진 WORK 한 row
-9. WORK 아래 초기 document title을 가진 CHAPTER 한 row
-10. CHAPTER 아래 같은 title의 SCENE과 document 한 쌍
+6. `reader_presets` table/index와 schema migration 6
+7. `app_meta` 한 row
+8. 같은 ID의 `projects` 한 row와 built-in relation type 10개
+9. project title을 가진 WORK 한 row
+10. WORK 아래 초기 document title을 가진 CHAPTER 한 row
+11. CHAPTER 아래 같은 title의 SCENE과 document 한 쌍
 
 초기 VOLUME은 만들지 않는다. 기본 node/document는 기존 “새 파일을 만들면 바로 쓸
 수 있음” 동작을 유지하기 위한 최소값이다. core의 `document_title`을 생략하면 project
 title을 사용하며, 현재 desktop create path도 project title을 넘긴다. 이후 Binder의
 추가 동작은 `새 권`, `새 화`, `새 장면`을 기본 제목으로 사용한다.
 
-schema를 만들고 `application_id = 0x4D414449`, `user_version = 5`를 설정한 뒤 file을
+schema를 만들고 `application_id = 0x4D414449`, `user_version = 6`을 설정한 뒤 file을
 sync한다. destination이 이미 있으면 덮어쓰지 않는다. 완성된 임시 파일만 기존 v0의
 no-clobber publish 절차로 destination 이름에 연결한다.
 
-## 7. schema 1/2/3/4 → schema 5 migration
+## 7. schema 1/2/3/4/5 → schema 6 migration
 
 입력은 `format_version = 0`, `schema_version = 1`, `user_version = 1`인 유효한 v0
 파일 또는 schema 2 파일이다. 현재 open 순서는 migration 전에 application ID와
@@ -603,6 +669,22 @@ backfill하지 않는다. 기존 project의 Canvas 목록은 빈 상태에서 �
 v1/v2 row도 rewrite하지 않으며 snapshot decoder가 version별 빈 Story Bible/Canvas
 계약을 검증한다. 실패하면 Canvas table/index/migration record/version 변경이 함께
 rollback된다.
+
+### schema 5 → 6 절차
+
+1. 별도 `BEGIN IMMEDIATE`를 시작한다.
+2. `reader_presets` table과 project/name, project/updated index를 만든다.
+3. `schema_migrations(version = 6)`을 기록한다.
+4. `app_meta.schema_version = 6`으로 바꾸고 `format_version = 1`을 유지한다.
+5. `PRAGMA user_version = 6`을 설정한다.
+6. 성공하면 commit한다.
+
+Schema 5 → 6은 기존 project/tree/document/search/snapshot/Story Bible/Canvas row를
+변경하거나 backfill하지 않는다. 기존 project의 저장 Reader preset 목록은 빈 상태에서
+시작하고 immutable built-in template은 SQLite row로 seed하지 않는다. 기존 payload
+v1/v2/v3 row도 rewrite하지 않으며 decoder가 restore할 때 Reader preset이 없는 정확한
+historical state로 처리한다. 실패하면 Reader preset table/index/migration
+record/version 변경이 함께 rollback된다.
 
 현재 구현은 migration 전 `.bak`을 만들지 않으므로 pre-migration backup이 있다고
 주장하지 않는다. 손상된 row를 버리고 migration을 성공 처리하거나 빈 v1 project로
@@ -761,10 +843,11 @@ rollback한다. Typie 의미 transform 자체의 adapter 계약은
 manual create/rename/delete는 pre-operation backup, expected revision과 immediate
 transaction을 사용하고 revision을 한 번 올린다. diff는 read-only다. restore는 같은
 transaction 안에서 현재 logical payload를 `AUTO_BEFORE_RESTORE`로 insert하고 target을
-검증한 뒤 project/tree/documents/Story Bible/Canvas/`workspace.v1`을 복원한다. 다른 UI
-key와 기존 named snapshot row는 보존한다. Payload v1은 Story Bible과 Canvas를,
-payload v2는 Canvas를 빈 상태로 복원한다. Restore 직전 현재 schema 5 state는 Canvas를
-포함한 v3 `AUTO_BEFORE_RESTORE`로 보존한다. 자세한 payload는
+검증한 뒤 project/tree/documents/Story Bible/Canvas/Reader preset/`workspace.v1`을
+복원한다. 다른 UI key와 기존 named snapshot row는 보존한다. Payload v1은 Story Bible,
+Canvas와 Reader preset을, payload v2는 Canvas와 Reader preset을, payload v3는 Reader
+preset을 빈 상태로 복원한다. Restore 직전 현재 schema 6 state는 Canvas와 Reader
+preset을 포함한 v4 `AUTO_BEFORE_RESTORE`로 보존한다. 자세한 payload는
 `docs/NAMED_SNAPSHOT_FORMAT.md`를 따른다.
 
 ### Phase 1E Canvas operation
@@ -785,6 +868,28 @@ Renderer의 `generation`/`saveSequence`는 stale response 억제 token이며 can
 column이 아니다. Main은 고정 Canvas IPC capability에서 request/result identity를
 대조하고 React Flow object, generic filesystem path 또는 arbitrary RPC method를 받지
 않는다.
+
+### Phase 1F Publication/Reader preset operation
+
+- `compile_publication`은 SCENE/CHAPTER/VOLUME/WORK scope의 pinned Typie snapshot을
+  read-only decode하여 engine-independent `PublicationDocument` v1, deterministic hash,
+  code-only diagnostic과 compile timing을 반환한다.
+- `get_publication_stats`는 같은 compile boundary의 character/paragraph/scene/chapter
+  통계와 hash를 반환한다.
+- `validate_publication`은 전달된 Publication DTO의 strict union, source mapping, caps,
+  derived statistics와 canonical hash를 검증하며 `.madi`를 열거나 수정하지 않는다.
+- `list_reader_presets`는 current project row를 hash/shape/provenance까지 재검증해
+  deterministic order와 duplicate-name warning으로 반환한다.
+- `create_reader_preset`, `update_reader_preset`, `duplicate_reader_preset`,
+  `delete_reader_preset`은 project/preset revision, canonical hash, no-op과 project
+  isolation을 transaction 안에서 강제한다.
+
+Publication source block ID는 raw Typie Dot이 아니라 document ID와 private Dot identity를
+namespace한 deterministic hash다. Body block은 정확한 annotated Unicode-scalar range를
+보존하고 empty authored block은 verified zero-length caret range를 가진다. Hierarchy
+heading은 실제 source node ID와 첫/current descendant target SCENE/document를 함께
+가져 title click이 source SCENE을 열 수 있게 한다. Renderer/SQLite/RPC에는 Typie Rust
+type, editor DOM 또는 executable HTML/CSS가 노출되지 않는다.
 
 ## 12. UI state 정규화
 
@@ -840,6 +945,22 @@ Dedicated main/preload capability가 camelCase renderer DTO와 disk snake_case�
 project/key를 재검증한다. Canvas document mutation과 별개이므로 viewport, selection,
 inspector 옵션은 project revision을 올리지 않는다.
 
+Disk의 `reader-lab.v1`은 key suffix로 version을 고정하고 shared camelCase renderer
+구조를 generic JSON value로 그대로 저장한다.
+
+- `lastScopeNodeId`: `string | null`
+- `paneCount`: `1 | 2 | 3`
+- 정확히 세 fixed pane slot의 preset ID, device profile ID, safe override, zoom과 scroll
+  progress
+- `scrollSync`, bounded left/right panel width, selected source block ID와 diagnostic expanded
+  여부
+
+Dedicated main/preload capability가 shared Reader UI-state validator를 적용하고 save 뒤
+canonical JSON equality를 확인한다. Canonical `reader_presets` mutation과 별개이므로
+scope/pane/layout/selection 변경은 project revision을 올리지 않는다. Named snapshot
+restore는 이 key를 교체하지 않으며 renderer가 사라진 preset/source 참조만 current
+canonical option으로 정규화한다.
+
 load 때:
 
 1. main은 JSON shape와 node ID 및 width를 다시 검사한다.
@@ -855,7 +976,7 @@ load 때:
 
 현재 core의 generic UI-state API 자체는 tree/entity 존재 여부를 sanitize하지 않는다.
 application renderer/main 경계가 `workspace.v1`, `world-graph.v1`과
-`plot-canvas.v1`을 제한한다. UI state 손상 때문에 canonical
+`plot-canvas.v1`, `reader-lab.v1`을 제한한다. UI state 손상 때문에 canonical
 node/document/entity/relation/Canvas를 삭제하거나 고치지 않는다.
 
 ## 13. open validation
@@ -876,13 +997,18 @@ renderer는 장면 load 시 현재 Typie engine/commit/schema compatibility를 �
 
 현재 open-time scan은 orphan documents, cross-project parent/document pair,
 `app_meta/projects/WORK` title mirror 및 모든 SCENE-document 역방향 1:1을 별도 query로
-완전 검증하지 않는다. Schema v5의 FK/trigger와 Story Bible/Canvas mutation/snapshot restore는
+완전 검증하지 않는다. Schema v6의 FK/trigger와 Story Bible/Canvas/Reader preset
+mutation/snapshot restore는
 entity note ownership과 cross-project relation/link를 검증하지만, 임의로 변조한 SQLite
 전체를 open 시 재구성해 audit하는 추가 corruption scan은 별도 hardening 대상이다.
 
 Canvas document는 list/load/snapshot validation 시 canonical JSON과 hash를 검증한다.
 Open은 모든 Canvas JSON/hash를 전수 decode하지 않으므로 임의 변조 DB 전체 Canvas audit은
 별도 hardening 대상이다.
+
+Reader preset도 list/mutation/snapshot validation 시 strict config, provenance와 canonical
+hash를 검증한다. Open은 모든 preset JSON/hash를 전수 decode하지 않으므로 임의 변조 DB
+전체 preset audit은 별도 hardening 대상이다.
 
 open 자체는 모든 document에 대응하는 `search_documents` row와 모든 named snapshot
 payload hash를 전수 decode하지 않는다. search는 projection 누락을 integrity 오류로
@@ -908,14 +1034,16 @@ UI state write가 실패해도 마지막 성공 canonical manuscript는 유지�
 
 ## 15. compatibility
 
-- Schema 1은 2/3/4/5를, schema 2는 3/4/5를, schema 3은 4/5를, schema 4는 5를
+- Schema 1은 2/3/4/5/6을, schema 2는 3/4/5/6을, schema 3은 4/5/6을, schema 4는
+  5/6을, schema 5는 6을
   순서대로 migration한다.
   migration 전 backup을 자동 생성한다고 주장하지 않는다.
 - v1 reader는 v0 snapshot bytes를 decode하지 않고 그대로 연결한 뒤 기존 adapter
   compatibility contract를 사용한다.
-- Snapshot payload decoder는 version 1/2/3을 수용한다. v1은 Story Bible/Canvas가,
-  v2는 Canvas가 없는 정확한 historical state로 restore한다.
-- `user_version > 5`, `schema_version > 5` 또는 알 수 없는 format은 downgrade하지
+- Snapshot payload decoder는 version 1/2/3/4를 수용한다. v1은 Story Bible/Canvas/Reader
+  preset, v2는 Canvas/Reader preset, v3는 Reader preset이 없는 정확한 historical
+  state로 restore한다.
+- `user_version > 6`, `schema_version > 6` 또는 알 수 없는 format은 downgrade하지
   않는다.
 - Typie commit/schema 변경은 별도 upgrade rehearsal과 migration 없이는 자동
   변환하지 않는다.
@@ -924,27 +1052,28 @@ UI state write가 실패해도 마지막 성공 canonical manuscript는 유지�
 - v1 파일을 v0 앱이 쓸 수 있다고 약속하지 않는다.
 
 위 unknown-format 선거부는 목표 계약이다. 현재 open 순서는 `application_id`와
-`user_version`을 본 뒤 v2/v3/v4/v5 migration을 먼저 실행하고, 그 다음 `quick_check`와
+`user_version`을 본 뒤 v2/v3/v4/v5/v6 migration을 먼저 실행하고, 그 다음 `quick_check`와
 `app_meta` format/schema를 검증한다. 따라서 `user_version = 1`인 변조 파일의
 unknown `app_meta.format_version`을 migration 전에 거부하는 conformance는
 `PENDING`이다.
 
 ## 16. 요구 test와 결과 기록 원칙
 
-Phase 1E에서 최소한 다음을 검증한다.
+Phase 1F core/storage에서는 최소한 다음을 검증한다.
 
-- Schema 4 → 5 data-preserving migration, 새 project schema/index/version
-- Canvas create/update/duplicate/delete/load/save, no-op hash와 revision conflict
-- JSON Canvas validation, unknown extension, group/edge/reference와 malformed rollback
-- project isolation, close/reopen과 stale save request/response 차단
-- snapshot payload v3 Canvas capture/diff/restore와 v1/v2 compatibility
-- `plot-canvas.v1` save/load, project 격리, snapshot restore 전후 보존
-- import preview/new Canvas, deterministic export와 IPC capability boundary
-- node 500/edge 1,000 fixture의 save/load/reopen과 실제 renderer behavior
-- 기존 hierarchy/search/replacement/Story Bible/World Graph regression
+- Schema 5 → 6 data-preserving migration, 새 project schema/index/version
+- Reader preset create/update/duplicate/delete/list, revision 0 lifecycle, canonical hash/no-op,
+  strict config/provenance, rollback, project isolation과 reopen
+- Snapshot payload v4 Reader preset capture/diff/restore/rollback,
+  `AUTO_BEFORE_RESTORE`, genuine v1/v2/v3 compatibility와 v3 Canvas retention
+- pinned Typie lossless decoder, authored/synthetic 구분, inline/unsupported diagnostic,
+  document-namespaced IDs와 exact Korean/emoji/empty/quote source range
+- SCENE/CHAPTER/VOLUME/WORK Publication compile, boundary heading, deterministic hash/stats,
+  tampered DTO rejection과 read-only revision
+- 기존 hierarchy/search/replacement/Story Bible/World Graph/Canvas regression
 
 집중 test, aggregate command, development/packaged Electron과 성능 결과는 실제 실행
-로그가 있는 `PHASE_1E_RESULT.md`와 `PLOT_CANVAS_PERFORMANCE.md`에서만 `PASS` 또는 수치로
+로그가 있는 Phase 결과/성능 문서에서만 `PASS` 또는 수치로
 기록한다. 이 format draft는 실행하지 않은 결과나 추정 성능을 선언하지 않는다.
 
 현재 배포 경계는 다음과 같다.
@@ -952,6 +1081,7 @@ Phase 1E에서 최소한 다음을 검증한다.
 ```text
 Phase 1D entry verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
 Phase 1E verdict: TECHNICAL GO — PRIVATE LOCAL
+Phase 1F verdict: NOT DECLARED IN THIS FORMAT DRAFT
 Windows native Korean IME: MANUAL VALIDATION PENDING
 Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Public/paid/customer distribution: NOT AUTHORIZED
@@ -959,3 +1089,6 @@ Public/paid/customer distribution: NOT AUTHORIZED
 
 이 문서는 계속 v1 **초안**이며 migration preflight, 임의 변조 DB의 full open-time
 audit와 power-loss fault injection은 별도 hardening 대상이다.
+
+실제 Phase 1F 판정과 schema 6 package 검증은
+[Phase 1F result](./PHASE_1F_RESULT.md)를 따른다.

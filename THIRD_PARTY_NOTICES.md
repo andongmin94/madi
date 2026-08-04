@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-이 파일은 Phase 1E 저장소에서 직접 포함하거나 주요 runtime/build dependency로
+이 파일은 Phase 1F 저장소에서 직접 포함하거나 주요 runtime/build dependency로
 사용하는 제3자 자료를 요약한다. 각 license 원문이 우선하며, 이 요약은 license
 조건을 대체하지 않는다.
 
@@ -17,6 +17,7 @@ Public/paid/customer distribution: NOT AUTHORIZED
 - Exact commit: `fbe5c4bf860d1717a66e66bea2374a2e39f0dd26`
 - Source submodule: `vendor/typie`
 - Runtime package: `packages/typie-runtime`
+- Production Rust bridge: `crates/madi-publication`
 - madi runtime metadata/hashes: `packages/typie-runtime/BUILD_INFO.json`
 - madi package license declaration: `AGPL-3.0-only`
 
@@ -27,6 +28,15 @@ Public/paid/customer distribution: NOT AUTHORIZED
 - `packages/typie-runtime/browser/editor_ffi_bg.wasm`
 - `packages/typie-runtime/browser/icu.zst`
 - `packages/typie-runtime/assets/*`
+- `vendor/typie/crates/editor-codec`
+- `vendor/typie/crates/editor-crdt`
+- `vendor/typie/crates/editor-model`
+- `vendor/typie/crates/editor-state`
+
+Phase 1F production sidecar는 `madi-publication` 안에서 위 네 Typie Rust crate를 직접
+compile한다. 이 private bridge는 pinned changeset stream을 lossless decode하고 madi 소유
+Publication DTO로 변환하며 Typie Rust type을 core/RPC/renderer에 노출하지 않는다. 이
+경계는 결합 범위를 줄일 뿐 Typie code의 license 의무나 아래 배포 판단을 없애지 않는다.
 
 upstream source에서 adaptation한 IME 파일:
 
@@ -47,6 +57,12 @@ GNU Affero General Public License Version 3 원문 위치:
 
 - `vendor/typie/LICENSE`
 - `packages/typie-runtime/LICENSE`
+
+두 파일은 현재 exact SHA-256
+`e66addfa3ea117efa8ae4071512d3f47aa56646d2546d7f7e02f32e386feb087`로
+byte-identical하다. Unpacked package는 `packages/typie-runtime/LICENSE`를
+`resources/licenses/TYPIE-AGPL-3.0.txt`로 복사하므로 browser runtime과 production
+Rust bridge가 사용하는 pinned Typie source의 원문 경로가 같다.
 
 upstream manifest에는 확인한 범위에서 명시적인 SPDX “only”/“or later” field가 없어,
 이 저장소는 보수적으로 `AGPL-3.0-only`로 기록한다. 자세한 판단 유보와 배포 경로는
@@ -161,25 +177,62 @@ pnpm licenses list --prod
 
 ## 주요 Rust dependency
 
-직접 dependency:
+`madi-core` 직접 production dependency:
 
 - `base64`
 - `clap`
 - `rusqlite` with bundled SQLite
 - `serde`
 - `serde_json`
+- `sha2` 0.10.9
 - `thiserror`
 - `uuid`
+- local `madi-publication`
+
+`madi-publication` 직접 production dependency:
+
+- pinned local Typie `editor-codec`, `editor-crdt`, `editor-model`, `editor-state`
+- `serde`, `serde_json`
+- `sha2` 0.10.9
+- `thiserror` 2.0.18
+
+`madi-core`은 `thiserror` 1.0.69를 사용한다. `sha2`는 core의 canonical
+document/snapshot/Canvas/Reader preset hash와 publication source/block/document hash에
+사용되는 production dependency다. `thiserror`는 두 crate의 typed Rust error derive에만
+사용하며 runtime plugin이나 executable content를 로드하지 않는다.
+
+Resolved registry attribution과 license metadata:
+
+| Crate | Resolved version | Upstream attribution | License | Registry 원문 |
+|---|---:|---|---|---|
+| `sha2` | 0.10.9 | RustCrypto Developers; license notice의 Graydon Hoare, Mozilla Foundation, Artyom Pavlov | MIT OR Apache-2.0 | `sha2-0.10.9/LICENSE-MIT`, `LICENSE-APACHE` |
+| `thiserror` | 1.0.69 | David Tolnay | MIT OR Apache-2.0 | `thiserror-1.0.69/LICENSE-MIT`, `LICENSE-APACHE` |
+| `thiserror` | 2.0.18 | David Tolnay | MIT OR Apache-2.0 | `thiserror-2.0.18/LICENSE-MIT`, `LICENSE-APACHE` |
+
+Checked-in crate별 license 원문과 exact SHA-256는 다음과 같다. `sha2` 두 파일은 locked
+0.10.9 registry 원문과, `thiserror` 두 파일은 locked 1.0.69와 2.0.18 양쪽의 동일한
+registry 원문과 각각 byte-identical하다.
+
+- `docs/licenses/SHA2-MIT.txt` →
+  `b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1`
+- `docs/licenses/SHA2-APACHE-2.0.txt` →
+  `a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5`
+- `docs/licenses/THISERROR-MIT.txt` →
+  `23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3`
+- `docs/licenses/THISERROR-APACHE-2.0.txt` →
+  `62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a`
+- Packaged paths use the same four basenames under `resources/licenses/`.
 
 test dependency:
 
-- `sha2`
+- pinned local Typie editor test helpers
 - `tempfile`
 
 manifest와 정확한 resolved version:
 
 - `crates/madi-core/Cargo.toml`
 - `crates/madi-core/Cargo.lock`
+- `crates/madi-publication/Cargo.toml`
 
 crate별 license 원문은 Cargo가 받은 registry source의 각 crate
 directory(`$CARGO_HOME/registry/src/.../<crate-version>/LICENSE*`)를 따른다.
@@ -197,11 +250,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 `
   tree --manifest-path crates/madi-core/Cargo.toml
 ```
 
-Rust dependency 전체 license report는 현재 저장소에 자동 생성돼 있지 않다.
-production 배포 전 `Cargo.lock` 기준 report와 필요한 원문을 package에 포함해야 한다.
+현재 unpacked package는 `THIRD_PARTY_NOTICES.md`, Typie/Nanum/Cytoscape/React Flow/JSON
+Canvas 원문과 위 네 Rust crate license 원문을 `resources/licenses`에 복사한다. Package
+script는 checked-in source와 packaged copy를 위 SHA-256에 대조해 mismatch를 거부한다.
+Rust transitive dependency 전체의 자동 license report는 아직 생성하지 않으므로
+production 배포 전 `Cargo.lock` 기준 report를 계속 검토해야 한다. 이 원문 포함은 위
+Typie `HUMAN DECISION REQUIRED`보다 배포 권한을 넓히지 않는다.
 
 ## madi 자체 코드
 
-`crates/madi-core/Cargo.toml`은 현재 `UNLICENSED`이며, 저장소의 madi 자체 코드에
+`crates/madi-core/Cargo.toml`과 `crates/madi-publication/Cargo.toml`은 현재
+`UNLICENSED`이며, 저장소의 madi 자체 코드에
 적용할 최종 배포 license는 Phase 0에서 결정하지 않았다. 이는 위 제3자 license를
 무효화하거나 proprietary 배포 권한을 부여하지 않는다.
