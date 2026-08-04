@@ -1,23 +1,22 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use base64::Engine;
-use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use crate::error::{CoreError, Result};
 use crate::model::{
     AppMeta, CreateTreeNodeParams, CreateTreeNodeResult, DeleteTreeNodeParams,
-    DeleteTreeNodeResult, LoadProjectTreeParams, LoadSceneParams,
-    LoadUiStateParams, LoadUiStateResult, MoveTreeNodeParams, NodeKind, ProjectRecord,
-    ProjectTree, RenameTreeNodeParams, ReorderTreeNodeParams, SaveSceneParams,
-    SaveSceneResult, SaveUiStateParams, SaveUiStateResult, SceneRecord,
-    TreeMutationResult, TreeNode, UiStateRecord,
+    DeleteTreeNodeResult, LoadProjectTreeParams, LoadSceneParams, LoadUiStateParams,
+    LoadUiStateResult, MoveTreeNodeParams, NodeKind, ProjectRecord, ProjectTree,
+    RenameTreeNodeParams, ReorderTreeNodeParams, SaveSceneParams, SaveSceneResult,
+    SaveUiStateParams, SaveUiStateResult, SceneRecord, TreeMutationResult, TreeNode, UiStateRecord,
 };
 use crate::storage::{
-    create_consistent_backup, database_timestamp, default_client_identifier,
-    load_app_meta, load_document_record, load_document_summary, non_empty_or_generated,
-    open_existing, sync_file, validate_editor_metadata, validate_non_empty,
+    create_consistent_backup, database_timestamp, default_client_identifier, load_app_meta,
+    load_document_record, load_document_summary, non_empty_or_generated, open_existing, sync_file,
+    validate_editor_metadata, validate_non_empty,
 };
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine;
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 
 const DEFAULT_EDITOR_ENGINE: &str = "typie";
 const UNINITIALIZED_EDITOR_COMMIT: &str = "uninitialized";
@@ -59,13 +58,11 @@ pub fn create_tree_node(params: CreateTreeNodeParams) -> Result<CreateTreeNodeRe
     let saved_by = validated_saved_by(params.saved_by.as_deref())?;
     let mut connection = open_existing(&params.file_path)?;
     let metadata_before = load_app_meta(&connection)?;
-    let expected_revision =
-        resolve_expected_revision(&metadata_before, params.expected_revision)?;
+    let expected_revision = resolve_expected_revision(&metadata_before, params.expected_revision)?;
     let backup_file_path = create_consistent_backup(&connection, &params.file_path)?;
 
     let document_id = {
-        let transaction =
-            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_revision(&transaction, expected_revision)?;
         ensure_identifier_available(&transaction, "tree node", "tree_nodes", &node_id)?;
         let parent = load_tree_node(&transaction, &params.parent_id)?;
@@ -81,14 +78,8 @@ pub fn create_tree_node(params: CreateTreeNodeParams) -> Result<CreateTreeNodeRe
         let now = database_timestamp(&transaction)?;
 
         let document_id = if params.kind == NodeKind::Scene {
-            let document_id =
-                non_empty_or_generated("document_id", params.document_id.clone())?;
-            ensure_identifier_available(
-                &transaction,
-                "document",
-                "documents",
-                &document_id,
-            )?;
+            let document_id = non_empty_or_generated("document_id", params.document_id.clone())?;
+            ensure_identifier_available(&transaction, "document", "documents", &document_id)?;
             let editor_engine = params
                 .editor_engine
                 .as_deref()
@@ -98,11 +89,7 @@ pub fn create_tree_node(params: CreateTreeNodeParams) -> Result<CreateTreeNodeRe
                 .as_deref()
                 .unwrap_or(UNINITIALIZED_EDITOR_COMMIT);
             let editor_schema_version = params.editor_schema_version.unwrap_or(0);
-            validate_editor_metadata(
-                editor_engine,
-                editor_engine_commit,
-                editor_schema_version,
-            )?;
+            validate_editor_metadata(editor_engine, editor_engine_commit, editor_schema_version)?;
             transaction.execute(
                 "INSERT INTO documents (
                     id, project_id, title, editor_engine, editor_engine_commit,
@@ -172,13 +159,11 @@ pub fn rename_tree_node(params: RenameTreeNodeParams) -> Result<TreeMutationResu
     let saved_by = validated_saved_by(params.saved_by.as_deref())?;
     let mut connection = open_existing(&params.file_path)?;
     let metadata_before = load_app_meta(&connection)?;
-    let expected_revision =
-        resolve_expected_revision(&metadata_before, params.expected_revision)?;
+    let expected_revision = resolve_expected_revision(&metadata_before, params.expected_revision)?;
     let backup_file_path = create_consistent_backup(&connection, &params.file_path)?;
 
     {
-        let transaction =
-            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_revision(&transaction, expected_revision)?;
         let node = load_tree_node(&transaction, &params.node_id)?;
         let now = database_timestamp(&transaction)?;
@@ -228,13 +213,11 @@ pub fn move_tree_node(params: MoveTreeNodeParams) -> Result<TreeMutationResult> 
     let saved_by = validated_saved_by(params.saved_by.as_deref())?;
     let mut connection = open_existing(&params.file_path)?;
     let metadata_before = load_app_meta(&connection)?;
-    let expected_revision =
-        resolve_expected_revision(&metadata_before, params.expected_revision)?;
+    let expected_revision = resolve_expected_revision(&metadata_before, params.expected_revision)?;
     let backup_file_path = create_consistent_backup(&connection, &params.file_path)?;
 
     {
-        let transaction =
-            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_revision(&transaction, expected_revision)?;
         let node = load_tree_node(&transaction, &params.node_id)?;
         if node.kind == NodeKind::Work {
@@ -289,13 +272,11 @@ pub fn reorder_tree_node(params: ReorderTreeNodeParams) -> Result<TreeMutationRe
     let saved_by = validated_saved_by(params.saved_by.as_deref())?;
     let mut connection = open_existing(&params.file_path)?;
     let metadata_before = load_app_meta(&connection)?;
-    let expected_revision =
-        resolve_expected_revision(&metadata_before, params.expected_revision)?;
+    let expected_revision = resolve_expected_revision(&metadata_before, params.expected_revision)?;
     let backup_file_path = create_consistent_backup(&connection, &params.file_path)?;
 
     {
-        let transaction =
-            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_revision(&transaction, expected_revision)?;
         let node = load_tree_node(&transaction, &params.node_id)?;
         if node.kind == NodeKind::Work {
@@ -337,23 +318,21 @@ pub fn delete_tree_node(params: DeleteTreeNodeParams) -> Result<DeleteTreeNodeRe
     let saved_by = validated_saved_by(params.saved_by.as_deref())?;
     let mut connection = open_existing(&params.file_path)?;
     let metadata_before = load_app_meta(&connection)?;
-    let expected_revision =
-        resolve_expected_revision(&metadata_before, params.expected_revision)?;
+    let expected_revision = resolve_expected_revision(&metadata_before, params.expected_revision)?;
     let backup_file_path = create_consistent_backup(&connection, &params.file_path)?;
 
     let (deleted_node_ids, deleted_document_ids) = {
-        let transaction =
-            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_revision(&transaction, expected_revision)?;
         let node = load_tree_node(&transaction, &params.node_id)?;
         if node.kind == NodeKind::Work {
-            return Err(CoreError::WorkMutationForbidden { operation: "delete" });
+            return Err(CoreError::WorkMutationForbidden {
+                operation: "delete",
+            });
         }
         let subtree = load_subtree(&transaction, &node.id)?;
         if subtree.len() > 1 && !params.recursive {
-            return Err(CoreError::RecursiveDeleteRequired {
-                node_id: node.id,
-            });
+            return Err(CoreError::RecursiveDeleteRequired { node_id: node.id });
         }
         let deleted_node_ids = subtree
             .iter()
@@ -391,9 +370,10 @@ pub fn load_scene(params: LoadSceneParams) -> Result<SceneRecord> {
     let connection = open_existing(&params.file_path)?;
     let scene = load_tree_node(&connection, &params.scene_id)?;
     ensure_scene(&scene)?;
-    let document_id = scene.document_id.as_deref().ok_or_else(|| {
-        CoreError::Integrity("SCENE is missing its document link".to_owned())
-    })?;
+    let document_id = scene
+        .document_id
+        .as_deref()
+        .ok_or_else(|| CoreError::Integrity("SCENE is missing its document link".to_owned()))?;
     let document = load_document_record(&connection, document_id)?;
     let project_revision = load_app_meta(&connection)?.revision;
     connection.close().map_err(|(_, error)| error)?;
@@ -415,26 +395,22 @@ pub fn save_scene(params: SaveSceneParams) -> Result<SaveSceneResult> {
     let snapshot = BASE64_STANDARD
         .decode(params.snapshot_base64.as_bytes())
         .map_err(|_| {
-            CoreError::InvalidInput(
-                "snapshot_base64 is not valid standard base64".to_owned(),
-            )
+            CoreError::InvalidInput("snapshot_base64 is not valid standard base64".to_owned())
         })?;
     let saved_by = validated_saved_by(params.saved_by.as_deref())?;
     let mut connection = open_existing(&params.file_path)?;
     let metadata_before = load_app_meta(&connection)?;
-    let expected_revision =
-        resolve_expected_revision(&metadata_before, params.expected_revision)?;
+    let expected_revision = resolve_expected_revision(&metadata_before, params.expected_revision)?;
     let backup_file_path = create_consistent_backup(&connection, &params.file_path)?;
 
     let document_id = {
-        let transaction =
-            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_revision(&transaction, expected_revision)?;
         let scene = load_tree_node(&transaction, &params.scene_id)?;
         ensure_scene(&scene)?;
-        let document_id = scene.document_id.ok_or_else(|| {
-            CoreError::Integrity("SCENE is missing its document link".to_owned())
-        })?;
+        let document_id = scene
+            .document_id
+            .ok_or_else(|| CoreError::Integrity("SCENE is missing its document link".to_owned()))?;
         let now = database_timestamp(&transaction)?;
         let changed = transaction.execute(
             "UPDATE documents SET
@@ -486,8 +462,7 @@ pub fn save_ui_state(params: SaveUiStateParams) -> Result<SaveUiStateResult> {
     let mut connection = open_existing(&params.file_path)?;
     let metadata = load_app_meta(&connection)?;
     let state = {
-        let transaction =
-            connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let now = database_timestamp(&transaction)?;
         transaction.execute(
             "INSERT INTO ui_state (project_id, key, value_json, updated_at)
@@ -587,9 +562,7 @@ fn load_project_record(connection: &Connection, project_id: &str) -> Result<Proj
         )
         .optional()?
         .ok_or_else(|| {
-            CoreError::Integrity(
-                "project row or unique WORK root is missing".to_owned(),
-            )
+            CoreError::Integrity("project row or unique WORK root is missing".to_owned())
         })
 }
 
@@ -656,9 +629,8 @@ impl TryFrom<StoredNode> for TreeNode {
     type Error = CoreError;
 
     fn try_from(stored: StoredNode) -> Result<Self> {
-        let kind = NodeKind::from_str(&stored.kind).map_err(|_| {
-            CoreError::Integrity("tree_nodes.kind is invalid".to_owned())
-        })?;
+        let kind = NodeKind::from_str(&stored.kind)
+            .map_err(|_| CoreError::Integrity("tree_nodes.kind is invalid".to_owned()))?;
         if !stored.order_key.is_finite() {
             return Err(CoreError::Integrity(
                 "tree_nodes.order_key is not finite".to_owned(),
@@ -824,24 +796,12 @@ fn allocate_order_key(
     before_node_id: Option<&str>,
     after_node_id: Option<&str>,
 ) -> Result<f64> {
-    let mut siblings = load_sibling_order(
-        transaction,
-        project_id,
-        parent_id,
-        exclude_node_id,
-    )?;
+    let mut siblings = load_sibling_order(transaction, project_id, parent_id, exclude_node_id)?;
     let mut insertion_index = position_index(&siblings, before_node_id, after_node_id)?;
     let mut order_key = midpoint_for_index(&siblings, insertion_index);
-    if !order_key.is_finite()
-        || has_exhausted_gap(&siblings, insertion_index)
-    {
+    if !order_key.is_finite() || has_exhausted_gap(&siblings, insertion_index) {
         rebalance_siblings(transaction, project_id, parent_id, exclude_node_id)?;
-        siblings = load_sibling_order(
-            transaction,
-            project_id,
-            parent_id,
-            exclude_node_id,
-        )?;
+        siblings = load_sibling_order(transaction, project_id, parent_id, exclude_node_id)?;
         insertion_index = position_index(&siblings, before_node_id, after_node_id)?;
         order_key = midpoint_for_index(&siblings, insertion_index);
     }
@@ -865,10 +825,9 @@ fn load_sibling_order(
            AND (?3 IS NULL OR id <> ?3)
          ORDER BY order_key, id",
     )?;
-    let rows = statement.query_map(
-        params![project_id, parent_id, exclude_node_id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )?;
+    let rows = statement.query_map(params![project_id, parent_id, exclude_node_id], |row| {
+        Ok((row.get(0)?, row.get(1)?))
+    })?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
@@ -878,12 +837,11 @@ fn position_index(
     after_node_id: Option<&str>,
 ) -> Result<usize> {
     if let Some(before) = before_node_id {
-        return siblings
-            .iter()
-            .position(|entry| entry.0 == before)
-            .ok_or(CoreError::InvalidTreePosition {
+        return siblings.iter().position(|entry| entry.0 == before).ok_or(
+            CoreError::InvalidTreePosition {
                 reason: "before_node_id must name a sibling",
-            });
+            },
+        );
     }
     if let Some(after) = after_node_id {
         return siblings
@@ -908,9 +866,7 @@ fn midpoint_for_index(siblings: &[(String, f64)], index: usize) -> f64 {
 
 fn has_exhausted_gap(siblings: &[(String, f64)], index: usize) -> bool {
     match (index.checked_sub(1), siblings.get(index)) {
-        (Some(left), Some(right)) => {
-            right.1 - siblings[left].1 <= MIN_ORDER_GAP
-        }
+        (Some(left), Some(right)) => right.1 - siblings[left].1 <= MIN_ORDER_GAP,
         _ => false,
     }
 }
@@ -936,10 +892,9 @@ fn rebalance_siblings(
                AND (?3 IS NULL OR id <> ?3)
              ORDER BY order_key, id",
         )?;
-        let rows = statement.query_map(
-            params![project_id, parent_id, exclude_node_id],
-            |row| row.get::<_, String>(0),
-        )?;
+        let rows = statement.query_map(params![project_id, parent_id, exclude_node_id], |row| {
+            row.get::<_, String>(0)
+        })?;
         rows.collect::<std::result::Result<Vec<_>, _>>()?
     };
     for (index, sibling_id) in sibling_ids.iter().enumerate() {
@@ -955,11 +910,7 @@ fn rebalance_siblings(
     Ok(())
 }
 
-fn is_descendant(
-    transaction: &Transaction<'_>,
-    node_id: &str,
-    candidate_id: &str,
-) -> Result<bool> {
+fn is_descendant(transaction: &Transaction<'_>, node_id: &str, candidate_id: &str) -> Result<bool> {
     let found: i64 = transaction.query_row(
         "WITH RECURSIVE descendants(id) AS (
             SELECT id FROM tree_nodes WHERE parent_id = ?1

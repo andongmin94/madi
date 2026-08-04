@@ -156,17 +156,17 @@ fn sample_document() -> MadiCanvasDocument {
 }
 
 #[test]
-fn schema_v5_keeps_format_v1_and_enforces_canvas_table_constraints() {
+fn schema_v6_keeps_format_v1_and_enforces_canvas_table_constraints() {
     let fixture = fixture("schema-v5.madi");
     let opened = open_project(OpenProjectParams {
         file_path: fixture.path.clone(),
     })
     .unwrap();
     assert_eq!(FORMAT_VERSION, 1);
-    assert_eq!(SCHEMA_VERSION, 5);
+    assert_eq!(SCHEMA_VERSION, 6);
     assert_eq!(opened.metadata.format_version, 1);
-    assert_eq!(opened.metadata.schema_version, 5);
-    assert_eq!(opened.schema_migrations.last().unwrap().version, 5);
+    assert_eq!(opened.metadata.schema_version, 6);
+    assert_eq!(opened.schema_migrations.last().unwrap().version, 6);
 
     let connection = Connection::open(&fixture.path).unwrap();
     let project_id = opened.metadata.project_id;
@@ -472,7 +472,7 @@ fn snapshot_v3_diff_restore_and_legacy_v2_restore_cover_canvases_atomically() {
         saved_by: None,
     })
     .unwrap();
-    assert_eq!(baseline.snapshot.payload_version, 3);
+    assert_eq!(baseline.snapshot.payload_version, 4);
 
     let mut changed = baseline_canvas.canvas.document;
     changed.nodes.push(text_node("second", "두 번째", 400.0));
@@ -516,7 +516,7 @@ fn snapshot_v3_diff_restore_and_legacy_v2_restore_cover_canvases_atomically() {
         saved_by: None,
     })
     .unwrap();
-    assert_eq!(restored.safety_snapshot.payload_version, 3);
+    assert_eq!(restored.safety_snapshot.payload_version, 4);
     let restored_canvases = list_canvases(ListCanvasesParams {
         file_path: fixture.path.clone(),
         sort: CanvasSort::NameAsc,
@@ -554,6 +554,10 @@ fn snapshot_v3_diff_restore_and_legacy_v2_restore_cover_canvases_atomically() {
     let mut legacy_payload = payload;
     legacy_payload["version"] = json!(2);
     legacy_payload.as_object_mut().unwrap().remove("canvases");
+    legacy_payload
+        .as_object_mut()
+        .unwrap()
+        .remove("reader_presets");
     let legacy_blob = serde_json::to_vec(&legacy_payload).unwrap();
     let legacy_hash = format!("{:x}", Sha256::digest(&legacy_blob));
     connection

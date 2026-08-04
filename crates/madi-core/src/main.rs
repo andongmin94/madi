@@ -7,15 +7,13 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use clap::{Parser, Subcommand};
 use madi_core::{
-    create_project, create_tree_node, delete_tree_node, inspect_project,
-    load_document, load_project_tree, load_scene, load_ui_state, move_tree_node,
-    open_project, recover_plain_text, rename_tree_node, reorder_tree_node,
-    save_document, save_scene, save_ui_state, serve, CoreError,
-    CreateProjectParams, CreateTreeNodeParams, DeleteTreeNodeParams,
-    LoadDocumentParams, LoadProjectTreeParams, LoadSceneParams, LoadUiStateParams,
-    MoveTreeNodeParams, NodeKind, OpenProjectParams, RecoverPlainTextParams,
-    RenameTreeNodeParams, ReorderTreeNodeParams, SaveDocumentParams,
-    SaveDocumentPayload, SaveSceneParams, SaveUiStateParams,
+    create_project, create_tree_node, delete_tree_node, inspect_project, load_document,
+    load_project_tree, load_scene, load_ui_state, move_tree_node, open_project, recover_plain_text,
+    rename_tree_node, reorder_tree_node, save_document, save_scene, save_ui_state, serve,
+    CoreError, CreateProjectParams, CreateTreeNodeParams, DeleteTreeNodeParams, LoadDocumentParams,
+    LoadProjectTreeParams, LoadSceneParams, LoadUiStateParams, MoveTreeNodeParams, NodeKind,
+    OpenProjectParams, RecoverPlainTextParams, RenameTreeNodeParams, ReorderTreeNodeParams,
+    SaveDocumentParams, SaveDocumentPayload, SaveSceneParams, SaveUiStateParams,
 };
 
 #[derive(Debug, Parser)]
@@ -499,9 +497,8 @@ fn run(cli: Cli) -> madi_core::Result<()> {
             key,
             value_json,
         } => {
-            let value = serde_json::from_str(&value_json).map_err(|_| {
-                CoreError::InvalidInput("value_json is not valid JSON".to_owned())
-            })?;
+            let value = serde_json::from_str(&value_json)
+                .map_err(|_| CoreError::InvalidInput("value_json is not valid JSON".to_owned()))?;
             print_json(&save_ui_state(SaveUiStateParams {
                 file_path,
                 key,
@@ -516,9 +513,7 @@ fn run(cli: Cli) -> madi_core::Result<()> {
 
 fn parse_node_kind(value: &str) -> madi_core::Result<NodeKind> {
     value.parse().map_err(|_| {
-        CoreError::InvalidInput(
-            "kind must be WORK, VOLUME, CHAPTER, or SCENE".to_owned(),
-        )
+        CoreError::InvalidInput("kind must be WORK, VOLUME, CHAPTER, or SCENE".to_owned())
     })
 }
 

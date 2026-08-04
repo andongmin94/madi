@@ -2,19 +2,17 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use madi_core::{
     apply_replacement_batch, create_named_snapshot, create_project, create_tree_node,
-    delete_named_snapshot, delete_tree_node, diff_named_snapshot, get_text_statistics,
-    dispatch, list_descendant_scenes, list_named_snapshots, load_project_tree, load_scene,
-    load_ui_state, open_project, rename_named_snapshot, rename_tree_node,
-    restore_named_snapshot, save_scene, save_ui_state, search_project,
-    ApplyReplacementBatchParams, CoreError,
+    delete_named_snapshot, delete_tree_node, diff_named_snapshot, dispatch, get_text_statistics,
+    list_descendant_scenes, list_named_snapshots, load_project_tree, load_scene, load_ui_state,
+    open_project, rename_named_snapshot, rename_tree_node, restore_named_snapshot, save_scene,
+    save_ui_state, search_project, ApplyReplacementBatchParams, CoreError,
     CreateNamedSnapshotParams, CreateProjectParams, CreateTreeNodeParams,
-    DeleteNamedSnapshotParams, DiffNamedSnapshotParams, GetTextStatisticsParams,
-    ListDescendantScenesParams, ListNamedSnapshotsParams, LoadProjectTreeParams,
-    LoadSceneParams, LoadUiStateParams, NamedSnapshotKind, NodeKind, OpenProjectParams,
-    DeleteTreeNodeParams, RenameNamedSnapshotParams, RenameTreeNodeParams,
-    ReorderTreeNodeParams, RestoreNamedSnapshotParams, SaveSceneParams,
-    SaveUiStateParams, SearchProjectParams, SearchTarget, TransformedSceneDocument,
-    APPLICATION_ID, FORMAT_VERSION, SCHEMA_VERSION,
+    DeleteNamedSnapshotParams, DeleteTreeNodeParams, DiffNamedSnapshotParams,
+    GetTextStatisticsParams, ListDescendantScenesParams, ListNamedSnapshotsParams,
+    LoadProjectTreeParams, LoadSceneParams, LoadUiStateParams, NamedSnapshotKind, NodeKind,
+    OpenProjectParams, RenameNamedSnapshotParams, RenameTreeNodeParams, ReorderTreeNodeParams,
+    RestoreNamedSnapshotParams, SaveSceneParams, SaveUiStateParams, SearchProjectParams,
+    SearchTarget, TransformedSceneDocument, APPLICATION_ID, FORMAT_VERSION, SCHEMA_VERSION,
 };
 use rusqlite::{params, Connection};
 use serde_json::json;
@@ -92,11 +90,34 @@ fn save_text(path: &std::path::Path, scene_id: &str, text: &str, marker: &[u8]) 
 
 fn create_fixture(path: &std::path::Path) -> Fixture {
     let created = create_project(create_params(path)).unwrap();
-    save_text(path, &created.default_scene_node_id, "아무 일도 없었다.", b"default");
-    let volume = create_node(path, &created.work_node_id, "volume-1", NodeKind::Volume, "1권");
+    save_text(
+        path,
+        &created.default_scene_node_id,
+        "아무 일도 없었다.",
+        b"default",
+    );
+    let volume = create_node(
+        path,
+        &created.work_node_id,
+        "volume-1",
+        NodeKind::Volume,
+        "1권",
+    );
     let chapter = create_node(path, &volume.node.id, "chapter-1", NodeKind::Chapter, "1화");
-    let scene_a = create_node(path, &chapter.node.id, "scene-a", NodeKind::Scene, "첫 장면");
-    let scene_b = create_node(path, &chapter.node.id, "scene-b", NodeKind::Scene, "둘째 장면");
+    let scene_a = create_node(
+        path,
+        &chapter.node.id,
+        "scene-a",
+        NodeKind::Scene,
+        "첫 장면",
+    );
+    let scene_b = create_node(
+        path,
+        &chapter.node.id,
+        "scene-b",
+        NodeKind::Scene,
+        "둘째 장면",
+    );
     save_text(
         path,
         &scene_a.node.id,
@@ -153,7 +174,9 @@ fn migrates_v2_without_data_loss_and_builds_exact_search_projection() {
     let fixture = create_fixture(&path);
     {
         let connection = Connection::open(&path).unwrap();
-        connection.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+        connection
+            .execute_batch("PRAGMA foreign_keys = OFF;")
+            .unwrap();
         connection
             .execute_batch(
                 "DROP TRIGGER search_documents_after_insert;
@@ -174,8 +197,14 @@ fn migrates_v2_without_data_loss_and_builds_exact_search_projection() {
     .unwrap();
     assert_eq!(opened.metadata.format_version, FORMAT_VERSION);
     assert_eq!(opened.metadata.schema_version, SCHEMA_VERSION);
-    assert_eq!(opened.schema_migrations.last().unwrap().version, 5);
-    assert_eq!(load_text(&path, &fixture.scene_a_id), "그는 문을 열었다. 문을 다시 닫았다.");
+    assert_eq!(
+        opened.schema_migrations.last().unwrap().version,
+        SCHEMA_VERSION
+    );
+    assert_eq!(
+        load_text(&path, &fixture.scene_a_id),
+        "그는 문을 열었다. 문을 다시 닫았다."
+    );
 
     let connection = Connection::open(&path).unwrap();
     let projected: String = connection
@@ -306,7 +335,10 @@ fn descendant_order_korean_substrings_saved_updates_and_character_counts_are_exa
     })
     .unwrap();
     assert_eq!(refreshed.total_matches, 1);
-    assert_eq!(refreshed.hits[0].scene_id.as_deref(), Some(fixture.scene_b_id.as_str()));
+    assert_eq!(
+        refreshed.hits[0].scene_id.as_deref(),
+        Some(fixture.scene_b_id.as_str())
+    );
 
     let statistics = get_text_statistics(GetTextStatisticsParams {
         file_path: path.clone(),
@@ -322,10 +354,18 @@ fn descendant_order_korean_substrings_saved_updates_and_character_counts_are_exa
     assert_eq!(statistics.with_spaces, expected.chars().count() as u64);
     assert_eq!(
         statistics.without_spaces,
-        expected.chars().filter(|character| !character.is_whitespace()).count() as u64
+        expected
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .count() as u64
     );
 
-    save_text(&path, &fixture.scene_a_id, &"가".repeat(20_000), b"bounded-search");
+    save_text(
+        &path,
+        &fixture.scene_a_id,
+        &"가".repeat(20_000),
+        b"bounded-search",
+    );
     let bounded = search_project(SearchProjectParams {
         file_path: path,
         query: "가".to_owned(),
@@ -359,7 +399,7 @@ fn named_snapshot_hash_crud_diff_restore_and_reopen_preserve_the_logical_project
     .unwrap();
     assert_eq!(created.snapshot.content_hash.len(), 64);
     assert_eq!(created.snapshot.payload_format, "MADI_LOGICAL_JSON");
-    assert_eq!(created.snapshot.payload_version, 3);
+    assert_eq!(created.snapshot.payload_version, 4);
 
     let second = create_named_snapshot(CreateNamedSnapshotParams {
         file_path: path.clone(),
@@ -465,7 +505,10 @@ fn named_snapshot_hash_crud_diff_restore_and_reopen_preserve_the_logical_project
     })
     .unwrap();
     assert_eq!(restored.metadata.revision, revision_before_restore + 1);
-    assert_eq!(restored.safety_snapshot.kind, NamedSnapshotKind::AutoBeforeRestore);
+    assert_eq!(
+        restored.safety_snapshot.kind,
+        NamedSnapshotKind::AutoBeforeRestore
+    );
     assert_eq!(restored.safety_snapshot.name, "복원 직전 보존");
     assert_eq!(load_text(&path, &fixture.scene_a_id), original_text);
     assert_eq!(
@@ -479,7 +522,10 @@ fn named_snapshot_hash_crud_diff_restore_and_reopen_preserve_the_logical_project
         .value,
         json!({"must_survive_restore": true})
     );
-    assert_eq!(load_text(&path, &fixture.scene_b_id), "방 안에서 문을 바라봤다.");
+    assert_eq!(
+        load_text(&path, &fixture.scene_b_id),
+        "방 안에서 문을 바라봤다."
+    );
     assert!(matches!(
         load_scene(LoadSceneParams {
             file_path: path.clone(),
@@ -533,10 +579,7 @@ fn named_snapshot_hash_crud_diff_restore_and_reopen_preserve_the_logical_project
         saved_by: None,
     })
     .unwrap();
-    let after_delete = list_named_snapshots(ListNamedSnapshotsParams {
-        file_path: path,
-    })
-    .unwrap();
+    let after_delete = list_named_snapshots(ListNamedSnapshotsParams { file_path: path }).unwrap();
     assert!(!after_delete
         .snapshots
         .iter()
@@ -593,7 +636,10 @@ fn hash_failure_and_restore_validation_roll_back_the_safety_snapshot() {
         .len(),
         count_before
     );
-    assert_eq!(load_text(&path, &fixture.scene_a_id), "그는 문을 열었다. 문을 다시 닫았다.");
+    assert_eq!(
+        load_text(&path, &fixture.scene_a_id),
+        "그는 문을 열었다. 문을 다시 닫았다."
+    );
 }
 
 fn transformed(
@@ -678,7 +724,10 @@ fn replacement_batch_creates_safety_snapshot_updates_search_and_rolls_back_atomi
         auto_snapshot_name: None,
     })
     .unwrap_err();
-    assert!(matches!(stale_error, CoreError::SourceContentConflict { .. }));
+    assert!(matches!(
+        stale_error,
+        CoreError::SourceContentConflict { .. }
+    ));
     assert_eq!(current_revision(&path), before_revision);
     assert!(list_named_snapshots(ListNamedSnapshotsParams {
         file_path: path.clone(),
@@ -700,7 +749,10 @@ fn replacement_batch_creates_safety_snapshot_updates_search_and_rolls_back_atomi
     assert_eq!(applied.metadata.revision, before_revision + 1);
     assert_eq!(applied.changed_scenes, 2);
     assert_eq!(applied.changed_occurrences, 3);
-    assert_eq!(applied.safety_snapshot.kind, NamedSnapshotKind::AutoBeforeReplace);
+    assert_eq!(
+        applied.safety_snapshot.kind,
+        NamedSnapshotKind::AutoBeforeReplace
+    );
     let search = search_project(SearchProjectParams {
         file_path: path.clone(),
         query: "창을".to_owned(),
@@ -776,12 +828,10 @@ fn replacement_batch_creates_safety_snapshot_updates_search_and_rolls_back_atomi
     assert_eq!(load_text(&path, &fixture.scene_a_id), original_a);
     assert_eq!(load_text(&path, &fixture.scene_b_id), original_b);
     assert_eq!(
-        list_named_snapshots(ListNamedSnapshotsParams {
-            file_path: path,
-        })
-        .unwrap()
-        .snapshots
-        .len(),
+        list_named_snapshots(ListNamedSnapshotsParams { file_path: path })
+            .unwrap()
+            .snapshots
+            .len(),
         snapshot_count_before_failure
     );
 }

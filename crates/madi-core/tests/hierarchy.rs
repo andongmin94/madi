@@ -2,12 +2,11 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use madi_core::{
     create_project, create_tree_node, delete_tree_node, load_project_tree, load_scene,
-    load_ui_state, move_tree_node, open_project, rename_tree_node, reorder_tree_node,
-    save_scene, save_ui_state, CoreError, CreateProjectParams, CreateTreeNodeParams,
-    DeleteTreeNodeParams, LoadProjectTreeParams, LoadSceneParams, LoadUiStateParams,
-    MoveTreeNodeParams, NodeKind, OpenProjectParams, RenameTreeNodeParams,
-    ReorderTreeNodeParams, SaveSceneParams, SaveUiStateParams, FORMAT_VERSION,
-    SCHEMA_VERSION,
+    load_ui_state, move_tree_node, open_project, rename_tree_node, reorder_tree_node, save_scene,
+    save_ui_state, CoreError, CreateProjectParams, CreateTreeNodeParams, DeleteTreeNodeParams,
+    LoadProjectTreeParams, LoadSceneParams, LoadUiStateParams, MoveTreeNodeParams, NodeKind,
+    OpenProjectParams, RenameTreeNodeParams, ReorderTreeNodeParams, SaveSceneParams,
+    SaveUiStateParams, FORMAT_VERSION, SCHEMA_VERSION,
 };
 use rusqlite::Connection;
 use serde_json::json;
@@ -284,7 +283,10 @@ fn rename_reorder_move_and_explicit_recursive_delete_are_transactional() {
         saved_by: None,
     })
     .unwrap();
-    assert_eq!(moved.node.parent_id.as_deref(), Some(volume.node.id.as_str()));
+    assert_eq!(
+        moved.node.parent_id.as_deref(),
+        Some(volume.node.id.as_str())
+    );
 
     let invalid_scene_move = move_tree_node(MoveTreeNodeParams {
         file_path: path.clone(),
@@ -371,7 +373,9 @@ fn scene_save_load_and_reopen_round_trip_preserves_binary_and_korean_text() {
     .unwrap();
     assert_eq!(loaded.project_revision, 1);
     assert_eq!(
-        BASE64_STANDARD.decode(loaded.document.snapshot_base64).unwrap(),
+        BASE64_STANDARD
+            .decode(loaded.document.snapshot_base64)
+            .unwrap(),
         snapshot
     );
     assert_eq!(loaded.document.plain_text_recovery, manuscript);

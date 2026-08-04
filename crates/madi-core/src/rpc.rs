@@ -9,6 +9,8 @@ use crate::hierarchy::{
     move_tree_node, rename_tree_node, reorder_tree_node, save_scene, save_ui_state,
 };
 use crate::model::*;
+use crate::publication::*;
+use crate::reader_preset::*;
 use crate::storage::{
     create_project, inspect_project, load_document, open_project, recover_plain_text, save_document,
 };
@@ -78,6 +80,38 @@ pub fn dispatch(method: &str, params: Value) -> Result<Value> {
         "recover_plain_text" => {
             let request: RecoverPlainTextParams = parse_params(params)?;
             Ok(serde_json::to_value(recover_plain_text(request)?)?)
+        }
+        "compile_publication" => {
+            let request: CompilePublicationParams = parse_params(params)?;
+            Ok(serde_json::to_value(compile_publication_scope(request)?)?)
+        }
+        "get_publication_stats" => {
+            let request: GetPublicationStatsParams = parse_params(params)?;
+            Ok(serde_json::to_value(get_publication_stats(request)?)?)
+        }
+        "validate_publication" => {
+            let request: ValidatePublicationParams = parse_params(params)?;
+            Ok(serde_json::to_value(validate_publication(request)?)?)
+        }
+        "list_reader_presets" => {
+            let request: ListReaderPresetsParams = parse_params(params)?;
+            Ok(serde_json::to_value(list_reader_presets(request)?)?)
+        }
+        "create_reader_preset" => {
+            let request: CreateReaderPresetParams = parse_params(params)?;
+            Ok(serde_json::to_value(create_reader_preset(request)?)?)
+        }
+        "update_reader_preset" => {
+            let request: UpdateReaderPresetParams = parse_params(params)?;
+            Ok(serde_json::to_value(update_reader_preset(request)?)?)
+        }
+        "duplicate_reader_preset" => {
+            let request: DuplicateReaderPresetParams = parse_params(params)?;
+            Ok(serde_json::to_value(duplicate_reader_preset(request)?)?)
+        }
+        "delete_reader_preset" => {
+            let request: DeleteReaderPresetParams = parse_params(params)?;
+            Ok(serde_json::to_value(delete_reader_preset(request)?)?)
         }
         "list_canvases" => {
             let request: ListCanvasesParams = parse_params(params)?;
@@ -411,6 +445,7 @@ fn rpc_error(error: &CoreError, method: &str) -> (i64, String) {
         CoreError::MethodNotFound(_) => (-32601, format!("Method not found: {method}")),
         CoreError::RevisionConflict { .. }
         | CoreError::CanvasRevisionConflict { .. }
+        | CoreError::ReaderPresetRevisionConflict { .. }
         | CoreError::SourceContentConflict { .. } => (-32001, error.to_string()),
         CoreError::AlreadyExists(_) => (-32002, error.to_string()),
         CoreError::IdentifierConflict { .. } => (-32003, error.to_string()),
@@ -425,6 +460,7 @@ fn rpc_error(error: &CoreError, method: &str) -> (i64, String) {
         | CoreError::UnsupportedFormat { .. }
         | CoreError::Integrity(_) => (-32010, error.to_string()),
         CoreError::SnapshotIntegrity(_) => (-32030, error.to_string()),
+        CoreError::Publication(_) => (-32040, "publication compilation failed".to_owned()),
         CoreError::Io(_) | CoreError::Sqlite(_) => {
             (-32000, "madi-core operation failed".to_owned())
         }

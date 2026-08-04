@@ -117,7 +117,10 @@ fn migrates_v3_to_v5_preserves_manuscript_and_seeds_project_scoped_builtins() {
     .unwrap();
     assert_eq!(opened.metadata.schema_version, SCHEMA_VERSION);
     assert_eq!(opened.metadata.format_version, 1);
-    assert_eq!(opened.schema_migrations.last().unwrap().version, SCHEMA_VERSION);
+    assert_eq!(
+        opened.schema_migrations.last().unwrap().version,
+        SCHEMA_VERSION
+    );
     let scene = load_scene(LoadSceneParams {
         file_path: fixture.path.clone(),
         scene_id: fixture.scene_id,
@@ -653,7 +656,7 @@ fn snapshot_v3_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         saved_by: None,
     })
     .unwrap();
-    assert_eq!(baseline.snapshot.payload_version, 3);
+    assert_eq!(baseline.snapshot.payload_version, 4);
     update_entity(UpdateEntityParams {
         file_path: fixture.path.clone(),
         entity_id: "leia".to_owned(),
@@ -783,6 +786,10 @@ fn snapshot_v3_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         .as_object_mut()
         .unwrap()
         .remove("canvases");
+    legacy_v2_payload
+        .as_object_mut()
+        .unwrap()
+        .remove("reader_presets");
     let mut insert_failure_payload = legacy_v2_payload.clone();
     let duplicate_tag = {
         let tags = insert_failure_payload["tags"].as_array().unwrap();
@@ -991,6 +998,7 @@ fn snapshot_v3_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         "entity_relations",
         "scene_entity_links",
         "canvases",
+        "reader_presets",
     ] {
         payload.as_object_mut().unwrap().remove(key);
     }

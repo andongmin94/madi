@@ -410,8 +410,8 @@ fn deleted_story_bible_records_disappear_and_revision_advances() {
 }
 
 fn seed_large_fixture(fixture: &Fixture) {
-    let editor_engine_commit = std::env::var("MADI_PHASE1D_TYPIE_COMMIT")
-        .unwrap_or_else(|_| "phase-1d-scale".to_owned());
+    let editor_engine_commit =
+        std::env::var("MADI_PHASE1D_TYPIE_COMMIT").unwrap_or_else(|_| "phase-1d-scale".to_owned());
     let mut connection = Connection::open(&fixture.path).unwrap();
     connection
         .execute_batch("PRAGMA foreign_keys = ON;")

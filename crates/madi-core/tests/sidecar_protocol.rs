@@ -44,6 +44,57 @@ fn run_sidecar(lines: &[Value]) -> Vec<Value> {
 }
 
 #[test]
+fn json_lines_ui_state_preserves_f64_round_trip_bits() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("float-roundtrip.madi");
+    let file_path = path.to_string_lossy();
+    let boundary_value = 400.91839804349996_f64;
+
+    let responses = run_sidecar(&[
+        json!({
+            "jsonrpc": "2.0",
+            "id": "create",
+            "method": "create_project",
+            "params": {
+                "file_path": file_path,
+                "title": "float round-trip",
+                "project_id": PROJECT_ID,
+                "document_id": DOCUMENT_ID,
+                "editor_engine": "typie",
+                "editor_engine_commit": "test-commit",
+                "editor_schema_version": 1
+            }
+        }),
+        json!({
+            "jsonrpc": "2.0",
+            "id": "save-ui",
+            "method": "save_ui_state",
+            "params": {
+                "file_path": file_path,
+                "key": "world-graph.v1",
+                "value": { "coordinate": boundary_value }
+            }
+        }),
+        json!({
+            "jsonrpc": "2.0",
+            "id": "load-ui",
+            "method": "load_ui_state",
+            "params": {
+                "file_path": file_path,
+                "key": "world-graph.v1"
+            }
+        }),
+    ]);
+
+    for response in &responses[1..=2] {
+        let returned = response["result"]["state"]["value"]["coordinate"]
+            .as_f64()
+            .unwrap();
+        assert_eq!(returned.to_bits(), boundary_value.to_bits());
+    }
+}
+
+#[test]
 fn json_lines_process_restart_preserves_snapshot_hash_and_recovery_text() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("드래곤을죽이다.madi");

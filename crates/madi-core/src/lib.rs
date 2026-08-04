@@ -8,6 +8,8 @@ pub mod canvas;
 pub mod error;
 pub mod hierarchy;
 pub mod model;
+pub mod publication;
+pub mod reader_preset;
 pub mod rpc;
 pub mod storage;
 pub mod story_bible;
@@ -21,6 +23,8 @@ pub use hierarchy::{
     move_tree_node, rename_tree_node, reorder_tree_node, save_scene, save_ui_state,
 };
 pub use model::*;
+pub use publication::*;
+pub use reader_preset::*;
 pub use rpc::{dispatch, serve};
 pub use storage::{
     create_project, inspect_project, load_document, open_project, recover_plain_text,

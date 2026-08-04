@@ -707,6 +707,9 @@ pub struct SnapshotDiffSummary {
     pub changed_canvases: u64,
     pub canvas_node_count_delta: i64,
     pub canvas_edge_count_delta: i64,
+    pub added_reader_presets: u64,
+    pub deleted_reader_presets: u64,
+    pub changed_reader_presets: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

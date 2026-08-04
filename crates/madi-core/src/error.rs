@@ -19,10 +19,7 @@ pub enum CoreError {
     NodeNotFound { node_id: String },
 
     #[error("{entity} identifier already exists: {id}")]
-    IdentifierConflict {
-        entity: &'static str,
-        id: String,
-    },
+    IdentifierConflict { entity: &'static str, id: String },
 
     #[error("node {node_id} must be {expected}, found {actual}")]
     NodeKindMismatch {
@@ -67,6 +64,9 @@ pub enum CoreError {
     #[error("canvas revision conflict: expected {expected}, current revision is {actual}")]
     CanvasRevisionConflict { expected: i64, actual: i64 },
 
+    #[error("reader preset revision conflict: expected {expected}, current revision is {actual}")]
+    ReaderPresetRevisionConflict { expected: i64, actual: i64 },
+
     #[error("replacement source content changed for scene {scene_id}")]
     SourceContentConflict { scene_id: String },
 
@@ -78,4 +78,7 @@ pub enum CoreError {
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("publication compiler error: {0}")]
+    Publication(#[from] madi_publication::PublicationError),
 }

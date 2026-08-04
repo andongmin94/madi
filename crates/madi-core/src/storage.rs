@@ -19,7 +19,7 @@ use crate::model::{
 pub const APPLICATION_ID: i64 = 0x4D41_4449;
 pub const FORMAT_NAME: &str = "madi";
 pub const FORMAT_VERSION: i64 = 1;
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 
 const DEFAULT_EDITOR_ENGINE: &str = "typie";
 const UNINITIALIZED_EDITOR_COMMIT: &str = "uninitialized";
@@ -391,6 +391,39 @@ CREATE INDEX IF NOT EXISTS canvases_project_updated_idx
     ON canvases(project_id, updated_at DESC, id);
 CREATE INDEX IF NOT EXISTS canvases_project_name_idx
     ON canvases(project_id, name, id);
+"#;
+
+const MIGRATION_V6: &str = r#"
+CREATE TABLE IF NOT EXISTS reader_presets (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    source_kind TEXT NOT NULL CHECK (source_kind IN (
+        'BUILTIN_TEMPLATE', 'CUSTOM', 'DUPLICATED', 'IMPORTED'
+    )),
+    source_id TEXT,
+    source_version TEXT,
+    verification_status TEXT NOT NULL CHECK (verification_status IN (
+        'GENERIC', 'UNVERIFIED_SIMULATION', 'USER_DEFINED'
+    )),
+    preset_format TEXT NOT NULL CHECK (preset_format = 'MADI_READER_PRESET'),
+    preset_version INTEGER NOT NULL CHECK (preset_version = 1),
+    preset_json TEXT NOT NULL CHECK (json_valid(preset_json)),
+    content_hash TEXT NOT NULL CHECK (
+        length(content_hash) = 64
+        AND content_hash = lower(content_hash)
+        AND content_hash NOT GLOB '*[^0-9a-f]*'
+    ),
+    revision INTEGER NOT NULL CHECK (revision >= 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS reader_presets_project_name_idx
+    ON reader_presets(project_id, name COLLATE NOCASE, id);
+CREATE INDEX IF NOT EXISTS reader_presets_project_updated_idx
+    ON reader_presets(project_id, updated_at DESC, id);
 "#;
 
 const ORDER_STEP: f64 = 1024.0;
@@ -932,6 +965,30 @@ fn migrate(connection: &mut Connection) -> Result<()> {
             [],
         )?;
         transaction.pragma_update(None, "user_version", 5_i64)?;
+        transaction.commit()?;
+        current = 5;
+    }
+
+    if current < 6 {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute_batch(MIGRATION_V6)?;
+        let applied_at = database_timestamp(&transaction)?;
+        transaction.execute(
+            "INSERT OR IGNORE INTO schema_migrations
+                (version, applied_at, description)
+             VALUES (6, ?1, ?2)",
+            params![
+                applied_at,
+                "Phase 1F Reader Lab versioned canonical rendering presets"
+            ],
+        )?;
+        transaction.execute(
+            "UPDATE app_meta
+             SET format_version = 1, schema_version = 6
+             WHERE singleton = 1",
+            [],
+        )?;
+        transaction.pragma_update(None, "user_version", 6_i64)?;
         transaction.commit()?;
     }
 

@@ -3,10 +3,10 @@ use std::fs;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use madi_core::{
-    create_project, load_document, open_project, recover_plain_text,
-    save_document, CreateProjectParams, LoadDocumentParams, OpenProjectParams,
-    RecoverPlainTextParams, SaveDocumentParams, SaveDocumentPayload,
-    APPLICATION_ID, FORMAT_NAME, FORMAT_VERSION, SCHEMA_VERSION,
+    create_project, load_document, open_project, recover_plain_text, save_document,
+    CreateProjectParams, LoadDocumentParams, OpenProjectParams, RecoverPlainTextParams,
+    SaveDocumentParams, SaveDocumentPayload, APPLICATION_ID, FORMAT_NAME, FORMAT_VERSION,
+    SCHEMA_VERSION,
 };
 use rusqlite::Connection;
 use tempfile::tempdir;
@@ -45,11 +45,15 @@ fn creates_real_sqlite_madi_with_application_metadata_and_migration() {
     assert_eq!(created.project.metadata.schema_version, SCHEMA_VERSION);
     assert_eq!(created.project.metadata.revision, 0);
     assert_eq!(created.project.documents.len(), 1);
-    assert_eq!(created.project.schema_migrations.len(), 5);
+    assert_eq!(
+        created.project.schema_migrations.len(),
+        SCHEMA_VERSION as usize
+    );
     assert_eq!(created.project.schema_migrations[0].version, 1);
     assert_eq!(created.project.schema_migrations[1].version, 2);
     assert_eq!(created.project.schema_migrations[3].version, 4);
     assert_eq!(created.project.schema_migrations[4].version, 5);
+    assert_eq!(created.project.schema_migrations[5].version, 6);
 
     let connection = Connection::open(&path).unwrap();
     let application_id: i64 = connection
@@ -89,10 +93,7 @@ fn snapshot_blob_plain_text_reopen_and_recovery_round_trip() {
 
     assert_eq!(saved.metadata.revision, 1);
     assert_eq!(saved.document.snapshot_bytes, snapshot.len() as u64);
-    assert_eq!(
-        saved.document.plain_text_bytes,
-        plain_text.len() as u64
-    );
+    assert_eq!(saved.document.plain_text_bytes, plain_text.len() as u64);
     assert!(saved.backup_file_path.is_file());
 
     // All SQLite handles from save are closed here. Reopening exercises the
@@ -172,8 +173,7 @@ fn backup_rotation_keeps_the_two_previous_consistent_revisions() {
                 editor_engine: "typie".to_owned(),
                 editor_engine_commit: TYPIE_COMMIT.to_owned(),
                 editor_schema_version: 1,
-                snapshot_base64: BASE64_STANDARD
-                    .encode(format!("snapshot-{revision}").as_bytes()),
+                snapshot_base64: BASE64_STANDARD.encode(format!("snapshot-{revision}").as_bytes()),
                 plain_text_recovery: format!("원고 {revision}"),
             },
             expected_revision: Some(revision),
@@ -183,8 +183,7 @@ fn backup_rotation_keeps_the_two_previous_consistent_revisions() {
     }
 
     let current_backup = path.with_file_name("rotation-test.madi.bak");
-    let previous_backup =
-        path.with_file_name("rotation-test.madi.bak.previous");
+    let previous_backup = path.with_file_name("rotation-test.madi.bak.previous");
     let current = open_project(OpenProjectParams {
         file_path: current_backup,
     })

@@ -22,6 +22,9 @@ use crate::model::{
     SnapshotDiffSummary, SnapshotNodeCounts, TextStatisticsResult, TransformedSceneDocument,
     TreeNode,
 };
+use crate::reader_preset::{
+    canonical_reader_config, load_project_presets, validate_loaded_preset, ReaderPresetRecord,
+};
 use crate::storage::{
     create_consistent_backup, database_timestamp, default_client_identifier, load_app_meta,
     open_existing, seed_builtin_relation_types, sync_file, validate_editor_metadata,
@@ -30,7 +33,7 @@ use crate::storage::{
 use crate::story_bible::normalize_alias;
 
 const SNAPSHOT_PAYLOAD_FORMAT: &str = "MADI_LOGICAL_JSON";
-const SNAPSHOT_PAYLOAD_VERSION: i64 = 3;
+const SNAPSHOT_PAYLOAD_VERSION: i64 = 4;
 const MIN_SNAPSHOT_PAYLOAD_VERSION: i64 = 1;
 const SNAPSHOT_DOCUMENT_FORMAT: &str = "madi.logical-snapshot";
 const SNAPSHOT_UI_STATE_KEY: &str = "workspace.v1";
@@ -1096,6 +1099,8 @@ struct LogicalSnapshotPayload {
     scene_entity_links: Vec<SnapshotSceneEntityLink>,
     #[serde(default)]
     canvases: Vec<SnapshotCanvas>,
+    #[serde(default)]
+    reader_presets: Vec<ReaderPresetRecord>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1529,6 +1534,8 @@ fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPa
         values
     };
 
+    let reader_presets = load_project_presets(connection, &metadata.project_id)?;
+
     let ui_state = {
         let mut statement = connection.prepare(
             "SELECT project_id, key, value_json, updated_at
@@ -1579,6 +1586,7 @@ fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPa
         entity_relations,
         scene_entity_links,
         canvases,
+        reader_presets,
     })
 }
 
@@ -2112,7 +2120,52 @@ fn diff_payloads(
         .clamp(i64::MIN as i128, i64::MAX as i128) as i64;
     summary.canvas_edge_count_delta = (current_canvas_edges - target_canvas_edges)
         .clamp(i64::MIN as i128, i64::MAX as i128) as i64;
+
+    let target_presets = target
+        .reader_presets
+        .iter()
+        .map(|preset| (preset.id.as_str(), preset))
+        .collect::<HashMap<_, _>>();
+    let current_presets = current
+        .reader_presets
+        .iter()
+        .map(|preset| (preset.id.as_str(), preset))
+        .collect::<HashMap<_, _>>();
+    summary.added_reader_presets = current_presets
+        .keys()
+        .filter(|preset_id| !target_presets.contains_key(**preset_id))
+        .count() as u64;
+    summary.deleted_reader_presets = target_presets
+        .keys()
+        .filter(|preset_id| !current_presets.contains_key(**preset_id))
+        .count() as u64;
+    summary.changed_reader_presets = target_presets
+        .iter()
+        .filter(|(preset_id, preset)| {
+            current_presets
+                .get(**preset_id)
+                .is_some_and(|current| !snapshot_presets_semantically_equal(preset, current))
+        })
+        .count() as u64;
     summary
+}
+
+fn snapshot_presets_semantically_equal(
+    left: &ReaderPresetRecord,
+    right: &ReaderPresetRecord,
+) -> bool {
+    left.id == right.id
+        && left.project_id == right.project_id
+        && left.name == right.name
+        && left.source_kind == right.source_kind
+        && left.source_id == right.source_id
+        && left.source_version == right.source_version
+        && left.verification_status == right.verification_status
+        && left.preset_format == right.preset_format
+        && left.preset_version == right.preset_version
+        && left.preset_json == right.preset_json
+        && left.content_hash == right.content_hash
+        && left.created_at == right.created_at
 }
 
 fn snapshot_canvases_semantically_equal(left: &SnapshotCanvas, right: &SnapshotCanvas) -> bool {
@@ -2287,6 +2340,11 @@ fn validate_snapshot_payload(payload: &LogicalSnapshotPayload, project_id: &str)
     if payload.version < 3 && !payload.canvases.is_empty() {
         return Err(CoreError::SnapshotIntegrity(
             "payload versions 1 and 2 must not contain Canvas data".to_owned(),
+        ));
+    }
+    if payload.version < 4 && !payload.reader_presets.is_empty() {
+        return Err(CoreError::SnapshotIntegrity(
+            "payload versions 1 through 3 must not contain Reader presets".to_owned(),
         ));
     }
 
@@ -2518,6 +2576,16 @@ fn validate_snapshot_payload(payload: &LogicalSnapshotPayload, project_id: &str)
             )));
         }
     }
+    let mut reader_preset_ids = HashSet::new();
+    for preset in &payload.reader_presets {
+        if preset.project_id != project_id || !reader_preset_ids.insert(preset.id.as_str()) {
+            return Err(CoreError::SnapshotIntegrity(
+                "payload Reader preset ownership or identity is invalid".to_owned(),
+            ));
+        }
+        validate_loaded_preset(preset.clone())
+            .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+    }
     Ok(())
 }
 
@@ -2683,6 +2751,10 @@ fn take_character_lengths(lengths: &[(u64, u64)], selected_count: u64) -> Result
 }
 
 fn restore_payload(transaction: &Transaction<'_>, payload: &LogicalSnapshotPayload) -> Result<()> {
+    transaction.execute(
+        "DELETE FROM reader_presets WHERE project_id = ?1",
+        [&payload.project.id],
+    )?;
     transaction.execute(
         "DELETE FROM canvases WHERE project_id = ?1",
         [&payload.project.id],
@@ -2907,6 +2979,38 @@ fn restore_payload(transaction: &Transaction<'_>, payload: &LogicalSnapshotPaylo
                 canvas.revision,
                 canvas.created_at,
                 canvas.updated_at
+            ],
+        )?;
+    }
+    for preset in &payload.reader_presets {
+        let (preset_json, content_hash) = canonical_reader_config(&preset.preset_json)
+            .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+        if content_hash != preset.content_hash {
+            return Err(CoreError::SnapshotIntegrity(
+                "Reader preset canonical hash changed during restore".to_owned(),
+            ));
+        }
+        transaction.execute(
+            "INSERT INTO reader_presets (
+                id, project_id, name, source_kind, source_id, source_version,
+                verification_status, preset_format, preset_version, preset_json,
+                content_hash, revision, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![
+                preset.id,
+                preset.project_id,
+                preset.name,
+                preset.source_kind.as_str(),
+                preset.source_id,
+                preset.source_version,
+                preset.verification_status.as_str(),
+                preset.preset_format,
+                preset.preset_version,
+                preset_json,
+                preset.content_hash,
+                preset.revision,
+                preset.created_at,
+                preset.updated_at,
             ],
         )?;
     }
