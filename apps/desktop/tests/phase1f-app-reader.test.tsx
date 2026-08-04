@@ -141,7 +141,12 @@ const emptySnapshotDiff: SnapshotDiffSummary = {
   canvasEdgeCountDelta: 0,
   addedReaderPresets: 0,
   deletedReaderPresets: 0,
-  changedReaderPresets: 1
+  changedReaderPresets: 1,
+  publicationMetadataChanged: false,
+  coverChanged: false,
+  addedExportPresets: 0,
+  deletedExportPresets: 0,
+  changedExportPresets: 0
 };
 
 class ReaderAppEditor implements MadiEditorAdapter {

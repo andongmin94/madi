@@ -108,3 +108,176 @@ describe("Phase 1F main Reader Lab IPC capabilities", () => {
     harness.dispose();
   });
 });
+
+describe("Phase 1G main EPUB IPC request shapes", () => {
+  it("rejects a hostile extra key on every outer request before service dispatch", async () => {
+    const methods = {
+      runEpubIpcTask: vi.fn(async <T>(task: () => Promise<T>) => task()),
+      getPublicationExportState: vi.fn(async () => null),
+      updatePublicationMetadata: vi.fn(async () => null),
+      choosePublicationCover: vi.fn(async () => null),
+      removePublicationCover: vi.fn(async () => null),
+      createEpubExportPreset: vi.fn(async () => null),
+      updateEpubExportPreset: vi.fn(async () => null),
+      duplicateEpubExportPreset: vi.fn(async () => null),
+      deleteEpubExportPreset: vi.fn(async () => null),
+      chooseEpubOutput: vi.fn(async () => null),
+      validateEpubExport: vi.fn(async () => null),
+      runEpubExport: vi.fn(async () => null),
+      cancelEpubExport: vi.fn(async () => null),
+      saveEpubExportReport: vi.fn(async () => null),
+      revealEpubExport: vi.fn(async () => null)
+    };
+    const harness = createTrustedIpcHarness(
+      methods as unknown as DesktopService
+    );
+    const operationId = "123e4567-e89b-42d3-a456-426614174000";
+    const session = { sessionId: "session-1" };
+    const config = {
+      formatVersion: 1,
+      targetProfile: "EPUB_3_3_COMPATIBILITY",
+      splitMode: "CHAPTER",
+      tocDepth: 3,
+      includeChapterTitles: true,
+      includeSceneTitles: true,
+      sceneBreakStyleToken: "ORNAMENT",
+      bodyStyleToken: "REFLOWABLE_PROSE",
+      includeCover: false,
+      stylesheetToken: "MADI_CLASSIC"
+    };
+    const metadata = {
+      projectId: "project-1",
+      publicationTitle: "긴 밤의 문장",
+      creatorName: "마디 작가",
+      language: "ko",
+      identifier: "urn:madi:publication:project-1",
+      publisher: null,
+      description: null,
+      rights: null,
+      subjects: ["소설"],
+      coverAssetId: null,
+      createdAt: "2026-08-09T00:00:00.000Z",
+      updatedAt: "2026-08-09T00:00:00.000Z"
+    };
+    const validateRequest = {
+      ...session,
+      operationId,
+      scopeNodeId: "work-1",
+      expectedProjectRevision: 7,
+      metadata,
+      config
+    };
+    const cases = [
+      {
+        channel: IPC_CHANNELS.getPublicationExportState,
+        method: methods.getPublicationExportState,
+        request: session
+      },
+      {
+        channel: IPC_CHANNELS.updatePublicationMetadata,
+        method: methods.updatePublicationMetadata,
+        request: {
+          ...session,
+          publicationTitle: metadata.publicationTitle,
+          creatorName: metadata.creatorName,
+          language: metadata.language,
+          identifier: metadata.identifier,
+          publisher: metadata.publisher,
+          description: metadata.description,
+          rights: metadata.rights,
+          subjects: metadata.subjects
+        }
+      },
+      {
+        channel: IPC_CHANNELS.choosePublicationCover,
+        method: methods.choosePublicationCover,
+        request: session
+      },
+      {
+        channel: IPC_CHANNELS.removePublicationCover,
+        method: methods.removePublicationCover,
+        request: session
+      },
+      {
+        channel: IPC_CHANNELS.createEpubExportPreset,
+        method: methods.createEpubExportPreset,
+        request: { ...session, name: "유통용", config }
+      },
+      {
+        channel: IPC_CHANNELS.updateEpubExportPreset,
+        method: methods.updateEpubExportPreset,
+        request: {
+          ...session,
+          presetId: "preset-1",
+          name: "유통용",
+          config,
+          expectedPresetRevision: 2
+        }
+      },
+      {
+        channel: IPC_CHANNELS.duplicateEpubExportPreset,
+        method: methods.duplicateEpubExportPreset,
+        request: {
+          ...session,
+          sourcePresetId: "preset-1",
+          name: "유통용 복사본"
+        }
+      },
+      {
+        channel: IPC_CHANNELS.deleteEpubExportPreset,
+        method: methods.deleteEpubExportPreset,
+        request: {
+          ...session,
+          presetId: "preset-1",
+          expectedPresetRevision: 2
+        }
+      },
+      {
+        channel: IPC_CHANNELS.chooseEpubOutput,
+        method: methods.chooseEpubOutput,
+        request: { ...session, suggestedFileName: "긴 밤의 문장.epub" }
+      },
+      {
+        channel: IPC_CHANNELS.validateEpubExport,
+        method: methods.validateEpubExport,
+        request: validateRequest
+      },
+      {
+        channel: IPC_CHANNELS.runEpubExport,
+        method: methods.runEpubExport,
+        request: { ...validateRequest, outputSelectionId: "selection-1" }
+      },
+      {
+        channel: IPC_CHANNELS.cancelEpubExport,
+        method: methods.cancelEpubExport,
+        request: { ...session, operationId }
+      },
+      {
+        channel: IPC_CHANNELS.saveEpubExportReport,
+        method: methods.saveEpubExportReport,
+        request: { ...session, operationId, format: "JSON" }
+      },
+      {
+        channel: IPC_CHANNELS.revealEpubExport,
+        method: methods.revealEpubExport,
+        request: { ...session, operationId }
+      }
+    ] as const;
+
+    for (const { channel, method, request } of cases) {
+      const handler = harness.handlers.get(channel);
+      if (!handler) {
+        throw new Error(`missing EPUB IPC handler ${channel}`);
+      }
+      await expect(
+        handler(harness.event, {
+          ...request,
+          manuscriptText: "must never cross the IPC boundary"
+        })
+      ).rejects.toThrow("Invalid request shape");
+      expect(method).not.toHaveBeenCalled();
+    }
+
+    harness.dispose();
+  });
+});

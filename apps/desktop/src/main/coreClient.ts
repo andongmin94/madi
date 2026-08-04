@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import path from "node:path";
 import {
   spawn,
@@ -80,7 +79,16 @@ export const CORE_METHODS = [
   "create_reader_preset",
   "update_reader_preset",
   "duplicate_reader_preset",
-  "delete_reader_preset"
+  "delete_reader_preset",
+  "get_publication_export_state",
+  "update_publication_metadata",
+  "set_publication_cover",
+  "remove_publication_cover",
+  "list_export_presets",
+  "create_export_preset",
+  "update_export_preset",
+  "duplicate_export_preset",
+  "delete_export_preset"
 ] as const;
 
 export type CoreMethod = (typeof CORE_METHODS)[number];
@@ -93,11 +101,23 @@ export interface CoreClient {
   dispose(): void;
 }
 
-interface PendingRequest {
+interface QueuedRequest {
+  readonly id: number;
   readonly method: CoreMethod;
+  readonly payload: string;
   readonly resolve: (result: unknown) => void;
   readonly reject: (error: Error) => void;
+}
+
+interface ActiveRequest extends QueuedRequest {
   readonly timeout: NodeJS.Timeout;
+}
+
+interface JsonRpcCoreClientOptions {
+  readonly spawnProcess?: (
+    binaryPath: string
+  ) => ChildProcessWithoutNullStreams;
+  readonly requestTimeoutMs?: (method: CoreMethod) => number;
 }
 
 interface RpcResponse {
@@ -132,6 +152,16 @@ export function coreRequestTimeoutMs(method: CoreMethod): number {
     : RPC_TIMEOUT_MS;
 }
 
+function spawnCoreProcess(
+  binaryPath: string
+): ChildProcessWithoutNullStreams {
+  return spawn(binaryPath, ["serve"], {
+    shell: false,
+    windowsHide: true,
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+}
+
 export function resolveCoreBinary({
   appPath,
   resourcesPath,
@@ -151,41 +181,31 @@ export function resolveCoreBinary({
     return path.resolve(override);
   }
 
-  const candidates = [
-    path.resolve(appPath, "..", "..", "target", "debug", executable),
-    path.resolve(
-      appPath,
-      "..",
-      "..",
-      "crates",
-      "madi-core",
-      "target",
-      "debug",
-      executable
-    ),
-    path.resolve(
-      appPath,
-      "..",
-      "..",
-      "core",
-      "target",
-      "debug",
-      executable
-    ),
-    packagedCandidate
-  ];
-
-  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]!;
+  return path.resolve(
+    appPath,
+    "..",
+    "..",
+    "crates",
+    "madi-core",
+    "target",
+    "debug",
+    executable
+  );
 }
 
 export class JsonRpcCoreClient implements CoreClient {
   private child: ChildProcessWithoutNullStreams | undefined;
   private nextId = 1;
   private stdoutBuffer = Buffer.alloc(0);
-  private readonly pending = new Map<number, PendingRequest>();
+  private readonly queue: QueuedRequest[] = [];
+  private activeRequest: ActiveRequest | undefined;
+  private dispatching = false;
   private disposed = false;
 
-  public constructor(private readonly binaryPath: string) {}
+  public constructor(
+    private readonly binaryPath: string,
+    private readonly options: JsonRpcCoreClientOptions = {}
+  ) {}
 
   public request(
     method: CoreMethod,
@@ -199,35 +219,23 @@ export class JsonRpcCoreClient implements CoreClient {
     }
 
     const id = this.nextId++;
-    const child = this.ensureChild();
-
-    return new Promise<unknown>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`Core command ${method} timed out`));
-      }, coreRequestTimeoutMs(method));
-
-      this.pending.set(id, { method, resolve, reject, timeout });
-
-      const payload = JSON.stringify({
+    let payload: string;
+    try {
+      payload = JSON.stringify({
         jsonrpc: "2.0",
         id,
         method,
         params
       });
+    } catch {
+      return Promise.reject(
+        new Error(`Core command ${method} could not be encoded`)
+      );
+    }
 
-      child.stdin.write(`${payload}\n`, "utf8", (error) => {
-        if (!error) {
-          return;
-        }
-        const pending = this.pending.get(id);
-        if (!pending) {
-          return;
-        }
-        clearTimeout(pending.timeout);
-        this.pending.delete(id);
-        pending.reject(new Error(`Core command ${method} could not be sent`));
-      });
+    return new Promise<unknown>((resolve, reject) => {
+      this.queue.push({ id, method, payload, resolve, reject });
+      this.dispatchNext();
     });
   }
 
@@ -237,16 +245,7 @@ export class JsonRpcCoreClient implements CoreClient {
     }
     this.disposed = true;
     this.rejectAll(new Error("The local core was stopped"));
-
-    if (this.child) {
-      const child = this.child;
-      this.child = undefined;
-      child.stdin.destroy();
-      child.stdout.destroy();
-      child.stderr.destroy();
-      child.kill();
-      child.unref();
-    }
+    this.stopChild(this.child);
   }
 
   private ensureChild(): ChildProcessWithoutNullStreams {
@@ -254,14 +253,16 @@ export class JsonRpcCoreClient implements CoreClient {
       return this.child;
     }
 
-    const child = spawn(this.binaryPath, ["serve"], {
-      shell: false,
-      windowsHide: true,
-      stdio: ["pipe", "pipe", "pipe"]
-    });
+    const child = (this.options.spawnProcess ?? spawnCoreProcess)(
+      this.binaryPath
+    );
+    this.stdoutBuffer = Buffer.alloc(0);
+    this.child = child;
 
     child.stdout.on("data", (chunk: Buffer) => {
-      this.consumeStdout(chunk);
+      if (this.child === child) {
+        this.consumeStdout(chunk);
+      }
     });
 
     // Always drain stderr so a noisy child cannot deadlock. It is deliberately
@@ -269,24 +270,105 @@ export class JsonRpcCoreClient implements CoreClient {
     child.stderr.on("data", () => undefined);
 
     child.on("error", () => {
-      this.rejectAll(new Error("The local madi core could not be started"));
-      this.child = undefined;
+      if (this.child === child) {
+        this.failTransport(
+          new Error("The local madi core could not be started"),
+          child
+        );
+      }
     });
 
     child.on("exit", () => {
-      this.rejectAll(new Error("The local madi core stopped unexpectedly"));
-      this.child = undefined;
+      if (this.child === child) {
+        this.failTransport(
+          new Error("The local madi core stopped unexpectedly"),
+          child
+        );
+      }
     });
 
-    this.child = child;
     return child;
+  }
+
+  private dispatchNext(): void {
+    if (
+      this.disposed ||
+      this.activeRequest ||
+      this.dispatching ||
+      this.queue.length === 0
+    ) {
+      return;
+    }
+
+    const request = this.queue.shift();
+    if (!request) {
+      return;
+    }
+
+    this.dispatching = true;
+    try {
+      this.dispatchRequest(request);
+    } finally {
+      this.dispatching = false;
+    }
+
+    if (!this.activeRequest) {
+      this.dispatchNext();
+    }
+  }
+
+  private dispatchRequest(request: QueuedRequest): void {
+    let child: ChildProcessWithoutNullStreams;
+    try {
+      child = this.ensureChild();
+    } catch {
+      request.reject(new Error("The local madi core could not be started"));
+      this.rejectQueued(
+        new Error("The local madi core could not be started")
+      );
+      this.stopChild(this.child);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      if (this.activeRequest?.id !== request.id) {
+        return;
+      }
+      this.failTransport(
+        new Error(`Core command ${request.method} timed out`),
+        child
+      );
+    }, (this.options.requestTimeoutMs ?? coreRequestTimeoutMs)(request.method));
+
+    this.activeRequest = { ...request, timeout };
+
+    try {
+      child.stdin.write(`${request.payload}\n`, "utf8", (error) => {
+        if (!error || this.activeRequest?.id !== request.id) {
+          return;
+        }
+        this.failTransport(
+          new Error(`Core command ${request.method} could not be sent`),
+          child
+        );
+      });
+    } catch {
+      if (this.activeRequest?.id === request.id) {
+        this.failTransport(
+          new Error(`Core command ${request.method} could not be sent`),
+          child
+        );
+      }
+    }
   }
 
   private consumeStdout(chunk: Buffer): void {
     this.stdoutBuffer = Buffer.concat([this.stdoutBuffer, chunk]);
     if (this.stdoutBuffer.byteLength > MAX_RPC_LINE_BYTES) {
-      this.rejectAll(new Error("The local core returned an oversized response"));
-      this.dispose();
+      this.failTransport(
+        new Error("The local core returned an oversized response"),
+        this.child
+      );
       return;
     }
 
@@ -306,7 +388,10 @@ export class JsonRpcCoreClient implements CoreClient {
     try {
       response = JSON.parse(line) as RpcResponse;
     } catch {
-      this.rejectAll(new Error("The local core returned invalid JSON"));
+      this.failTransport(
+        new Error("The local core returned invalid JSON"),
+        this.child
+      );
       return;
     }
 
@@ -314,17 +399,24 @@ export class JsonRpcCoreClient implements CoreClient {
       response.jsonrpc !== "2.0" ||
       !Number.isSafeInteger(response.id)
     ) {
-      this.rejectAll(new Error("The local core returned an invalid response"));
+      this.failTransport(
+        new Error("The local core returned an invalid response"),
+        this.child
+      );
       return;
     }
 
-    const pending = this.pending.get(response.id);
-    if (!pending) {
+    const pending = this.activeRequest;
+    if (!pending || pending.id !== response.id) {
+      this.failTransport(
+        new Error("The local core returned an unexpected response"),
+        this.child
+      );
       return;
     }
 
     clearTimeout(pending.timeout);
-    this.pending.delete(response.id);
+    this.activeRequest = undefined;
 
     if (response.error) {
       const code =
@@ -335,17 +427,50 @@ export class JsonRpcCoreClient implements CoreClient {
       pending.reject(
         new Error(`Core command ${pending.method} failed${code}`)
       );
-      return;
+    } else {
+      pending.resolve(response.result);
     }
 
-    pending.resolve(response.result);
+    this.dispatchNext();
   }
 
   private rejectAll(error: Error): void {
-    for (const request of this.pending.values()) {
-      clearTimeout(request.timeout);
+    if (this.activeRequest) {
+      clearTimeout(this.activeRequest.timeout);
+      this.activeRequest.reject(error);
+      this.activeRequest = undefined;
+    }
+    this.rejectQueued(error);
+  }
+
+  private rejectQueued(error: Error): void {
+    for (const request of this.queue.splice(0)) {
       request.reject(error);
     }
-    this.pending.clear();
+  }
+
+  private failTransport(
+    error: Error,
+    child: ChildProcessWithoutNullStreams | undefined
+  ): void {
+    this.rejectAll(error);
+    this.stopChild(child);
+  }
+
+  private stopChild(
+    child: ChildProcessWithoutNullStreams | undefined
+  ): void {
+    if (!child) {
+      return;
+    }
+    if (this.child === child) {
+      this.child = undefined;
+      this.stdoutBuffer = Buffer.alloc(0);
+    }
+    child.stdin.destroy();
+    child.stdout.destroy();
+    child.stderr.destroy();
+    child.kill();
+    child.unref();
   }
 }

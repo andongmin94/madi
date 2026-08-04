@@ -1,10 +1,12 @@
 import path from "node:path";
 import {
   app,
+  BrowserWindow,
   dialog,
   ipcMain,
   protocol,
-  session
+  session,
+  shell
 } from "electron";
 import { installMadiAppProtocol } from "./appProtocol";
 import {
@@ -14,6 +16,11 @@ import {
 import { DesktopService } from "./desktopService";
 import { registerMadiIpc } from "./ipc";
 import { ProjectSessionRegistry } from "./projectSessions";
+import {
+  ProcessEpubExporter,
+  resolveEpubExporterBinary
+} from "./epubExportClient";
+import { EpubShutdownCoordinator } from "./epubShutdownCoordinator";
 import {
   createMainWindow,
   installSafeWindowClose,
@@ -40,6 +47,50 @@ let core: JsonRpcCoreClient | undefined;
 let disposeIpc: (() => void) | undefined;
 let networkGuardInstalled = false;
 let appProtocolInstalled = false;
+const epubShutdown = new EpubShutdownCoordinator<
+  DesktopService,
+  ProcessEpubExporter
+>({
+  abortPreparation: () => {
+    const coreAtShutdown = core;
+    core = undefined;
+    coreAtShutdown?.dispose();
+  },
+  requestFinalQuit: () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      app.quit();
+    }
+  },
+  scheduleRetry: (callback, delayMs) => {
+    setTimeout(callback, delayMs);
+  },
+  recoverApplication: () => {
+    dialog.showErrorBox(
+      "madi 종료 보류",
+      "EPUB 임시 파일 정리를 완료하지 못했습니다. 작업 창을 복구했으니 잠시 후 다시 종료해 주세요."
+    );
+    void openApplicationWindow();
+  }
+});
+let epubShutdownStartScheduled = false;
+
+function scheduleEpubShutdown(): void {
+  if (
+    epubShutdownStartScheduled ||
+    epubShutdown.isInProgress ||
+    epubShutdown.isComplete
+  ) {
+    return;
+  }
+  epubShutdownStartScheduled = true;
+  // Start cleanup on the next Node turn. An accepted close leaves a 100 ms
+  // authorization gap before the window disappears, while crash and quit
+  // fallbacks unwind their native lifecycle callback before cleanup begins.
+  setImmediate(() => {
+    epubShutdownStartScheduled = false;
+    epubShutdown.beginShutdown();
+  });
+}
 
 async function openApplicationWindow(): Promise<void> {
   const target = resolveWindowTarget(
@@ -79,6 +130,15 @@ async function openApplicationWindow(): Promise<void> {
     });
     core = new JsonRpcCoreClient(binaryPath);
   }
+  const epubExporter = epubShutdown.getOrCreateExporter(
+    () => new ProcessEpubExporter(
+      resolveEpubExporterBinary({
+        appPath: app.getAppPath(),
+        resourcesPath: process.resourcesPath,
+        isPackaged: app.isPackaged
+      })
+    )
+  );
 
   disposeIpc?.();
   const service = new DesktopService(
@@ -86,39 +146,67 @@ async function openApplicationWindow(): Promise<void> {
     dialog,
     core,
     new ProjectSessionRegistry(),
-    app.getVersion()
+    app.getVersion(),
+    epubExporter,
+    shell
   );
+  epubShutdown.registerService(service);
   disposeIpc = registerMadiIpc({
     ipcMain,
     window,
     rendererUrl: target.rendererUrl,
     service,
     appVersion: app.getVersion(),
-    onCloseReady: (readyToClose) => safeClose.complete(readyToClose)
+    onCloseReady: (readyToClose) => {
+      if (readyToClose && process.platform !== "darwin") {
+        scheduleEpubShutdown();
+      }
+      return safeClose.complete(readyToClose);
+    }
   });
 
   window.once("closed", () => {
     safeClose.dispose();
     disposeIpc?.();
     disposeIpc = undefined;
+    void epubShutdown.releaseService(service).catch(() => {
+      // Keep the service registered so application quit remains fail-closed.
+    });
   });
 }
 
 void app.whenReady().then(openApplicationWindow);
 
 app.on("activate", () => {
-  if (process.platform === "darwin" && !disposeIpc) {
+  if (
+    process.platform === "darwin" &&
+    !disposeIpc &&
+    !epubShutdown.isInProgress &&
+    !epubShutdown.isComplete
+  ) {
     void openApplicationWindow();
   }
 });
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    app.quit();
+    if (epubShutdown.isComplete) {
+      app.quit();
+    } else {
+      scheduleEpubShutdown();
+    }
   }
 });
 
-app.on("will-quit", () => {
+app.on("will-quit", (event) => {
+  if (!epubShutdown.isComplete) {
+    event.preventDefault();
+    // The renderer has already authorized every window close at will-quit.
+    // Scheduling shutdown now bounds any abandoned PREPARING compilation
+    // after a renderer crash; a refused close never reaches this point.
+    scheduleEpubShutdown();
+    return;
+  }
   disposeIpc?.();
   core?.dispose();
 });

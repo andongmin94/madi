@@ -81,12 +81,38 @@ import type {
   UpdateTagRequest
 } from "../shared/contracts";
 import type { DesktopService } from "./desktopService";
+import type {
+  CancelEpubExportRequest,
+  ChooseEpubOutputRequest,
+  ChoosePublicationCoverRequest,
+  CreateEpubExportPresetRequest,
+  DeleteEpubExportPresetRequest,
+  DuplicateEpubExportPresetRequest,
+  RevealEpubExportRequest,
+  RunEpubExportRequest,
+  SaveEpubExportReportRequest,
+  UpdateEpubExportPresetRequest,
+  UpdatePublicationMetadataRequest,
+  ValidateEpubExportRequest
+} from "../shared/epubExport";
 
 function requireObject(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("Invalid request");
   }
   return value as Record<string, unknown>;
+}
+
+function requireExactRequest(
+  value: unknown,
+  allowedKeys: readonly string[]
+): Record<string, unknown> {
+  const request = requireObject(value);
+  const allowed = new Set(allowedKeys);
+  if (Object.keys(request).some((key) => !allowed.has(key))) {
+    throw new Error("Invalid request shape");
+  }
+  return request;
 }
 
 function withIpcCloneTiming<T extends object>(
@@ -165,6 +191,8 @@ export function registerMadiIpc({
       throw new Error("Rejected IPC sender");
     }
   };
+  const runEpubIpcTask = <T>(task: () => Promise<T>): Promise<T> =>
+    service.runEpubIpcTask(task);
 
   ipcMain.handle(
     IPC_CHANNELS.createProject,
@@ -452,6 +480,224 @@ export function registerMadiIpc({
       authorize(event);
       return service.deleteReaderPreset(
         requireObject(rawRequest) as unknown as DeleteReaderPresetRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.getPublicationExportState,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runEpubIpcTask(() =>
+        service.getPublicationExportState(
+          requireExactRequest(rawRequest, ["sessionId"]) as unknown as SessionRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.updatePublicationMetadata,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runEpubIpcTask(() =>
+        service.updatePublicationMetadata(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "publicationTitle",
+            "creatorName",
+            "language",
+            "identifier",
+            "publisher",
+            "description",
+            "rights",
+            "subjects"
+          ]) as unknown as UpdatePublicationMetadataRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.choosePublicationCover,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runEpubIpcTask(() =>
+        service.choosePublicationCover(
+          requireExactRequest(rawRequest, ["sessionId"]) as unknown as ChoosePublicationCoverRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.removePublicationCover,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runEpubIpcTask(() =>
+        service.removePublicationCover(
+          requireExactRequest(rawRequest, ["sessionId"]) as unknown as SessionRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.createEpubExportPreset,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runEpubIpcTask(() =>
+        service.createEpubExportPreset(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "name",
+            "config"
+          ]) as unknown as CreateEpubExportPresetRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.updateEpubExportPreset,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runEpubIpcTask(() =>
+        service.updateEpubExportPreset(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "presetId",
+            "name",
+            "config",
+            "expectedPresetRevision"
+          ]) as unknown as UpdateEpubExportPresetRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.duplicateEpubExportPreset,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runEpubIpcTask(() =>
+        service.duplicateEpubExportPreset(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "sourcePresetId",
+            "name"
+          ]) as unknown as DuplicateEpubExportPresetRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.deleteEpubExportPreset,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runEpubIpcTask(() =>
+        service.deleteEpubExportPreset(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "presetId",
+            "expectedPresetRevision"
+          ]) as unknown as DeleteEpubExportPresetRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.chooseEpubOutput,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runEpubIpcTask(() =>
+        service.chooseEpubOutput(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "suggestedFileName"
+          ]) as unknown as ChooseEpubOutputRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.validateEpubExport,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.validateEpubExport(
+        requireExactRequest(rawRequest, [
+          "sessionId",
+          "operationId",
+          "scopeNodeId",
+          "expectedProjectRevision",
+          "metadata",
+          "config"
+        ]) as unknown as ValidateEpubExportRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.runEpubExport,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.runEpubExport(
+        requireExactRequest(rawRequest, [
+          "sessionId",
+          "operationId",
+          "scopeNodeId",
+          "expectedProjectRevision",
+          "metadata",
+          "config",
+          "outputSelectionId"
+        ]) as unknown as RunEpubExportRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.cancelEpubExport,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.cancelEpubExport(
+        requireExactRequest(rawRequest, [
+          "sessionId",
+          "operationId"
+        ]) as unknown as CancelEpubExportRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.saveEpubExportReport,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runEpubIpcTask(() =>
+        service.saveEpubExportReport(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "operationId",
+            "format"
+          ]) as unknown as SaveEpubExportReportRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.revealEpubExport,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runEpubIpcTask(() =>
+        service.revealEpubExport(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "operationId"
+          ]) as unknown as RevealEpubExportRequest
+        )
       );
     }
   );

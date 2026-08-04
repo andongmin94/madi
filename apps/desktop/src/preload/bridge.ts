@@ -83,6 +83,35 @@ import {
   type WorldGraphStatsResult
 } from "../shared/contracts";
 import type {
+  CancelEpubExportRequest,
+  ChooseEpubOutputRequest,
+  ChoosePublicationCoverRequest,
+  CreateEpubExportPresetRequest,
+  DeleteEpubExportPresetRequest,
+  DeleteEpubExportPresetResult,
+  DuplicateEpubExportPresetRequest,
+  EpubExportPresetMutationResult,
+  EpubExportProgress,
+  EpubOutputSelection,
+  PublicationCoverMutationResult,
+  PublicationExportState,
+  PublicationMetadataMutationResult,
+  RevealEpubExportRequest,
+  RunEpubExportRequest,
+  RunEpubExportResult,
+  SaveEpubExportReportRequest,
+  SaveEpubExportReportResult,
+  UpdateEpubExportPresetRequest,
+  UpdatePublicationMetadataRequest,
+  ValidateEpubExportRequest,
+  ValidateEpubExportResult
+} from "../shared/epubExport";
+import {
+  validateEpubExportProgress,
+  validateEpubOperationId,
+  validateRunEpubExportResult
+} from "../shared/epubExportValidation";
+import type {
   CreateEntityAliasRequest,
   CreateEntityRelationRequest,
   CreateEntityRequest,
@@ -146,7 +175,7 @@ export type Invoke = (
 
 export type Subscribe = (
   channel: string,
-  listener: () => void
+  listener: (payload?: unknown) => void
 ) => () => void;
 
 function copyBytes(bytes: Uint8Array): Uint8Array {
@@ -833,6 +862,133 @@ export function createMadiDesktopApi(
         IPC_CHANNELS.deleteReaderPreset,
         request
       )) as DeleteReaderPresetResult;
+    },
+
+    async getPublicationExportState(
+      request: SessionRequest
+    ): Promise<PublicationExportState> {
+      return (await invoke(
+        IPC_CHANNELS.getPublicationExportState,
+        request
+      )) as PublicationExportState;
+    },
+
+    async updatePublicationMetadata(
+      request: UpdatePublicationMetadataRequest
+    ): Promise<PublicationMetadataMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.updatePublicationMetadata,
+        request
+      )) as PublicationMetadataMutationResult;
+    },
+
+    async choosePublicationCover(
+      request: ChoosePublicationCoverRequest
+    ): Promise<PublicationCoverMutationResult | null> {
+      return (await invoke(
+        IPC_CHANNELS.choosePublicationCover,
+        request
+      )) as PublicationCoverMutationResult | null;
+    },
+
+    async removePublicationCover(
+      request: SessionRequest
+    ): Promise<PublicationCoverMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.removePublicationCover,
+        request
+      )) as PublicationCoverMutationResult;
+    },
+
+    async createEpubExportPreset(
+      request: CreateEpubExportPresetRequest
+    ): Promise<EpubExportPresetMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.createEpubExportPreset,
+        request
+      )) as EpubExportPresetMutationResult;
+    },
+
+    async updateEpubExportPreset(
+      request: UpdateEpubExportPresetRequest
+    ): Promise<EpubExportPresetMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.updateEpubExportPreset,
+        request
+      )) as EpubExportPresetMutationResult;
+    },
+
+    async duplicateEpubExportPreset(
+      request: DuplicateEpubExportPresetRequest
+    ): Promise<EpubExportPresetMutationResult> {
+      return (await invoke(
+        IPC_CHANNELS.duplicateEpubExportPreset,
+        request
+      )) as EpubExportPresetMutationResult;
+    },
+
+    async deleteEpubExportPreset(
+      request: DeleteEpubExportPresetRequest
+    ): Promise<DeleteEpubExportPresetResult> {
+      return (await invoke(
+        IPC_CHANNELS.deleteEpubExportPreset,
+        request
+      )) as DeleteEpubExportPresetResult;
+    },
+
+    async chooseEpubOutput(
+      request: ChooseEpubOutputRequest
+    ): Promise<EpubOutputSelection | null> {
+      return (await invoke(
+        IPC_CHANNELS.chooseEpubOutput,
+        request
+      )) as EpubOutputSelection | null;
+    },
+
+    async validateEpubExport(
+      request: ValidateEpubExportRequest
+    ): Promise<ValidateEpubExportResult> {
+      return (await invoke(
+        IPC_CHANNELS.validateEpubExport,
+        request
+      )) as ValidateEpubExportResult;
+    },
+
+    async runEpubExport(
+      request: RunEpubExportRequest
+    ): Promise<RunEpubExportResult> {
+      const result = validateRunEpubExportResult(
+        await invoke(IPC_CHANNELS.runEpubExport, request)
+      );
+      if (result.operationId !== validateEpubOperationId(request.operationId)) {
+        throw new Error("Mismatched EPUB export operation id");
+      }
+      return result;
+    },
+
+    async cancelEpubExport(request: CancelEpubExportRequest): Promise<boolean> {
+      return (await invoke(IPC_CHANNELS.cancelEpubExport, request)) as boolean;
+    },
+
+    async saveEpubExportReport(
+      request: SaveEpubExportReportRequest
+    ): Promise<SaveEpubExportReportResult | null> {
+      return (await invoke(
+        IPC_CHANNELS.saveEpubExportReport,
+        request
+      )) as SaveEpubExportReportResult | null;
+    },
+
+    async revealEpubExport(request: RevealEpubExportRequest): Promise<boolean> {
+      return (await invoke(IPC_CHANNELS.revealEpubExport, request)) as boolean;
+    },
+
+    onEpubExportProgress(
+      listener: (progress: EpubExportProgress) => void
+    ): () => void {
+      return subscribe(IPC_EVENTS.epubExportProgress, (payload) => {
+        listener(validateEpubExportProgress(payload));
+      });
     },
 
     async pickCanvasImport(): Promise<PickCanvasImportResult | null> {

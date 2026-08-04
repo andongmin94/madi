@@ -67,7 +67,12 @@ const summary: SnapshotDiffSummary = {
   canvasEdgeCountDelta: 0,
   addedReaderPresets: 0,
   deletedReaderPresets: 0,
-  changedReaderPresets: 0
+  changedReaderPresets: 0,
+  publicationMetadataChanged: true,
+  coverChanged: true,
+  addedExportPresets: 13,
+  deletedExportPresets: 14,
+  changedExportPresets: 15
 };
 
 const diff: DiffNamedSnapshotResult = {
@@ -186,6 +191,9 @@ describe("Phase 1B named snapshot panel", () => {
     expect(within(preview).getByText("-127자")).toBeTruthy();
     expect(within(preview).getByText("+7 · −8 · 변경 9")).toBeTruthy();
     expect(within(preview).getByText("+10 · −11 · 변경 12")).toBeTruthy();
+    expect(within(preview).getByText("출판 메타데이터")).toBeTruthy();
+    expect(within(preview).getByText("표지")).toBeTruthy();
+    expect(within(preview).getByText("+13 · −14 · 변경 15")).toBeTruthy();
   });
 
   it("requires a diff-backed confirmation and explains restore transaction safety", async () => {

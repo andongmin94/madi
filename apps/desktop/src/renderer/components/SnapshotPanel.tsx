@@ -138,6 +138,21 @@ function SnapshotDiffDetails({
           {summary.changedReaderPresets}
         </dd>
       </div>
+      <div>
+        <dt>출판 메타데이터</dt>
+        <dd>{summary.publicationMetadataChanged ? "변경" : "변경 없음"}</dd>
+      </div>
+      <div>
+        <dt>표지</dt>
+        <dd>{summary.coverChanged ? "변경" : "변경 없음"}</dd>
+      </div>
+      <div>
+        <dt>EPUB export preset</dt>
+        <dd>
+          +{summary.addedExportPresets} · −{summary.deletedExportPresets} · 변경{" "}
+          {summary.changedExportPresets}
+        </dd>
+      </div>
     </dl>
   );
 }

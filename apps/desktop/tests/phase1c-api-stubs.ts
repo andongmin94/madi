@@ -63,6 +63,21 @@ export type Phase1cApi = Pick<
   | "updateReaderPreset"
   | "duplicateReaderPreset"
   | "deleteReaderPreset"
+  | "getPublicationExportState"
+  | "updatePublicationMetadata"
+  | "choosePublicationCover"
+  | "removePublicationCover"
+  | "createEpubExportPreset"
+  | "updateEpubExportPreset"
+  | "duplicateEpubExportPreset"
+  | "deleteEpubExportPreset"
+  | "chooseEpubOutput"
+  | "validateEpubExport"
+  | "runEpubExport"
+  | "cancelEpubExport"
+  | "saveEpubExportReport"
+  | "revealEpubExport"
+  | "onEpubExportProgress"
 >;
 
 function unused(): never {
@@ -176,6 +191,21 @@ export function phase1cApiStubs(): Phase1cApi {
     createReaderPreset: vi.fn(async () => unused()),
     updateReaderPreset: vi.fn(async () => unused()),
     duplicateReaderPreset: vi.fn(async () => unused()),
-    deleteReaderPreset: vi.fn(async () => unused())
+    deleteReaderPreset: vi.fn(async () => unused()),
+    getPublicationExportState: vi.fn(async () => unused()),
+    updatePublicationMetadata: vi.fn(async () => unused()),
+    choosePublicationCover: vi.fn(async () => unused()),
+    removePublicationCover: vi.fn(async () => unused()),
+    createEpubExportPreset: vi.fn(async () => unused()),
+    updateEpubExportPreset: vi.fn(async () => unused()),
+    duplicateEpubExportPreset: vi.fn(async () => unused()),
+    deleteEpubExportPreset: vi.fn(async () => unused()),
+    chooseEpubOutput: vi.fn(async () => unused()),
+    validateEpubExport: vi.fn(async () => unused()),
+    runEpubExport: vi.fn(async () => unused()),
+    cancelEpubExport: vi.fn(async () => unused()),
+    saveEpubExportReport: vi.fn(async () => unused()),
+    revealEpubExport: vi.fn(async () => unused()),
+    onEpubExportProgress: vi.fn(() => () => undefined)
   };
 }

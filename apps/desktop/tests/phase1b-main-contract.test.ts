@@ -87,7 +87,12 @@ const coreDiff = {
   canvas_edge_count_delta: 25,
   added_reader_presets: 26,
   deleted_reader_presets: 27,
-  changed_reader_presets: 28
+  changed_reader_presets: 28,
+  publication_metadata_changed: true,
+  cover_changed: false,
+  added_export_presets: 29,
+  deleted_export_presets: 30,
+  changed_export_presets: 31
 };
 
 function createHarness(
@@ -484,7 +489,12 @@ describe("Phase 1B DesktopService RPC contract", () => {
       canvasEdgeCountDelta: 25,
       addedReaderPresets: 26,
       deletedReaderPresets: 27,
-      changedReaderPresets: 28
+      changedReaderPresets: 28,
+      publicationMetadataChanged: true,
+      coverChanged: false,
+      addedExportPresets: 29,
+      deletedExportPresets: 30,
+      changedExportPresets: 31
     });
     expect(request.mock.calls).toEqual([
       [

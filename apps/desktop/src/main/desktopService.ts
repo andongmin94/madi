@@ -1,6 +1,17 @@
 import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  link,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  rm,
+  stat,
+  unlink,
+  writeFile
+} from "node:fs/promises";
 import type { BrowserWindow, SaveDialogOptions } from "electron";
 import type {
   ApplyReplacementBatchRequest,
@@ -200,6 +211,53 @@ import { ProjectSessionRegistry } from "./projectSessions";
 import { validatePublicationDocument } from "../shared/publicationValidation";
 import { validateReaderRenderConfig } from "../shared/readerConfigValidation";
 import { validateReaderLabUiState } from "../shared/readerLabStateValidation";
+import { EPUB_RECOVERY_PRESERVED_ERROR } from "../shared/epubExport";
+import type {
+  CancelEpubExportRequest,
+  ChooseEpubOutputRequest,
+  ChoosePublicationCoverRequest,
+  CreateEpubExportPresetRequest,
+  DeleteEpubExportPresetRequest,
+  DeleteEpubExportPresetResult,
+  DuplicateEpubExportPresetRequest,
+  EpubExportPresetConfig,
+  EpubExportPresetMutationResult,
+  EpubExportPresetRecord,
+  EpubExportReport,
+  EpubOutputSelection,
+  PublicationCoverAsset,
+  PublicationCoverMutationResult,
+  PublicationExportMetadata,
+  PublicationExportState,
+  PublicationMetadataMutationResult,
+  RevealEpubExportRequest,
+  RunEpubExportRequest,
+  RunEpubExportResult,
+  SaveEpubExportReportRequest,
+  SaveEpubExportReportResult,
+  UpdateEpubExportPresetRequest,
+  UpdatePublicationMetadataRequest,
+  ValidateEpubExportRequest,
+  ValidateEpubExportResult
+} from "../shared/epubExport";
+import {
+  validateEpubExportPresetConfig,
+  validateEpubIdentifier,
+  validateEpubOperationId,
+  validateEpubPresetName,
+  validatePublicationMetadataInput,
+  validatePublicationMetadataStateInput
+} from "../shared/epubExportValidation";
+import { IPC_EVENTS } from "../shared/contracts";
+import type {
+  EpubExporterPort,
+  EpubExporterRunInput,
+  EpubUtilityResult
+} from "./epubExportClient";
+import {
+  EpubExportCancelledError,
+  EpubUtilityValidationError
+} from "./epubExportClient";
 
 const MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
 const MAX_RECOVERY_TEXT_CODE_UNITS = 32 * 1024 * 1024;
@@ -208,6 +266,10 @@ const WORLD_GRAPH_UI_STATE_KEY = "world-graph.v1";
 const PLOT_CANVAS_UI_STATE_KEY = "plot-canvas.v1";
 const READER_LAB_UI_STATE_KEY = "reader-lab.v1";
 const MAX_CANVAS_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_COVER_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_COVER_BASE64_LENGTH = Math.ceil(MAX_COVER_FILE_BYTES / 3) * 4;
+const MAX_EPUB_FILE_BYTES = 512 * 1024 * 1024;
+const MAX_EPUB_REPORT_BYTES = 8 * 1024 * 1024;
 const MAX_CANVAS_NODES = 500;
 const MAX_CANVAS_EDGES = 1_000;
 const MAX_WORLD_GRAPH_NODES = 500;
@@ -702,7 +764,12 @@ function parseSnapshotDiff(value: unknown): SnapshotDiffSummary {
     "canvas_edge_count_delta",
     "added_reader_presets",
     "deleted_reader_presets",
-    "changed_reader_presets"
+    "changed_reader_presets",
+    "publication_metadata_changed",
+    "cover_changed",
+    "added_export_presets",
+    "deleted_export_presets",
+    "changed_export_presets"
   ] as const;
   assertExactKeys(summary, keys, "snapshot diff summary");
   const signedDelta = (key: string): number => {
@@ -740,7 +807,15 @@ function parseSnapshotDiff(value: unknown): SnapshotDiffSummary {
     canvasEdgeCountDelta: signedDelta("canvas_edge_count_delta"),
     addedReaderPresets: requiredInteger(summary, "added_reader_presets"),
     deletedReaderPresets: requiredInteger(summary, "deleted_reader_presets"),
-    changedReaderPresets: requiredInteger(summary, "changed_reader_presets")
+    changedReaderPresets: requiredInteger(summary, "changed_reader_presets"),
+    publicationMetadataChanged: requiredBoolean(
+      summary,
+      "publication_metadata_changed"
+    ),
+    coverChanged: requiredBoolean(summary, "cover_changed"),
+    addedExportPresets: requiredInteger(summary, "added_export_presets"),
+    deletedExportPresets: requiredInteger(summary, "deleted_export_presets"),
+    changedExportPresets: requiredInteger(summary, "changed_export_presets")
   };
 }
 
@@ -989,6 +1064,17 @@ function assertExactKeys(
 ): void {
   const allowed = new Set(allowedKeys);
   if (Object.keys(record).some((key) => !allowed.has(key))) {
+    throw new Error(`Invalid ${label}`);
+  }
+}
+
+function assertRequiredExactKeys(
+  record: Readonly<Record<string, unknown>>,
+  keys: readonly string[],
+  label: string
+): void {
+  assertExactKeys(record, keys, label);
+  if (keys.some((key) => !Object.hasOwn(record, key))) {
     throw new Error(`Invalid ${label}`);
   }
 }
@@ -2617,13 +2703,692 @@ function parseReaderPreset(
   };
 }
 
+function parsePublicationExportMetadata(
+  value: unknown,
+  expectedProjectId: string
+): PublicationExportMetadata {
+  const metadata = asRecord(value, "publication metadata");
+  assertExactKeys(
+    metadata,
+    [
+      "project_id",
+      "publication_title",
+      "creator_name",
+      "language",
+      "identifier",
+      "publisher",
+      "description",
+      "rights",
+      "subjects",
+      "cover_asset_id",
+      "created_at",
+      "updated_at"
+    ],
+    "publication metadata"
+  );
+  const projectId = requiredString(metadata, "project_id");
+  if (projectId !== expectedProjectId) {
+    throw new Error("The local core returned cross-project publication metadata");
+  }
+  if (!Array.isArray(metadata.subjects) || metadata.subjects.length > 64) {
+    throw new Error("The local core returned invalid publication subjects");
+  }
+  const subjects = metadata.subjects.map((subject) =>
+    validateShortText(subject, "Publication subject", 500)
+  );
+  if (new Set(subjects).size !== subjects.length) {
+    throw new Error("The local core returned duplicate publication subjects");
+  }
+  const editable = validatePublicationMetadataStateInput({
+    publicationTitle: requiredString(metadata, "publication_title"),
+    creatorName: requiredText(metadata, "creator_name"),
+    language: requiredString(metadata, "language"),
+    identifier: requiredString(metadata, "identifier"),
+    publisher: optionalNullableText(metadata, "publisher"),
+    description: optionalNullableText(metadata, "description"),
+    rights: optionalNullableText(metadata, "rights"),
+    subjects
+  });
+  return {
+    projectId,
+    ...editable,
+    coverAssetId: optionalNullableText(metadata, "cover_asset_id"),
+    createdAt: requiredString(metadata, "created_at"),
+    updatedAt: requiredString(metadata, "updated_at")
+  };
+}
+
+function parsePublicationCover(
+  value: unknown,
+  expectedProjectId: string
+): PublicationCoverAsset {
+  const asset = asRecord(value, "publication cover asset");
+  assertExactKeys(
+    asset,
+    [
+      "id",
+      "project_id",
+      "kind",
+      "media_type",
+      "original_name",
+      "sha256",
+      "bytes_base64",
+      "byte_length",
+      "width",
+      "height",
+      "created_at",
+      "updated_at"
+    ],
+    "publication cover asset"
+  );
+  const projectId = requiredString(asset, "project_id");
+  if (projectId !== expectedProjectId || asset.kind !== "COVER") {
+    throw new Error("The local core returned a cross-project publication cover");
+  }
+  const mediaType = requiredString(asset, "media_type");
+  if (mediaType !== "image/jpeg" && mediaType !== "image/png") {
+    throw new Error("The local core returned an unsupported cover media type");
+  }
+  const originalName = requiredString(asset, "original_name");
+  if (path.basename(originalName) !== originalName) {
+    throw new Error("The local core returned an unsafe cover name");
+  }
+  const byteLength = requiredInteger(asset, "byte_length");
+  const width = requiredInteger(asset, "width");
+  const height = requiredInteger(asset, "height");
+  if (
+    byteLength < 1 ||
+    byteLength > MAX_COVER_FILE_BYTES ||
+    width < 1 ||
+    height < 1
+  ) {
+    throw new Error("The local core returned invalid cover dimensions");
+  }
+  const bytesBase64 = requiredString(asset, "bytes_base64");
+  if (bytesBase64.length > MAX_COVER_BASE64_LENGTH) {
+    throw new Error("The local core returned oversized cover bytes");
+  }
+  const decoded = Buffer.from(bytesBase64, "base64");
+  const sha256 = validateSha256(asset.sha256, "publication cover hash");
+  if (
+    decoded.byteLength !== byteLength ||
+    decoded.toString("base64") !== bytesBase64 ||
+    createHash("sha256").update(decoded).digest("hex") !== sha256
+  ) {
+    throw new Error("The local core returned invalid cover bytes");
+  }
+  return {
+    id: requiredString(asset, "id"),
+    projectId,
+    kind: "COVER",
+    mediaType,
+    originalName,
+    sha256,
+    byteLength,
+    width,
+    height,
+    createdAt: requiredString(asset, "created_at"),
+    updatedAt: requiredString(asset, "updated_at")
+  };
+}
+
+function parseEpubExportPreset(
+  value: unknown,
+  expectedProjectId: string
+): EpubExportPresetRecord {
+  const preset = asRecord(value, "EPUB export preset");
+  assertExactKeys(
+    preset,
+    [
+      "id",
+      "project_id",
+      "kind",
+      "name",
+      "preset_format",
+      "preset_version",
+      "preset_json",
+      "content_hash",
+      "revision",
+      "created_at",
+      "updated_at"
+    ],
+    "EPUB export preset"
+  );
+  const projectId = requiredString(preset, "project_id");
+  if (
+    projectId !== expectedProjectId ||
+    preset.kind !== "EPUB" ||
+    preset.preset_format !== "MADI_EXPORT_PRESET" ||
+    preset.preset_version !== 1
+  ) {
+    throw new Error("The local core returned an unsupported EPUB export preset");
+  }
+  return {
+    id: requiredString(preset, "id"),
+    projectId,
+    kind: "EPUB",
+    name: validateEpubPresetName(preset.name),
+    presetFormat: "MADI_EXPORT_PRESET",
+    presetVersion: 1,
+    config: validateEpubExportPresetConfig(preset.preset_json),
+    contentHash: validateSha256(preset.content_hash, "EPUB export preset hash"),
+    revision: requiredInteger(preset, "revision"),
+    createdAt: requiredString(preset, "created_at"),
+    updatedAt: requiredString(preset, "updated_at")
+  };
+}
+
+function duplicateNames(values: readonly { readonly name: string }[]): string[] {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    counts.set(value.name, (counts.get(value.name) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([name]) => name)
+    .sort();
+}
+
+interface EpubOutputSelectionRecord {
+  readonly sessionId: string;
+  readonly filePath: string;
+  readonly fileName: string;
+  readonly replaceExisting: boolean;
+  readonly maximumBytes: number;
+  readonly existingFile: {
+    readonly byteLength: number;
+    readonly sha256: string;
+  } | null;
+}
+
+interface EpubOperationRecord {
+  readonly sessionId: string;
+  readonly report: EpubExportReport;
+  readonly outputPath: string | null;
+}
+
+class EpubDestinationChangedError extends Error {
+  public constructor() {
+    super("The EPUB destination changed after selection");
+    this.name = "EpubDestinationChangedError";
+  }
+}
+
+export interface ShellPort {
+  showItemInFolder(filePath: string): void;
+}
+
+function safeEpubFileName(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  const base = path
+    .basename(raw || "작품.epub")
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "_")
+    .replace(/[. ]+$/u, "")
+    .slice(0, 180);
+  let safe = base || "작품.epub";
+  if (!safe.toLocaleLowerCase().endsWith(".epub")) {
+    safe = `${safe}.epub`;
+  }
+  if (/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(safe)) {
+    safe = `_${safe}`;
+  }
+  return safe;
+}
+
+async function existingEpubIdentity(
+  filePath: string,
+  maximumBytes = MAX_EPUB_FILE_BYTES
+): Promise<NonNullable<EpubOutputSelectionRecord["existingFile"]>> {
+  const handle = await open(filePath, "r");
+  try {
+    const before = await handle.stat();
+    if (!before.isFile() || before.size < 0 || before.size > maximumBytes) {
+      throw new Error("EPUB destination is not a file or exceeds the size limit");
+    }
+    const hash = createHash("sha256");
+    const buffer = Buffer.allocUnsafe(64 * 1024);
+    let offset = 0;
+    while (offset < before.size) {
+      const bytesToRead = Math.min(buffer.byteLength, before.size - offset);
+      const { bytesRead } = await handle.read(buffer, 0, bytesToRead, offset);
+      if (bytesRead === 0) {
+        throw new Error("The EPUB destination changed while it was selected");
+      }
+      hash.update(buffer.subarray(0, bytesRead));
+      offset += bytesRead;
+    }
+    const [afterHandle, afterPath] = await Promise.all([
+      handle.stat(),
+      stat(filePath)
+    ]);
+    if (
+      !afterHandle.isFile() ||
+      !afterPath.isFile() ||
+      before.size !== afterHandle.size ||
+      before.mtimeMs !== afterHandle.mtimeMs ||
+      before.ctimeMs !== afterHandle.ctimeMs ||
+      afterHandle.dev !== afterPath.dev ||
+      afterHandle.ino !== afterPath.ino ||
+      afterHandle.size !== afterPath.size ||
+      afterHandle.mtimeMs !== afterPath.mtimeMs ||
+      afterHandle.ctimeMs !== afterPath.ctimeMs
+    ) {
+      throw new Error("The EPUB destination changed while it was selected");
+    }
+    return { byteLength: afterHandle.size, sha256: hash.digest("hex") };
+  } finally {
+    await handle.close();
+  }
+}
+
+async function readBoundedFile(
+  filePath: string,
+  maximumBytes: number
+): Promise<Buffer> {
+  const handle = await open(filePath, "r");
+  try {
+    const before = await handle.stat();
+    if (!before.isFile() || before.size < 1 || before.size > maximumBytes) {
+      throw new Error("Selected file is too large or is not a file");
+    }
+    const bytes = Buffer.alloc(before.size);
+    let offset = 0;
+    while (offset < bytes.byteLength) {
+      const { bytesRead } = await handle.read(
+        bytes,
+        offset,
+        bytes.byteLength - offset,
+        offset
+      );
+      if (bytesRead === 0) {
+        throw new Error("Selected file changed while it was read");
+      }
+      offset += bytesRead;
+    }
+    const after = await handle.stat();
+    if (after.size !== before.size || bytes.byteLength > maximumBytes) {
+      throw new Error("Selected file changed while it was read");
+    }
+    return bytes;
+  } finally {
+    await handle.close();
+  }
+}
+
+function stagedEpubDirectory(destination: string, operationId: string): string {
+  return path.join(
+    path.dirname(destination),
+    `.madi-epub-operation-${operationId}`
+  );
+}
+
+function stagedEpubPath(stagedDirectory: string): string {
+  return path.join(stagedDirectory, "publication.epub");
+}
+
+async function removeStagedEpub(filePath: string): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await unlink(filePath);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return;
+      }
+      if (attempt === 2) {
+        throw new Error("The staged EPUB file could not be removed");
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    }
+  }
+}
+
+async function removeOwnedEpubDirectory(directoryPath: string): Promise<void> {
+  try {
+    await rm(directoryPath, {
+      recursive: true,
+      force: false,
+      maxRetries: 3,
+      retryDelay: 100
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+    throw new Error("The owned EPUB temporary directory could not be removed");
+  }
+}
+
+function editableMetadataForValidation(metadata: PublicationExportMetadata) {
+  return {
+    publicationTitle: metadata.publicationTitle,
+    creatorName: metadata.creatorName,
+    language: metadata.language,
+    identifier: metadata.identifier,
+    publisher: metadata.publisher,
+    description: metadata.description,
+    rights: metadata.rights,
+    subjects: metadata.subjects
+  };
+}
+
+function assertEpubMutationRevision(
+  previousRevision: number,
+  nextRevision: number,
+  noOp: boolean,
+  label: string
+): void {
+  const expectedRevision = noOp ? previousRevision : previousRevision + 1;
+  if (nextRevision !== expectedRevision) {
+    throw new Error(`The local core returned an invalid ${label} revision`);
+  }
+}
+
+function assertEditablePublicationMetadata(
+  actual: PublicationExportMetadata,
+  expected: ReturnType<typeof validatePublicationMetadataInput>
+): void {
+  if (
+    canonicalCanvasJson(editableMetadataForValidation(actual)) !==
+    canonicalCanvasJson(expected)
+  ) {
+    throw new Error("The local core returned different publication metadata");
+  }
+}
+
+function assertEpubPresetContent(
+  preset: EpubExportPresetRecord,
+  expected: {
+    readonly id: string;
+    readonly name?: string;
+    readonly config: EpubExportPresetConfig;
+    readonly revision: number;
+  }
+): void {
+  if (
+    preset.id !== expected.id ||
+    (expected.name !== undefined && preset.name !== expected.name) ||
+    preset.revision !== expected.revision ||
+    canonicalCanvasJson(preset.config) !== canonicalCanvasJson(expected.config)
+  ) {
+    throw new Error("The local core returned a different EPUB export preset");
+  }
+}
+
+function validationMessagesForDocument(
+  messages: EpubUtilityResult["summary"]["validationReport"]["messages"],
+  document: CompilePublicationResult["document"]
+): EpubExportReport["validation"]["messages"] {
+  const sourceNodeIds = new Set<string>();
+  for (const section of document.sections) {
+    sourceNodeIds.add(section.sourceNodeId);
+    for (const block of section.blocks) {
+      sourceNodeIds.add(block.source.sourceNodeId);
+    }
+  }
+  return messages.map((message) => {
+    if (
+      message.sourceNodeId !== null &&
+      !sourceNodeIds.has(message.sourceNodeId)
+    ) {
+      throw new Error("The EPUB utility returned an unknown source node");
+    }
+    return { ...message, sectionId: null };
+  });
+}
+
+function reportFromUtility(
+  utility: EpubUtilityResult,
+  document: CompilePublicationResult["document"],
+  config: EpubExportPresetConfig,
+  sourceProjectRevision: number,
+  appVersion: string
+): EpubExportReport {
+  const { summary } = utility;
+  const statistics = summary.statistics;
+  const coveredBlocks =
+    statistics.exportedBlockCount +
+    statistics.fallbackBlockCount +
+    statistics.rejectedBlockCount;
+  const blocks = document.sections.flatMap((section) => section.blocks);
+  const countRuby = (
+    inlines: readonly import("../shared/publication").PublicationInline[]
+  ): number =>
+    inlines.reduce(
+      (count, inline) =>
+        count +
+        (inline.kind === "RUBY" ? 1 : 0) +
+        (inline.kind === "TEXT" ? 0 : countRuby(inline.children)),
+      0
+    );
+  const expectedRubyCount = blocks.reduce(
+    (count, block) =>
+      count +
+      (block.kind === "PARAGRAPH" || block.kind === "QUOTE"
+        ? countRuby(block.inlines)
+        : 0),
+    0
+  );
+  if (
+    summary.validationReport.status !== "PASS" ||
+    statistics.sourceSectionCount !== document.sections.length ||
+    statistics.sourceBlockCount !== blocks.length ||
+    statistics.sourceCharacterCount !== document.stats.withSpaces ||
+    statistics.sceneBreakCount !==
+      blocks.filter((block) => block.kind === "SCENE_BREAK").length ||
+    statistics.rubyCount !== expectedRubyCount ||
+    statistics.headingCount !==
+      blocks.filter((block) => block.kind === "HEADING").length ||
+    statistics.coverIncluded !== config.includeCover ||
+    statistics.sourceSectionCount !== statistics.exportedSectionCount ||
+    statistics.sourceBlockCount !== coveredBlocks ||
+    statistics.rejectedBlockCount !== 0 ||
+    statistics.sourceCharacterCount !== statistics.exportedCharacterCount
+  ) {
+    throw new Error("The EPUB utility reported publication content loss");
+  }
+  return {
+    formatVersion: 1,
+    targetProfile: summary.targetProfile,
+    sourceProjectRevision,
+    sourcePublicationHash: summary.sourcePublicationHash,
+    epubSha256: utility.mode === "EXPORT" ? summary.sha256 : null,
+    logicalPackageHash: summary.logicalPackageHash,
+    byteLength: utility.mode === "EXPORT" ? summary.byteLength : null,
+    fileCount: statistics.fileCount,
+    xhtmlCount: statistics.xhtmlCount,
+    coverage: {
+      sourceSectionCount: statistics.sourceSectionCount,
+      exportedSectionCount: statistics.exportedSectionCount,
+      sourceBlockCount: statistics.sourceBlockCount,
+      exportedBlockCount: statistics.exportedBlockCount,
+      fallbackBlockCount: statistics.fallbackBlockCount,
+      rejectedBlockCount: statistics.rejectedBlockCount,
+      sourceCharacterCount: statistics.sourceCharacterCount,
+      exportedCharacterCount: statistics.exportedCharacterCount,
+      sceneBreakCount: statistics.sceneBreakCount,
+      rubyCount: statistics.rubyCount,
+      headingCount: statistics.headingCount
+    },
+    coverIncluded: statistics.coverIncluded,
+    validation: {
+      status: summary.validationReport.status === "PASS" ? "VALID" : "INVALID",
+      fatalCount: summary.validationReport.fatalCount,
+      errorCount: summary.validationReport.errorCount,
+      warningCount: summary.validationReport.warningCount,
+      infoCount: summary.validationReport.infoCount,
+      messages: validationMessagesForDocument(
+        summary.validationReport.messages,
+        document
+      ),
+      epubCheck: {
+        status: "UNAVAILABLE",
+        version: null,
+        compatibilityOnly:
+          summary.targetProfile === "EPUB_3_4_DRAFT_2026_08"
+      }
+    },
+    timing: {
+      splitMs: summary.exportTiming.contentSplitMs,
+      xhtmlMs: summary.exportTiming.xhtmlGenerationMs,
+      navigationMs: summary.exportTiming.packageDocumentsMs,
+      packageMs: summary.exportTiming.zipPackagingMs,
+      internalValidationMs: summary.exportTiming.internalValidationMs,
+      epubCheckMs: null,
+      totalMs: summary.exportTiming.totalMs
+    },
+    generatedAt: new Date().toISOString(),
+    madiVersion: appVersion
+  };
+}
+
+function markdownExportReport(report: EpubExportReport): string {
+  const lines = [
+    "# madi EPUB export report",
+    "",
+    `- Profile: ${report.targetProfile}`,
+    `- Project revision: ${report.sourceProjectRevision}`,
+    `- Publication IR SHA-256: ${report.sourcePublicationHash}`,
+    `- EPUB SHA-256: ${report.epubSha256 ?? "not written"}`,
+    `- Logical package SHA-256: ${report.logicalPackageHash}`,
+    `- Files/XHTML: ${report.fileCount}/${report.xhtmlCount}`,
+    `- Sections: ${report.coverage.exportedSectionCount}/${report.coverage.sourceSectionCount}`,
+    `- Blocks: ${report.coverage.exportedBlockCount + report.coverage.fallbackBlockCount}/${report.coverage.sourceBlockCount}`,
+    `- Characters: ${report.coverage.exportedCharacterCount}/${report.coverage.sourceCharacterCount}`,
+    `- Scene breaks/Ruby: ${report.coverage.sceneBreakCount}/${report.coverage.rubyCount}`,
+    `- Cover: ${report.coverIncluded ? "included" : "not included"}`,
+    `- Internal validation: ${report.validation.status}`,
+    `- EPUBCheck: ${report.validation.epubCheck.status} (${report.validation.epubCheck.version ?? "not available"})`,
+    `- Validation F/E/W/I: ${report.validation.fatalCount}/${report.validation.errorCount}/${report.validation.warningCount}/${report.validation.infoCount}`,
+    `- Total: ${report.timing.totalMs} ms`,
+    `- Generated: ${report.generatedAt}`,
+    `- madi: ${report.madiVersion}`,
+    ""
+  ];
+  if (report.validation.messages.length > 0) {
+    lines.push("## Validation messages", "");
+    for (const message of report.validation.messages) {
+      lines.push(
+        `- ${message.severity} ${message.code}: ${message.description}${message.epubPath ? ` [${message.epubPath}]` : ""}${message.suggestion ? ` — ${message.suggestion}` : ""}`
+      );
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function validationFailureReport(
+  document: CompilePublicationResult["document"],
+  sourcePublicationHash: string,
+  profile: EpubExportReport["targetProfile"],
+  validation: EpubUtilityValidationError["report"],
+  appVersion: string
+): EpubExportReport {
+  const blocks = document.sections.flatMap((section) => section.blocks);
+  const countRuby = (inlines: readonly import("../shared/publication").PublicationInline[]): number =>
+    inlines.reduce(
+      (count, inline) =>
+        count +
+        (inline.kind === "RUBY" ? 1 : 0) +
+        (inline.kind === "TEXT" ? 0 : countRuby(inline.children)),
+      0
+    );
+  return {
+    formatVersion: 1,
+    targetProfile: profile,
+    sourceProjectRevision: document.projectRevision,
+    sourcePublicationHash,
+    epubSha256: null,
+    logicalPackageHash: "0".repeat(64),
+    byteLength: null,
+    fileCount: 0,
+    xhtmlCount: 0,
+    coverage: {
+      sourceSectionCount: document.sections.length,
+      exportedSectionCount: 0,
+      sourceBlockCount: blocks.length,
+      exportedBlockCount: 0,
+      fallbackBlockCount: 0,
+      rejectedBlockCount: blocks.length,
+      sourceCharacterCount: document.stats.withSpaces,
+      exportedCharacterCount: 0,
+      sceneBreakCount: blocks.filter((block) => block.kind === "SCENE_BREAK").length,
+      rubyCount: blocks.reduce(
+        (count, block) =>
+          count +
+          (block.kind === "PARAGRAPH" || block.kind === "QUOTE"
+            ? countRuby(block.inlines)
+            : 0),
+        0
+      ),
+      headingCount: blocks.filter((block) => block.kind === "HEADING").length
+    },
+    coverIncluded: false,
+    validation: {
+      status: "INVALID",
+      fatalCount: validation.fatalCount,
+      errorCount: validation.errorCount,
+      warningCount: validation.warningCount,
+      infoCount: validation.infoCount,
+      messages: validationMessagesForDocument(validation.messages, document),
+      epubCheck: {
+        status: "NOT_RUN",
+        version: null,
+        compatibilityOnly: profile === "EPUB_3_4_DRAFT_2026_08"
+      }
+    },
+    timing: {
+      splitMs: 0,
+      xhtmlMs: 0,
+      navigationMs: 0,
+      packageMs: 0,
+      internalValidationMs: 0,
+      epubCheckMs: null,
+      totalMs: 0
+    },
+    generatedAt: new Date().toISOString(),
+    madiVersion: appVersion
+  };
+}
+
 export class DesktopService {
+  private readonly epubOutputSelections = new Map<
+    string,
+    EpubOutputSelectionRecord
+  >();
+  private readonly epubOperations = new Map<string, EpubOperationRecord>();
+  private readonly usedEpubOperationIds = new Set<string>();
+  private readonly activeEpubOperations = new Map<
+    string,
+    {
+      readonly sessionId: string;
+      readonly phase: "PREPARING" | "EXPORTING" | "FINALIZING";
+    }
+  >();
+  private readonly cancelledEpubOperations = new Set<string>();
+  private readonly epubOperationCompletions = new Map<
+    string,
+    {
+      readonly promise: Promise<{ readonly cleanupFailed: boolean }>;
+      readonly resolve: (result: { readonly cleanupFailed: boolean }) => void;
+    }
+  >();
+  private readonly epubIpcCompletions = new Set<Promise<void>>();
+  private readonly ownedEpubTemporaryPaths = new Map<
+    string,
+    "FILE" | "DIRECTORY"
+  >();
+  private epubShuttingDown = false;
+  private epubShutdownPromise: Promise<void> | null = null;
+
   public constructor(
     private readonly window: BrowserWindow,
     private readonly dialog: DialogPort,
     private readonly core: CoreClient,
     private readonly sessions: ProjectSessionRegistry,
-    private readonly appVersion: string
+    private readonly appVersion: string,
+    private readonly epubExporter?: EpubExporterPort,
+    private readonly shellPort?: ShellPort
   ) {}
 
   public async createProject(
@@ -3461,6 +4226,7 @@ export class DesktopService {
     if (
       document.projectId !== session.projectId ||
       document.projectRevision !== revision ||
+      revision !== input.expectedProjectRevision ||
       document.scopeNodeId !== scopeNodeId
     ) {
       throw new Error("The local core compiled another Publication scope");
@@ -3502,6 +4268,9 @@ export class DesktopService {
       "publication stats response"
     );
     const revision = responseRevision(response, "publication stats");
+    if (revision !== input.expectedProjectRevision) {
+      throw new Error("The local core returned stale Publication statistics");
+    }
     const compileTimingMs = requiredNumber(response, "compile_timing_ms");
     if (compileTimingMs < 0) {
       throw new Error("The local core returned invalid publication stats timing");
@@ -3732,6 +4501,1240 @@ export class DesktopService {
     const revision = responseRevision(response, "delete reader preset");
     this.sessions.updateProject(sessionId, { revision });
     return { deletedPresetId, revision };
+  }
+
+  public async getPublicationExportState(
+    input: SessionRequest
+  ): Promise<PublicationExportState> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("get_publication_export_state", {
+        file_path: session.filePath
+      }),
+      "publication export state response"
+    );
+    assertRequiredExactKeys(
+      response,
+      [
+        "metadata",
+        "publication_metadata",
+        "cover_asset",
+        "export_presets",
+        "revision"
+      ],
+      "publication export state response"
+    );
+    const metadata = parsePublicationExportMetadata(
+      response.publication_metadata,
+      session.projectId
+    );
+    const cover =
+      response.cover_asset === null
+        ? null
+        : parsePublicationCover(response.cover_asset, session.projectId);
+    if (metadata.coverAssetId !== (cover?.id ?? null)) {
+      throw new Error("The local core returned inconsistent publication cover state");
+    }
+    if (!Array.isArray(response.export_presets)) {
+      throw new Error("The local core returned invalid export presets");
+    }
+    const presets = response.export_presets.map((preset) =>
+      parseEpubExportPreset(preset, session.projectId)
+    );
+    if (new Set(presets.map((preset) => preset.id)).size !== presets.length) {
+      throw new Error("The local core returned duplicate EPUB preset identities");
+    }
+    const revision = responseRevision(response, "publication export state");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      metadata,
+      cover,
+      presets,
+      duplicatePresetNames: duplicateNames(presets),
+      revision
+    };
+  }
+
+  public async updatePublicationMetadata(
+    input: UpdatePublicationMetadataRequest
+  ): Promise<PublicationMetadataMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const metadata = validatePublicationMetadataInput({
+      publicationTitle: input.publicationTitle,
+      creatorName: input.creatorName,
+      language: input.language,
+      identifier: input.identifier,
+      publisher: input.publisher,
+      description: input.description,
+      rights: input.rights,
+      subjects: input.subjects
+    });
+    const response = asRecord(
+      await this.core.request("update_publication_metadata", {
+        file_path: session.filePath,
+        publication_title: metadata.publicationTitle,
+        creator_name: metadata.creatorName,
+        language: metadata.language,
+        identifier: metadata.identifier,
+        publisher: metadata.publisher,
+        description: metadata.description,
+        rights: metadata.rights,
+        subjects: metadata.subjects,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "update publication metadata response"
+    );
+    assertRequiredExactKeys(
+      response,
+      ["metadata", "publication_metadata", "no_op", "revision"],
+      "update publication metadata response"
+    );
+    const revision = responseRevision(response, "update publication metadata");
+    const publicationMetadata = parsePublicationExportMetadata(
+      response.publication_metadata,
+      session.projectId
+    );
+    const noOp = requiredBoolean(response, "no_op");
+    assertEditablePublicationMetadata(publicationMetadata, metadata);
+    assertEpubMutationRevision(
+      session.revision,
+      revision,
+      noOp,
+      "publication metadata"
+    );
+    this.sessions.updateProject(sessionId, { revision });
+    return { metadata: publicationMetadata, revision, noOp };
+  }
+
+  public async choosePublicationCover(
+    input: ChoosePublicationCoverRequest
+  ): Promise<PublicationCoverMutationResult | null> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const selection = await this.dialog.showOpenDialog(this.window, {
+      title: "EPUB 표지 선택",
+      filters: [{ name: "PNG 또는 JPEG 이미지", extensions: ["png", "jpg", "jpeg"] }],
+      properties: ["openFile", "dontAddToRecent"]
+    });
+    if (selection.canceled || selection.filePaths.length !== 1) {
+      return null;
+    }
+    const filePath = selection.filePaths[0]!;
+    const bytes = await readBoundedFile(filePath, MAX_COVER_FILE_BYTES);
+    const isPng =
+      bytes.byteLength >= 8 &&
+      bytes.subarray(0, 8).equals(
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+      );
+    const isJpeg =
+      bytes.byteLength >= 3 &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes[2] === 0xff;
+    if (!isPng && !isJpeg) {
+      throw new Error("Cover must be a valid PNG or JPEG image");
+    }
+    const currentState = await this.getPublicationExportState({ sessionId });
+    const expectedRevision = currentState.revision;
+    const assetId = currentState.cover?.id ?? randomUUID();
+    const mediaType = isPng ? "image/png" : "image/jpeg";
+    const originalName = path.basename(filePath);
+    const expectedSha256 = createHash("sha256").update(bytes).digest("hex");
+    const response = asRecord(
+      await this.core.request("set_publication_cover", {
+        file_path: session.filePath,
+        asset_id: assetId,
+        media_type: mediaType,
+        original_name: originalName,
+        bytes_base64: bytes.toString("base64"),
+        expected_revision: expectedRevision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "set publication cover response"
+    );
+    assertRequiredExactKeys(
+      response,
+      ["metadata", "asset", "publication_metadata", "no_op", "revision"],
+      "set publication cover response"
+    );
+    const revision = responseRevision(response, "set publication cover");
+    const cover = parsePublicationCover(response.asset, session.projectId);
+    const metadata = parsePublicationExportMetadata(
+      response.publication_metadata,
+      session.projectId
+    );
+    if (metadata.coverAssetId !== cover.id) {
+      throw new Error("The local core did not attach the saved publication cover");
+    }
+    const noOp = requiredBoolean(response, "no_op");
+    if (
+      cover.id !== assetId ||
+      cover.mediaType !== mediaType ||
+      cover.originalName !== originalName ||
+      cover.sha256 !== expectedSha256 ||
+      cover.byteLength !== bytes.byteLength
+    ) {
+      throw new Error("The local core saved a different publication cover");
+    }
+    assertEpubMutationRevision(
+      expectedRevision,
+      revision,
+      noOp,
+      "publication cover"
+    );
+    this.sessions.updateProject(sessionId, { revision });
+    return { cover, metadata, revision, noOp };
+  }
+
+  public async removePublicationCover(
+    input: SessionRequest
+  ): Promise<PublicationCoverMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const currentState = await this.getPublicationExportState({ sessionId });
+    const expectedRevision = currentState.revision;
+    const expectedDeletedAssetId = currentState.cover?.id ?? null;
+    const response = asRecord(
+      await this.core.request("remove_publication_cover", {
+        file_path: session.filePath,
+        expected_revision: expectedRevision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "remove publication cover response"
+    );
+    assertRequiredExactKeys(
+      response,
+      [
+        "metadata",
+        "deleted_asset_id",
+        "publication_metadata",
+        "no_op",
+        "revision"
+      ],
+      "remove publication cover response"
+    );
+    const revision = responseRevision(response, "remove publication cover");
+    const metadata = parsePublicationExportMetadata(
+      response.publication_metadata,
+      session.projectId
+    );
+    if (metadata.coverAssetId !== null) {
+      throw new Error("The local core retained the removed publication cover");
+    }
+    const noOp = requiredBoolean(response, "no_op");
+    const deletedAssetId = response.deleted_asset_id;
+    if (
+      noOp !== (expectedDeletedAssetId === null) ||
+      deletedAssetId !== expectedDeletedAssetId
+    ) {
+      throw new Error("The local core returned an invalid removed cover identity");
+    }
+    assertEpubMutationRevision(
+      expectedRevision,
+      revision,
+      noOp,
+      "publication cover removal"
+    );
+    this.sessions.updateProject(sessionId, { revision });
+    return { cover: null, metadata, revision, noOp };
+  }
+
+  public async createEpubExportPreset(
+    input: CreateEpubExportPresetRequest
+  ): Promise<EpubExportPresetMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const presetId = randomUUID();
+    const name = validateEpubPresetName(input.name);
+    const config = validateEpubExportPresetConfig(input.config);
+    const response = asRecord(
+      await this.core.request("create_export_preset", {
+        file_path: session.filePath,
+        preset_id: presetId,
+        name,
+        preset_json: config,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "create EPUB export preset response"
+    );
+    assertRequiredExactKeys(
+      response,
+      ["metadata", "preset", "no_op", "revision"],
+      "create EPUB export preset response"
+    );
+    const revision = responseRevision(response, "create EPUB export preset");
+    const preset = parseEpubExportPreset(response.preset, session.projectId);
+    const noOp = requiredBoolean(response, "no_op");
+    if (noOp) {
+      throw new Error("The local core did not create the EPUB export preset");
+    }
+    assertEpubPresetContent(preset, {
+      id: presetId,
+      name,
+      config,
+      revision: 0
+    });
+    assertEpubMutationRevision(
+      session.revision,
+      revision,
+      false,
+      "EPUB export preset creation"
+    );
+    this.sessions.updateProject(sessionId, { revision });
+    return { preset, revision, noOp };
+  }
+
+  public async updateEpubExportPreset(
+    input: UpdateEpubExportPresetRequest
+  ): Promise<EpubExportPresetMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    if (
+      !Number.isSafeInteger(input.expectedPresetRevision) ||
+      input.expectedPresetRevision < 0
+    ) {
+      throw new Error("Invalid expected EPUB export preset revision");
+    }
+    const presetId = validateEpubIdentifier(
+      input.presetId,
+      "EPUB export preset id"
+    );
+    const name = validateEpubPresetName(input.name);
+    const config = validateEpubExportPresetConfig(input.config);
+    const response = asRecord(
+      await this.core.request("update_export_preset", {
+        file_path: session.filePath,
+        preset_id: presetId,
+        name,
+        preset_json: config,
+        expected_revision: session.revision,
+        expected_preset_revision: input.expectedPresetRevision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "update EPUB export preset response"
+    );
+    assertRequiredExactKeys(
+      response,
+      ["metadata", "preset", "no_op", "revision"],
+      "update EPUB export preset response"
+    );
+    const revision = responseRevision(response, "update EPUB export preset");
+    const preset = parseEpubExportPreset(response.preset, session.projectId);
+    const noOp = requiredBoolean(response, "no_op");
+    assertEpubPresetContent(preset, {
+      id: presetId,
+      name,
+      config,
+      revision: input.expectedPresetRevision + (noOp ? 0 : 1)
+    });
+    assertEpubMutationRevision(
+      session.revision,
+      revision,
+      noOp,
+      "EPUB export preset update"
+    );
+    this.sessions.updateProject(sessionId, { revision });
+    return { preset, revision, noOp };
+  }
+
+  public async duplicateEpubExportPreset(
+    input: DuplicateEpubExportPresetRequest
+  ): Promise<EpubExportPresetMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const sourcePresetId = validateEpubIdentifier(
+      input.sourcePresetId,
+      "source EPUB export preset id"
+    );
+    const state = await this.getPublicationExportState({ sessionId });
+    if (state.revision !== session.revision) {
+      throw new Error("EPUB export presets changed before duplication");
+    }
+    const source = state.presets.find((preset) => preset.id === sourcePresetId);
+    if (!source) {
+      throw new Error("The source EPUB export preset is unavailable");
+    }
+    const presetId = randomUUID();
+    const name =
+      input.name === undefined ? undefined : validateEpubPresetName(input.name);
+    const response = asRecord(
+      await this.core.request("duplicate_export_preset", {
+        file_path: session.filePath,
+        source_preset_id: sourcePresetId,
+        preset_id: presetId,
+        ...(name === undefined ? {} : { name }),
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "duplicate EPUB export preset response"
+    );
+    assertRequiredExactKeys(
+      response,
+      ["metadata", "preset", "no_op", "revision"],
+      "duplicate EPUB export preset response"
+    );
+    const revision = responseRevision(response, "duplicate EPUB export preset");
+    const preset = parseEpubExportPreset(response.preset, session.projectId);
+    const noOp = requiredBoolean(response, "no_op");
+    if (noOp) {
+      throw new Error("The local core did not duplicate the EPUB export preset");
+    }
+    assertEpubPresetContent(preset, {
+      id: presetId,
+      ...(name === undefined ? {} : { name }),
+      config: source.config,
+      revision: 0
+    });
+    assertEpubMutationRevision(
+      session.revision,
+      revision,
+      false,
+      "EPUB export preset duplication"
+    );
+    this.sessions.updateProject(sessionId, { revision });
+    return { preset, revision, noOp };
+  }
+
+  public async deleteEpubExportPreset(
+    input: DeleteEpubExportPresetRequest
+  ): Promise<DeleteEpubExportPresetResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const presetId = validateEpubIdentifier(
+      input.presetId,
+      "EPUB export preset id"
+    );
+    if (
+      !Number.isSafeInteger(input.expectedPresetRevision) ||
+      input.expectedPresetRevision < 0
+    ) {
+      throw new Error("Invalid expected EPUB export preset revision");
+    }
+    const response = asRecord(
+      await this.core.request("delete_export_preset", {
+        file_path: session.filePath,
+        preset_id: presetId,
+        expected_revision: session.revision,
+        expected_preset_revision: input.expectedPresetRevision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "delete EPUB export preset response"
+    );
+    assertRequiredExactKeys(
+      response,
+      ["metadata", "deleted_preset_id", "revision"],
+      "delete EPUB export preset response"
+    );
+    const deletedPresetId = requiredString(response, "deleted_preset_id");
+    if (deletedPresetId !== presetId) {
+      throw new Error("The local core deleted another EPUB export preset");
+    }
+    const revision = responseRevision(response, "delete EPUB export preset");
+    if (revision !== session.revision + 1) {
+      throw new Error("The local core returned an invalid preset deletion revision");
+    }
+    this.sessions.updateProject(sessionId, { revision });
+    return { deletedPresetId, revision };
+  }
+
+  public async chooseEpubOutput(
+    input: ChooseEpubOutputRequest
+  ): Promise<EpubOutputSelection | null> {
+    const sessionId = validateSessionId(input?.sessionId);
+    this.sessions.require(sessionId);
+    const fileName = safeEpubFileName(input.suggestedFileName);
+    const selection = await this.dialog.showSaveDialog(this.window, {
+      title: "EPUB 내보내기",
+      defaultPath: fileName,
+      filters: [{ name: "EPUB publication", extensions: ["epub"] }],
+      properties: ["createDirectory", "showOverwriteConfirmation"]
+    });
+    if (selection.canceled || !selection.filePath) {
+      return null;
+    }
+    if (!selection.filePath.toLocaleLowerCase().endsWith(".epub")) {
+      throw new Error("EPUB destination must use the .epub extension");
+    }
+    const filePath = selection.filePath;
+    const resolvedPath = path.resolve(filePath);
+    let replaceExisting = false;
+    let existingFile: EpubOutputSelectionRecord["existingFile"] = null;
+    try {
+      const existing = await stat(resolvedPath);
+      if (!existing.isFile()) {
+        throw new Error("EPUB destination is not a file");
+      }
+      replaceExisting = true;
+      existingFile = await existingEpubIdentity(resolvedPath);
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        (error as NodeJS.ErrnoException).code !== "ENOENT"
+      ) {
+        throw error;
+      }
+    }
+    const selectionId = randomUUID();
+    this.epubOutputSelections.set(selectionId, {
+      sessionId,
+      filePath: resolvedPath,
+      fileName: path.basename(resolvedPath),
+      replaceExisting,
+      maximumBytes: MAX_EPUB_FILE_BYTES,
+      existingFile
+    });
+    while (this.epubOutputSelections.size > 32) {
+      this.epubOutputSelections.delete(
+        this.epubOutputSelections.keys().next().value as string
+      );
+    }
+    return { selectionId, fileName: path.basename(resolvedPath) };
+  }
+
+  private async prepareEpubUtilityInput(
+    input: ValidateEpubExportRequest,
+    mode: EpubExporterRunInput["mode"],
+    outputPath: string,
+    replaceExisting: boolean
+  ): Promise<{
+    readonly utilityInput: EpubExporterRunInput;
+    readonly revision: number;
+    readonly document: CompilePublicationResult["document"];
+  }> {
+    if (!this.epubExporter) {
+      throw new Error("The local EPUB utility is unavailable");
+    }
+    const sessionId = validateSessionId(input?.sessionId);
+    const operationId = validateEpubOperationId(input.operationId);
+    const session = this.sessions.require(sessionId);
+    if (
+      !Number.isSafeInteger(input.expectedProjectRevision) ||
+      input.expectedProjectRevision < 0 ||
+      input.expectedProjectRevision !== session.revision
+    ) {
+      throw new Error("EPUB export project revision is stale");
+    }
+    const config = validateEpubExportPresetConfig(input.config);
+    const rendererMetadataRecord = asRecord(
+      input.metadata,
+      "EPUB export metadata"
+    );
+    assertExactKeys(
+      rendererMetadataRecord,
+      [
+        "projectId",
+        "publicationTitle",
+        "creatorName",
+        "language",
+        "identifier",
+        "publisher",
+        "description",
+        "rights",
+        "subjects",
+        "coverAssetId",
+        "createdAt",
+        "updatedAt"
+      ],
+      "EPUB export metadata"
+    );
+    const rendererMetadata = validatePublicationMetadataInput({
+      publicationTitle: rendererMetadataRecord.publicationTitle,
+      creatorName: rendererMetadataRecord.creatorName,
+      language: rendererMetadataRecord.language,
+      identifier: rendererMetadataRecord.identifier,
+      publisher: rendererMetadataRecord.publisher,
+      description: rendererMetadataRecord.description,
+      rights: rendererMetadataRecord.rights,
+      subjects: rendererMetadataRecord.subjects
+    });
+    const exportStateResponse = asRecord(
+      await this.core.request("get_publication_export_state", {
+        file_path: session.filePath
+      }),
+      "publication export state response"
+    );
+    assertRequiredExactKeys(
+      exportStateResponse,
+      [
+        "metadata",
+        "publication_metadata",
+        "cover_asset",
+        "export_presets",
+        "revision"
+      ],
+      "publication export state response"
+    );
+    const stateRevision = responseRevision(
+      exportStateResponse,
+      "publication export state"
+    );
+    if (this.cancelledEpubOperations.delete(operationId)) {
+      throw new EpubExportCancelledError();
+    }
+    if (stateRevision !== input.expectedProjectRevision) {
+      this.sessions.updateProject(sessionId, { revision: stateRevision });
+      throw new Error("EPUB export project revision changed");
+    }
+    const metadata = parsePublicationExportMetadata(
+      exportStateResponse.publication_metadata,
+      session.projectId
+    );
+    const canonicalMetadata = validatePublicationMetadataInput(
+      editableMetadataForValidation(metadata)
+    );
+    if (
+      input.metadata.projectId !== session.projectId ||
+      rendererMetadataRecord.coverAssetId !== metadata.coverAssetId ||
+      rendererMetadataRecord.createdAt !== metadata.createdAt ||
+      rendererMetadataRecord.updatedAt !== metadata.updatedAt ||
+      canonicalCanvasJson(rendererMetadata) !== canonicalCanvasJson(canonicalMetadata)
+    ) {
+      throw new Error("EPUB export metadata is stale");
+    }
+    let cover: EpubExporterRunInput["cover"] = null;
+    if (config.includeCover) {
+      if (exportStateResponse.cover_asset === null || metadata.coverAssetId === null) {
+        throw new Error("EPUB cover is missing");
+      }
+      const coverRecord = asRecord(
+        exportStateResponse.cover_asset,
+        "publication cover asset"
+      );
+      const parsedCover = parsePublicationCover(coverRecord, session.projectId);
+      if (parsedCover.id !== metadata.coverAssetId) {
+        throw new Error("EPUB cover metadata is inconsistent");
+      }
+      cover = {
+        mediaType: parsedCover.mediaType,
+        originalName: parsedCover.originalName,
+        bytesBase64: requiredString(coverRecord, "bytes_base64")
+      };
+    }
+    this.window.webContents.send(IPC_EVENTS.epubExportProgress, {
+      operationId,
+      stage: "PUBLICATION_COMPILE",
+      completed: 0,
+      total: 1
+    });
+    let compiled: CompilePublicationResult;
+    let cancelled = false;
+    try {
+      compiled = await this.compilePublication({
+        sessionId,
+        scopeNodeId: validateNodeId(input.scopeNodeId, "EPUB scope node id"),
+        expectedProjectRevision: stateRevision
+      });
+    } finally {
+      cancelled = this.cancelledEpubOperations.delete(operationId);
+    }
+    if (cancelled) {
+      throw new EpubExportCancelledError();
+    }
+    this.window.webContents.send(IPC_EVENTS.epubExportProgress, {
+      operationId,
+      stage: "PUBLICATION_COMPILE",
+      completed: 1,
+      total: 1
+    });
+    return {
+      utilityInput: {
+        operationId,
+        mode,
+        document: compiled.document,
+        sourcePublicationHash: compiled.contentHash,
+        metadata,
+        config,
+        outputPath,
+        replaceExisting,
+        cover
+      },
+      revision: compiled.revision,
+      document: compiled.document
+    };
+  }
+
+  private rememberEpubOperation(
+    operationId: string,
+    record: EpubOperationRecord
+  ): void {
+    this.epubOperations.set(operationId, record);
+    while (this.epubOperations.size > 20) {
+      this.epubOperations.delete(this.epubOperations.keys().next().value as string);
+    }
+  }
+
+  private beginEpubOperation(operationId: string, sessionId: string): void {
+    if (this.epubShuttingDown) {
+      throw new Error("EPUB operations are shutting down");
+    }
+    if (
+      this.usedEpubOperationIds.has(operationId) ||
+      this.activeEpubOperations.has(operationId)
+    ) {
+      throw new Error("EPUB operation id was already used");
+    }
+    this.usedEpubOperationIds.add(operationId);
+    while (this.usedEpubOperationIds.size > 1_024) {
+      this.usedEpubOperationIds.delete(
+        this.usedEpubOperationIds.values().next().value as string
+      );
+    }
+    this.activeEpubOperations.set(operationId, {
+      sessionId,
+      phase: "PREPARING"
+    });
+    let resolveCompletion!: (result: {
+      readonly cleanupFailed: boolean;
+    }) => void;
+    const promise = new Promise<{ readonly cleanupFailed: boolean }>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    this.epubOperationCompletions.set(operationId, {
+      promise,
+      resolve: resolveCompletion
+    });
+  }
+
+  private finishEpubOperation(
+    operationId: string,
+    cleanupFailed = false
+  ): void {
+    this.activeEpubOperations.delete(operationId);
+    this.cancelledEpubOperations.delete(operationId);
+    const completion = this.epubOperationCompletions.get(operationId);
+    this.epubOperationCompletions.delete(operationId);
+    completion?.resolve({ cleanupFailed });
+  }
+
+  public async runEpubIpcTask<T>(task: () => Promise<T>): Promise<T> {
+    if (this.epubShuttingDown) {
+      throw new Error("EPUB operations are shutting down");
+    }
+    let resolveCompletion!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    this.epubIpcCompletions.add(completion);
+    try {
+      return await task();
+    } finally {
+      this.epubIpcCompletions.delete(completion);
+      resolveCompletion();
+    }
+  }
+
+  private transitionEpubOperationToExporting(
+    operationId: string,
+    sessionId: string
+  ): void {
+    if (
+      this.epubShuttingDown ||
+      this.cancelledEpubOperations.delete(operationId)
+    ) {
+      throw new EpubExportCancelledError();
+    }
+    this.activeEpubOperations.set(operationId, {
+      sessionId,
+      phase: "EXPORTING"
+    });
+  }
+
+  private async cleanupOwnedEpubTemporaryPath(filePath: string): Promise<void> {
+    const kind = this.ownedEpubTemporaryPaths.get(filePath);
+    if (!kind) {
+      return;
+    }
+    try {
+      if (kind === "DIRECTORY") {
+        await removeOwnedEpubDirectory(filePath);
+      } else {
+        await removeStagedEpub(filePath);
+      }
+      this.ownedEpubTemporaryPaths.delete(filePath);
+    } catch {
+      throw new Error("An owned EPUB temporary file could not be removed");
+    }
+  }
+
+  private async commitStagedEpub(
+    stagedPath: string,
+    stagedDirectory: string,
+    selection: EpubOutputSelectionRecord
+  ): Promise<void> {
+    if (!selection.replaceExisting) {
+      try {
+        await link(stagedPath, selection.filePath);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (error as NodeJS.ErrnoException).code === "EEXIST"
+        ) {
+          throw new EpubDestinationChangedError();
+        }
+        throw error;
+      }
+      return;
+    }
+    if (!selection.existingFile) {
+      throw new Error("The confirmed EPUB destination identity is missing");
+    }
+    const backupPath = path.join(
+      stagedDirectory,
+      "confirmed-destination.epub"
+    );
+    await rename(selection.filePath, backupPath);
+    try {
+      const claimed = await existingEpubIdentity(
+        backupPath,
+        selection.maximumBytes
+      );
+      if (
+        claimed.byteLength !== selection.existingFile.byteLength ||
+        claimed.sha256 !== selection.existingFile.sha256
+      ) {
+        throw new Error("The confirmed EPUB destination changed during export");
+      }
+      await link(stagedPath, selection.filePath);
+    } catch (error) {
+      try {
+        await link(backupPath, selection.filePath);
+      } catch {
+        // A concurrent writer now owns the destination. Preserve the displaced
+        // confirmed file in the private operation directory instead of
+        // overwriting either file or deleting the only recoverable copy.
+        this.ownedEpubTemporaryPaths.delete(stagedDirectory);
+        throw new Error(EPUB_RECOVERY_PRESERVED_ERROR);
+      }
+      throw error;
+    }
+  }
+
+  private async waitForEpubOperationCompletion(
+    completion: Promise<{ readonly cleanupFailed: boolean }>
+  ): Promise<{ readonly cleanupFailed: boolean }> {
+    let timeout: NodeJS.Timeout | null = null;
+    try {
+      return await Promise.race([
+        completion,
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error("The EPUB operation did not stop")),
+            25_000
+          );
+        })
+      ]);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
+  }
+
+  private async waitForEpubIpcCompletion(
+    completion: Promise<void>
+  ): Promise<void> {
+    let timeout: NodeJS.Timeout | null = null;
+    try {
+      await Promise.race([
+        completion,
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error("The EPUB IPC task did not stop")),
+            25_000
+          );
+        })
+      ]);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
+  }
+
+  public async validateEpubExport(
+    input: ValidateEpubExportRequest
+  ): Promise<ValidateEpubExportResult> {
+    const operationId = validateEpubOperationId(input?.operationId);
+    const sessionId = validateSessionId(input?.sessionId);
+    this.sessions.require(sessionId);
+    this.beginEpubOperation(operationId, sessionId);
+    try {
+      const prepared = await this.prepareEpubUtilityInput(
+        input,
+        "VALIDATE_ONLY",
+        path.join(tmpdir(), `madi-epub-validation-${operationId}.epub`),
+        false
+      );
+      try {
+        this.transitionEpubOperationToExporting(operationId, sessionId);
+        const utility = await this.epubExporter!.run(
+          prepared.utilityInput,
+          (progress) =>
+            this.window.webContents.send(IPC_EVENTS.epubExportProgress, progress)
+        );
+        this.activeEpubOperations.set(operationId, {
+          sessionId,
+          phase: "FINALIZING"
+        });
+        const report = reportFromUtility(
+          utility,
+          prepared.document,
+          prepared.utilityInput.config,
+          prepared.revision,
+          this.appVersion
+        );
+        this.rememberEpubOperation(operationId, {
+          sessionId: input.sessionId,
+          report,
+          outputPath: null
+        });
+        return {
+          operationId,
+          sourcePublicationHash: utility.summary.sourcePublicationHash,
+          report,
+          revision: prepared.revision
+        };
+      } catch (error) {
+        if (!(error instanceof EpubUtilityValidationError)) {
+          throw error;
+        }
+        const report = validationFailureReport(
+          prepared.document,
+          prepared.utilityInput.sourcePublicationHash,
+          prepared.utilityInput.config.targetProfile,
+          error.report,
+          this.appVersion
+        );
+        this.rememberEpubOperation(operationId, {
+          sessionId: input.sessionId,
+          report,
+          outputPath: null
+        });
+        return {
+          operationId,
+          sourcePublicationHash: prepared.utilityInput.sourcePublicationHash,
+          report,
+          revision: prepared.revision
+        };
+      }
+    } finally {
+      this.finishEpubOperation(operationId);
+    }
+  }
+
+  public async runEpubExport(
+    input: RunEpubExportRequest
+  ): Promise<RunEpubExportResult> {
+    const operationId = validateEpubOperationId(input?.operationId);
+    const sessionId = validateSessionId(input?.sessionId);
+    this.sessions.require(sessionId);
+    const selectionId = validateEpubIdentifier(
+      input.outputSelectionId,
+      "EPUB output selection id"
+    );
+    const selection = this.epubOutputSelections.get(selectionId);
+    if (!selection || selection.sessionId !== input.sessionId) {
+      throw new Error("EPUB output selection is missing or belongs to another project");
+    }
+    this.beginEpubOperation(operationId, sessionId);
+    this.epubOutputSelections.delete(selectionId);
+    const stagedDirectory = stagedEpubDirectory(
+      selection.filePath,
+      operationId
+    );
+    const stagedPath = stagedEpubPath(stagedDirectory);
+    let stagedDirectoryOwned = false;
+    let committed = false;
+    try {
+      await mkdir(stagedDirectory);
+      stagedDirectoryOwned = true;
+      this.ownedEpubTemporaryPaths.set(stagedDirectory, "DIRECTORY");
+      const prepared = await this.prepareEpubUtilityInput(
+        input,
+        "EXPORT",
+        stagedPath,
+        true
+      );
+      this.transitionEpubOperationToExporting(operationId, sessionId);
+      const utility = await this.epubExporter!.run(
+        prepared.utilityInput,
+        (progress) =>
+          this.window.webContents.send(IPC_EVENTS.epubExportProgress, progress)
+      );
+      this.activeEpubOperations.set(operationId, {
+        sessionId,
+        phase: "FINALIZING"
+      });
+      const report = reportFromUtility(
+        utility,
+        prepared.document,
+        prepared.utilityInput.config,
+        prepared.revision,
+        this.appVersion
+      );
+      if (report.validation.status !== "VALID" || utility.outputPath === null) {
+        throw new Error("The EPUB utility did not produce a valid output");
+      }
+      const stagedIdentity = await existingEpubIdentity(stagedPath);
+      if (
+        stagedIdentity.byteLength < 1 ||
+        stagedIdentity.byteLength > MAX_EPUB_FILE_BYTES ||
+        stagedIdentity.byteLength !== utility.summary.byteLength ||
+        stagedIdentity.sha256 !== utility.summary.sha256
+      ) {
+        throw new Error("The generated EPUB does not match the export result");
+      }
+      await this.commitStagedEpub(
+        stagedPath,
+        stagedDirectory,
+        selection
+      );
+      committed = true;
+      this.rememberEpubOperation(operationId, {
+        sessionId: input.sessionId,
+        report,
+        outputPath: selection.filePath
+      });
+      return {
+        status: "COMPLETED",
+        operationId,
+        fileName: selection.fileName,
+        byteLength: utility.summary.byteLength,
+        sha256: utility.summary.sha256,
+        report,
+        revision: prepared.revision
+      };
+    } catch (error) {
+      if (error instanceof EpubExportCancelledError) {
+        return {
+          status: "CANCELLED",
+          operationId
+        };
+      }
+      if (error instanceof EpubDestinationChangedError) {
+        return {
+          status: "FAILED",
+          operationId,
+          code: "DESTINATION_CHANGED"
+        };
+      }
+      throw error;
+    } finally {
+      let cleanupFailed = false;
+      try {
+        if (stagedDirectoryOwned) {
+          await this.cleanupOwnedEpubTemporaryPath(stagedDirectory);
+        }
+      } catch {
+        cleanupFailed = true;
+        if (!committed) {
+          throw new Error("The staged EPUB file could not be removed");
+        }
+      } finally {
+        this.finishEpubOperation(operationId, cleanupFailed);
+      }
+    }
+  }
+
+  public prepareEpubShutdown(): Promise<void> {
+    if (this.epubShutdownPromise) {
+      return this.epubShutdownPromise;
+    }
+    this.epubShuttingDown = true;
+    const attempt = this.shutdownEpubOperations();
+    this.epubShutdownPromise = attempt;
+    void attempt.catch(() => {
+      if (this.epubShutdownPromise === attempt) {
+        this.epubShutdownPromise = null;
+      }
+    });
+    return attempt;
+  }
+
+  private async shutdownEpubOperations(): Promise<void> {
+    const operations = [...this.activeEpubOperations.entries()];
+    const ipcCompletions = [...this.epubIpcCompletions];
+    const results = await Promise.allSettled([
+      ...operations.map(async ([operationId, active]) => {
+        const completionPromise = this.epubOperationCompletions.get(operationId)
+          ?.promise;
+        if (!completionPromise) {
+          throw new Error("The EPUB completion state is missing");
+        }
+        if (active.phase === "PREPARING") {
+          this.cancelledEpubOperations.add(operationId);
+        } else if (active.phase === "EXPORTING") {
+          try {
+            await this.epubExporter?.cancel(operationId);
+          } catch {
+            // Exporter disposal runs concurrently at application shutdown and
+            // owns its process-scoped cleanup backlog.
+          }
+        }
+        return this.waitForEpubOperationCompletion(completionPromise);
+      }),
+      ...ipcCompletions.map((completion) =>
+        this.waitForEpubIpcCompletion(completion)
+      )
+    ]);
+    if (results.some((result) => result.status === "rejected")) {
+      // A bounded wait expiring does not transfer ownership of a path away
+      // from the still-running task. Let the next shutdown attempt observe its
+      // completion instead of deleting a file that task may still be using.
+      throw new Error("EPUB operations did not stop within the shutdown bound");
+    }
+    const cleanupResults = await Promise.allSettled(
+      [...this.ownedEpubTemporaryPaths.keys()].map((filePath) =>
+        this.cleanupOwnedEpubTemporaryPath(filePath)
+      )
+    );
+    if (
+      cleanupResults.some((result) => result.status === "rejected") ||
+      this.ownedEpubTemporaryPaths.size > 0
+    ) {
+      throw new Error("EPUB operations did not shut down cleanly");
+    }
+  }
+
+  public async cancelEpubExport(input: CancelEpubExportRequest): Promise<boolean> {
+    const operationId = validateEpubOperationId(input?.operationId);
+    const sessionId = validateSessionId(input?.sessionId);
+    const active = this.activeEpubOperations.get(operationId);
+    if (!active || active.sessionId !== sessionId) {
+      return false;
+    }
+    if (active.phase === "PREPARING") {
+      this.cancelledEpubOperations.add(operationId);
+      return true;
+    }
+    if (active.phase === "EXPORTING") {
+      return this.epubExporter?.cancel(operationId) ?? false;
+    }
+    return false;
+  }
+
+  public async saveEpubExportReport(
+    input: SaveEpubExportReportRequest
+  ): Promise<SaveEpubExportReportResult | null> {
+    const operationId = validateEpubOperationId(input?.operationId);
+    const sessionId = validateSessionId(input?.sessionId);
+    const record = this.epubOperations.get(operationId);
+    if (!record || record.sessionId !== sessionId) {
+      throw new Error("EPUB export report is unavailable");
+    }
+    if (input.format !== "JSON" && input.format !== "MARKDOWN") {
+      throw new Error("Unsupported EPUB export report format");
+    }
+    const extension = input.format === "JSON" ? "json" : "md";
+    const result = await this.dialog.showSaveDialog(this.window, {
+      title: "EPUB export report 저장",
+      defaultPath: `madi-epub-export-report.${extension}`,
+      filters: [
+        {
+          name: input.format === "JSON" ? "JSON report" : "Markdown report",
+          extensions: [extension]
+        }
+      ],
+      properties: ["createDirectory", "showOverwriteConfirmation"]
+    });
+    if (result.canceled || !result.filePath) {
+      return null;
+    }
+    if (!result.filePath.toLocaleLowerCase().endsWith(`.${extension}`)) {
+      throw new Error(`EPUB report destination must use the .${extension} extension`);
+    }
+    const filePath = path.resolve(result.filePath);
+    const source =
+      input.format === "JSON"
+        ? `${JSON.stringify(record.report, null, 2)}\n`
+        : markdownExportReport(record.report);
+    const byteLength = Buffer.byteLength(source, "utf8");
+    if (byteLength < 1 || byteLength > MAX_EPUB_REPORT_BYTES) {
+      throw new Error("EPUB export report exceeds the size limit");
+    }
+    let existingFile: EpubOutputSelectionRecord["existingFile"] = null;
+    let replaceExisting = false;
+    try {
+      existingFile = await existingEpubIdentity(
+        filePath,
+        MAX_EPUB_REPORT_BYTES
+      );
+      replaceExisting = true;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        (error as NodeJS.ErrnoException).code !== "ENOENT"
+      ) {
+        throw error;
+      }
+    }
+    const stagedDirectory = path.join(
+      path.dirname(filePath),
+      `.madi-epub-report-${operationId}-${extension}`
+    );
+    const stagedPath = path.join(stagedDirectory, `report.${extension}`);
+    let stagedDirectoryOwned = false;
+    let committed = false;
+    try {
+      await mkdir(stagedDirectory);
+      stagedDirectoryOwned = true;
+      this.ownedEpubTemporaryPaths.set(stagedDirectory, "DIRECTORY");
+      const handle = await open(stagedPath, "wx");
+      try {
+        await handle.writeFile(source, "utf8");
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      await this.commitStagedEpub(stagedPath, stagedDirectory, {
+        sessionId,
+        filePath,
+        fileName: path.basename(filePath),
+        replaceExisting,
+        maximumBytes: MAX_EPUB_REPORT_BYTES,
+        existingFile
+      });
+      committed = true;
+    } finally {
+      if (stagedDirectoryOwned) {
+        try {
+          await this.cleanupOwnedEpubTemporaryPath(stagedDirectory);
+        } catch {
+          if (!committed) {
+            throw new Error("The staged EPUB report could not be removed");
+          }
+        }
+      }
+    }
+    return {
+      fileName: path.basename(filePath),
+      byteLength
+    };
+  }
+
+  public async revealEpubExport(input: RevealEpubExportRequest): Promise<boolean> {
+    const operationId = validateEpubOperationId(input?.operationId);
+    const sessionId = validateSessionId(input?.sessionId);
+    const record = this.epubOperations.get(operationId);
+    if (
+      !record?.outputPath ||
+      record.sessionId !== sessionId ||
+      !this.shellPort
+    ) {
+      return false;
+    }
+    const fileStat = await stat(record.outputPath);
+    if (!fileStat.isFile()) {
+      return false;
+    }
+    this.shellPort.showItemInFolder(record.outputPath);
+    return true;
   }
 
   public async listCanvases(

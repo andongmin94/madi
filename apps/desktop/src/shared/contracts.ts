@@ -15,8 +15,33 @@ import type {
   ValidatePublicationRequest,
   ValidatePublicationResult
 } from "./publication";
+import type {
+  CancelEpubExportRequest,
+  ChooseEpubOutputRequest,
+  ChoosePublicationCoverRequest,
+  CreateEpubExportPresetRequest,
+  DeleteEpubExportPresetRequest,
+  DeleteEpubExportPresetResult,
+  DuplicateEpubExportPresetRequest,
+  EpubExportPresetMutationResult,
+  EpubExportProgress,
+  EpubOutputSelection,
+  PublicationCoverMutationResult,
+  PublicationExportState,
+  PublicationMetadataMutationResult,
+  RevealEpubExportRequest,
+  RunEpubExportRequest,
+  RunEpubExportResult,
+  SaveEpubExportReportRequest,
+  SaveEpubExportReportResult,
+  UpdateEpubExportPresetRequest,
+  UpdatePublicationMetadataRequest,
+  ValidateEpubExportRequest,
+  ValidateEpubExportResult
+} from "./epubExport";
 
 export * from "./publication";
+export * from "./epubExport";
 
 export const IPC_CHANNELS = {
   createProject: "madi:create-project",
@@ -48,6 +73,20 @@ export const IPC_CHANNELS = {
   updateReaderPreset: "madi:update-reader-preset",
   duplicateReaderPreset: "madi:duplicate-reader-preset",
   deleteReaderPreset: "madi:delete-reader-preset",
+  getPublicationExportState: "madi:get-publication-export-state",
+  updatePublicationMetadata: "madi:update-publication-metadata",
+  choosePublicationCover: "madi:choose-publication-cover",
+  removePublicationCover: "madi:remove-publication-cover",
+  createEpubExportPreset: "madi:create-epub-export-preset",
+  updateEpubExportPreset: "madi:update-epub-export-preset",
+  duplicateEpubExportPreset: "madi:duplicate-epub-export-preset",
+  deleteEpubExportPreset: "madi:delete-epub-export-preset",
+  chooseEpubOutput: "madi:choose-epub-output",
+  validateEpubExport: "madi:validate-epub-export",
+  runEpubExport: "madi:run-epub-export",
+  cancelEpubExport: "madi:cancel-epub-export",
+  saveEpubExportReport: "madi:save-epub-export-report",
+  revealEpubExport: "madi:reveal-epub-export",
   listDescendantScenes: "madi:list-descendant-scenes",
   searchProject: "madi:search-project",
   getTextStatistics: "madi:get-text-statistics",
@@ -106,7 +145,8 @@ export const IPC_CHANNELS = {
 } as const;
 
 export const IPC_EVENTS = {
-  closeRequested: "madi:close-requested"
+  closeRequested: "madi:close-requested",
+  epubExportProgress: "madi:epub-export-progress"
 } as const;
 
 export type MadiIpcChannel =
@@ -397,6 +437,11 @@ export interface SnapshotDiffSummary {
   readonly addedReaderPresets: number;
   readonly deletedReaderPresets: number;
   readonly changedReaderPresets: number;
+  readonly publicationMetadataChanged: boolean;
+  readonly coverChanged: boolean;
+  readonly addedExportPresets: number;
+  readonly deletedExportPresets: number;
+  readonly changedExportPresets: number;
 }
 
 export interface DiffNamedSnapshotRequest extends SessionRequest {
@@ -1520,6 +1565,45 @@ export interface MadiDesktopApi {
   deleteReaderPreset(
     request: DeleteReaderPresetRequest
   ): Promise<DeleteReaderPresetResult>;
+  getPublicationExportState(
+    request: SessionRequest
+  ): Promise<PublicationExportState>;
+  updatePublicationMetadata(
+    request: UpdatePublicationMetadataRequest
+  ): Promise<PublicationMetadataMutationResult>;
+  choosePublicationCover(
+    request: ChoosePublicationCoverRequest
+  ): Promise<PublicationCoverMutationResult | null>;
+  removePublicationCover(
+    request: SessionRequest
+  ): Promise<PublicationCoverMutationResult>;
+  createEpubExportPreset(
+    request: CreateEpubExportPresetRequest
+  ): Promise<EpubExportPresetMutationResult>;
+  updateEpubExportPreset(
+    request: UpdateEpubExportPresetRequest
+  ): Promise<EpubExportPresetMutationResult>;
+  duplicateEpubExportPreset(
+    request: DuplicateEpubExportPresetRequest
+  ): Promise<EpubExportPresetMutationResult>;
+  deleteEpubExportPreset(
+    request: DeleteEpubExportPresetRequest
+  ): Promise<DeleteEpubExportPresetResult>;
+  chooseEpubOutput(
+    request: ChooseEpubOutputRequest
+  ): Promise<EpubOutputSelection | null>;
+  validateEpubExport(
+    request: ValidateEpubExportRequest
+  ): Promise<ValidateEpubExportResult>;
+  runEpubExport(request: RunEpubExportRequest): Promise<RunEpubExportResult>;
+  cancelEpubExport(request: CancelEpubExportRequest): Promise<boolean>;
+  saveEpubExportReport(
+    request: SaveEpubExportReportRequest
+  ): Promise<SaveEpubExportReportResult | null>;
+  revealEpubExport(request: RevealEpubExportRequest): Promise<boolean>;
+  onEpubExportProgress(
+    listener: (progress: EpubExportProgress) => void
+  ): () => void;
   pickCanvasImport(): Promise<PickCanvasImportResult | null>;
   exportCanvas(
     request: ExportCanvasRequest

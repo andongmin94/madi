@@ -1,0 +1,173 @@
+.epub-export {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+  background: #f7f4ec;
+  color: #27241f;
+}
+
+.epub-export--loading {
+  display: grid;
+  place-items: center;
+}
+
+.epub-export__header,
+.epub-export__validation > header,
+.epub-export__button-row,
+.epub-export__progress,
+.epub-export__cover {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.epub-export__header,
+.epub-export__validation > header {
+  justify-content: space-between;
+}
+
+.epub-export__header h2,
+.epub-export__validation h3 {
+  margin: 0;
+}
+
+.epub-export__header p {
+  margin: 4px 0 0;
+}
+
+.epub-export__grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1fr);
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.epub-export__panel,
+.epub-export__actions,
+.epub-export__validation {
+  border: 1px solid #cfc7b7;
+  border-radius: 10px;
+  background: #fffdf8;
+  padding: 14px;
+}
+
+.epub-export__panel {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+}
+
+.epub-export__panel label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.epub-export__panel input,
+.epub-export__panel select,
+.epub-export__panel textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid #b9b09f;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.epub-export__panel textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.epub-export__notice {
+  margin: 0;
+  padding: 9px;
+  border-left: 3px solid #9b6e25;
+  background: #fff6df;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.epub-export__actions,
+.epub-export__validation {
+  margin-top: 16px;
+}
+
+.epub-export__button-row {
+  flex-wrap: wrap;
+}
+
+.epub-export button {
+  min-height: 34px;
+}
+
+.epub-export__progress progress {
+  flex: 1;
+}
+
+.epub-export__summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.epub-export__summary div {
+  padding: 8px;
+  background: #f3efe6;
+}
+
+.epub-export__summary dt {
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.epub-export__summary dd {
+  margin: 4px 0 0;
+}
+
+.epub-export__messages {
+  max-height: 280px;
+  overflow: auto;
+  padding-left: 24px;
+}
+
+.epub-export__messages button {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.epub-export__messages code {
+  overflow-wrap: anywhere;
+}
+
+.epub-export__error,
+.epub-export__success {
+  padding: 10px 12px;
+  border-radius: 7px;
+}
+
+.epub-export__error {
+  background: #fbe7e2;
+  color: #7f2418;
+}
+
+.epub-export__success {
+  background: #e4f3e4;
+  color: #245d29;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 980px) {
+  .epub-export__grid,
+  .epub-export__summary {
+    grid-template-columns: 1fr;
+  }
+}

@@ -22,11 +22,15 @@ const readerModePath = resolve(
   desktopRoot,
   "src/renderer/components/ReaderLabMode.tsx"
 );
+const epubModePath = resolve(
+  desktopRoot,
+  "src/renderer/components/EpubExportMode.tsx"
+);
 const rendererDistPath = resolve(desktopRoot, "dist/renderer");
 const rendererAssetsPath = resolve(rendererDistPath, "assets");
 
-describe("Graph/Canvas/Reader lazy bundle boundary", () => {
-  it("keeps all three heavy renderers behind distinct dynamic imports", () => {
+describe("Graph/Canvas/Reader/EPUB lazy bundle boundary", () => {
+  it("keeps all four feature renderers behind distinct dynamic imports", () => {
     const appSource = readFileSync(appSourcePath, "utf8");
     const rendererEntry = readFileSync(rendererEntryPath, "utf8");
     const sharedContracts = readFileSync(sharedContractsPath, "utf8");
@@ -45,6 +49,9 @@ describe("Graph/Canvas/Reader lazy bundle boundary", () => {
     expect(appSource).toMatch(
       /lazy\(async \(\) => \{[\s\S]*?import\([\s\S]*?\.\/components\/ReaderLabMode[\s\S]*?\)[\s\S]*?\}\)/
     );
+    expect(appSource).toMatch(
+      /lazy\(async \(\) => \{[\s\S]*?import\([\s\S]*?\.\/components\/EpubExportMode[\s\S]*?\)[\s\S]*?\}\)/
+    );
     expect(eagerSource).not.toMatch(
       /(?:from\s+|import\s*\()\s*["']@xyflow\/react["']/
     );
@@ -55,6 +62,9 @@ describe("Graph/Canvas/Reader lazy bundle boundary", () => {
     expect(rendererEntry).not.toMatch(/ReaderLabMode|PublicationContent|sectionWindowing/);
     expect(readFileSync(readerModePath, "utf8")).toContain(
       'from "./readerLab/ReaderLabWorkspace"'
+    );
+    expect(readFileSync(epubModePath, "utf8")).toContain(
+      'from "./epubExport/EpubExportWorkspace"'
     );
     expect(plotCanvasPublicIndex).not.toMatch(
       /@xyflow\/react|ReactFlow|ReactFlowCanvas(?:Node|Edge|Model)/
@@ -75,7 +85,7 @@ describe("Graph/Canvas/Reader lazy bundle boundary", () => {
   });
 
   it.skipIf(!existsSync(rendererAssetsPath))(
-    "places React Flow, Cytoscape, and Reader Lab in separate production chunks",
+    "places React Flow, Cytoscape, Reader Lab, and EPUB export in separate production chunks",
     () => {
       const assetNames = readdirSync(rendererAssetsPath);
       const plotChunkName = assetNames.find((name) =>
@@ -87,12 +97,19 @@ describe("Graph/Canvas/Reader lazy bundle boundary", () => {
       const readerChunkName = assetNames.find((name) =>
         /^ReaderLabMode-.+\.js$/.test(name)
       );
+      const epubChunkName = assetNames.find((name) =>
+        /^EpubExportMode-.+\.js$/.test(name)
+      );
       expect(plotChunkName).toBeDefined();
       expect(graphChunkName).toBeDefined();
       expect(readerChunkName).toBeDefined();
+      expect(epubChunkName).toBeDefined();
       expect(plotChunkName).not.toBe(graphChunkName);
       expect(readerChunkName).not.toBe(plotChunkName);
       expect(readerChunkName).not.toBe(graphChunkName);
+      expect(epubChunkName).not.toBe(plotChunkName);
+      expect(epubChunkName).not.toBe(graphChunkName);
+      expect(epubChunkName).not.toBe(readerChunkName);
 
       const html = readFileSync(`${rendererDistPath}/index.html`, "utf8");
       const mainChunkName = html.match(
@@ -116,13 +133,19 @@ describe("Graph/Canvas/Reader lazy bundle boundary", () => {
         `${rendererAssetsPath}/${readerChunkName!}`,
         "utf8"
       );
+      const epubChunk = readFileSync(
+        `${rendererAssetsPath}/${epubChunkName!}`,
+        "utf8"
+      );
 
       expect(mainChunk).toContain(plotChunkName);
       expect(mainChunk).toContain(graphChunkName);
       expect(mainChunk).toContain(readerChunkName);
+      expect(mainChunk).toContain(epubChunkName);
       expect(mainChunk).not.toContain("react-flow__renderer");
       expect(mainChunk).not.toContain("No such layout `");
       expect(mainChunk).not.toContain("reader-shadow-host");
+      expect(mainChunk).not.toContain("epub-export__validation");
       expect(plotChunk).toContain("react-flow__renderer");
       expect(plotChunk).not.toContain("No such layout `");
       expect(plotChunk).not.toContain("reader-shadow-host");
@@ -132,6 +155,11 @@ describe("Graph/Canvas/Reader lazy bundle boundary", () => {
       expect(readerChunk).toContain("reader-shadow-host");
       expect(readerChunk).not.toContain("react-flow__renderer");
       expect(readerChunk).not.toContain("No such layout `");
+      expect(readerChunk).not.toContain("epub-export__validation");
+      expect(epubChunk).toContain("epub-export__validation");
+      expect(epubChunk).not.toContain("reader-shadow-host");
+      expect(epubChunk).not.toContain("react-flow__renderer");
+      expect(epubChunk).not.toContain("No such layout `");
     }
   );
 
