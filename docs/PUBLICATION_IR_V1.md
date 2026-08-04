@@ -357,7 +357,32 @@ Entity note도 `documents` row를 가지지만 Binder `SCENE` owner가 아니므
 자동 삽입하지 않는다. 이 제외 경계는 향후 요구가 생겨도 암묵적으로 확장하지 않고 새
 format/ADR로 결정한다.
 
-## 15. 관련 문서
+## 15. EPUB exporter 소비 계약
+
+Phase 1G EPUB exporter는 이 document와 별도 Madi-owned metadata/options/cover request만
+받는다. Typie snapshot/type, `.madi` SQLite, editor/Reader DOM과 recovery text를 직접 읽지
+않는다. Request의 project/scope/revision과 `sourcePublicationHash`는 document identity와
+exact match해야 한다.
+
+Exporter mapping은 다음 completeness 규칙을 강제한다.
+
+- 모든 section은 CHAPTER/SCENE content unit 중 하나에 정확히 포함된다.
+- 모든 block은 stable hashed XHTML ID로 정확히 한 번 exported된다.
+- Paragraph/Quote/Unsupported body의 Unicode scalar 수는 block별로 exact match한다.
+- Unsupported는 escaped plain-text fallback과 warning이며 silent drop이 아니다.
+- Heading, scene break와 ruby는 ID set/count를 별도로 대조한다.
+- `exported + fallback` accounting과 source block set이 다르거나 rejected block이 있으면
+  success가 아니다.
+
+Cover는 Publication IR body가 아니라 schema 7 `publication_assets`의 별도 validated
+asset이다. Publication IR v1에는 manuscript image block variant가 없으므로 Phase 1G는
+본문 image를 합성하거나 외부 resource에서 가져오지 않는다. 향후 authored image block을
+지원하려면 IR variant/source/asset ownership과 coverage contract를 먼저 version해야 한다.
+
+Generated EPUB/hash/report/output path는 derived result이며 이 IR이나 named snapshot에
+삽입하지 않는다.
+
+## 16. 관련 문서
 
 - [Phase 1F result](./PHASE_1F_RESULT.md)
 - [Reader Lab performance](./READER_LAB_PERFORMANCE.md)
@@ -366,3 +391,6 @@ format/ADR로 결정한다.
 - [Reader Lab architecture](./READER_LAB_ARCHITECTURE.md)
 - [Reader Lab visual diagnostics](./READER_LAB_VISUAL_DIAGNOSTICS.md)
 - [Typie pinning and patches](./TYPIE_PINNING_AND_PATCHES.md)
+- [Phase 1G result](./PHASE_1G_RESULT.md)
+- [EPUB export architecture](./EPUB_EXPORT_ARCHITECTURE.md)
+- [ADR-0007: exporters consume Publication IR only](./decisions/ADR-0007-exporters-consume-publication-ir-only.md)
