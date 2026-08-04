@@ -131,6 +131,13 @@ function SnapshotDiffDetails({
           {signedNumber(summary.canvasEdgeCountDelta)}
         </dd>
       </div>
+      <div>
+        <dt>Reader preset</dt>
+        <dd>
+          +{summary.addedReaderPresets} · −{summary.deletedReaderPresets} · 변경{" "}
+          {summary.changedReaderPresets}
+        </dd>
+      </div>
     </dl>
   );
 }
@@ -269,7 +276,11 @@ export function SnapshotPanel({
         ) : (
           <ul>
             {snapshots.map((snapshot) => (
-              <li key={snapshot.id} data-snapshot-id={snapshot.id}>
+              <li
+                key={snapshot.id}
+                data-snapshot-id={snapshot.id}
+                data-snapshot-payload-version={snapshot.payloadVersion}
+              >
                 {renamingId === snapshot.id ? (
                   <form onSubmit={(event) => void submitRename(event)}>
                     <label>

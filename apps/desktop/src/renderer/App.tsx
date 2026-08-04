@@ -50,6 +50,7 @@ import { SaveStatusBadge } from "./components/SaveStatusBadge";
 import { ImeChecklist } from "./components/ImeChecklist";
 import type { CompositionEventSummary } from "./components/imeManualResults";
 import type { PlotCanvasModeHandle } from "./components/PlotCanvasMode";
+import type { ReaderLabModeHandle } from "./components/ReaderLabMode";
 import { ScriveningsView } from "./components/ScriveningsView";
 import {
   SearchReplacePanel,
@@ -98,6 +99,11 @@ const PlotCanvasMode = lazy(async () => {
   return { default: module.PlotCanvasMode };
 });
 
+const ReaderLabMode = lazy(async () => {
+  const module = await import("./components/ReaderLabMode");
+  return { default: module.ReaderLabMode };
+});
+
 const INITIAL_WORKSPACE: WorkspaceState = {
   savePhase: "no-project",
   session: null,
@@ -130,7 +136,8 @@ type AppMode =
   | "MANUSCRIPT"
   | "STORY_BIBLE"
   | "WORLD_GRAPH"
-  | "PLOT_CANVAS";
+  | "PLOT_CANVAS"
+  | "READER_LAB";
 const AUTOSAVE_DELAY_MS = 550;
 const DEFAULT_BINDER_WIDTH = 300;
 const WORKSPACE_PAGE_LIMIT = 200;
@@ -512,6 +519,8 @@ export function App({
   const [worldGraphStateReady, setWorldGraphStateReady] = useState(false);
   const [worldGraphBusy, setWorldGraphBusy] = useState(false);
   const [worldGraphError, setWorldGraphError] = useState("");
+  const [worldGraphPersistenceError, setWorldGraphPersistenceError] =
+    useState("");
   const [pendingCanvasEntityId, setPendingCanvasEntityId] = useState<
     string | null
   >(null);
@@ -538,6 +547,7 @@ export function App({
     useState<DiffNamedSnapshotResult | null>(null);
   const [snapshotError, setSnapshotError] = useState("");
   const [snapshotBusy, setSnapshotBusy] = useState(false);
+  const [readerLabReloadToken, setReaderLabReloadToken] = useState(0);
   const [textStatistics, setTextStatistics] =
     useState<TextStatisticsResult | null>(null);
   const [lastCompositionEvent, setLastCompositionEvent] =
@@ -552,7 +562,10 @@ export function App({
   const worldGraphUiStateRef = useRef<WorldGraphUiState>(
     DEFAULT_WORLD_GRAPH_UI_STATE
   );
+  const worldGraphStateSessionRef = useRef<string | null>(null);
+  const worldGraphPersistenceGenerationRef = useRef(0);
   const plotCanvasModeRef = useRef<PlotCanvasModeHandle>(null);
+  const readerLabModeRef = useRef<ReaderLabModeHandle>(null);
   const projectStateSessionRef = useRef<string | null>(null);
   const compositionActiveRef = useRef(false);
   const lifecycleContextRef = useRef({
@@ -990,9 +1003,12 @@ export function App({
   useEffect(() => {
     const sessionId = workspace.session?.sessionId;
     ++worldGraphReloadTokenRef.current;
+    ++worldGraphPersistenceGenerationRef.current;
+    worldGraphStateSessionRef.current = null;
     setWorldGraphStateReady(false);
     setWorldGraphModel(null);
     setWorldGraphPerformance({});
+    setWorldGraphPersistenceError("");
     if (!sessionId || !controller) {
       worldGraphUiStateRef.current = DEFAULT_WORLD_GRAPH_UI_STATE;
       setWorldGraphUiState(DEFAULT_WORLD_GRAPH_UI_STATE);
@@ -1010,6 +1026,7 @@ export function App({
       }
       const restored = normalizeWorldGraphUiState(stored.state);
       worldGraphUiStateRef.current = restored;
+      worldGraphStateSessionRef.current = sessionId;
       setWorldGraphUiState(restored);
       setWorldGraphStateReady(true);
     };
@@ -1044,6 +1061,32 @@ export function App({
     setWorldGraphUiState(normalized);
   }, []);
 
+  const saveWorldGraphUiState = useCallback(
+    async (sessionId: string, state: WorldGraphUiState): Promise<void> => {
+      const generation = ++worldGraphPersistenceGenerationRef.current;
+      try {
+        await api.saveWorldGraphUiState({ sessionId, state });
+      } catch (error) {
+        if (
+          generation === worldGraphPersistenceGenerationRef.current &&
+          lifecycleContextRef.current.session?.sessionId === sessionId
+        ) {
+          setWorldGraphPersistenceError(
+            publicError(error, "그래프 화면 상태를 저장하지 못했습니다.")
+          );
+        }
+        throw error;
+      }
+      if (
+        generation === worldGraphPersistenceGenerationRef.current &&
+        lifecycleContextRef.current.session?.sessionId === sessionId
+      ) {
+        setWorldGraphPersistenceError("");
+      }
+    },
+    [api]
+  );
+
   const recordWorldGraphPerformance = useCallback(
     (sample: WorldGraphPerformanceSample) => {
       setWorldGraphPerformance((current) => ({ ...current, ...sample }));
@@ -1053,14 +1096,15 @@ export function App({
 
   const persistWorldGraphUiState = useCallback(async (): Promise<void> => {
     const sessionId = workspace.session?.sessionId;
-    if (!sessionId || !worldGraphStateReady) {
+    if (
+      !sessionId ||
+      !worldGraphStateReady ||
+      worldGraphStateSessionRef.current !== sessionId
+    ) {
       return;
     }
-    await api.saveWorldGraphUiState({
-      sessionId,
-      state: worldGraphUiStateRef.current
-    });
-  }, [api, worldGraphStateReady, workspace.session?.sessionId]);
+    await saveWorldGraphUiState(sessionId, worldGraphUiStateRef.current);
+  }, [saveWorldGraphUiState, worldGraphStateReady, workspace.session?.sessionId]);
 
   const persistWorldGraphUiStateBeforeTransition = useCallback(
     async (): Promise<boolean> => {
@@ -1070,10 +1114,7 @@ export function App({
       try {
         await persistWorldGraphUiState();
         return true;
-      } catch (error) {
-        setWorldGraphError(
-          publicError(error, "그래프 화면 상태를 저장하지 못했습니다.")
-        );
+      } catch {
         return false;
       }
     },
@@ -1085,11 +1126,7 @@ export function App({
       return;
     }
     const timer = window.setTimeout(() => {
-      void persistWorldGraphUiState().catch((error: unknown) => {
-        setWorldGraphError(
-          publicError(error, "그래프 화면 상태를 저장하지 못했습니다.")
-        );
-      });
+      void persistWorldGraphUiState().catch(() => undefined);
     }, 400);
     return () => window.clearTimeout(timer);
   }, [persistWorldGraphUiState, worldGraphStateReady, worldGraphUiState, workspace.session]);
@@ -1386,6 +1423,12 @@ export function App({
         });
         return;
       }
+      if (current.appMode === "READER_LAB") {
+        void readerLabModeRef.current?.persistUiState().catch(() => {
+          setStoryBibleError("Reader Lab 상태를 저장하지 못했습니다.");
+        });
+        return;
+      }
       if (current.controller) {
         void current.controller.save(() => compositionActiveRef.current);
       }
@@ -1418,11 +1461,36 @@ export function App({
     return api.onCloseRequested(() => {
       if (!closeAttemptRef.current) {
         const current = lifecycleContextRef.current;
-        closeAttemptRef.current = Promise.resolve(
-          current.controller?.prepareForClose(
-            () => compositionActiveRef.current
-          ) ?? true
-        )
+        const graphStateAtClose = worldGraphUiStateRef.current;
+        const root = document.documentElement;
+        const restoreInteraction = () => {
+          root.inert = false;
+          delete root.dataset.closePending;
+        };
+        root.inert = true;
+        root.dataset.closePending = "true";
+        closeAttemptRef.current = Promise.resolve()
+          .then(
+            () => {
+              const sessionId = current.session?.sessionId ?? null;
+              if (
+                sessionId !==
+                  (current.controller?.getState().session?.sessionId ?? null) ||
+                (current.worldGraphStateReady &&
+                  worldGraphStateSessionRef.current !== sessionId)
+              ) {
+                setTreeError(
+                  "프로젝트 전환이 완료된 뒤 다시 종료해 주세요."
+                );
+                return false;
+              }
+              return (
+                current.controller?.prepareForClose(
+                  () => compositionActiveRef.current
+                ) ?? true
+              );
+            }
+          )
           .then(async (documentReady) => {
             let readyToClose = documentReady;
             if (readyToClose && current.appMode === "PLOT_CANVAS") {
@@ -1433,6 +1501,14 @@ export function App({
                 setStoryBibleError(
                   publicError(error, "캔버스 종료 전 저장에 실패했습니다.")
                 );
+              }
+            }
+            if (readyToClose && current.appMode === "READER_LAB") {
+              try {
+                await readerLabModeRef.current?.persistUiState();
+              } catch {
+                readyToClose = false;
+                setStoryBibleError("Reader Lab 종료 전 상태 저장에 실패했습니다.");
               }
             }
             if (
@@ -1469,35 +1545,58 @@ export function App({
               current.session
             ) {
               try {
-                await api.saveWorldGraphUiState({
-                  sessionId: current.session.sessionId,
-                  state: worldGraphUiStateRef.current
-                });
-              } catch (error) {
-                readyToClose = false;
-                setWorldGraphError(
-                  publicError(error, "그래프 화면 상태 저장 실패")
+                await saveWorldGraphUiState(
+                  current.session.sessionId,
+                  graphStateAtClose
                 );
+              } catch {
+                readyToClose = false;
               }
             }
-            const root = document.documentElement;
             if (readyToClose) {
-              root.inert = true;
-              root.dataset.closePending = "true";
+              const expectedSessionId = current.session?.sessionId ?? null;
+              const finalControllerState = current.controller?.getState();
+              const finalSessionId =
+                finalControllerState?.session?.sessionId ?? null;
+              const finalSavePhase = finalControllerState?.savePhase;
+              const controllerIsTransitioning =
+                !current.controller?.isEditorFailClosed() &&
+                (finalSavePhase === "dirty" ||
+                  finalSavePhase === "saving" ||
+                  finalSavePhase === "restoring");
+              const lifecycleSessionId =
+                lifecycleContextRef.current.session?.sessionId ?? null;
+              if (
+                finalSessionId !== expectedSessionId ||
+                lifecycleSessionId !== expectedSessionId ||
+                controllerIsTransitioning ||
+                (current.worldGraphStateReady &&
+                  worldGraphStateSessionRef.current !== expectedSessionId)
+              ) {
+                readyToClose = false;
+                setTreeError(
+                  "진행 중인 프로젝트 작업이 끝난 뒤 다시 종료해 주세요."
+                );
+              }
             }
             try {
               const accepted = await api.completeCloseRequest({
                 readyToClose
               });
-              if (readyToClose && !accepted) {
-                root.inert = false;
-                delete root.dataset.closePending;
+              if (!readyToClose || !accepted) {
+                restoreInteraction();
               }
             } catch {
-              if (readyToClose) {
-                root.inert = false;
-                delete root.dataset.closePending;
-              }
+              restoreInteraction();
+            }
+          })
+          .catch(async (error: unknown) => {
+            restoreInteraction();
+            setTreeError(publicError(error, "종료 전 저장에 실패했습니다."));
+            try {
+              await api.completeCloseRequest({ readyToClose: false });
+            } catch {
+              // The main process retains the fail-closed window.
             }
           })
           .finally(() => {
@@ -1505,7 +1604,7 @@ export function App({
           });
       }
     });
-  }, [api]);
+  }, [api, saveWorldGraphUiState]);
 
   useEffect(() => {
     if (
@@ -2151,8 +2250,12 @@ export function App({
     }
     setSnapshotBusy(true);
     setSnapshotError("");
+    let restoreCommitted = false;
     try {
       await flushPlotCanvasForSnapshot();
+      if (appMode === "READER_LAB") {
+        await readerLabModeRef.current?.persistUiState();
+      }
       await controller.runExclusiveEditorOperation(async () => {
         await persistCurrentUiState();
         const freshDiff = await api.diffNamedSnapshot({
@@ -2177,6 +2280,9 @@ export function App({
           snapshotId,
           autoSnapshotName: automaticRestoreSnapshotName()
         });
+        restoreCommitted = true;
+        controller.adoptProjectRevision(result.revision);
+        setReaderLabReloadToken((current) => current + 1);
         if (mountRef.current) {
           controller.relocateEditor(mountRef.current);
         }
@@ -2283,6 +2389,12 @@ export function App({
         ]);
       }, () => compositionActiveRef.current);
     } catch (error) {
+      if (restoreCommitted) {
+        setSnapshotError(
+          "Snapshot 복원은 완료됐지만 화면 일부를 갱신하지 못했습니다. 프로젝트를 다시 열어 최신 상태를 확인하세요."
+        );
+        return;
+      }
       setSnapshotError(
         publicError(error, "Named snapshot 복원에 실패했습니다.")
       );
@@ -2311,6 +2423,14 @@ export function App({
         return;
       }
     }
+    if (appMode === "READER_LAB") {
+      try {
+        await readerLabModeRef.current?.persistUiState();
+      } catch {
+        setStoryBibleError("Reader Lab 상태를 저장하지 못했습니다.");
+        return;
+      }
+    }
     if (!(await controller.flushPendingChanges(() => compositionActiveRef.current))) {
       return;
     }
@@ -2330,6 +2450,13 @@ export function App({
         controller.relocateEditor(mountRef.current);
       }
       setAppMode("PLOT_CANVAS");
+      return;
+    }
+    if (nextMode === "READER_LAB") {
+      if (mountRef.current) {
+        controller.relocateEditor(mountRef.current);
+      }
+      setAppMode("READER_LAB");
       return;
     }
     if (nextMode === "STORY_BIBLE") {
@@ -2830,6 +2957,14 @@ export function App({
         return;
       }
     }
+    if (appMode === "READER_LAB") {
+      try {
+        await readerLabModeRef.current?.persistUiState();
+      } catch {
+        setStoryBibleError("원고 이동 전 Reader Lab 상태를 저장하지 못했습니다.");
+        return;
+      }
+    }
     if (!(await persistWorldGraphUiStateBeforeTransition())) {
       return;
     }
@@ -2896,6 +3031,16 @@ export function App({
         return;
       }
     }
+    if (appMode === "READER_LAB") {
+      try {
+        await readerLabModeRef.current?.persistUiState();
+      } catch {
+        setStoryBibleError(
+          "새 프로젝트를 만들기 전 Reader Lab 상태를 저장하지 못했습니다."
+        );
+        return;
+      }
+    }
     if (!(await persistWorldGraphUiStateBeforeTransition())) {
       return;
     }
@@ -2912,6 +3057,16 @@ export function App({
       } catch (error) {
         setStoryBibleError(
           publicError(error, "다른 프로젝트를 열기 전 캔버스를 저장하지 못했습니다.")
+        );
+        return;
+      }
+    }
+    if (appMode === "READER_LAB") {
+      try {
+        await readerLabModeRef.current?.persistUiState();
+      } catch {
+        setStoryBibleError(
+          "다른 프로젝트를 열기 전 Reader Lab 상태를 저장하지 못했습니다."
         );
         return;
       }
@@ -2953,7 +3108,9 @@ export function App({
   const hasActiveEntityNote =
     hasActiveOwnerDocument && workspace.activeOwnerKind === "ENTITY";
   const hasDocument =
-    appMode === "WORLD_GRAPH" || appMode === "PLOT_CANVAS"
+    appMode === "WORLD_GRAPH" ||
+    appMode === "PLOT_CANVAS" ||
+    appMode === "READER_LAB"
       ? false
       : appMode === "STORY_BIBLE"
       ? hasActiveEntityNote
@@ -2975,7 +3132,7 @@ export function App({
       <header className="titlebar">
         <div className="wordmark" aria-label="madi">
           madi
-          <span>phase 1E</span>
+          <span>phase 1F</span>
         </div>
         <label className="document-title">
           <span className="sr-only">현재 작품명</span>
@@ -3069,6 +3226,14 @@ export function App({
             onClick={() => void switchAppMode("PLOT_CANVAS")}
           >
             캔버스
+          </button>
+          <button
+            type="button"
+            aria-pressed={appMode === "READER_LAB"}
+            disabled={!modeSwitchReady || busy}
+            onClick={() => void switchAppMode("READER_LAB")}
+          >
+            Reader Lab
           </button>
         </div>
         <div className="toolbar__spacer" />
@@ -3299,7 +3464,7 @@ export function App({
       </section>
 
       {(appMode === "MANUSCRIPT" ||
-        (appMode === "PLOT_CANVAS" &&
+        ((appMode === "PLOT_CANVAS" || appMode === "READER_LAB") &&
           (panel === "search" || panel === "snapshots"))) && (
         <div className="inspector-drawer">
         {panel === "search" ? (
@@ -3540,10 +3705,58 @@ export function App({
         </Suspense>
       )}
 
+      {appMode === "READER_LAB" && workspace.session && projectTree && (
+        <Suspense
+          fallback={
+            <section className="workspace-empty" aria-busy="true">
+              Reader Lab 모듈 불러오는 중…
+            </section>
+          }
+        >
+          <ReaderLabMode
+            ref={readerLabModeRef}
+            api={api}
+            sessionId={workspace.session.sessionId}
+            projectId={workspace.session.projectId}
+            projectRevision={workspace.revision}
+            reloadToken={readerLabReloadToken}
+            projectTree={projectTree}
+            initialScopeNodeId={selectedNode?.id ?? workNode?.id ?? null}
+            activeSceneId={workspace.activeSceneId}
+            interactionBlocked={busy}
+            onBeforeCompile={async () => {
+              if (!controller) {
+                return null;
+              }
+              const saved = await controller.flushPendingChanges(
+                () => compositionActiveRef.current
+              );
+              return saved ? controller.getState().revision : null;
+            }}
+            onProjectRevision={(revision) =>
+              controller?.adoptProjectRevision(revision)
+            }
+            onOpenSource={(source) =>
+              source.sceneNodeId
+                ? openStoryScene(
+                    source.sceneNodeId,
+                    source.rangeVerified &&
+                      source.start !== null &&
+                      source.end !== null
+                      ? { start: source.start, end: source.end }
+                      : undefined
+                  )
+                : undefined
+            }
+          />
+        </Suspense>
+      )}
+
       {appMode === "WORLD_GRAPH" && workspace.session && (
         <div
           className="world-graph-host"
           data-testid="world-graph-host"
+          data-graph-persistence-error={Boolean(worldGraphPersistenceError)}
           data-graph-ipc-ms={worldGraphPerformance.ipcMs?.toFixed(3)}
           data-graph-elements-ms={
             worldGraphPerformance.elementConversionMs?.toFixed(3)
@@ -3605,7 +3818,7 @@ export function App({
               model={worldGraphStateReady ? worldGraphModel : null}
               initialUiState={worldGraphUiState}
               busy={worldGraphBusy || !worldGraphStateReady}
-              errorMessage={worldGraphError}
+              errorMessage={worldGraphError || worldGraphPersistenceError}
               onUiStateChange={acceptWorldGraphUiState}
               onLoadEntityDetail={loadWorldGraphEntityDetail}
               onLoadEntitySceneContext={loadWorldGraphSceneContext}

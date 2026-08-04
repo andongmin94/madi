@@ -297,6 +297,8 @@ describe("Phase 0.5 IME Test screen orchestration", () => {
         readyToClose: false
       });
     });
+    expect(document.documentElement.inert).toBe(false);
+    expect(document.documentElement.dataset.closePending).toBeUndefined();
     expect(api.saveDocument).not.toHaveBeenCalled();
 
     fireEvent.compositionEnd(mount, { data: "비밀" });
@@ -307,6 +309,8 @@ describe("Phase 0.5 IME Test screen orchestration", () => {
       expect(api.saveDocument).toHaveBeenCalledTimes(1);
     });
     expect(api.completeCloseRequest).not.toHaveBeenCalled();
+    expect(document.documentElement.inert).toBe(true);
+    expect(document.documentElement.dataset.closePending).toBe("true");
 
     resolveSave?.({
       documentId: "close-document",

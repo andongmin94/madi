@@ -64,7 +64,10 @@ const summary: SnapshotDiffSummary = {
   deletedCanvases: 0,
   changedCanvases: 0,
   canvasNodeCountDelta: 0,
-  canvasEdgeCountDelta: 0
+  canvasEdgeCountDelta: 0,
+  addedReaderPresets: 0,
+  deletedReaderPresets: 0,
+  changedReaderPresets: 0
 };
 
 const diff: DiffNamedSnapshotResult = {

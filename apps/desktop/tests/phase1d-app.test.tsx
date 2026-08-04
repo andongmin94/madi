@@ -284,6 +284,17 @@ function deferredVoid(): {
   return { promise, resolve };
 }
 
+function deferredVoidFailure(): {
+  readonly promise: Promise<void>;
+  readonly reject: (error: Error) => void;
+} {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<void>((_resolve, fail) => {
+    reject = fail;
+  });
+  return { promise, reject };
+}
+
 async function renderOpenedGraph(api: MadiDesktopApi): Promise<void> {
   const editor = new GraphAppEditor();
   render(
@@ -431,6 +442,62 @@ describe("Phase 1D App graph integration", () => {
     await waitFor(() => expect(api.saveWorldGraphUiState).toHaveBeenCalledTimes(4));
     expect(api.loadEntityNote).not.toHaveBeenCalled();
     expect(screen.getByRole("region", { name: "세계관 그래프" })).toBeTruthy();
+  });
+
+  it("clears a transient graph persistence error after the next successful save", async () => {
+    const api = createApi();
+    await renderOpenedGraph(api);
+    await settleGraphStatePersistence();
+    vi.mocked(api.saveWorldGraphUiState).mockClear();
+    vi.mocked(api.saveWorldGraphUiState).mockRejectedValueOnce(
+      new Error("transient graph state save rejected")
+    );
+
+    const openCallsBefore = vi.mocked(api.openProject).mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: ".madi 열기" }));
+    expect(
+      await screen.findByText("transient graph state save rejected")
+    ).toBeTruthy();
+    expect(api.openProject).toHaveBeenCalledTimes(openCallsBefore);
+
+    fireEvent.click(screen.getByLabelText("고립 설정 표시"));
+    await waitFor(
+      () => expect(api.saveWorldGraphUiState).toHaveBeenCalledTimes(2),
+      { timeout: 1_500 }
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByText("transient graph state save rejected")
+      ).toBeNull()
+    );
+  });
+
+  it("ignores an older graph persistence failure after a newer save succeeds", async () => {
+    const api = createApi();
+    await renderOpenedGraph(api);
+    await settleGraphStatePersistence();
+    vi.mocked(api.saveWorldGraphUiState).mockClear();
+    const olderSave = deferredVoidFailure();
+    vi.mocked(api.saveWorldGraphUiState)
+      .mockImplementationOnce(() => olderSave.promise)
+      .mockResolvedValue(undefined);
+
+    fireEvent.click(screen.getByLabelText("고립 설정 표시"));
+    await waitFor(
+      () => expect(api.saveWorldGraphUiState).toHaveBeenCalledTimes(1),
+      { timeout: 1_500 }
+    );
+    fireEvent.click(screen.getByLabelText("관계 label 표시"));
+    await waitFor(
+      () => expect(api.saveWorldGraphUiState).toHaveBeenCalledTimes(2),
+      { timeout: 1_500 }
+    );
+
+    olderSave.reject(new Error("obsolete graph persistence failure"));
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(
+      screen.queryByText("obsolete graph persistence failure")
+    ).toBeNull();
   });
 
   it("keeps Graph mode when opening an entity note fails", async () => {

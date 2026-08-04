@@ -479,7 +479,7 @@ class BrowserTypieEnginePort implements TypieEnginePort {
     end: number,
     options?: { readonly focus?: boolean }
   ): void {
-    if (!Number.isInteger(start) || !Number.isInteger(end) || start >= end) {
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start > end) {
       throw new Error("Invalid search result range");
     }
     const selection = this.requireEditor().prose_to_selection_annotated(
@@ -493,6 +493,10 @@ class BrowserTypieEnginePort implements TypieEnginePort {
       [{ type: "selection", op: { type: "set", selection } }],
       null
     );
+    if (this.surfaceElement) {
+      this.surfaceElement.dataset.lastProgrammaticSelectionStart = String(start);
+      this.surfaceElement.dataset.lastProgrammaticSelectionEnd = String(end);
+    }
     if (options?.focus !== false) {
       this.focus();
     }

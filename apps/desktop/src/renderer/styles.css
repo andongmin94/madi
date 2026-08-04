@@ -63,6 +63,7 @@ textarea:focus-visible,
 .app-shell > .phase1-workspace,
 .app-shell > .story-bible,
 .app-shell > .plot-canvas-mode,
+.app-shell > .reader-lab,
 .app-shell > .world-graph-host,
 .app-shell > .workspace-empty {
   grid-row: 3;

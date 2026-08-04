@@ -158,7 +158,10 @@ const emptySnapshotDiff: SnapshotDiffSummary = {
   deletedCanvases: 0,
   changedCanvases: 0,
   canvasNodeCountDelta: 0,
-  canvasEdgeCountDelta: 0
+  canvasEdgeCountDelta: 0,
+  addedReaderPresets: 0,
+  deletedReaderPresets: 0,
+  changedReaderPresets: 0
 };
 
 class CanvasAppEditor implements MadiEditorAdapter {
@@ -608,6 +611,8 @@ describe("Phase 1E App canvas integration", { timeout: 25_000 }, () => {
     environment.requestClose();
     await waitFor(() => expect(canvasControl.flushCalls).toBe(1));
     expect(environment.api.completeCloseRequest).not.toHaveBeenCalled();
+    expect(document.documentElement.inert).toBe(true);
+    expect(document.documentElement.dataset.closePending).toBe("true");
 
     gate.resolve();
     await waitFor(() =>
@@ -635,6 +640,56 @@ describe("Phase 1E App canvas integration", { timeout: 25_000 }, () => {
     );
     expect(canvasControl.flushCalls).toBe(1);
     expect(document.documentElement.dataset.closePending).toBeUndefined();
+  });
+
+  it("rejects a close when an earlier project transition becomes active before the acknowledgement", async () => {
+    const environment = createApi();
+    await openCanvas(environment.api);
+    const transitionFlush = deferredVoid();
+    const closeFlush = deferredVoid();
+    const projectOpen = deferredValue<Awaited<
+      ReturnType<MadiDesktopApi["openProject"]>
+    >>();
+    let flushSequence = 0;
+    canvasControl.flushImpl = () => {
+      flushSequence += 1;
+      return flushSequence === 1 ? transitionFlush.promise : closeFlush.promise;
+    };
+    vi.mocked(environment.api.openProject).mockImplementation(
+      () => projectOpen.promise
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: ".madi 열기" }));
+    await waitFor(() => expect(canvasControl.flushCalls).toBe(1));
+    environment.requestClose();
+    await waitFor(() => expect(canvasControl.flushCalls).toBe(2));
+    expect(document.documentElement.inert).toBe(true);
+
+    transitionFlush.resolve();
+    await waitFor(() => expect(environment.api.openProject).toHaveBeenCalled());
+    closeFlush.resolve();
+    await waitFor(() =>
+      expect(environment.api.completeCloseRequest).toHaveBeenCalledWith({
+        readyToClose: false
+      })
+    );
+    expect(document.documentElement.inert).toBe(false);
+    expect(document.documentElement.dataset.closePending).toBeUndefined();
+
+    projectOpen.resolve(null);
+    await waitFor(() =>
+      expect(screen.getByTestId("save-status").getAttribute("data-phase")).toBe(
+        "saved"
+      )
+    );
+    vi.mocked(environment.api.completeCloseRequest).mockClear();
+    canvasControl.flushImpl = async () => undefined;
+    environment.requestClose();
+    await waitFor(() =>
+      expect(environment.api.completeCloseRequest).toHaveBeenCalledWith({
+        readyToClose: true
+      })
+    );
   });
 
   it("flushes before new/open and blocks both operations after a save failure", async () => {
