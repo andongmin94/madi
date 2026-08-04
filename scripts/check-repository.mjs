@@ -17,6 +17,12 @@ const allowedTypieDirectory = resolve(
 );
 const sourceRoot = resolve(repositoryRoot, "apps", "desktop", "src");
 const coreRoot = resolve(repositoryRoot, "crates", "madi-core", "src");
+const publicationRoot = resolve(
+  repositoryRoot,
+  "crates",
+  "madi-publication",
+  "src",
+);
 
 async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -234,6 +240,7 @@ const hygieneRoots = [
   resolve(repositoryRoot, "apps", "desktop", "src"),
   resolve(repositoryRoot, "scripts"),
   resolve(repositoryRoot, "crates", "madi-core", "src"),
+  publicationRoot,
 ];
 const hygieneFiles = (
   await Promise.all(hygieneRoots.map((directory) => walk(directory)))

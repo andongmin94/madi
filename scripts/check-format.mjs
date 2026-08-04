@@ -7,6 +7,7 @@ const roots = [
   "apps/desktop/src",
   "apps/desktop/tests",
   "crates/madi-core/src",
+  "crates/madi-publication/src",
   "scripts",
 ];
 const extensions = new Set([
