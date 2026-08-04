@@ -43,8 +43,10 @@ let appProtocolInstalled = false;
 
 async function openApplicationWindow(): Promise<void> {
   const target = resolveWindowTarget(
-    __dirname,
-    process.env.MADI_RENDERER_URL?.trim() || undefined
+    {
+      isPackaged: app.isPackaged,
+      developmentUrl: process.env.MADI_RENDERER_URL?.trim() || undefined
+    }
   );
   const preloadPath = path.resolve(
     __dirname,

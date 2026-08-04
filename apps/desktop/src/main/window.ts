@@ -21,6 +21,11 @@ export interface WindowTarget {
   readonly isDevelopment: boolean;
 }
 
+export interface ResolveWindowTargetOptions {
+  readonly isPackaged: boolean;
+  readonly developmentUrl: string | undefined;
+}
+
 export function resolveRendererDirectory(
   compiledMainDirectory: string
 ): string {
@@ -33,10 +38,12 @@ export function resolveRendererDirectory(
 }
 
 export function resolveWindowTarget(
-  compiledMainDirectory: string,
-  developmentUrl: string | undefined
+  {
+    isPackaged,
+    developmentUrl
+  }: ResolveWindowTargetOptions
 ): WindowTarget {
-  if (developmentUrl) {
+  if (!isPackaged && developmentUrl) {
     const parsed = new URL(developmentUrl);
     if (
       (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
@@ -148,6 +155,9 @@ export interface SafeWindowClose {
   dispose(): void;
 }
 
+// This is the retry cadence for re-sending the renderer request, not a
+// deadline for the renderer's bounded save chain. The close intent remains
+// active until the renderer explicitly accepts or rejects it.
 export const SAFE_WINDOW_CLOSE_RESPONSE_TIMEOUT_MS = 15_000;
 export const SAFE_WINDOW_CLOSE_AUTHORIZATION_DELAY_MS = 100;
 
@@ -157,6 +167,7 @@ export function installSafeWindowClose(
 ): SafeWindowClose {
   let authorized = false;
   let closeScheduled = false;
+  let closeIntentActive = false;
   let requestPending = false;
   let responseTimeout: ReturnType<typeof setTimeout> | undefined;
   let authorizedCloseTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -171,6 +182,7 @@ export function installSafeWindowClose(
 
   const closeAfterRendererFailure = () => {
     resetPendingRequest();
+    closeIntentActive = false;
     closeScheduled = false;
     if (authorizedCloseTimeout) {
       clearTimeout(authorizedCloseTimeout);
@@ -196,6 +208,10 @@ export function installSafeWindowClose(
       return;
     }
     event.preventDefault();
+    if (closeScheduled) {
+      return;
+    }
+    closeIntentActive = true;
     if (!requestPending && !closeScheduled) {
       requestPending = true;
       responseTimeout = setTimeout(() => {
@@ -217,9 +233,10 @@ export function installSafeWindowClose(
 
   return {
     complete(readyToClose: boolean) {
-      if (!requestPending) {
+      if (!closeIntentActive) {
         return false;
       }
+      closeIntentActive = false;
       resetPendingRequest();
       if (readyToClose && !window.isDestroyed()) {
         closeScheduled = true;
@@ -236,6 +253,7 @@ export function installSafeWindowClose(
     },
     dispose() {
       resetPendingRequest();
+      closeIntentActive = false;
       if (authorizedCloseTimeout) {
         clearTimeout(authorizedCloseTimeout);
         authorizedCloseTimeout = undefined;

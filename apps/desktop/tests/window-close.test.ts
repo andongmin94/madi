@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { IPC_EVENTS } from "../src/shared/contracts";
 import {
   installSafeWindowClose,
-  SAFE_WINDOW_CLOSE_AUTHORIZATION_DELAY_MS
+  SAFE_WINDOW_CLOSE_AUTHORIZATION_DELAY_MS,
+  SAFE_WINDOW_CLOSE_RESPONSE_TIMEOUT_MS
 } from "../src/main/window";
 
 vi.mock("electron", () => ({
@@ -55,6 +56,21 @@ afterEach(() => {
 });
 
 describe("safe window close", () => {
+  it("accepts a renderer response after the request retry timer expires", () => {
+    vi.useFakeTimers();
+    const window = new FakeBrowserWindow();
+    const safeClose = installSafeWindowClose(asBrowserWindow(window), 25);
+
+    expect(SAFE_WINDOW_CLOSE_RESPONSE_TIMEOUT_MS).toBe(15_000);
+    window.emitClose();
+    vi.advanceTimersByTime(25);
+
+    expect(safeClose.complete(true)).toBe(true);
+    vi.advanceTimersByTime(SAFE_WINDOW_CLOSE_AUTHORIZATION_DELAY_MS);
+    expect(window.close).toHaveBeenCalledTimes(1);
+    safeClose.dispose();
+  });
+
   it("returns the approval IPC before destroying the renderer window", () => {
     vi.useFakeTimers();
     const window = new FakeBrowserWindow();
@@ -66,6 +82,7 @@ describe("safe window close", () => {
 
     expect(window.close).not.toHaveBeenCalled();
     expect(duplicate.preventDefault).toHaveBeenCalledTimes(1);
+    expect(safeClose.complete(false)).toBe(false);
 
     vi.advanceTimersByTime(SAFE_WINDOW_CLOSE_AUTHORIZATION_DELAY_MS);
 

@@ -2,12 +2,27 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
-export default defineConfig({
+const DEVELOPMENT_WEBSOCKET_CSP = " ws://127.0.0.1:5173";
+
+export default defineConfig(({ command }) => ({
   root: __dirname,
   // Production is served from madi://app, so emitted JS/WASM/ICU/font URLs
   // stay relative to dist/renderer/index.html and its allowlisted asset root.
   base: "./",
-  plugins: [react()],
+  plugins: [
+    react(),
+    ...(command === "build"
+      ? [{
+          name: "madi-production-csp",
+          transformIndexHtml(html: string) {
+            if (!html.includes(DEVELOPMENT_WEBSOCKET_CSP)) {
+              throw new Error("Development WebSocket CSP directive is missing");
+            }
+            return html.replace(DEVELOPMENT_WEBSOCKET_CSP, "");
+          }
+        }]
+      : [])
+  ],
   resolve: {
     alias: {
       "@renderer": path.resolve(__dirname, "src/renderer"),
@@ -32,4 +47,4 @@ export default defineConfig({
     css: false,
     restoreMocks: true
   }
-});
+}));

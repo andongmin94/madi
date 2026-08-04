@@ -21,8 +21,9 @@
     "format:check": "node scripts/check-format.mjs",
     "dev": "pnpm run build:core && pnpm --filter @madi/desktop dev",
     "start": "pnpm --filter @madi/desktop start",
-    "test": "pnpm run build:core && pnpm run typecheck && pnpm run test:typie && pnpm run test:core && pnpm run test:desktop && pnpm run test:integration && pnpm run test:electron",
+    "test": "pnpm run build:core && pnpm run typecheck && pnpm run test:typie && pnpm run test:publication && pnpm run test:core && pnpm run test:desktop && pnpm run test:integration && pnpm run test:electron",
     "test:typie": "node scripts/probe-typie.mjs",
+    "test:publication": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 test --manifest-path crates/madi-publication/Cargo.toml",
     "test:core": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 test --manifest-path crates/madi-core/Cargo.toml",
     "test:desktop": "pnpm --filter @madi/desktop test",
     "test:bundle": "pnpm --filter @madi/desktop exec vitest run tests/lazy-bundle-boundary.test.ts",
@@ -33,15 +34,16 @@
     "test:phase1e": "node scripts/test-phase1e-canvas.mjs",
     "fixture:phase1d-scale": "node scripts/create-phase1d-scale-fixture.mjs",
     "fixture:phase1e-scale": "node scripts/create-phase1e-scale-fixture.mjs",
+    "fixture:phase1f-reader": "node scripts/create-phase1f-reader-fixtures.mjs",
     "test:integration": "pnpm run test:phase1a && pnpm run test:phase1b && pnpm run test:phase1d && pnpm run test:phase1e && node scripts/test-madi-roundtrip.mjs && node scripts/test-madi-endurance.mjs && node scripts/test-scene-break.mjs && node scripts/test-recovery-cli.mjs",
-    "pretest:electron": "pnpm fixture:phase1d-scale && pnpm fixture:phase1e-scale && pnpm --filter @madi/desktop build",
-    "test:electron": "node scripts/electron-smoke.mjs && node scripts/electron-scale-smoke.mjs && node scripts/electron-phase1e-dev-smoke.mjs",
+    "pretest:electron": "pnpm fixture:phase1d-scale && pnpm fixture:phase1e-scale && pnpm fixture:phase1f-reader && pnpm --filter @madi/desktop build",
+    "test:electron": "node scripts/electron-smoke.mjs && node scripts/electron-scale-smoke.mjs && node scripts/electron-phase1e-dev-smoke.mjs && node scripts/electron-phase1f-dev-smoke.mjs",
     "package:unpacked": "pnpm run build:core:release && pnpm --filter @madi/desktop build && node scripts/package-unpacked.mjs",
     "postinstall": "node scripts/ensure-electron.mjs",
-    "pretest:package": "pnpm fixture:phase1d-scale && pnpm fixture:phase1e-scale && pnpm run package:unpacked",
-    "test:package": "node scripts/electron-packaged-smoke.mjs && node scripts/electron-packaged-scale-smoke.mjs && node scripts/electron-phase1e-packaged-smoke.mjs",
+    "pretest:package": "pnpm fixture:phase1d-scale && pnpm fixture:phase1e-scale && pnpm fixture:phase1f-reader && pnpm run package:unpacked",
+    "test:package": "node scripts/electron-packaged-smoke.mjs && node scripts/electron-packaged-scale-smoke.mjs && node scripts/electron-phase1e-packaged-smoke.mjs && node scripts/electron-phase1f-packaged-smoke.mjs",
     "test:dev": "node scripts/test-dev-startup.mjs",
     "typecheck": "pnpm --filter @madi/desktop typecheck",
-    "verify": "pnpm run check:toolchain && pnpm run check:repository && pnpm run format:check && pnpm run typecheck && pnpm run test:desktop && pnpm run test:core && pnpm run build:core && pnpm run test:typie && pnpm run test:integration && pnpm run build && pnpm run test:bundle && pnpm run test:electron && pnpm run test:package"
+    "verify": "pnpm run check:toolchain && pnpm run check:repository && pnpm run format:check && pnpm run typecheck && pnpm run test:desktop && pnpm run test:publication && pnpm run test:core && pnpm run build:core && pnpm run test:typie && pnpm run test:integration && pnpm run build && pnpm run test:bundle && pnpm run test:electron && pnpm run test:package"
   }
 }

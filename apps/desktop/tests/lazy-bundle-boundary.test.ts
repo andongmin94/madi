@@ -18,11 +18,15 @@ const graphCanvasPath = resolve(
   desktopRoot,
   "src/renderer/components/worldGraph/WorldGraphCanvas.tsx"
 );
+const readerModePath = resolve(
+  desktopRoot,
+  "src/renderer/components/ReaderLabMode.tsx"
+);
 const rendererDistPath = resolve(desktopRoot, "dist/renderer");
 const rendererAssetsPath = resolve(rendererDistPath, "assets");
 
-describe("Graph/Canvas lazy bundle boundary", () => {
-  it("keeps both heavy renderers behind distinct dynamic imports", () => {
+describe("Graph/Canvas/Reader lazy bundle boundary", () => {
+  it("keeps all three heavy renderers behind distinct dynamic imports", () => {
     const appSource = readFileSync(appSourcePath, "utf8");
     const rendererEntry = readFileSync(rendererEntryPath, "utf8");
     const sharedContracts = readFileSync(sharedContractsPath, "utf8");
@@ -38,6 +42,9 @@ describe("Graph/Canvas lazy bundle boundary", () => {
     expect(appSource).toMatch(
       /lazy\(async \(\) => \{[\s\S]*?import\([\s\S]*?\.\/components\/PlotCanvasMode[\s\S]*?\)[\s\S]*?\}\)/
     );
+    expect(appSource).toMatch(
+      /lazy\(async \(\) => \{[\s\S]*?import\([\s\S]*?\.\/components\/ReaderLabMode[\s\S]*?\)[\s\S]*?\}\)/
+    );
     expect(eagerSource).not.toMatch(
       /(?:from\s+|import\s*\()\s*["']@xyflow\/react["']/
     );
@@ -45,6 +52,10 @@ describe("Graph/Canvas lazy bundle boundary", () => {
       /(?:from\s+|import\s*\()\s*["']cytoscape["']/
     );
     expect(sharedContracts).not.toMatch(/@xyflow\/react|cytoscape/);
+    expect(rendererEntry).not.toMatch(/ReaderLabMode|PublicationContent|sectionWindowing/);
+    expect(readFileSync(readerModePath, "utf8")).toContain(
+      'from "./readerLab/ReaderLabWorkspace"'
+    );
     expect(plotCanvasPublicIndex).not.toMatch(
       /@xyflow\/react|ReactFlow|ReactFlowCanvas(?:Node|Edge|Model)/
     );
@@ -64,7 +75,7 @@ describe("Graph/Canvas lazy bundle boundary", () => {
   });
 
   it.skipIf(!existsSync(rendererAssetsPath))(
-    "places React Flow and Cytoscape runtimes in separate production chunks",
+    "places React Flow, Cytoscape, and Reader Lab in separate production chunks",
     () => {
       const assetNames = readdirSync(rendererAssetsPath);
       const plotChunkName = assetNames.find((name) =>
@@ -73,9 +84,15 @@ describe("Graph/Canvas lazy bundle boundary", () => {
       const graphChunkName = assetNames.find((name) =>
         /^WorldGraphWorkspace-.+\.js$/.test(name)
       );
+      const readerChunkName = assetNames.find((name) =>
+        /^ReaderLabMode-.+\.js$/.test(name)
+      );
       expect(plotChunkName).toBeDefined();
       expect(graphChunkName).toBeDefined();
+      expect(readerChunkName).toBeDefined();
       expect(plotChunkName).not.toBe(graphChunkName);
+      expect(readerChunkName).not.toBe(plotChunkName);
+      expect(readerChunkName).not.toBe(graphChunkName);
 
       const html = readFileSync(`${rendererDistPath}/index.html`, "utf8");
       const mainChunkName = html.match(
@@ -95,15 +112,35 @@ describe("Graph/Canvas lazy bundle boundary", () => {
         `${rendererAssetsPath}/${graphChunkName!}`,
         "utf8"
       );
+      const readerChunk = readFileSync(
+        `${rendererAssetsPath}/${readerChunkName!}`,
+        "utf8"
+      );
 
       expect(mainChunk).toContain(plotChunkName);
       expect(mainChunk).toContain(graphChunkName);
+      expect(mainChunk).toContain(readerChunkName);
       expect(mainChunk).not.toContain("react-flow__renderer");
       expect(mainChunk).not.toContain("No such layout `");
+      expect(mainChunk).not.toContain("reader-shadow-host");
       expect(plotChunk).toContain("react-flow__renderer");
       expect(plotChunk).not.toContain("No such layout `");
+      expect(plotChunk).not.toContain("reader-shadow-host");
       expect(graphChunk).toContain("No such layout `");
       expect(graphChunk).not.toContain("react-flow__renderer");
+      expect(graphChunk).not.toContain("reader-shadow-host");
+      expect(readerChunk).toContain("reader-shadow-host");
+      expect(readerChunk).not.toContain("react-flow__renderer");
+      expect(readerChunk).not.toContain("No such layout `");
+    }
+  );
+
+  it.skipIf(!existsSync(`${rendererDistPath}/index.html`))(
+    "removes the development WebSocket capability from production CSP",
+    () => {
+      const html = readFileSync(`${rendererDistPath}/index.html`, "utf8");
+      expect(html).toContain("connect-src 'self'");
+      expect(html).not.toMatch(/\b(?:ws|wss):\/\//u);
     }
   );
 });

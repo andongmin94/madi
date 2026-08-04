@@ -38,6 +38,7 @@ const artifactDirectory = resolve(
   "output",
   "playwright"
 );
+const WINDOW_CLOSE_TIMEOUT_MS = 195_000;
 
 function reportStage(stage) {
   process.stderr.write(`[electron-smoke] ${stage}\n`);
@@ -189,6 +190,22 @@ async function launchApplication(projectPath, userDataPath) {
   };
 }
 
+async function waitForChildExit(childProcess, timeoutMs) {
+  if (childProcess.exitCode !== null || childProcess.signalCode !== null) {
+    return true;
+  }
+  return new Promise((resolveExit) => {
+    const finish = (exited) => {
+      clearTimeout(timer);
+      childProcess.off("exit", onExit);
+      resolveExit(exited);
+    };
+    const onExit = () => finish(true);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    childProcess.once("exit", onExit);
+  });
+}
+
 async function forceCloseApplication(application) {
   const childProcess = application.process();
   if (
@@ -210,6 +227,9 @@ async function forceCloseApplication(application) {
     childProcess.signalCode === null
   ) {
     childProcess.kill();
+  }
+  if (!(await waitForChildExit(childProcess, 5_000))) {
+    throw new Error("electron-smoke-application-process-did-not-exit");
   }
 }
 
@@ -1050,6 +1070,8 @@ async function readWorldGraphDataset(page) {
         projectId: workspace.getAttribute("data-project-id") ?? "",
         revision: numberAttribute("data-revision"),
         busy: workspace.getAttribute("aria-busy") === "true",
+        persistenceError:
+          host?.getAttribute("data-graph-persistence-error") ?? "missing",
         mode: workspace.getAttribute("data-mode") ?? "",
         depth: numberAttribute("data-depth"),
         focusedEntityId:
@@ -1189,37 +1211,73 @@ async function dragSelectedWorldGraphNode(page) {
     },
     "scale selected node explicit center request"
   );
-  await page.waitForTimeout(300);
-  await canvas.scrollIntoViewIfNeeded();
-  before = await readWorldGraphDataset(page);
-  const bounds = await canvas.boundingBox();
-  if (!bounds) {
-    throw new Error("Scale World Graph canvas has no bounding box for drag");
-  }
-
-  const renderedEvidence = await canvas.evaluate((element, selectedId) => {
-    const registry = Reflect.get(element, "_cyreg");
-    const cy =
-      registry && typeof registry === "object"
-        ? Reflect.get(registry, "cy")
+  let previousCenteredPosition = null;
+  let centeredStableSamples = 0;
+  const centeredEvidence = await pollBinderUi(
+    async () => {
+      await canvas.scrollIntoViewIfNeeded();
+      const state = await readWorldGraphDataset(page);
+      const bounds = await canvas.boundingBox();
+      if (!bounds) {
+        return null;
+      }
+      const renderedEvidence = await canvas.evaluate((element, selectedId) => {
+        const registry = Reflect.get(element, "_cyreg");
+        const cy =
+          registry && typeof registry === "object"
+            ? Reflect.get(registry, "cy")
+            : null;
+        const node = cy?.getElementById?.(selectedId);
+        if (!node?.nonempty?.()) {
+          return null;
+        }
+        return {
+          model: node.position(),
+          rendered: node.renderedPosition(),
+          renderedBounds: node.renderedBoundingBox(),
+          zoom: cy.zoom(),
+          pan: cy.pan(),
+          viewportAnimating: cy.animated(),
+          grabbable: node.grabbable(),
+          locked: node.locked()
+        };
+      }, state.selectedId);
+      if (!renderedEvidence) {
+        return null;
+      }
+      const start = {
+        pageX: bounds.x + renderedEvidence.rendered.x,
+        pageY: bounds.y + renderedEvidence.rendered.y
+      };
+      const isInsideCanvas =
+        start.pageX >= bounds.x + 4 &&
+        start.pageX <= bounds.x + bounds.width - 4 &&
+        start.pageY >= bounds.y + 4 &&
+        start.pageY <= bounds.y + bounds.height - 4;
+      if (!isInsideCanvas || renderedEvidence.viewportAnimating) {
+        previousCenteredPosition = null;
+        centeredStableSamples = 0;
+        return null;
+      }
+      const isStable =
+        previousCenteredPosition !== null &&
+        Math.abs(
+          renderedEvidence.rendered.x - previousCenteredPosition.x
+        ) <= 0.25 &&
+        Math.abs(
+          renderedEvidence.rendered.y - previousCenteredPosition.y
+        ) <= 0.25;
+      centeredStableSamples = isStable ? centeredStableSamples + 1 : 1;
+      previousCenteredPosition = { ...renderedEvidence.rendered };
+      return centeredStableSamples >= 5
+        ? { state, bounds, renderedEvidence, start }
         : null;
-    const node = cy?.getElementById?.(selectedId);
-    if (!node?.nonempty?.()) {
-      return null;
-    }
-    return {
-      model: node.position(),
-      rendered: node.renderedPosition(),
-      renderedBounds: node.renderedBoundingBox(),
-      zoom: cy.zoom(),
-      pan: cy.pan(),
-      grabbable: node.grabbable(),
-      locked: node.locked()
-    };
-  }, before.selectedId);
-  if (!renderedEvidence) {
-    throw new Error("Selected scale node is absent from Cytoscape");
-  }
+    },
+    "scale selected node centered inside actual canvas",
+    30_000
+  );
+  before = centeredEvidence.state;
+  const { bounds, renderedEvidence, start } = centeredEvidence;
   const formulaRendered = {
     x:
       before.selectedPosition.x * before.viewport.zoom +
@@ -1228,27 +1286,6 @@ async function dragSelectedWorldGraphNode(page) {
       before.selectedPosition.y * before.viewport.zoom +
       before.viewport.panY
   };
-  const start = {
-    pageX: bounds.x + renderedEvidence.rendered.x,
-    pageY: bounds.y + renderedEvidence.rendered.y
-  };
-  if (
-    start.pageX < bounds.x + 4 ||
-    start.pageX > bounds.x + bounds.width - 4 ||
-    start.pageY < bounds.y + 4 ||
-    start.pageY > bounds.y + bounds.height - 4
-  ) {
-    throw new Error(
-      `Selected scale node is outside the actual canvas: ${JSON.stringify({
-        bounds,
-        state: before,
-        renderedEvidence,
-        formulaRendered,
-        start
-      })}`
-    );
-  }
-
   const horizontalRoom = bounds.x + bounds.width - start.pageX;
   const verticalRoom = bounds.y + bounds.height - start.pageY;
   const deltaX = horizontalRoom > 80 ? 48 : -48;
@@ -1395,6 +1432,7 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
       );
     }
     await firstPage.screenshot({ path: scaleFullScreenshot });
+    reportStage("Phase 1D scale full graph captured");
 
     const initialGraphReady = {
       reportedLayoutMs: fullEvidence.performance.layoutMs,
@@ -1406,9 +1444,11 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
     );
     for (let run = 1; run <= 5; run += 1) {
       const startedAt = performance.now();
+      reportStage(`Phase 1D scale layout ${run} click`);
       await firstPage
         .getByRole("button", { name: "자동 배치 다시 실행", exact: true })
         .click();
+      reportStage(`Phase 1D scale layout ${run} requested`);
       await pollBinderUi(
         async () =>
           Number(await workspace.getAttribute("data-auto-layout-request")) ===
@@ -1433,6 +1473,7 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
         `scale automatic layout completion ${run}`,
         30_000
       );
+      reportStage(`Phase 1D scale layout ${run} completed`);
       layoutRuns.push({
         run,
         reportedMs: state.performance.layoutMs,
@@ -1440,7 +1481,9 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
       });
     }
 
+    reportStage("Phase 1D scale filters opening");
     await openWorldGraphFilters(firstPage);
+    reportStage("Phase 1D scale filters opened");
     const scaleTagFilter = firstPage
       .getByRole("group", { name: "태그" })
       .locator('input[value="scale-tag-7"]');
@@ -1699,8 +1742,12 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
       nodeCount: fullEvidence.accessible.nodeIds.length,
       edgeCount: fullEvidence.accessible.edgeIds.length
     };
+    reportStage("Phase 1D scale pointer drag starting");
     const dragInteraction = await dragSelectedWorldGraphNode(firstPage);
+    reportStage("Phase 1D scale pointer drag completed");
+    reportStage("Phase 1D scale viewport interaction starting");
     const viewportInteraction = await zoomWorldGraphCanvas(firstPage);
+    reportStage("Phase 1D scale viewport interaction completed");
     const persistedState = await waitForScaleGraphState(
       firstPage,
       {
@@ -1712,10 +1759,12 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
         layout: "preset",
         positionCount: 500,
         visibleNodeCount: 25,
-        visibleEdgeCount: 90
+        visibleEdgeCount: 90,
+        persistenceError: "false"
       },
       "scale final persisted state"
     );
+    reportStage("Phase 1D scale persisted state ready");
     const canonicalAfter = {
       projectId: persistedState.projectId,
       revision: persistedState.revision,
@@ -1738,7 +1787,14 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
       );
     }
     await firstPage.waitForTimeout(900);
+    const autosavedPersistedState = await readWorldGraphDataset(firstPage);
+    if (autosavedPersistedState.persistenceError !== "false") {
+      throw new Error(
+        "Phase 1D scale graph UI-state autosave reported a persistence error"
+      );
+    }
     await firstPage.screenshot({ path: scalePersistedScreenshot });
+    reportStage("Phase 1D scale persisted screenshot captured");
 
     const layoutReported = layoutRuns.map((run) => run.reportedMs ?? NaN);
     const focusedBfs = focusRuns.map((run) => run.bfsMs ?? NaN);
@@ -1883,31 +1939,77 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
         })}`
       );
     }
+    reportStage("Phase 1D scale first-run gate passed");
 
     const firstWindowClosed = firstPage.waitForEvent("close", {
-      timeout: 30_000
+      timeout: WINDOW_CLOSE_TIMEOUT_MS
     });
+    reportStage("Phase 1D scale first window close requested");
     await firstApplication.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.close();
     });
-    await firstWindowClosed;
+    reportStage("Phase 1D scale first window close dispatched");
+    try {
+      await firstWindowClosed;
+    } catch (error) {
+      const closeContext = firstPage.isClosed()
+        ? { pageClosed: true }
+        : await firstPage.locator("html").evaluate((root) => ({
+            pageClosed: false,
+            closePending: root.getAttribute("data-close-pending") === "true",
+            inert: root.inert,
+            alertCount: document.querySelectorAll('[role="alert"]').length,
+            savePhase:
+              document
+                .querySelector('[data-testid="save-status"]')
+                ?.getAttribute("data-phase") ?? "missing",
+            graphPresent:
+              document.querySelector(".world-graph-workspace") !== null,
+            graphBusy:
+              document
+                .querySelector('[data-testid="world-graph-host"]')
+                ?.getAttribute("aria-busy") === "true",
+            graphPersistenceError:
+              document
+                .querySelector('[data-testid="world-graph-host"]')
+                ?.getAttribute("data-graph-persistence-error") ?? "missing"
+          }));
+      process.stderr.write(
+        `[electron-smoke] Phase 1D scale close context ${JSON.stringify(
+          closeContext
+        )}\n`
+      );
+      throw new Error(
+        `Phase 1D scale first window close failed: ${JSON.stringify({
+          closeContext,
+          error: redactError(error)
+        })}`
+      );
+    }
+    reportStage("Phase 1D scale first window closed");
     await forceCloseApplication(firstApplication);
     firstApplication = undefined;
     reportStage("Phase 1D scale first process closed with UI state saved");
 
+    reportStage("Phase 1D scale second process launching");
     const secondRun = await launchApplication(
       scaleProjectPath,
       scaleUserDataPath
     );
     secondApplication = secondRun.application;
     const secondPage = secondRun.page;
+    reportStage("Phase 1D scale second process launched");
+    reportStage("Phase 1D scale second project opening");
     await secondPage.getByRole("button", { name: ".madi 열기" }).click();
     await secondPage
       .locator('[data-testid="save-status"][data-phase="saved"]')
       .waitFor({ timeout: 30_000 });
+    reportStage("Phase 1D scale second project opened");
     let reopenedEntry;
     try {
+      reportStage("Phase 1D scale reopened graph opening");
       reopenedEntry = await openWorldGraph(secondPage, 25, 90);
+      reportStage("Phase 1D scale reopened graph ready");
     } catch (error) {
       const [dataset, evidence, pageState] = await Promise.all([
         readWorldGraphDataset(secondPage).catch((failure) => ({
@@ -1935,8 +2037,10 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
       );
     }
     const reopenedEvidence = reopenedEntry.evidence;
+    reportStage("Phase 1D scale reopened controls opening");
     await openWorldGraphFilters(secondPage);
     await openWorldGraphAccessibleList(secondPage);
+    reportStage("Phase 1D scale reopened controls ready");
     const reopenedState = await readWorldGraphDataset(secondPage);
     const viewportMatches = ["zoom", "panX", "panY"].every((key) => {
       const expected = persistedState.viewport[key];
@@ -1987,6 +2091,7 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
       reopenedState.positionCount !== 500 ||
       reopenedState.visibleNodeCount !== 25 ||
       reopenedState.visibleEdgeCount !== 90 ||
+      reopenedState.persistenceError !== "false" ||
       !viewportMatches ||
       !dragPositionMatches ||
       JSON.stringify(reopenedCanonical) !== JSON.stringify(canonicalBefore) ||
@@ -2018,6 +2123,7 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
         })}`
       );
     }
+    reportStage("Phase 1D scale restart gate passed");
     await secondPage.screenshot({ path: scaleReopenedScreenshot });
 
     const sortedLayouts = [...layoutReported].sort((left, right) => left - right);
@@ -3028,9 +3134,9 @@ try {
   const phase1cSnapshotMetadata = (
     await phase1cSnapshotItem.locator(".snapshot-metadata").innerText()
   ).trim();
-  if (!/형식\s+[^\r\n]+ \bv3\b/u.test(phase1cSnapshotMetadata)) {
+  if (!/형식\s+[^\r\n]+ \bv4\b/u.test(phase1cSnapshotMetadata)) {
     throw new Error(
-      `Phase 1C named snapshot is not payload v3; metadataLength=${phase1cSnapshotMetadata.length}`
+      `Phase 1C named snapshot is not payload v4; metadataLength=${phase1cSnapshotMetadata.length}`
     );
   }
 
@@ -3241,14 +3347,14 @@ try {
       role: "POV"
     },
     namedSnapshot: {
-      payloadVersion: 3,
+      payloadVersion: 4,
       countAfterRestore: 5,
       temporaryEntityMutationDetected: true,
       restored: true
     }
   };
   reportStage(
-    "Phase 1C Story Bible, mention promotion, scene link, and snapshot v3 restore verified"
+    "Phase 1C Story Bible, mention promotion, scene link, and snapshot v4 restore verified"
   );
 
   const firstGraphEntry = await openWorldGraph(firstPage, 2, 1);
@@ -3793,7 +3899,7 @@ try {
     );
   });
   const windowClosed = firstPage.waitForEvent("close", {
-    timeout: 10_000
+    timeout: WINDOW_CLOSE_TIMEOUT_MS
   });
   reportStage("dirty close requested");
   await firstApplication.evaluate(({ BrowserWindow }) => {

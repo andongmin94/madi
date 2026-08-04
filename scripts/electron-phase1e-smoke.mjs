@@ -53,6 +53,7 @@ const evidencePath = resolve(
   artifactDirectory,
   `${artifactPrefix}-evidence.json`,
 );
+const WINDOW_CLOSE_TIMEOUT_MS = 195_000;
 
 const largeCanvas = {
   id: "large-canvas-500-1000",
@@ -576,7 +577,9 @@ function sampleApplicationProcessTree(application, elapsedMs) {
 }
 
 async function closeWindowCleanly(run) {
-  const windowClosed = run.page.waitForEvent("close", { timeout: 20_000 });
+  const windowClosed = run.page.waitForEvent("close", {
+    timeout: WINDOW_CLOSE_TIMEOUT_MS,
+  });
   await run.application.evaluate(({ BrowserWindow }) => {
     setTimeout(() => BrowserWindow.getAllWindows()[0]?.close(), 100);
   });
@@ -1490,21 +1493,21 @@ async function createNamedSnapshotCheckpoint(page) {
     30_000,
   );
   const item = list.locator(`li[data-snapshot-id="${snapshotId}"]`);
-  const payloadVersion3 = await item
+  const payloadVersion4 = await item
     .locator(".snapshot-metadata div")
     .evaluateAll((rows) =>
       rows.some(
         (row) =>
           row.querySelector("dt")?.textContent?.trim() === "형식" &&
-          /\bv3\b/u.test(row.querySelector("dd")?.textContent ?? ""),
+          /\bv4\b/u.test(row.querySelector("dd")?.textContent ?? ""),
       ),
     );
-  verify(payloadVersion3, "named-snapshot-payload-not-v3");
+  verify(payloadVersion4, "named-snapshot-payload-not-v4");
   return {
     snapshotId,
     beforeCount,
     afterCount: beforeCount + 1,
-    payloadVersion: 3,
+    payloadVersion: 4,
     observedMs: performance.now() - startedAt,
   };
 }
@@ -2149,7 +2152,7 @@ async function runSmoke() {
       101,
       200,
     );
-    reportStage("named snapshot v3 create, Canvas diff, and safe restore verified");
+    reportStage("named snapshot v4 create, Canvas diff, and safe restore verified");
     await checkpointRendererDiagnostics("canvas-snapshot-restore", firstRun);
 
     await selectCanvas(firstRun.page, largeCanvas);

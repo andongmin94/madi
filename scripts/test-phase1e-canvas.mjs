@@ -195,7 +195,7 @@ async function run() {
       editor_engine_commit: "phase1e-integration",
       editor_schema_version: 1,
     });
-    verify(created.project.metadata.schema_version === 5, "schema-v5");
+    verify(created.project.metadata.schema_version === 6, "schema-v6");
     let revision = created.project.metadata.revision;
 
     const mutate = async (method, params) => {
@@ -373,7 +373,7 @@ async function run() {
       note: "Canvas restore 검증",
       kind: "MANUAL",
     });
-    verify(baseline.snapshot.payload_version === 3, "snapshot-payload-v3");
+    verify(baseline.snapshot.payload_version === 4, "snapshot-payload-v4");
 
     const changedDocument = structuredClone(documents[0]);
     changedDocument.nodes[2].x += 77;
@@ -408,8 +408,8 @@ async function run() {
       snapshot_id: "phase1e-canvas-baseline",
       auto_snapshot_name: "Phase 1E Canvas 복원 전",
     });
-    verify(restored.restored_snapshot.payload_version === 3, "restored-payload-v3");
-    verify(restored.safety_snapshot.payload_version === 3, "safety-payload-v3");
+    verify(restored.restored_snapshot.payload_version === 4, "restored-payload-v4");
+    verify(restored.safety_snapshot.payload_version === 4, "safety-payload-v4");
     verify(equalJson(restored.changes_before_restore, diff.summary), "restore-diff");
 
     const beforeRestart = await first.request("list_canvases", {
@@ -439,7 +439,7 @@ async function run() {
     const reopened = await second.request("open_project", {
       file_path: projectPath,
     });
-    verify(reopened.metadata.schema_version === 5, "reopen-schema-v5");
+    verify(reopened.metadata.schema_version === 6, "reopen-schema-v6");
     verify(reopened.metadata.revision === revision, "reopen-revision");
     const afterRestart = await second.request("list_canvases", {
       file_path: projectPath,
@@ -461,9 +461,9 @@ async function run() {
       snapshots.snapshots.some(
         (snapshot) =>
           snapshot.id === "phase1e-canvas-baseline" &&
-          snapshot.payload_version === 3,
+          snapshot.payload_version === 4,
       ),
-      "reopen-snapshot-v3",
+      "reopen-snapshot-v4",
     );
     await second.close();
     second = undefined;
@@ -472,7 +472,7 @@ async function run() {
       `${JSON.stringify(
         {
           phase: "1E",
-          schemaVersion: 5,
+          schemaVersion: 6,
           coreProcesses: 2,
           canvases: 4,
           nodes: totalCounts.nodes,
@@ -499,7 +499,7 @@ async function run() {
             brokenReferenceRelinked: true,
           },
           snapshot: {
-            payloadVersion: 3,
+            payloadVersion: 4,
             changedCanvases: diff.summary.changed_canvases,
             nodeDelta: diff.summary.canvas_node_count_delta,
             edgeDelta: diff.summary.canvas_edge_count_delta,

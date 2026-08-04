@@ -269,7 +269,7 @@ async function createFixture() {
       editor_engine_commit: typieCommit,
       editor_schema_version: 1,
     });
-    verify(created.project.metadata.schema_version === 5, "scale-schema-v5");
+    verify(created.project.metadata.schema_version === 6, "scale-schema-v6");
     let revision = 0;
     const mutate = async (method, params) => {
       const before = revision;
@@ -494,7 +494,7 @@ try {
       {
         fixture: "output/test-fixtures/phase1e-scale.madi",
         bytes: fixtureStats.size,
-        schemaVersion: 5,
+        schemaVersion: 6,
         canvases: 11,
         general: {
           canvases: 10,

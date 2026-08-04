@@ -33,6 +33,38 @@ const sidecar = resolve(
   "release",
   "madi-core.exe",
 );
+const rustLicenseCopies = [
+  {
+    source: resolve(repositoryRoot, "docs", "licenses", "SHA2-MIT.txt"),
+    name: "SHA2-MIT.txt",
+    sha256: "b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1",
+  },
+  {
+    source: resolve(
+      repositoryRoot,
+      "docs",
+      "licenses",
+      "SHA2-APACHE-2.0.txt",
+    ),
+    name: "SHA2-APACHE-2.0.txt",
+    sha256: "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+  },
+  {
+    source: resolve(repositoryRoot, "docs", "licenses", "THISERROR-MIT.txt"),
+    name: "THISERROR-MIT.txt",
+    sha256: "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+  },
+  {
+    source: resolve(
+      repositoryRoot,
+      "docs",
+      "licenses",
+      "THISERROR-APACHE-2.0.txt",
+    ),
+    name: "THISERROR-APACHE-2.0.txt",
+    sha256: "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+  },
+];
 
 if (
   process.platform !== "win32" ||
@@ -121,7 +153,24 @@ await Promise.all([
     resolve(repositoryRoot, "docs", "licenses", "JSON-CANVAS-MIT.txt"),
     resolve(resourcesDirectory, "licenses", "JSON-CANVAS-MIT.txt"),
   ),
+  ...rustLicenseCopies.map(({ source, name }) =>
+    cp(source, resolve(resourcesDirectory, "licenses", name)),
+  ),
 ]);
+
+for (const license of rustLicenseCopies) {
+  const [sourceBytes, packagedBytes] = await Promise.all([
+    readFile(license.source),
+    readFile(resolve(resourcesDirectory, "licenses", license.name)),
+  ]);
+  const sourceHash = createHash("sha256").update(sourceBytes).digest("hex");
+  const packagedHash = createHash("sha256")
+    .update(packagedBytes)
+    .digest("hex");
+  if (sourceHash !== license.sha256 || packagedHash !== license.sha256) {
+    throw new Error(`Packaged Rust license hash mismatch: ${license.name}`);
+  }
+}
 
 const executable = resolve(packageDirectory, "madi.exe");
 const sidecarBytes = await readFile(
@@ -149,6 +198,10 @@ process.stdout.write(
         "resources/licenses/CYTOSCAPE-MIT.txt",
         "resources/licenses/REACT-FLOW-MIT.txt",
         "resources/licenses/JSON-CANVAS-MIT.txt",
+        "resources/licenses/SHA2-MIT.txt",
+        "resources/licenses/SHA2-APACHE-2.0.txt",
+        "resources/licenses/THISERROR-MIT.txt",
+        "resources/licenses/THISERROR-APACHE-2.0.txt",
       ],
     },
     null,
