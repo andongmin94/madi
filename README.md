@@ -1,8 +1,9 @@
 # madi
 
 `madi`는 한국어 장편소설 작가를 위한 local-first Windows desktop 저작도구다.
-현재 작업트리는 Phase 1C Story Bible Foundation 위에 Phase 1D World Graph의
-파생 read model과 읽기 전용 Cytoscape 탐색 화면을 구현한다.
+현재 작업트리는 Phase 1D World Graph의 파생 read model과 읽기 전용 Cytoscape
+탐색 화면 위에 Phase 1E의 작가 소유 Plot Canvas를 구현한다. Plot Canvas는 JSON
+Canvas 1.0 기반 canonical document를 사용하고 React Flow는 renderer 표현으로만 쓴다.
 
 ```text
 Phase 0.5 baseline: CONDITIONAL TECHNICAL GO
@@ -21,15 +22,21 @@ Phase 1D implementation: COMPLETE IN WORKING TREE
 Phase 1D focused read-model/renderer verification: PASS
 Phase 1D development/unpacked Electron hard gates: PASS
 Phase 1D verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
+Phase 1E implementation: COMPLETE
+Phase 1E development/packaged Electron and process-reopen gates: PASS
+Phase 1E final pnpm verify gate: PASS
+Phase 1E verdict: TECHNICAL GO — PRIVATE LOCAL
 Windows native Korean IME: MANUAL VALIDATION PENDING
 Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Public/paid/customer distribution: NOT AUTHORIZED
 ```
 
-Phase 1D는 기존 Story Bible의 canonical entity/relation을 Rust가 revision-tagged DTO로
-파생하고, renderer가 전체 또는 특정 entity 중심 1~3 hop 그래프로 표시한다. Graph는
-canonical 관계를 쓰지 않으며 node 위치·viewport·filter만 작품별 `world-graph.v1`
-UI state로 저장한다. 구현·성능·실제 Electron 근거는
+World Graph는 기존 Story Bible의 canonical entity/relation을 Rust가 revision-tagged
+DTO로 파생하고 전체 또는 특정 entity 중심 1~3 hop으로 보여주는 읽기 전용 분석
+화면이다. Plot Canvas는 작가가 node/edge/group과 배치를 직접 만드는 canonical planning
+data다. Canvas edge는 Story Bible relation을 만들지 않는다. Phase 1E 경계와 실제
+검증은 [`docs/PHASE_1E_SCOPE.md`](docs/PHASE_1E_SCOPE.md)와
+[`docs/PHASE_1E_RESULT.md`](docs/PHASE_1E_RESULT.md)를 따른다. World Graph의 기존 근거는
 [`docs/PHASE_1D_RESULT.md`](docs/PHASE_1D_RESULT.md)와
 [`docs/WORLD_GRAPH_PERFORMANCE.md`](docs/WORLD_GRAPH_PERFORMANCE.md)를 따른다. Phase 1C의
 확정 결과는 [`docs/PHASE_1C_RESULT.md`](docs/PHASE_1C_RESULT.md), Phase 1B의 snapshot
@@ -57,14 +64,14 @@ UI state로 저장한다. 구현·성능·실제 Electron 근거는
 - 이름 있는 snapshot 생성·목록·이름 변경·삭제·요약 diff·안전 복원
 - 현재 SCENE과 선택 subtree의 공백 포함/제외 Unicode scalar 글자 수
 - Electron 없이 UTF-8 plain-text recovery를 꺼내는 Rust CLI
-- `원고`, `설정`, `그래프` 작업 모드 전환
+- `원고`, `설정`, `그래프`, `캔버스` 작업 모드 전환
 - 등장인물·장소·조직·물건·사건·세계관 규칙·복선·기타 설정 CRUD
 - 설정별 별칭, 태그, 상태, 요약, 색상 토큰, 아이콘 키와 확장 JSON 속성
 - 설정별 독립 Typie 상세 노트와 장면과 같은 저장 안전성
 - 프로젝트별 built-in/custom 관계 타입과 directed/undirected/inverse 관계 CRUD
 - SCENE과 설정의 `APPEARS`, `POV`, `MENTIONED`, `RELATED` 명시적 연결
 - 이름·별칭 exact substring 기반의 본문 언급 후보와 명시적 연결 승격
-- Story Bible 전체와 entity note를 포함하는 named snapshot v2 및 v1 복원 호환
+- Canvas까지 포함하는 named snapshot v3와 기존 v1/v2 decode·복원
 - Story Bible canonical data에서 파생한 읽기 전용 World Graph
 - 8종 entity kind shape/color, directed arrow, undirected 단일 edge와 inverse detail label
 - kind/status/tag ANY·ALL/relation type/direction/고립 node/label filter
@@ -73,10 +80,19 @@ UI state로 저장한다. 구현·성능·실제 Electron 근거는
 - 선택 entity의 관계·명시적 장면·lazy 본문 언급 후보 확인
 - 그래프에서 기존 Story Bible entity/관계와 원고 SCENE으로 이동
 - 작품별 node 위치·viewport·filter·focus mode 저장과 종료 후 복원
+- 여러 Plot Canvas 생성, 이름·설명 수정, 복제, node/edge 수 확인 후 삭제와 정렬
+- JSON Canvas 기반 Text/Entity/Scene/Group node와 label/arrow/style/color edge
+- pan/zoom/fit view, drag/resize, box/multi selection, group과 z-order
+- Canvas별 session Undo/Redo, 약 500ms autosave, `Ctrl+S`와 stale save 차단
+- Entity/SCENE 현재값 표시, 상세 이동, broken reference 재연결·text 변환·삭제
+- Story Bible/World Graph 선택 entity를 ID만 전달해 Canvas에 추가
+- `.canvas` import preview/새 Canvas 생성과 deterministic UTF-8 export
+- 마지막 Canvas, viewport, selection, inspector/grid/minimap/snap을 작품별 UI state로 복원
 
-그래프 관계 편집, plot Canvas, docking workspace, 시간축/지식 시점 graph, Reader Lab,
+그래프 canonical 관계 편집, Canvas edge의 Story Bible relation 자동 승격, docking
+workspace, 시간축/지식 시점 graph, Reader Lab,
 EPUB, HWP/HWPX, LLM 추출, cloud/sync, collaboration, mobile/web, 장면별 상세 diff와
-플랫폼별 출판 글자 수는 Phase 1D 범위가 아니다.
+플랫폼별 출판 글자 수는 Phase 1E 범위가 아니다.
 
 ## 실제 사용 흐름
 
@@ -164,10 +180,11 @@ project 전체 작업은 하나의 지속 가능한 `Ctrl+Z` entry가 아니다.
 `Named snapshot` panel에서 이름과 선택 메모로 현재 logical project를 저장하고 목록,
 이름 변경, 삭제와 현재 상태 대비 요약 diff를 사용할 수 있다. restore 확인 뒤 core는
 현재 상태를 같은 transaction의 `AUTO_BEFORE_RESTORE` snapshot으로 먼저 보존한다.
-payload는 SQLite 복사본이 아니라 hash가 붙은 `MADI_LOGICAL_JSON` v2다. v2에는 설정,
-별칭, 태그, 관계 타입, 관계, 장면 연결과 entity note document가 포함된다. 기존 v1
-snapshot은 계속 읽으며 복원 뒤 사용자 Story Bible은 빈 상태가 되고 built-in 관계
-타입만 다시 seed된다.
+Payload는 SQLite 복사본이 아니라 hash가 붙은 `MADI_LOGICAL_JSON` v3다. V3에는 설정,
+별칭, 태그, 관계 타입, 관계, 장면 연결, entity note document와 Canvas
+metadata/document/hash/revision이 포함된다. 기존 v1/v2 snapshot도 계속 읽는다. V1
+restore는 Story Bible과 Canvas를, v2 restore는 Canvas를 빈 상태로 재현하며 restore
+직전 현재 상태는 Canvas까지 포함한 v3 safety snapshot으로 남는다.
 
 복원 확인 순간에는 fresh diff를 다시 요청해 preview revision과 summary를 대조한다.
 달라졌으면 복원을 실행하지 않고 갱신된 차이를 다시 확인하게 한다. CURRENT 검색은
@@ -201,22 +218,51 @@ substring으로 찾은 참고 결과이며 자동으로 canonical relation이나
 1. 검색에서 이름·별칭·태그·요약으로 설정을 찾는다.
 2. 전체 graph 또는 중심 entity와 depth 1·2·3을 선택한다.
 3. 종류·상태·태그 ANY/ALL·관계 type·directed/undirected·고립 node·label을 조합한다.
-4. node를 선택해 관계, 명시적 SCENE link와 lazy mention 후보 수를 본다.
+4. node를 선택하면 즉시 선택/이웃 강조와 detail shell을 보고, 관계·명시적 SCENE
+   link·mention 후보가 병렬로 lazy load되는 것을 확인한다.
 5. edge를 선택해 forward/inverse label, 방향과 note를 확인한다.
 6. `설정 상세에서 열기`, `관계 편집에서 열기` 또는 SCENE 버튼으로 기존 화면으로
    이동한다.
+7. `캔버스에 추가`는 선택 entity ID만 Canvas mode로 전달한다.
 
 Node drag는 배치 좌표만 바꾸며 relation을 생성하지 않는다. `자동 배치 다시 실행`은
 Cytoscape.js 내장 `cose`를 다시 실행하고 `레이아웃 초기화`는 저장 좌표와 viewport를
 비운다. Canvas를 쓰기 어려운 경우 같은 node/edge를 키보드 버튼 목록에서 선택할 수
 있다. Canonical 생성·수정·삭제는 계속 `설정` 화면에서만 수행한다.
 
-### 9. 종료와 재열기
+### 9. Plot Canvas
+
+상단 `캔버스`를 누르면 Canvas 목록, Plot Canvas와 inspector가 열린다.
+
+1. `새 캔버스`로 빈 `새 캔버스`를 만들고 이름/설명을 저장한다.
+2. Toolbar 또는 `Ctrl+K` picker로 text, 설정 참조, 장면 참조와 group을 추가한다.
+3. Node를 drag/resize/group하고 연결선을 만든 뒤 label, arrow, color와 line style을
+   inspector에서 편집한다.
+4. `Ctrl+Z`/`Ctrl+Y`, `Ctrl+D`, Delete와 `Ctrl+S`를 사용한다. Undo history는 현재
+   session에만 있고 지속형 rollback은 named snapshot을 사용한다.
+5. Entity/SCENE reference를 double-click해 기존 설정/원고로 이동한다. 삭제된 target은
+   자동 삭제되지 않고 broken reference로 남아 재연결하거나 text로 바꿀 수 있다.
+6. `.canvas 가져오기`는 validation과 node/edge/broken-reference preview 뒤 새 Canvas를
+   만든다. 현재 Canvas를 덮어쓰지 않는다.
+7. `.canvas 내보내기`는 현재 document를 먼저 flush하고 UTF-8 JSON으로 저장한다.
+
+Canvas 변경은 약 500ms debounce로 저장한다. `canvasId`, generation과 save sequence가
+일치하는 응답만 현재 상태에 적용하며, Canvas 전환·mode 전환·창 닫기 전에는 즉시
+flush한다. Node 위치·크기·group·edge는 `canvases.document_json`에 저장하는 canonical
+planning data다. Viewport, selection, inspector 폭과 grid/minimap/snap은
+`plot-canvas.v1` UI state이며 named snapshot에는 들어가지 않는다.
+
+Canvas 연결선은 Story Bible의 공식 관계와 별개다. Entity reference끼리 연결해도
+`entity_relations`를 만들거나 World Graph를 바꾸지 않는다. 자세한 계약은
+[`PLOT_CANVAS_INTERACTION_SEMANTICS.md`](docs/PLOT_CANVAS_INTERACTION_SEMANTICS.md)를
+따른다.
+
+### 10. 종료와 재열기
 
 1. 현재 IME 조합을 끝낸다.
 2. 창을 닫는다.
-3. renderer는 현재 dirty 장면 또는 entity note와 `workspace.v1`, `world-graph.v1` UI
-   state 저장을 먼저 요청한다.
+3. Renderer는 현재 dirty 장면/entity note/Canvas와 `workspace.v1`, `world-graph.v1`,
+   `plot-canvas.v1` UI state 저장을 먼저 요청한다.
 4. main process는 renderer가 저장 성공을 승인하기 전 창을 파괴하지 않는다.
 5. Electron process가 완전히 끝난 뒤 앱을 다시 실행한다.
 6. `.madi 열기`로 같은 파일을 선택한다.
@@ -230,13 +276,14 @@ tree 복원을 막지 않고 기본 선택·펼침·폭으로 격리한다. Bind
 
 - `PRAGMA application_id = 0x4D414449`
 - `app_meta.format_version = 1`
-- `app_meta.schema_version = 4`
-- `PRAGMA user_version = 4`
+- `app_meta.schema_version = 5`
+- `PRAGMA user_version = 5`
 - 기존 table: `app_meta`, `documents`, `schema_migrations`
 - Phase 1A table: `projects`, `tree_nodes`, `ui_state`
 - Phase 1B table: `search_documents`, `named_snapshots`
 - Phase 1C table: `entities`, `entity_aliases`, `tags`, `entity_tags`,
   `relation_types`, `entity_relations`, `scene_entity_links`
+- Phase 1E table: `canvases`
 
 정규 hierarchy:
 
@@ -260,8 +307,14 @@ manuscript revision을 올리지 않는다.
 insert/update/delete trigger가 같은 transaction에서 갱신한다. `named_snapshots`는
 `MANUAL`, `AUTO_BEFORE_REPLACE`, `AUTO_BEFORE_RESTORE` logical payload와 SHA-256를
 저장한다. schema 2 file을 열면 기존 document를 잃지 않고 migration 3에서 projection을
-backfill한 뒤 migration 4가 Story Bible table과 built-in 관계 타입을 만든다.
-`format_version`은 계속 1이다. Phase 1D World Graph는 schema/table을 추가하지 않는다.
+backfill한 뒤 migration 4가 Story Bible table과 built-in 관계 타입을 만들고 migration
+5가 Canvas table/index를 추가한다. `format_version`은 계속 1이다. Phase 1D World Graph는
+schema/table을 추가하지 않는다.
+
+`canvases`는 name/description, `JSON_CANVAS` 1.0 canonical JSON, SHA-256 content hash,
+Canvas별 revision과 timestamp를 저장한다. Canvas create/update/duplicate/delete/save는
+project-wide revision과 Canvas revision을 transaction에서 대조한다. 같은 canonical
+content save는 no-op이다.
 
 sibling 순서는 `REAL order_key`를 `1024.0` 간격으로 배정한다. 중간 삽입은
 midpoint를 사용하고 간격이 `0.000001` 이하이면 해당 sibling만 rebalance한다.
@@ -282,6 +335,11 @@ depth, filter, layout, viewport, 최대 500개 node position과 마지막 선택
 snake_case JSON으로 저장한다. 이 값은 project revision을 올리지 않고 named snapshot
 payload에도 포함되지 않으므로 snapshot restore 뒤 현재 사용자 배치를 유지한다.
 
+Plot Canvas 상태는 `ui_state.key = 'plot-canvas.v1'`에 마지막 Canvas ID와 Canvas별
+viewport, selected element, inspector 폭, grid/minimap/snap 값을 저장한다. 이 row도
+project revision을 올리지 않고 named snapshot v3에 포함되지 않는다. Canvas node
+geometry, group과 edge는 UI state가 아니라 `canvases.document_json`에 저장한다.
+
 전체 계약과 migration 규칙은
 [`docs/MADI_FILE_FORMAT_V1_DRAFT.md`](docs/MADI_FILE_FORMAT_V1_DRAFT.md)를 따른다.
 
@@ -292,6 +350,8 @@ payload에도 포함되지 않으므로 snapshot restore 뒤 현재 사용자 �
 - Rust `madi-core` persistent JSON-RPC sidecar
 - SQLite `.madi`
 - Cytoscape.js `3.34.0` renderer와 내장 `cose` layout
+- `@xyflow/react` exact `12.11.2` Plot Canvas renderer
+- JSON Canvas 1.0 기반 `MadiCanvasDocument`
 - Typie browser WASM, ICU 및 한국어 font를 local asset으로 사용
 - `MadiEditorAdapter` / `TypieEditorAdapter` 경계
 - `nodeIntegration: false`
@@ -322,12 +382,18 @@ deleteEntityRelation, listSceneEntityLinks, createSceneEntityLink,
 deleteSceneEntityLink, discoverEntityMentions, promoteEntityMention,
 getWorldGraph, getWorldGraphStats, getEntityGraphDetail,
 getEntitySceneContext, saveWorldGraphUiState, loadWorldGraphUiState,
+listCanvases, createCanvas, updateCanvas, duplicateCanvas, deleteCanvas,
+loadCanvas, saveCanvas, savePlotCanvasUiState, loadPlotCanvasUiState,
+pickCanvasImport, exportCanvas,
 getAppVersion, onCloseRequested, completeCloseRequest
 ```
 
 World Graph DTO는 madi가 소유하며 Cytoscape type은 renderer 변환 계층 밖으로 누출되지
-않는다. Label·summary·relation note는 text/data로만 전달하고 `innerHTML`을 사용하지
-않는다. Core/main/preload 오류에는 snapshot과 원고 본문을 출력하지 않는다.
+않는다. Plot Canvas DTO도 madi가 소유하며 React Flow type은 renderer adapter 밖으로
+누출되지 않는다. Label·summary·relation note/Canvas text는 text/data로만 전달하고
+`innerHTML`을 사용하지 않는다. Core/main/preload 오류에는 snapshot과 원고 본문을
+출력하지 않는다. Import/export는 고정 dialog capability이며 renderer에 generic
+filesystem/path API를 제공하지 않는다.
 
 ## 고정된 Typie 기준
 
@@ -420,6 +486,7 @@ pnpm verify
 pnpm package:unpacked
 pnpm test:electron
 pnpm test:package
+pnpm test:bundle
 pnpm check:repository
 pnpm format:check
 
@@ -428,9 +495,9 @@ pnpm test:dev
 ```
 
 `pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust test, 실제 Typie
-probe, Phase 0.5/1A/1B/1C/1D `.madi` integration, production build, 일반 Electron smoke와
-unpacked packaged smoke를 순서대로 실행한다. `pnpm test:dev`는 interactive
-Vite/Electron startup 성격 때문에 별도다.
+probe, `.madi` integration, production build, build 뒤 lazy bundle artifact test, 일반·scale
+development Electron과 fresh unpacked packaged smoke를 순서대로 실행한다. `pnpm test:dev`는
+interactive Vite/Electron startup 성격 때문에 별도다.
 
 unpacked 출력:
 
@@ -445,20 +512,23 @@ output/madi-win32-x64/resources/licenses/
 
 ### 현재 검증 상태
 
-| 항목 | 현재 기록 |
-|---|---|
-| Rust 전체 test | `33 / 33 PASS` |
-| renderer 전체 test | `27 files / 136 tests PASS` |
-| desktop typecheck | `PASS` |
-| Typie semantic replacement probe | `PASS` |
-| Phase 1D 19 entity/16 relation/two-process sidecar | `PASS` — directed 12/undirected 4, final revision 94 |
-| Phase 1D 500/1,500/2,000/2,000 성능 | `CONDITIONAL PASS` — 무누락/no-crash/layout hard gate PASS, interaction 일부 250 ms 초과 |
-| Phase 1D 실제 development Electron acceptance | `PASS (hard gates)` — IPC 110.6 ms, layout 5회 max 973.9 ms, drag/reopen/network 0 PASS |
-| Phase 1D 실제 unpacked Electron acceptance | `PASS (hard gates)` — IPC 64.5 ms, layout 5회 max 930.3 ms, drag/reopen/network 0 PASS |
-| 최종 `pnpm verify` | `PASS` — exit code 0, 145.2초 |
-| 독립 `pnpm package:unpacked` | `PASS` — `output/madi-win32-x64/madi.exe`, release sidecar와 Cytoscape license 포함 |
-| 독립 `pnpm test:electron` / `pnpm test:package` | `PASS / PASS` — exit code 0, small+500/2,000 two-process actual windows |
-| 독립 `pnpm check:repository` / `pnpm format:check` | `PASS / PASS` — boundary PASS, 103 files/issues 0 |
+Phase 1D의 승인된 진입 판정은 다음과 같다.
+
+```text
+Phase 1D verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
+Phase 1E verdict: TECHNICAL GO — PRIVATE LOCAL
+```
+
+Node.js `26.3.1`/pnpm `11.9.0`의 최종 `pnpm verify`는 294.354초에 exit `0`으로
+끝났다. Desktop `39 files / 219 tests`, Rust `41 tests`, Phase 1A–E integration,
+development/packaged 실제 Electron과 새 process 복원을 통과했다. 독립
+`pnpm package:unpacked`, `pnpm test:electron`, `pnpm test:package`, `pnpm test:bundle`,
+repository/format gate도 exit `0`이다.
+
+Phase 1E의 세부 5회 median/max, development/packaged Electron, reopen, network와
+artifact 결과는 실행 로그를 근거로
+[`docs/PHASE_1E_RESULT.md`](docs/PHASE_1E_RESULT.md)와
+[`docs/PLOT_CANVAS_PERFORMANCE.md`](docs/PLOT_CANVAS_PERFORMANCE.md)에 기록한다.
 
 ## Rust CLI와 JSON-RPC
 
@@ -504,6 +574,8 @@ create_scene_entity_link, delete_scene_entity_link, discover_entity_mentions,
 promote_entity_mention,
 get_world_graph, get_world_graph_stats, get_entity_graph_detail,
 get_entity_scene_context,
+list_canvases, create_canvas, update_canvas, duplicate_canvas,
+delete_canvas, load_canvas, save_canvas,
 save_document, load_document, recover_plain_text
 ```
 
@@ -543,7 +615,7 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 
 ## 후속 단계로 미룬 항목
 
-다음은 Phase 1D 완료로 해소한 항목이 아니라 후속 지원·배포·hardening gate로 유지한다.
+다음은 Phase 1E 구현으로 해소한 항목이 아니라 후속 지원·배포·hardening gate로 유지한다.
 
 - Windows native 한국어 IME 수동검증
 - installer/installed-state lifecycle
@@ -559,9 +631,21 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 - 500/2,000을 넘는 graph 규모, 비동기/worker layout과 layout 중 취소
 - graph 관계 편집, 시간축과 인물별 지식 시점 필터
 - 형태소/fuzzy mention 탐색과 자동 relation 추론
+- JSON Canvas color preset/hex만을 요구하는 선택적 strict interoperability mode
+- Canvas 세부 node-by-node snapshot diff와 persistent Undo history
+- Canvas edge의 명시적 Story Bible relation 승격 workflow
+- Plot Canvas cold `Ctrl+K`와 pointer gesture/autosave end-to-end latency 최적화
+- Entity rename→delete→broken→relink의 한 실제 Electron 연속 workflow
 
 ## 문서
 
+- [Phase 1E 범위](docs/PHASE_1E_SCOPE.md)
+- [Phase 1E 저장소 결과](docs/PHASE_1E_RESULT.md)
+- [Plot Canvas 데이터 모델](docs/PLOT_CANVAS_DATA_MODEL.md)
+- [JSON Canvas 1.0 호환성](docs/JSON_CANVAS_COMPATIBILITY.md)
+- [Plot Canvas interaction semantics](docs/PLOT_CANVAS_INTERACTION_SEMANTICS.md)
+- [Plot Canvas 성능](docs/PLOT_CANVAS_PERFORMANCE.md)
+- [ADR-0004: Plot Canvas is author-owned planning data](docs/decisions/ADR-0004-plot-canvas-is-author-owned-planning-data.md)
 - [Phase 1D 범위와 완료 계약](docs/PHASE_1D_SCOPE.md)
 - [Phase 1D 저장소 결과](docs/PHASE_1D_RESULT.md)
 - [World Graph read model](docs/WORLD_GRAPH_READ_MODEL.md)
