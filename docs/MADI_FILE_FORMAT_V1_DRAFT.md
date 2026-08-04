@@ -5,15 +5,16 @@
 ```text
 Specification status: DRAFT
 Logical format version: 1
-SQLite schema version: 6
-Implementation conformance: PHASE 1F READER PRESET/PUBLICATION CORE DATA
-Migration/core-sidecar round-trip: SCHEMA 5 → 6
+SQLite schema version: 7
+Implementation conformance: PHASE 1G PUBLICATION METADATA/ASSET/EXPORT PRESET DATA
+Migration/core-sidecar round-trip: SCHEMA 6 → 7
 ```
 
 이 문서는 Phase 1A의 저장 계약, Phase 1B의 exact search/named snapshot 확장,
 Phase 1C의 Story Bible 저장 계약, Phase 1D의 파생 World Graph UI state 경계와 Phase
-1E의 작가 소유 Plot Canvas 저장 계약, Phase 1F의 canonical Reader preset과 read-only
-Publication compiler 경계를 기록한다. 이 명세의 문구만으로 구현 적합성을 증명하지
+1E의 작가 소유 Plot Canvas 저장 계약, Phase 1F의 canonical Reader preset/read-only
+Publication compiler와 Phase 1G publication metadata/cover/export preset 경계를 기록한다.
+이 명세의 문구만으로 구현 적합성을 증명하지
 않으며, 실행 증거와 제한은 각 Phase 결과 문서를 따른다. 배포 전에는
 구현과 fixture를 다시 대조해 이 초안을 확정 문서로 승격해야 한다.
 
@@ -27,8 +28,8 @@ Publication compiler 경계를 기록한다. 이 명세의 문구만으로 구�
 - `PRAGMA application_id`: `0x4D414449` (`MADI`, decimal `1296122953`)
 - `app_meta.format_name`: `madi`
 - `app_meta.format_version`: `1`
-- `app_meta.schema_version`: `6`
-- `PRAGMA user_version`: `6`
+- `app_meta.schema_version`: `7`
+- `PRAGMA user_version`: `7`
 
 v0의 `application_id`와 container는 바꾸지 않는다. 확장자만 `.madi`인 임의
 SQLite 파일, 다른 `application_id`, 알 수 없는 format 또는 지원 값보다 높은
@@ -76,12 +77,13 @@ Phase 1F Publication compiler는 `plain_text_recovery`를 semantic fallback으�
 `madi-publication` bridge에서 lossless decode한다. Unknown/lossy/degraded projection은
 read-only compile 오류 또는 code diagnostic이며 원고나 database를 수정하지 않는다.
 
-## 3. schema v6
+## 3. schema v7
 
 Schema 6은 Phase 1A schema 2의 `projects`, `tree_nodes`, `ui_state`, Phase 1B schema 3의
 exact-search projection과 named logical snapshot table, Phase 1C schema 4의 Story Bible
-table, Phase 1E schema 5의 `canvases` table을 그대로 유지하고 Phase 1F의
-`reader_presets` table을 추가한다. 아래 SQL은 v1의 목표 schema다. 실제 migration은
+table, Phase 1E schema 5의 `canvases`, Phase 1F schema 6의 `reader_presets`를 그대로
+유지하고 Phase 1G의 `publication_assets`, `publication_metadata`, `export_presets`를
+추가한다. 아래 SQL은 v1의 목표 schema다. 실제 migration은
 `IF NOT EXISTS`만으로 성공을 판정하지 않고 migration record와 전체 불변식을 함께
 검증해야 한다.
 
@@ -458,6 +460,79 @@ name/status가 같으면 no-op이며 timestamp, preset revision과 project revis
 않는다. Cross-project ID와 malformed config/hash는 transaction을 바꾸지 않고 거부한다.
 전체 envelope/config 계약은 `READER_PROFILE_FORMAT_V1.md`를 따른다.
 
+### Phase 1G publication export state
+
+```sql
+CREATE TABLE publication_assets (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind = 'COVER'),
+    media_type TEXT NOT NULL CHECK (media_type IN ('image/png', 'image/jpeg')),
+    original_name TEXT NOT NULL CHECK (length(trim(original_name)) > 0),
+    sha256 TEXT NOT NULL CHECK (
+        length(sha256) = 64 AND sha256 = lower(sha256)
+        AND sha256 NOT GLOB '*[^0-9a-f]*'
+    ),
+    bytes BLOB NOT NULL CHECK (length(bytes) > 0 AND length(bytes) <= 10485760),
+    width INTEGER,
+    height INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    CHECK ((width IS NULL AND height IS NULL) OR
+           (width > 0 AND height > 0 AND width <= 10000 AND height <= 10000))
+);
+
+CREATE UNIQUE INDEX publication_assets_one_cover_per_project
+    ON publication_assets(project_id) WHERE kind = 'COVER';
+
+CREATE TABLE publication_metadata (
+    project_id TEXT NOT NULL PRIMARY KEY,
+    publication_title TEXT NOT NULL CHECK (length(trim(publication_title)) > 0),
+    creator_name TEXT NOT NULL,
+    language TEXT NOT NULL CHECK (length(trim(language)) > 0),
+    identifier TEXT NOT NULL CHECK (length(trim(identifier)) > 0),
+    publisher TEXT,
+    description TEXT,
+    rights TEXT,
+    subjects_json TEXT NOT NULL CHECK (json_valid(subjects_json)),
+    cover_asset_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (cover_asset_id) REFERENCES publication_assets(id) ON DELETE SET NULL
+);
+
+CREATE TABLE export_presets (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind = 'EPUB'),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    preset_format TEXT NOT NULL CHECK (preset_format = 'MADI_EXPORT_PRESET'),
+    preset_version INTEGER NOT NULL CHECK (preset_version = 1),
+    preset_json TEXT NOT NULL CHECK (json_valid(preset_json)),
+    content_hash TEXT NOT NULL CHECK (
+        length(content_hash) = 64 AND content_hash = lower(content_hash)
+        AND content_hash NOT GLOB '*[^0-9a-f]*'
+    ),
+    revision INTEGER NOT NULL CHECK (revision >= 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+```
+
+Trigger는 `publication_metadata.cover_asset_id`가 같은 project의 `COVER` row를 가리키는지
+insert/update 때 검사한다. Project마다 cover는 최대 하나다. Core는 PNG/JPEG magic,
+decode, SHA-256, 최대 10 MiB, 각 변 10,000 px와 40,000,000 pixel 한계를 추가로 검사한다.
+원본 filesystem path는 저장하지 않는다.
+
+신규 project는 title, author name 또는 빈 creator, `ko-KR`, project ID UTF-8 bytes의
+SHA-256을 suffix로 쓰는 `urn:madi:publication:<64-lowercase-hex>` stable identifier로
+metadata row를 seed한다. Export preset JSON은
+closed EPUB config v1이며 arbitrary CSS/URL을 포함하지 않는다. Canonical JSON hash가 같은
+update는 no-op이다. 전체 config는 `EXPORT_PRESET_FORMAT_V1.md`를 따른다.
+
 ## 4. canonical hierarchy
 
 허용 graph는 다음뿐이다.
@@ -572,22 +647,23 @@ transaction들을 적용한 뒤 canonical project row를 별도 transaction으�
 4. Story Bible table, trigger와 schema migration 4
 5. `canvases` table/index와 schema migration 5
 6. `reader_presets` table/index와 schema migration 6
-7. `app_meta` 한 row
-8. 같은 ID의 `projects` 한 row와 built-in relation type 10개
-9. project title을 가진 WORK 한 row
-10. WORK 아래 초기 document title을 가진 CHAPTER 한 row
-11. CHAPTER 아래 같은 title의 SCENE과 document 한 쌍
+7. publication/export table/index/trigger와 schema migration 7
+8. `app_meta` 한 row
+9. 같은 ID의 `projects` 한 row, publication metadata 한 row와 built-in relation type 10개
+10. project title을 가진 WORK 한 row
+11. WORK 아래 초기 document title을 가진 CHAPTER 한 row
+12. CHAPTER 아래 같은 title의 SCENE과 document 한 쌍
 
 초기 VOLUME은 만들지 않는다. 기본 node/document는 기존 “새 파일을 만들면 바로 쓸
 수 있음” 동작을 유지하기 위한 최소값이다. core의 `document_title`을 생략하면 project
 title을 사용하며, 현재 desktop create path도 project title을 넘긴다. 이후 Binder의
 추가 동작은 `새 권`, `새 화`, `새 장면`을 기본 제목으로 사용한다.
 
-schema를 만들고 `application_id = 0x4D414449`, `user_version = 6`을 설정한 뒤 file을
+schema를 만들고 `application_id = 0x4D414449`, `user_version = 7`을 설정한 뒤 file을
 sync한다. destination이 이미 있으면 덮어쓰지 않는다. 완성된 임시 파일만 기존 v0의
 no-clobber publish 절차로 destination 이름에 연결한다.
 
-## 7. schema 1/2/3/4/5 → schema 6 migration
+## 7. schema 1/2/3/4/5/6 → schema 7 migration
 
 입력은 `format_version = 0`, `schema_version = 1`, `user_version = 1`인 유효한 v0
 파일 또는 schema 2 파일이다. 현재 open 순서는 migration 전에 application ID와
@@ -685,6 +761,24 @@ Schema 5 → 6은 기존 project/tree/document/search/snapshot/Story Bible/Canva
 v1/v2/v3 row도 rewrite하지 않으며 decoder가 restore할 때 Reader preset이 없는 정확한
 historical state로 처리한다. 실패하면 Reader preset table/index/migration
 record/version 변경이 함께 rollback된다.
+
+### schema 6 → 7 절차
+
+1. 별도 `BEGIN IMMEDIATE`를 시작한다.
+2. `publication_assets`, `publication_metadata`, `export_presets`와 index/cover ownership
+   trigger를 만든다.
+3. 기존 project마다 project title, author name 또는 빈 creator, `ko-KR`, project ID 기반
+   stable identifier의 publication metadata를 idempotent하게 seed한다.
+4. `schema_migrations(version = 7)`을 기록한다.
+5. `app_meta.schema_version = 7`로 바꾸고 `format_version = 1`을 유지한다.
+6. `PRAGMA user_version = 7`을 설정한다.
+7. foreign-key/integrity와 seeded metadata 검증이 성공하면 commit한다.
+
+Schema 6 → 7은 기존 project/tree/document/search/snapshot/Story Bible/Canvas/Reader preset
+row를 변경하거나 버리지 않는다. 기존 project는 cover와 export preset이 빈 상태에서
+시작한다. 기존 payload v1–v4 row를 rewrite하지 않고 version별 decoder가 restore할 때
+publication metadata를 current project default로 seed한다. 실패하면 신규 table/index/
+trigger/seed/migration record/version 변경이 함께 rollback된다.
 
 현재 구현은 migration 전 `.bak`을 만들지 않으므로 pre-migration backup이 있다고
 주장하지 않는다. 손상된 row를 버리고 migration을 성공 처리하거나 빈 v1 project로
@@ -843,11 +937,13 @@ rollback한다. Typie 의미 transform 자체의 adapter 계약은
 manual create/rename/delete는 pre-operation backup, expected revision과 immediate
 transaction을 사용하고 revision을 한 번 올린다. diff는 read-only다. restore는 같은
 transaction 안에서 현재 logical payload를 `AUTO_BEFORE_RESTORE`로 insert하고 target을
-검증한 뒤 project/tree/documents/Story Bible/Canvas/Reader preset/`workspace.v1`을
+검증한 뒤 project/tree/documents/Story Bible/Canvas/Reader preset/publication metadata/
+cover/export preset/`workspace.v1`을
 복원한다. 다른 UI key와 기존 named snapshot row는 보존한다. Payload v1은 Story Bible,
 Canvas와 Reader preset을, payload v2는 Canvas와 Reader preset을, payload v3는 Reader
-preset을 빈 상태로 복원한다. Restore 직전 현재 schema 6 state는 Canvas와 Reader
-preset을 포함한 v4 `AUTO_BEFORE_RESTORE`로 보존한다. 자세한 payload는
+preset을 빈 상태로 복원한다. Payload v1–v4는 publication export state가 없는 exact
+historical state다. Restore 직전 현재 schema 7 state는 Canvas, Reader preset과 publication
+export state를 포함한 v5 `AUTO_BEFORE_RESTORE`로 보존한다. 자세한 payload는
 `docs/NAMED_SNAPSHOT_FORMAT.md`를 따른다.
 
 ### Phase 1E Canvas operation
@@ -890,6 +986,22 @@ namespace한 deterministic hash다. Body block은 정확한 annotated Unicode-sc
 heading은 실제 source node ID와 첫/current descendant target SCENE/document를 함께
 가져 title click이 source SCENE을 열 수 있게 한다. Renderer/SQLite/RPC에는 Typie Rust
 type, editor DOM 또는 executable HTML/CSS가 노출되지 않는다.
+
+### Phase 1G publication/export state operation
+
+- `get_publication_export_state`는 seeded metadata, optional cover와 EPUB presets를 같은
+  revision view에서 load하고 ownership/hash/config/asset bytes를 재검증한다.
+- `update_publication_metadata`는 editable field와 current cover reference를 project revision과
+  대조하고 semantic no-op에서는 revision/timestamp를 올리지 않는다.
+- `set_publication_cover`는 magic/decode/hash/dimension/size를 검사하고 same-content save를
+  no-op 처리한다. `remove_publication_cover`는 metadata link와 asset row를 transaction으로
+  함께 정리한다.
+- `list/create/update/duplicate/delete_export_preset`은 exact `EPUB` kind, format/version,
+  closed config, canonical hash와 project/preset revision을 강제한다.
+
+Publication metadata, cover와 export preset mutation은 canonical project revision을 정확히
+한 번 올린다. Output path, generated EPUB/report, progress/validation cache와 last export
+정보는 canonical table에 저장하지 않는다.
 
 ## 12. UI state 정규화
 
@@ -997,7 +1109,7 @@ renderer는 장면 load 시 현재 Typie engine/commit/schema compatibility를 �
 
 현재 open-time scan은 orphan documents, cross-project parent/document pair,
 `app_meta/projects/WORK` title mirror 및 모든 SCENE-document 역방향 1:1을 별도 query로
-완전 검증하지 않는다. Schema v6의 FK/trigger와 Story Bible/Canvas/Reader preset
+완전 검증하지 않는다. Schema v7의 FK/trigger와 Story Bible/Canvas/Reader preset
 mutation/snapshot restore는
 entity note ownership과 cross-project relation/link를 검증하지만, 임의로 변조한 SQLite
 전체를 open 시 재구성해 audit하는 추가 corruption scan은 별도 hardening 대상이다.
@@ -1009,6 +1121,10 @@ Open은 모든 Canvas JSON/hash를 전수 decode하지 않으므로 임의 변�
 Reader preset도 list/mutation/snapshot validation 시 strict config, provenance와 canonical
 hash를 검증한다. Open은 모든 preset JSON/hash를 전수 decode하지 않으므로 임의 변조 DB
 전체 preset audit은 별도 hardening 대상이다.
+
+Publication metadata/cover/export preset도 dedicated get/mutation/snapshot validation 시
+ownership, JSON/hash와 image bytes를 검증한다. Open은 모든 cover decode와 preset JSON/hash를
+전수 audit하지 않으므로 임의 변조 DB 전체 publication state scan은 별도 hardening 대상이다.
 
 open 자체는 모든 document에 대응하는 `search_documents` row와 모든 named snapshot
 payload hash를 전수 decode하지 않는다. search는 projection 누락을 integrity 오류로
@@ -1034,16 +1150,16 @@ UI state write가 실패해도 마지막 성공 canonical manuscript는 유지�
 
 ## 15. compatibility
 
-- Schema 1은 2/3/4/5/6을, schema 2는 3/4/5/6을, schema 3은 4/5/6을, schema 4는
-  5/6을, schema 5는 6을
+- Schema 1은 2/3/4/5/6/7을, schema 2는 3/4/5/6/7을, schema 3은 4/5/6/7을,
+  schema 4는 5/6/7을, schema 5는 6/7을, schema 6은 7을
   순서대로 migration한다.
   migration 전 backup을 자동 생성한다고 주장하지 않는다.
 - v1 reader는 v0 snapshot bytes를 decode하지 않고 그대로 연결한 뒤 기존 adapter
   compatibility contract를 사용한다.
-- Snapshot payload decoder는 version 1/2/3/4를 수용한다. v1은 Story Bible/Canvas/Reader
-  preset, v2는 Canvas/Reader preset, v3는 Reader preset이 없는 정확한 historical
-  state로 restore한다.
-- `user_version > 6`, `schema_version > 6` 또는 알 수 없는 format은 downgrade하지
+- Snapshot payload decoder는 version 1/2/3/4/5를 수용한다. v1은 Story Bible/Canvas/Reader
+  preset, v2는 Canvas/Reader preset, v3는 Reader preset, v1–v4는 publication export state가
+  없는 정확한 historical state로 restore한다.
+- `user_version > 7`, `schema_version > 7` 또는 알 수 없는 format은 downgrade하지
   않는다.
 - Typie commit/schema 변경은 별도 upgrade rehearsal과 migration 없이는 자동
   변환하지 않는다.
@@ -1052,14 +1168,14 @@ UI state write가 실패해도 마지막 성공 canonical manuscript는 유지�
 - v1 파일을 v0 앱이 쓸 수 있다고 약속하지 않는다.
 
 위 unknown-format 선거부는 목표 계약이다. 현재 open 순서는 `application_id`와
-`user_version`을 본 뒤 v2/v3/v4/v5/v6 migration을 먼저 실행하고, 그 다음 `quick_check`와
+`user_version`을 본 뒤 v2/v3/v4/v5/v6/v7 migration을 먼저 실행하고, 그 다음 `quick_check`와
 `app_meta` format/schema를 검증한다. 따라서 `user_version = 1`인 변조 파일의
 unknown `app_meta.format_version`을 migration 전에 거부하는 conformance는
 `PENDING`이다.
 
 ## 16. 요구 test와 결과 기록 원칙
 
-Phase 1F core/storage에서는 최소한 다음을 검증한다.
+Phase 1G core/storage에서는 최소한 다음을 검증한다.
 
 - Schema 5 → 6 data-preserving migration, 새 project schema/index/version
 - Reader preset create/update/duplicate/delete/list, revision 0 lifecycle, canonical hash/no-op,
@@ -1071,6 +1187,10 @@ Phase 1F core/storage에서는 최소한 다음을 검증한다.
 - SCENE/CHAPTER/VOLUME/WORK Publication compile, boundary heading, deterministic hash/stats,
   tampered DTO rejection과 read-only revision
 - 기존 hierarchy/search/replacement/Story Bible/World Graph/Canvas regression
+- Schema 6 → 7 data-preserving migration과 seeded stable publication identifier
+- publication metadata/PNG/JPEG cover/export preset CRUD, hash/no-op/revision/rollback/reopen
+- cover magic/size/dimension/pixel/cross-project ownership과 malformed/polyglot rejection
+- Snapshot payload v5 publication state capture/diff/restore/rollback와 exact v1–v4 shape
 
 집중 test, aggregate command, development/packaged Electron과 성능 결과는 실제 실행
 로그가 있는 Phase 결과/성능 문서에서만 `PASS` 또는 수치로
@@ -1081,7 +1201,8 @@ Phase 1F core/storage에서는 최소한 다음을 검증한다.
 ```text
 Phase 1D entry verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
 Phase 1E verdict: TECHNICAL GO — PRIVATE LOCAL
-Phase 1F verdict: NOT DECLARED IN THIS FORMAT DRAFT
+Phase 1F verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
+Phase 1G verdict: NOT DECLARED IN THIS FORMAT DRAFT
 Windows native Korean IME: MANUAL VALIDATION PENDING
 Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Public/paid/customer distribution: NOT AUTHORIZED
@@ -1090,5 +1211,5 @@ Public/paid/customer distribution: NOT AUTHORIZED
 이 문서는 계속 v1 **초안**이며 migration preflight, 임의 변조 DB의 full open-time
 audit와 power-loss fault injection은 별도 hardening 대상이다.
 
-실제 Phase 1F 판정과 schema 6 package 검증은
-[Phase 1F result](./PHASE_1F_RESULT.md)를 따른다.
+실제 Phase 1G 판정과 schema 7 package 검증은
+[Phase 1G result](./PHASE_1G_RESULT.md)를 따른다.

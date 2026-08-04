@@ -54,6 +54,7 @@ fn creates_real_sqlite_madi_with_application_metadata_and_migration() {
     assert_eq!(created.project.schema_migrations[3].version, 4);
     assert_eq!(created.project.schema_migrations[4].version, 5);
     assert_eq!(created.project.schema_migrations[5].version, 6);
+    assert_eq!(created.project.schema_migrations[6].version, 7);
 
     let connection = Connection::open(&path).unwrap();
     let application_id: i64 = connection

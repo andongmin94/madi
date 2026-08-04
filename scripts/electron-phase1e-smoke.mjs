@@ -910,12 +910,29 @@ async function readCanvasList(page) {
 async function fitView(page) {
   const startedAt = performance.now();
   await page.getByRole("button", { name: "화면 맞춤", exact: true }).click();
-  await page.waitForTimeout(240);
-  const evidence = await readWorkspaceEvidence(page);
-  verify(
-    /scale\([^)]*\)/u.test(evidence.viewportTransform),
-    "fit-view-transform-missing",
-    evidence,
+  let previousTransform = "";
+  let stableObservationCount = 0;
+  const evidence = await poll(
+    async () => {
+      const current = await readWorkspaceEvidence(page);
+      if (
+        current.viewportTransform.length === 0 ||
+        !/scale\([^)]*\)/u.test(current.viewportTransform)
+      ) {
+        previousTransform = "";
+        stableObservationCount = 0;
+        return null;
+      }
+      if (current.viewportTransform === previousTransform) {
+        stableObservationCount += 1;
+      } else {
+        previousTransform = current.viewportTransform;
+        stableObservationCount = 1;
+      }
+      return stableObservationCount >= 4 ? current : null;
+    },
+    "fit-view-transform-not-stable",
+    10_000,
   );
   return {
     observedMs: performance.now() - startedAt,
@@ -1493,21 +1510,21 @@ async function createNamedSnapshotCheckpoint(page) {
     30_000,
   );
   const item = list.locator(`li[data-snapshot-id="${snapshotId}"]`);
-  const payloadVersion4 = await item
+  const payloadVersion5 = await item
     .locator(".snapshot-metadata div")
     .evaluateAll((rows) =>
       rows.some(
         (row) =>
           row.querySelector("dt")?.textContent?.trim() === "형식" &&
-          /\bv4\b/u.test(row.querySelector("dd")?.textContent ?? ""),
+          /\bv5\b/u.test(row.querySelector("dd")?.textContent ?? ""),
       ),
     );
-  verify(payloadVersion4, "named-snapshot-payload-not-v4");
+  verify(payloadVersion5, "named-snapshot-payload-not-v5");
   return {
     snapshotId,
     beforeCount,
     afterCount: beforeCount + 1,
-    payloadVersion: 4,
+    payloadVersion: 5,
     observedMs: performance.now() - startedAt,
   };
 }
@@ -2012,6 +2029,7 @@ async function runSmoke() {
     reportStage("fit/search/multi-select/pointer drag five-run evidence captured");
     await checkpointRendererDiagnostics("canvas-interactions", firstRun);
 
+    currentStage = "first-launch-text-add";
     await selectCanvas(firstRun.page, generalCanvas);
     const textAddition = await addTextAndWaitForAutosave(firstRun.page);
     await checkpointRendererDiagnostics("canvas-text-add", firstRun);
@@ -2020,11 +2038,13 @@ async function runSmoke() {
       "text-add-autosave-result",
       textAddition,
     );
+    currentStage = "first-launch-resize-undo-redo";
     const resizeUndoRedo = await resizeNodeWithUndoRedo(
       firstRun.page,
       textAddition.selectedNodeId,
     );
     await checkpointRendererDiagnostics("canvas-resize-undo-redo", firstRun);
+    currentStage = "first-launch-edge-create-delete";
     const regularEdgeCreateDelete = await createAndDeleteRegularEdge(
       firstRun.page,
     );
@@ -2033,6 +2053,7 @@ async function runSmoke() {
     reportStage("text add, resize, Undo/Redo, and cap-safe edge create/delete verified");
     await checkpointRendererDiagnostics("canvas-editing", firstRun);
 
+    currentStage = "first-launch-canvas-switch-flush";
     await focusExistingTextNode(firstRun.page, textNodeValue, textNodeValue);
     const textEditor = firstRun.page
       .getByTestId("plot-canvas-inspector")
@@ -2152,7 +2173,7 @@ async function runSmoke() {
       101,
       200,
     );
-    reportStage("named snapshot v4 create, Canvas diff, and safe restore verified");
+    reportStage("named snapshot v5 create, Canvas diff, and safe restore verified");
     await checkpointRendererDiagnostics("canvas-snapshot-restore", firstRun);
 
     await selectCanvas(firstRun.page, largeCanvas);

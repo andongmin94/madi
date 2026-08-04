@@ -22,6 +22,12 @@ use crate::model::{
     SnapshotDiffSummary, SnapshotNodeCounts, TextStatisticsResult, TransformedSceneDocument,
     TreeNode,
 };
+use crate::publication_state::{
+    canonical_export_preset, load_project_cover, load_project_export_presets,
+    load_publication_metadata, seed_publication_metadata, validate_loaded_export_preset,
+    validate_loaded_publication_asset, validate_loaded_publication_metadata, ExportPresetRecord,
+    PublicationAssetRecord, PublicationMetadataRecord,
+};
 use crate::reader_preset::{
     canonical_reader_config, load_project_presets, validate_loaded_preset, ReaderPresetRecord,
 };
@@ -33,7 +39,7 @@ use crate::storage::{
 use crate::story_bible::normalize_alias;
 
 const SNAPSHOT_PAYLOAD_FORMAT: &str = "MADI_LOGICAL_JSON";
-const SNAPSHOT_PAYLOAD_VERSION: i64 = 4;
+const SNAPSHOT_PAYLOAD_VERSION: i64 = 5;
 const MIN_SNAPSHOT_PAYLOAD_VERSION: i64 = 1;
 const SNAPSHOT_DOCUMENT_FORMAT: &str = "madi.logical-snapshot";
 const SNAPSHOT_UI_STATE_KEY: &str = "workspace.v1";
@@ -1101,6 +1107,12 @@ struct LogicalSnapshotPayload {
     canvases: Vec<SnapshotCanvas>,
     #[serde(default)]
     reader_presets: Vec<ReaderPresetRecord>,
+    #[serde(default)]
+    publication_metadata: Option<PublicationMetadataRecord>,
+    #[serde(default)]
+    publication_assets: Vec<PublicationAssetRecord>,
+    #[serde(default)]
+    export_presets: Vec<ExportPresetRecord>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1535,6 +1547,11 @@ fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPa
     };
 
     let reader_presets = load_project_presets(connection, &metadata.project_id)?;
+    let publication_metadata = Some(load_publication_metadata(connection, &metadata.project_id)?);
+    let publication_assets = load_project_cover(connection, &metadata.project_id)?
+        .into_iter()
+        .collect();
+    let export_presets = load_project_export_presets(connection, &metadata.project_id)?;
 
     let ui_state = {
         let mut statement = connection.prepare(
@@ -1587,6 +1604,9 @@ fn capture_snapshot_payload(connection: &Connection) -> Result<LogicalSnapshotPa
         scene_entity_links,
         canvases,
         reader_presets,
+        publication_metadata,
+        publication_assets,
+        export_presets,
     })
 }
 
@@ -1756,6 +1776,15 @@ fn decode_snapshot_payload(
             summary.payload_format
         )));
     }
+    match summary.payload_version {
+        1 | 2 | 3 | 4 | 5 => {}
+        _ => {
+            return Err(CoreError::SnapshotIntegrity(format!(
+                "unsupported payload version {}",
+                summary.payload_version
+            )))
+        }
+    }
     if summary.payload_version < MIN_SNAPSHOT_PAYLOAD_VERSION
         || summary.payload_version > SNAPSHOT_PAYLOAD_VERSION
     {
@@ -1769,7 +1798,10 @@ fn decode_snapshot_payload(
             "content hash does not match payload".to_owned(),
         ));
     }
-    let payload: LogicalSnapshotPayload = serde_json::from_slice(payload_blob)
+    let payload_value: serde_json::Value = serde_json::from_slice(payload_blob)
+        .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+    validate_snapshot_version_shape(&payload_value, summary.payload_version)?;
+    let payload: LogicalSnapshotPayload = serde_json::from_value(payload_value)
         .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
     if payload.format != SNAPSHOT_DOCUMENT_FORMAT
         || payload.version != summary.payload_version
@@ -1782,6 +1814,62 @@ fn decode_snapshot_payload(
     }
     validate_snapshot_payload(&payload, &payload.project.id)?;
     Ok(payload)
+}
+
+fn validate_snapshot_version_shape(value: &serde_json::Value, version: i64) -> Result<()> {
+    let object = value.as_object().ok_or_else(|| {
+        CoreError::SnapshotIntegrity("snapshot payload must be a JSON object".to_owned())
+    })?;
+    let mut allowed = HashSet::from([
+        "format",
+        "version",
+        "app",
+        "project",
+        "nodes",
+        "documents",
+        "ui_state",
+    ]);
+    if version >= 2 {
+        allowed.extend([
+            "entities",
+            "entity_aliases",
+            "tags",
+            "entity_tags",
+            "relation_types",
+            "entity_relations",
+            "scene_entity_links",
+        ]);
+    }
+    if version >= 3 {
+        allowed.insert("canvases");
+    }
+    if version >= 4 {
+        allowed.insert("reader_presets");
+    }
+    if version >= 5 {
+        allowed.extend([
+            "publication_metadata",
+            "publication_assets",
+            "export_presets",
+        ]);
+        for required in [
+            "publication_metadata",
+            "publication_assets",
+            "export_presets",
+        ] {
+            if !object.contains_key(required) {
+                return Err(CoreError::SnapshotIntegrity(format!(
+                    "version 5 payload is missing {required}"
+                )));
+            }
+        }
+    }
+    if let Some(key) = object.keys().find(|key| !allowed.contains(key.as_str())) {
+        return Err(CoreError::SnapshotIntegrity(format!(
+            "payload version {version} contains unsupported field {key}"
+        )));
+    }
+    Ok(())
 }
 
 fn hash_payload(payload_blob: &[u8]) -> String {
@@ -2147,7 +2235,102 @@ fn diff_payloads(
                 .is_some_and(|current| !snapshot_presets_semantically_equal(preset, current))
         })
         .count() as u64;
+
+    summary.publication_metadata_changed = !snapshot_publication_metadata_semantically_equal(
+        target.publication_metadata.as_ref(),
+        current.publication_metadata.as_ref(),
+    );
+    summary.cover_changed = !snapshot_cover_semantically_equal(
+        target.publication_assets.first(),
+        current.publication_assets.first(),
+    );
+    let target_export_presets = target
+        .export_presets
+        .iter()
+        .map(|preset| (preset.id.as_str(), preset))
+        .collect::<HashMap<_, _>>();
+    let current_export_presets = current
+        .export_presets
+        .iter()
+        .map(|preset| (preset.id.as_str(), preset))
+        .collect::<HashMap<_, _>>();
+    summary.added_export_presets = current_export_presets
+        .keys()
+        .filter(|preset_id| !target_export_presets.contains_key(**preset_id))
+        .count() as u64;
+    summary.deleted_export_presets = target_export_presets
+        .keys()
+        .filter(|preset_id| !current_export_presets.contains_key(**preset_id))
+        .count() as u64;
+    summary.changed_export_presets = target_export_presets
+        .iter()
+        .filter(|(preset_id, preset)| {
+            current_export_presets
+                .get(**preset_id)
+                .is_some_and(|current| !snapshot_export_presets_semantically_equal(preset, current))
+        })
+        .count() as u64;
     summary
+}
+
+fn snapshot_publication_metadata_semantically_equal(
+    left: Option<&PublicationMetadataRecord>,
+    right: Option<&PublicationMetadataRecord>,
+) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(left), Some(right)) => {
+            left.project_id == right.project_id
+                && left.publication_title == right.publication_title
+                && left.creator_name == right.creator_name
+                && left.language == right.language
+                && left.identifier == right.identifier
+                && left.publisher == right.publisher
+                && left.description == right.description
+                && left.rights == right.rights
+                && left.subjects == right.subjects
+                && left.cover_asset_id == right.cover_asset_id
+        }
+        _ => false,
+    }
+}
+
+fn snapshot_cover_semantically_equal(
+    left: Option<&PublicationAssetRecord>,
+    right: Option<&PublicationAssetRecord>,
+) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(left), Some(right)) => {
+            left.id == right.id
+                && left.project_id == right.project_id
+                && left.kind == right.kind
+                && left.media_type == right.media_type
+                && left.original_name == right.original_name
+                && left.sha256 == right.sha256
+                && left.bytes_base64 == right.bytes_base64
+                && left.byte_length == right.byte_length
+                && left.width == right.width
+                && left.height == right.height
+                && left.created_at == right.created_at
+        }
+        _ => false,
+    }
+}
+
+fn snapshot_export_presets_semantically_equal(
+    left: &ExportPresetRecord,
+    right: &ExportPresetRecord,
+) -> bool {
+    left.id == right.id
+        && left.project_id == right.project_id
+        && left.kind == right.kind
+        && left.name == right.name
+        && left.preset_format == right.preset_format
+        && left.preset_version == right.preset_version
+        && left.preset_json == right.preset_json
+        && left.content_hash == right.content_hash
+        && left.created_at == right.created_at
 }
 
 fn snapshot_presets_semantically_equal(
@@ -2345,6 +2528,20 @@ fn validate_snapshot_payload(payload: &LogicalSnapshotPayload, project_id: &str)
     if payload.version < 4 && !payload.reader_presets.is_empty() {
         return Err(CoreError::SnapshotIntegrity(
             "payload versions 1 through 3 must not contain Reader presets".to_owned(),
+        ));
+    }
+    if payload.version < 5
+        && (payload.publication_metadata.is_some()
+            || !payload.publication_assets.is_empty()
+            || !payload.export_presets.is_empty())
+    {
+        return Err(CoreError::SnapshotIntegrity(
+            "payload versions 1 through 4 must not contain publication export state".to_owned(),
+        ));
+    }
+    if payload.version == 5 && payload.publication_metadata.is_none() {
+        return Err(CoreError::SnapshotIntegrity(
+            "version 5 payload must contain publication metadata".to_owned(),
         ));
     }
 
@@ -2586,6 +2783,55 @@ fn validate_snapshot_payload(payload: &LogicalSnapshotPayload, project_id: &str)
         validate_loaded_preset(preset.clone())
             .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
     }
+    if let Some(publication_metadata) = payload.publication_metadata.as_ref() {
+        if publication_metadata.project_id != project_id {
+            return Err(CoreError::SnapshotIntegrity(
+                "publication metadata belongs to a different project".to_owned(),
+            ));
+        }
+        validate_loaded_publication_metadata(publication_metadata.clone())
+            .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+    }
+    if payload.publication_assets.len() > 1 {
+        return Err(CoreError::SnapshotIntegrity(
+            "snapshot contains more than one project cover".to_owned(),
+        ));
+    }
+    let mut publication_asset_ids = HashSet::new();
+    for asset in &payload.publication_assets {
+        if asset.project_id != project_id || !publication_asset_ids.insert(asset.id.as_str()) {
+            return Err(CoreError::SnapshotIntegrity(
+                "publication asset ownership or identity is invalid".to_owned(),
+            ));
+        }
+        validate_loaded_publication_asset(asset.clone())
+            .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+    }
+    if let Some(publication_metadata) = payload.publication_metadata.as_ref() {
+        match publication_metadata.cover_asset_id.as_deref() {
+            Some(asset_id) if !publication_asset_ids.contains(asset_id) => {
+                return Err(CoreError::SnapshotIntegrity(
+                    "publication metadata references a missing cover asset".to_owned(),
+                ));
+            }
+            None if !publication_asset_ids.is_empty() => {
+                return Err(CoreError::SnapshotIntegrity(
+                    "snapshot contains an unreferenced publication cover".to_owned(),
+                ));
+            }
+            _ => {}
+        }
+    }
+    let mut export_preset_ids = HashSet::new();
+    for preset in &payload.export_presets {
+        if preset.project_id != project_id || !export_preset_ids.insert(preset.id.as_str()) {
+            return Err(CoreError::SnapshotIntegrity(
+                "export preset ownership or identity is invalid".to_owned(),
+            ));
+        }
+        validate_loaded_export_preset(preset.clone())
+            .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+    }
     Ok(())
 }
 
@@ -2752,6 +2998,18 @@ fn take_character_lengths(lengths: &[(u64, u64)], selected_count: u64) -> Result
 
 fn restore_payload(transaction: &Transaction<'_>, payload: &LogicalSnapshotPayload) -> Result<()> {
     transaction.execute(
+        "DELETE FROM publication_metadata WHERE project_id = ?1",
+        [&payload.project.id],
+    )?;
+    transaction.execute(
+        "DELETE FROM publication_assets WHERE project_id = ?1",
+        [&payload.project.id],
+    )?;
+    transaction.execute(
+        "DELETE FROM export_presets WHERE project_id = ?1",
+        [&payload.project.id],
+    )?;
+    transaction.execute(
         "DELETE FROM reader_presets WHERE project_id = ?1",
         [&payload.project.id],
     )?;
@@ -2804,6 +3062,99 @@ fn restore_payload(transaction: &Transaction<'_>, payload: &LogicalSnapshotPaylo
             payload.app.project_id
         ],
     )?;
+    if payload.version >= 5 {
+        for asset in &payload.publication_assets {
+            let bytes = BASE64_STANDARD
+                .decode(asset.bytes_base64.as_bytes())
+                .map_err(|_| {
+                    CoreError::SnapshotIntegrity(format!(
+                        "publication asset {} bytes are not base64",
+                        asset.id
+                    ))
+                })?;
+            transaction.execute(
+                "INSERT INTO publication_assets (
+                    id, project_id, kind, media_type, original_name, sha256, bytes,
+                    width, height, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    asset.id,
+                    asset.project_id,
+                    asset.kind.as_str(),
+                    asset.media_type,
+                    asset.original_name,
+                    asset.sha256,
+                    bytes,
+                    asset.width,
+                    asset.height,
+                    asset.created_at,
+                    asset.updated_at,
+                ],
+            )?;
+        }
+        let publication_metadata = payload.publication_metadata.as_ref().ok_or_else(|| {
+            CoreError::SnapshotIntegrity(
+                "version 5 publication metadata disappeared during restore".to_owned(),
+            )
+        })?;
+        transaction.execute(
+            "INSERT INTO publication_metadata (
+                project_id, publication_title, creator_name, language, identifier,
+                publisher, description, rights, subjects_json, cover_asset_id,
+                created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                publication_metadata.project_id,
+                publication_metadata.publication_title,
+                publication_metadata.creator_name,
+                publication_metadata.language,
+                publication_metadata.identifier,
+                publication_metadata.publisher,
+                publication_metadata.description,
+                publication_metadata.rights,
+                serde_json::to_string(&publication_metadata.subjects)?,
+                publication_metadata.cover_asset_id,
+                publication_metadata.created_at,
+                publication_metadata.updated_at,
+            ],
+        )?;
+        for preset in &payload.export_presets {
+            let (preset_json, content_hash) = canonical_export_preset(&preset.preset_json)
+                .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+            if content_hash != preset.content_hash {
+                return Err(CoreError::SnapshotIntegrity(
+                    "export preset canonical hash changed during restore".to_owned(),
+                ));
+            }
+            transaction.execute(
+                "INSERT INTO export_presets (
+                    id, project_id, kind, name, preset_format, preset_version,
+                    preset_json, content_hash, revision, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    preset.id,
+                    preset.project_id,
+                    preset.kind,
+                    preset.name,
+                    preset.preset_format,
+                    preset.preset_version,
+                    preset_json,
+                    preset.content_hash,
+                    preset.revision,
+                    preset.created_at,
+                    preset.updated_at,
+                ],
+            )?;
+        }
+    } else {
+        seed_publication_metadata(
+            transaction,
+            &payload.project.id,
+            &payload.project.title,
+            payload.project.author_name.as_deref(),
+            &payload.project.created_at,
+        )?;
+    }
     for document in &payload.documents {
         let snapshot_blob = BASE64_STANDARD
             .decode(document.snapshot_base64.as_bytes())

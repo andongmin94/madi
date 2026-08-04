@@ -156,17 +156,17 @@ fn sample_document() -> MadiCanvasDocument {
 }
 
 #[test]
-fn schema_v6_keeps_format_v1_and_enforces_canvas_table_constraints() {
+fn schema_v7_keeps_format_v1_and_enforces_canvas_table_constraints() {
     let fixture = fixture("schema-v5.madi");
     let opened = open_project(OpenProjectParams {
         file_path: fixture.path.clone(),
     })
     .unwrap();
     assert_eq!(FORMAT_VERSION, 1);
-    assert_eq!(SCHEMA_VERSION, 6);
+    assert_eq!(SCHEMA_VERSION, 7);
     assert_eq!(opened.metadata.format_version, 1);
-    assert_eq!(opened.metadata.schema_version, 6);
-    assert_eq!(opened.schema_migrations.last().unwrap().version, 6);
+    assert_eq!(opened.metadata.schema_version, 7);
+    assert_eq!(opened.schema_migrations.last().unwrap().version, 7);
 
     let connection = Connection::open(&fixture.path).unwrap();
     let project_id = opened.metadata.project_id;
@@ -446,7 +446,7 @@ fn canvas_queries_fail_closed_if_a_corrupt_foreign_project_row_exists() {
 }
 
 #[test]
-fn snapshot_v3_diff_restore_and_legacy_v2_restore_cover_canvases_atomically() {
+fn snapshot_v5_diff_restore_and_legacy_v2_restore_cover_canvases_atomically() {
     let fixture = fixture("snapshot-v3.madi");
     let baseline_canvas = create_canvas(CreateCanvasParams {
         file_path: fixture.path.clone(),
@@ -472,7 +472,7 @@ fn snapshot_v3_diff_restore_and_legacy_v2_restore_cover_canvases_atomically() {
         saved_by: None,
     })
     .unwrap();
-    assert_eq!(baseline.snapshot.payload_version, 4);
+    assert_eq!(baseline.snapshot.payload_version, 5);
 
     let mut changed = baseline_canvas.canvas.document;
     changed.nodes.push(text_node("second", "두 번째", 400.0));
@@ -516,7 +516,7 @@ fn snapshot_v3_diff_restore_and_legacy_v2_restore_cover_canvases_atomically() {
         saved_by: None,
     })
     .unwrap();
-    assert_eq!(restored.safety_snapshot.payload_version, 4);
+    assert_eq!(restored.safety_snapshot.payload_version, 5);
     let restored_canvases = list_canvases(ListCanvasesParams {
         file_path: fixture.path.clone(),
         sort: CanvasSort::NameAsc,
@@ -558,6 +558,13 @@ fn snapshot_v3_diff_restore_and_legacy_v2_restore_cover_canvases_atomically() {
         .as_object_mut()
         .unwrap()
         .remove("reader_presets");
+    for key in [
+        "publication_metadata",
+        "publication_assets",
+        "export_presets",
+    ] {
+        legacy_payload.as_object_mut().unwrap().remove(key);
+    }
     let legacy_blob = serde_json::to_vec(&legacy_payload).unwrap();
     let legacy_hash = format!("{:x}", Sha256::digest(&legacy_blob));
     connection

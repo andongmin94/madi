@@ -582,7 +582,7 @@ fn relations_inverse_semantics_scene_links_mentions_and_delete_are_safe() {
 }
 
 #[test]
-fn snapshot_v3_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins() {
+fn snapshot_v5_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins() {
     let (_directory, fixture) = fixture("snapshot-v2.madi");
     create_test_entity(&fixture.path, "leia", EntityKind::Character, "레이아");
     let note = load_entity_note(LoadEntityNoteParams {
@@ -656,7 +656,7 @@ fn snapshot_v3_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         saved_by: None,
     })
     .unwrap();
-    assert_eq!(baseline.snapshot.payload_version, 4);
+    assert_eq!(baseline.snapshot.payload_version, 5);
     update_entity(UpdateEntityParams {
         file_path: fixture.path.clone(),
         entity_id: "leia".to_owned(),
@@ -790,6 +790,13 @@ fn snapshot_v3_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         .as_object_mut()
         .unwrap()
         .remove("reader_presets");
+    for key in [
+        "publication_metadata",
+        "publication_assets",
+        "export_presets",
+    ] {
+        legacy_v2_payload.as_object_mut().unwrap().remove(key);
+    }
     let mut insert_failure_payload = legacy_v2_payload.clone();
     let duplicate_tag = {
         let tags = insert_failure_payload["tags"].as_array().unwrap();
@@ -999,6 +1006,9 @@ fn snapshot_v3_restores_story_data_and_v1_restore_clears_it_but_reseeds_builtins
         "scene_entity_links",
         "canvases",
         "reader_presets",
+        "publication_metadata",
+        "publication_assets",
+        "export_presets",
     ] {
         payload.as_object_mut().unwrap().remove(key);
     }

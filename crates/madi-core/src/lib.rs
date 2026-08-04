@@ -9,6 +9,7 @@ pub mod error;
 pub mod hierarchy;
 pub mod model;
 pub mod publication;
+pub mod publication_state;
 pub mod reader_preset;
 pub mod rpc;
 pub mod storage;
@@ -24,6 +25,7 @@ pub use hierarchy::{
 };
 pub use model::*;
 pub use publication::*;
+pub use publication_state::*;
 pub use reader_preset::*;
 pub use rpc::{dispatch, serve};
 pub use storage::{

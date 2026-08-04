@@ -10,6 +10,7 @@ use crate::hierarchy::{
 };
 use crate::model::*;
 use crate::publication::*;
+use crate::publication_state::*;
 use crate::reader_preset::*;
 use crate::storage::{
     create_project, inspect_project, load_document, open_project, recover_plain_text, save_document,
@@ -92,6 +93,44 @@ pub fn dispatch(method: &str, params: Value) -> Result<Value> {
         "validate_publication" => {
             let request: ValidatePublicationParams = parse_params(params)?;
             Ok(serde_json::to_value(validate_publication(request)?)?)
+        }
+        "get_publication_export_state" => {
+            let request: GetPublicationExportStateParams = parse_params(params)?;
+            Ok(serde_json::to_value(get_publication_export_state(
+                request,
+            )?)?)
+        }
+        "update_publication_metadata" => {
+            let request: UpdatePublicationMetadataParams = parse_params(params)?;
+            Ok(serde_json::to_value(update_publication_metadata(request)?)?)
+        }
+        "set_publication_cover" => {
+            let request: SetPublicationCoverParams = parse_params(params)?;
+            Ok(serde_json::to_value(set_publication_cover(request)?)?)
+        }
+        "remove_publication_cover" => {
+            let request: RemovePublicationCoverParams = parse_params(params)?;
+            Ok(serde_json::to_value(remove_publication_cover(request)?)?)
+        }
+        "list_export_presets" => {
+            let request: ListExportPresetsParams = parse_params(params)?;
+            Ok(serde_json::to_value(list_export_presets(request)?)?)
+        }
+        "create_export_preset" => {
+            let request: CreateExportPresetParams = parse_params(params)?;
+            Ok(serde_json::to_value(create_export_preset(request)?)?)
+        }
+        "update_export_preset" => {
+            let request: UpdateExportPresetParams = parse_params(params)?;
+            Ok(serde_json::to_value(update_export_preset(request)?)?)
+        }
+        "duplicate_export_preset" => {
+            let request: DuplicateExportPresetParams = parse_params(params)?;
+            Ok(serde_json::to_value(duplicate_export_preset(request)?)?)
+        }
+        "delete_export_preset" => {
+            let request: DeleteExportPresetParams = parse_params(params)?;
+            Ok(serde_json::to_value(delete_export_preset(request)?)?)
         }
         "list_reader_presets" => {
             let request: ListReaderPresetsParams = parse_params(params)?;
@@ -446,6 +485,7 @@ fn rpc_error(error: &CoreError, method: &str) -> (i64, String) {
         CoreError::RevisionConflict { .. }
         | CoreError::CanvasRevisionConflict { .. }
         | CoreError::ReaderPresetRevisionConflict { .. }
+        | CoreError::ExportPresetRevisionConflict { .. }
         | CoreError::SourceContentConflict { .. } => (-32001, error.to_string()),
         CoreError::AlreadyExists(_) => (-32002, error.to_string()),
         CoreError::IdentifierConflict { .. } => (-32003, error.to_string()),

@@ -50,13 +50,14 @@ fn migrates_a_version_zero_project_and_records_the_migration() {
 
     assert_eq!(opened.metadata.format_version, FORMAT_VERSION);
     assert_eq!(opened.metadata.schema_version, SCHEMA_VERSION);
-    assert_eq!(opened.schema_migrations.len(), 6);
+    assert_eq!(opened.schema_migrations.len(), 7);
     assert_eq!(opened.schema_migrations[0].version, 1);
     assert_eq!(opened.schema_migrations[1].version, 2);
     assert_eq!(opened.schema_migrations[2].version, 3);
     assert_eq!(opened.schema_migrations[3].version, 4);
     assert_eq!(opened.schema_migrations[4].version, 5);
     assert_eq!(opened.schema_migrations[5].version, 6);
+    assert_eq!(opened.schema_migrations[6].version, 7);
     assert!(opened.documents.is_empty());
 
     let connection = Connection::open(path).unwrap();
@@ -149,8 +150,8 @@ fn migrates_format_zero_schema_one_document_into_default_chapter_scene() {
     assert_eq!(opened.metadata.schema_version, SCHEMA_VERSION);
     assert_eq!(opened.metadata.revision, 7);
     assert_eq!(opened.documents.len(), 1);
-    assert_eq!(opened.schema_migrations.len(), 6);
-    assert_eq!(opened.schema_migrations[5].version, 6);
+    assert_eq!(opened.schema_migrations.len(), 7);
+    assert_eq!(opened.schema_migrations[6].version, 7);
 
     let tree = load_project_tree(LoadProjectTreeParams {
         file_path: path.clone(),
@@ -185,7 +186,7 @@ fn migrates_format_zero_schema_one_document_into_default_chapter_scene() {
 }
 
 #[test]
-fn migrates_schema_five_data_to_reader_presets_schema_six_without_data_loss() {
+fn migrates_schema_five_data_through_publication_schema_seven_without_data_loss() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("schema-five.madi");
     let created = create_project(CreateProjectParams {
@@ -216,12 +217,12 @@ fn migrates_schema_five_data_to_reader_presets_schema_six_without_data_loss() {
         file_path: path.clone(),
     })
     .unwrap();
-    assert_eq!(opened.metadata.schema_version, 6);
+    assert_eq!(opened.metadata.schema_version, 7);
     assert_eq!(opened.metadata.format_version, 1);
     assert_eq!(opened.metadata.project_id, "schema-five-project");
     assert_eq!(opened.documents.len(), 1);
     assert_eq!(opened.documents[0].id, created.default_document_id);
-    assert_eq!(opened.schema_migrations.last().unwrap().version, 6);
+    assert_eq!(opened.schema_migrations.last().unwrap().version, 7);
 
     let tree = load_project_tree(LoadProjectTreeParams {
         file_path: path.clone(),

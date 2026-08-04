@@ -14,12 +14,13 @@ use crate::model::{
     LoadDocumentParams, MigrationRecord, OpenProjectParams, ProjectInspection,
     RecoverPlainTextParams, RecoverPlainTextResult, SaveDocumentParams, SaveDocumentResult,
 };
+use crate::publication_state::seed_publication_metadata;
 
 /// ASCII `MADI` encoded as a big-endian integer.
 pub const APPLICATION_ID: i64 = 0x4D41_4449;
 pub const FORMAT_NAME: &str = "madi";
 pub const FORMAT_VERSION: i64 = 1;
-pub const SCHEMA_VERSION: i64 = 6;
+pub const SCHEMA_VERSION: i64 = 7;
 
 const DEFAULT_EDITOR_ENGINE: &str = "typie";
 const UNINITIALIZED_EDITOR_COMMIT: &str = "uninitialized";
@@ -426,6 +427,99 @@ CREATE INDEX IF NOT EXISTS reader_presets_project_updated_idx
     ON reader_presets(project_id, updated_at DESC, id);
 "#;
 
+const MIGRATION_V7: &str = r#"
+CREATE TABLE IF NOT EXISTS publication_assets (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind = 'COVER'),
+    media_type TEXT NOT NULL CHECK (media_type IN ('image/png', 'image/jpeg')),
+    original_name TEXT NOT NULL CHECK (length(trim(original_name)) > 0),
+    sha256 TEXT NOT NULL CHECK (
+        length(sha256) = 64
+        AND sha256 = lower(sha256)
+        AND sha256 NOT GLOB '*[^0-9a-f]*'
+    ),
+    bytes BLOB NOT NULL CHECK (length(bytes) > 0 AND length(bytes) <= 10485760),
+    width INTEGER,
+    height INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    CHECK ((width IS NULL AND height IS NULL) OR
+           (width > 0 AND height > 0 AND width <= 10000 AND height <= 10000))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS publication_assets_one_cover_per_project
+    ON publication_assets(project_id) WHERE kind = 'COVER';
+CREATE INDEX IF NOT EXISTS publication_assets_project_updated_idx
+    ON publication_assets(project_id, updated_at DESC, id);
+
+CREATE TABLE IF NOT EXISTS publication_metadata (
+    project_id TEXT NOT NULL PRIMARY KEY,
+    publication_title TEXT NOT NULL CHECK (length(trim(publication_title)) > 0),
+    creator_name TEXT NOT NULL,
+    language TEXT NOT NULL CHECK (length(trim(language)) > 0),
+    identifier TEXT NOT NULL CHECK (length(trim(identifier)) > 0),
+    publisher TEXT,
+    description TEXT,
+    rights TEXT,
+    subjects_json TEXT NOT NULL CHECK (json_valid(subjects_json)),
+    cover_asset_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (cover_asset_id) REFERENCES publication_assets(id) ON DELETE SET NULL
+);
+
+CREATE TRIGGER IF NOT EXISTS publication_metadata_cover_insert
+BEFORE INSERT ON publication_metadata
+WHEN NEW.cover_asset_id IS NOT NULL
+BEGIN
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM publication_assets a
+        WHERE a.id = NEW.cover_asset_id
+          AND a.project_id = NEW.project_id
+          AND a.kind = 'COVER'
+    ) THEN RAISE(ABORT, 'publication cover must belong to the same project') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS publication_metadata_cover_update
+BEFORE UPDATE OF project_id, cover_asset_id ON publication_metadata
+WHEN NEW.cover_asset_id IS NOT NULL
+BEGIN
+    SELECT CASE WHEN NOT EXISTS (
+        SELECT 1 FROM publication_assets a
+        WHERE a.id = NEW.cover_asset_id
+          AND a.project_id = NEW.project_id
+          AND a.kind = 'COVER'
+    ) THEN RAISE(ABORT, 'publication cover must belong to the same project') END;
+END;
+
+CREATE TABLE IF NOT EXISTS export_presets (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind = 'EPUB'),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    preset_format TEXT NOT NULL CHECK (preset_format = 'MADI_EXPORT_PRESET'),
+    preset_version INTEGER NOT NULL CHECK (preset_version = 1),
+    preset_json TEXT NOT NULL CHECK (json_valid(preset_json)),
+    content_hash TEXT NOT NULL CHECK (
+        length(content_hash) = 64
+        AND content_hash = lower(content_hash)
+        AND content_hash NOT GLOB '*[^0-9a-f]*'
+    ),
+    revision INTEGER NOT NULL CHECK (revision >= 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS export_presets_project_name_idx
+    ON export_presets(project_id, kind, name COLLATE NOCASE, id);
+CREATE INDEX IF NOT EXISTS export_presets_project_updated_idx
+    ON export_presets(project_id, updated_at DESC, id);
+"#;
+
 const ORDER_STEP: f64 = 1024.0;
 
 pub(crate) const BUILTIN_RELATION_TYPES: [(&str, &str, &str, bool); 10] = [
@@ -517,6 +611,13 @@ pub fn create_project(params: CreateProjectParams) -> Result<CreateProjectResult
                 id, title, author_name, created_at, updated_at
              ) VALUES (?1, ?2, ?3, ?4, ?4)",
             params![project_id, params.title, params.author_name, now],
+        )?;
+        seed_publication_metadata(
+            &transaction,
+            &project_id,
+            &params.title,
+            params.author_name.as_deref(),
+            &now,
         )?;
         seed_builtin_relation_types(&transaction, &project_id, &now)?;
         transaction.execute(
@@ -989,6 +1090,52 @@ fn migrate(connection: &mut Connection) -> Result<()> {
             [],
         )?;
         transaction.pragma_update(None, "user_version", 6_i64)?;
+        transaction.commit()?;
+        current = 6;
+    }
+
+    if current < 7 {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute_batch(MIGRATION_V7)?;
+        let applied_at = database_timestamp(&transaction)?;
+        if let Some((project_id, title, author_name)) = transaction
+            .query_row(
+                "SELECT id, title, author_name FROM projects LIMIT 1",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )
+            .optional()?
+        {
+            seed_publication_metadata(
+                &transaction,
+                &project_id,
+                &title,
+                author_name.as_deref(),
+                &applied_at,
+            )?;
+        }
+        transaction.execute(
+            "INSERT OR IGNORE INTO schema_migrations
+                (version, applied_at, description)
+             VALUES (7, ?1, ?2)",
+            params![
+                applied_at,
+                "Phase 1G publication metadata, cover assets, and EPUB export presets"
+            ],
+        )?;
+        transaction.execute(
+            "UPDATE app_meta
+             SET format_version = 1, schema_version = 7
+             WHERE singleton = 1",
+            [],
+        )?;
+        transaction.pragma_update(None, "user_version", 7_i64)?;
         transaction.commit()?;
     }
 

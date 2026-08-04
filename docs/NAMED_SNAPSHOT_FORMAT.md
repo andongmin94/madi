@@ -5,9 +5,9 @@
 ```text
 Storage table: named_snapshots
 payload_format: MADI_LOGICAL_JSON
-payload_version: 4 (decoder accepts 1, 2, 3 and 4)
+payload_version: 5 (decoder accepts 1, 2, 3, 4 and 5)
 embedded format: madi.logical-snapshot
-embedded version: 4 (decoder accepts 1, 2, 3 and 4)
+embedded version: 5 (decoder accepts 1, 2, 3, 4 and 5)
 encoding: UTF-8 JSON, uncompressed
 integrity: SHA-256 of exact payload_blob bytes
 ```
@@ -18,7 +18,7 @@ projection을 재귀적으로 포함하지 않는다.
 
 ## 1. table 계약
 
-Schema 6의 `named_snapshots` row는 다음 값을 가진다.
+Schema 7의 `named_snapshots` row는 다음 값을 가진다.
 
 | column | 의미 |
 |---|---|
@@ -28,7 +28,7 @@ Schema 6의 `named_snapshots` row는 다음 값을 가진다.
 | `note` | nullable 사용자 메모 |
 | `kind` | `MANUAL`, `AUTO_BEFORE_REPLACE`, `AUTO_BEFORE_RESTORE` |
 | `payload_format` | `MADI_LOGICAL_JSON` |
-| `payload_version` | 새 snapshot은 `4`; 기존 `1`, `2`, `3`도 decode/restore 가능 |
+| `payload_version` | 새 snapshot은 `5`; 기존 `1`, `2`, `3`, `4`도 decode/restore 가능 |
 | `payload_blob` | uncompressed UTF-8 JSON bytes |
 | `content_hash` | payload bytes의 lowercase 64자리 SHA-256 hex |
 | `created_at` | UTC timestamp |
@@ -44,7 +44,7 @@ version, byte length와 hash만 반환한다.
 ```json
 {
   "format": "madi.logical-snapshot",
-  "version": 4,
+  "version": 5,
   "app": {
     "project_id": "...",
     "title": "...",
@@ -69,7 +69,10 @@ version, byte length와 hash만 반환한다.
   "entity_relations": [],
   "scene_entity_links": [],
   "canvases": [],
-  "reader_presets": []
+  "reader_presets": [],
+  "publication_metadata": {},
+  "publication_assets": [],
+  "export_presets": []
 }
 ```
 
@@ -128,6 +131,19 @@ Renderer bundle의 immutable built-in option은 SQLite row가 아니라서 이 �
 존재하면 다른 저장 row와 동일하게 capture한다. Config validation과 provenance 규칙은
 `READER_PROFILE_FORMAT_V1.md`를 따른다.
 
+Payload v5의 publication export state는 다음을 저장한다.
+
+- `publication_metadata`: title, creator, language, stable identifier, optional
+  publisher/description/rights, subjects, optional cover ID와 timestamps
+- `publication_assets`: 같은 project의 `COVER` 최대 하나, PNG/JPEG media type, original name,
+  SHA-256, base64 bytes, byte length, width/height와 timestamps
+- `export_presets`: `EPUB`, `MADI_EXPORT_PRESET`, version 1 envelope, closed config object,
+  canonical hash, revision과 timestamps
+
+Metadata는 v5에서 필수다. Cover 배열은 0 또는 1개이며 metadata reference와 정확히
+일치해야 한다. Export preset은 `name COLLATE NOCASE, id` 순서로 capture한다. Asset 원본
+filesystem path는 저장하지 않는다.
+
 ## 3. 의도적으로 제외하는 값
 
 - `named_snapshots` row와 이전 payload
@@ -142,6 +158,8 @@ Renderer bundle의 immutable built-in option은 SQLite row가 아니라서 이 �
 - Typie runtime cache와 undo stack
 - log, API key, account/cloud 상태
 - `.bak`, temporary save 또는 SQLite container bytes
+- 생성된 `.epub`, output path, validation cache, EPUBCheck output와 export report
+- last export time, active operation ID/progress와 operation-owned temp
 
 Restore는 `workspace.v1`만 교체한다. Snapshot에 포함하지 않은 UI-state key는 그대로
 남으므로 World Graph/Canvas viewport와 Reader pane/layout/selection은 현재 사용자 상태를
@@ -164,9 +182,9 @@ replacement와 occurrence 수를 note에 기록한다.
 ### `AUTO_BEFORE_RESTORE`
 
 대상 snapshot restore transaction 안에서 core가 현재 logical state를 먼저 capture한다.
-기본 이름은 `복원 전 자동 저장 — <timestamp>`다. Current schema 6에서 생성되므로
-v1/v2/v3 target을 복원할 때도 safety snapshot 자체는 Canvas와 Reader preset을 포함한
-v4다.
+기본 이름은 `복원 전 자동 저장 — <timestamp>`다. Current schema 7에서 생성되므로
+v1/v2/v3/v4 target을 복원할 때도 safety snapshot 자체는 Canvas, Reader preset과
+publication export state를 포함한 v5다.
 
 ## 5. 생성과 revision
 
@@ -207,12 +225,20 @@ content-addressed deduplication 형식은 아니다.
 - 삭제된 Reader preset 수: `deleted_reader_presets`
 - 공통 ID에서 canonical envelope/config/hash 의미가 바뀐 Reader preset 수:
   `changed_reader_presets`
+- publication metadata semantic 변경 여부: `publication_metadata_changed`
+- cover identity/media/hash/bytes/dimension 변경 여부: `cover_changed`
+- 추가된 export preset 수: `added_export_presets`
+- 삭제된 export preset 수: `deleted_export_presets`
+- 공통 ID의 export preset envelope/config/hash 의미 변경 수: `changed_export_presets`
 
 Canvas changed 비교에는 name/description, document identity/JSON/hash와 creation identity가
 포함되고 Canvas revision과 `updated_at`만 다른 경우는 semantic change로 세지 않는다.
 Reader preset changed 비교에는 name, provenance, verification, format/version, canonical
 config, content hash와 `created_at` identity가 포함되고 preset revision과 `updated_at`만
 다른 경우는 semantic change로 세지 않는다.
+Publication metadata 비교는 editable content와 cover reference를 포함하고 timestamps만
+다른 경우는 change가 아니다. Cover/export preset 비교도 semantic identity/content/hash를
+사용하며 revision/updated time만 다른 경우는 change로 세지 않는다.
 세부 node-by-node patch, Canvas별 diff, 본문 line/style diff와 merge는
 제공하지 않는다. 기존 `changed_scene_bodies`와 character delta는 SCENE document만
 계산하며 entity note나 Canvas text를 원고 통계에 섞지 않는다.
@@ -231,7 +257,7 @@ Core는 다음을 검증한다.
 4. JSON decode와 payload project ID 확인
 5. node ID/title/order, hierarchy, WORK와 SCENE-document 1:1 확인
 6. entity/document owner와 alias/tag/relation/link 무결성 확인
-7. v2/v3/v4의 built-in relation type 10개와 v1 빈 Story Bible 계약 확인
+7. v2/v3/v4/v5의 built-in relation type 10개와 v1 빈 Story Bible 계약 확인
 8. document project/editor metadata/base64 확인
 9. UI state가 `workspace.v1`뿐인지 확인
 10. v1/v2가 Canvas array를 위조하지 않았는지 확인
@@ -241,6 +267,10 @@ Core는 다음을 검증한다.
 13. v1/v2/v3가 Reader preset array를 위조하지 않았는지 확인
 14. v4 Reader preset의 project, ID, provenance, verification, exact config shape,
     canonical hash, revision과 timestamp 확인
+15. v1/v2/v3/v4가 publication export state field를 위조하지 않았는지 확인
+16. v5 metadata project/required fields/stable identity/subjects/cover reference 확인
+17. v5 cover의 project/kind/media/base64/byte length/SHA-256/dimension와 실제 image 무결성 확인
+18. v5 export preset의 project/ID/kind/format/version/exact config/canonical hash/revision 확인
 
 검증 실패는 `SnapshotIntegrity` 오류이며 현재 project를 바꾸지 않는다.
 
@@ -255,11 +285,13 @@ Core restore는 pre-operation SQLite backup 뒤 하나의 `BEGIN IMMEDIATE` 안�
 
 1. expected revision 재확인
 2. target row load
-3. 현재 logical v4 payload capture
+3. 현재 logical v5 payload capture
 4. 현재 payload를 `AUTO_BEFORE_RESTORE`로 insert
 5. target hash/decode/구조 검증
-6. 현재 tree, documents, Story Bible, canvases, reader presets와 `workspace.v1` 삭제
-7. project/app metadata, documents, tree, Story Bible, Canvas, Reader preset과
+6. 현재 tree, documents, Story Bible, canvases, reader presets, publication metadata/assets,
+   export presets와 `workspace.v1` 삭제
+7. project/app metadata, documents, tree, Story Bible, Canvas, Reader preset, publication
+   metadata/assets, export preset과
    `workspace.v1`을 FK 순서로 재생성
 8. documents trigger를 통한 search projection 재구성
 9. project revision 한 번 증가
@@ -274,9 +306,9 @@ exclusive lock을 해제하지 않는다. Canvas reference display는 reload한 
 tree 기준으로 broken 여부를 다시 파생한다. Commit 뒤 reload 실패는 임시 editor graph를
 canonical DB에 저장하지 못하게 fail-closed 처리한다.
 
-## 9. v1/v2/v3 호환과 current v4
+## 9. v1/v2/v3/v4 호환과 current v5
 
-Decoder는 payload version 1, 2, 3, 4만 수용한다. 명시적으로 지원하는 older payload의
+Decoder는 payload version 1, 2, 3, 4, 5만 수용한다. 명시적으로 지원하는 older payload의
 newer array는 빈 값으로 decode하지만, older payload가 더 최신 데이터를 위조할 수는 없다.
 
 ### Payload v1
@@ -306,16 +338,25 @@ newer array는 빈 값으로 decode하지만, older payload가 더 최신 데이
 - Reader preset envelope/config/hash/revision/timestamp를 logical restore한다.
 - `reader-lab.v1` pane/layout/selection UI state는 포함하지 않는다.
 
-V1/v2 restore가 현재 Canvas를, v1/v2/v3 restore가 현재 Reader preset을 암묵적으로
+### Payload v5
+
+- v4 전체와 publication metadata, optional COVER와 canonical EPUB export preset을 포함한다.
+- Cover bytes/hash/dimension과 metadata reference를 함께 logical restore한다.
+- Generated EPUB, path, report, validation/EPUBCheck output와 last export는 포함하지 않는다.
+- `reader-lab.v1`과 export UI selection/draft/operation state는 포함하지 않는다.
+
+V1/v2 restore가 현재 Canvas를, v1/v2/v3 restore가 현재 Reader preset을, v1/v2/v3/v4
+restore가 현재 publication export state를 암묵적으로
 유지하거나 merge하지 않는 이유는 snapshot target을 정확히 재현하기 위해서다. Restore
-직전 현재 schema 6 state는 Canvas와 Reader preset을 담은 v4
+직전 현재 schema 7 state는 Canvas, Reader preset과 publication export state를 담은 v5
 `AUTO_BEFORE_RESTORE`로 보존되므로 사용자는 safety snapshot으로 돌아갈 수 있다.
 
 ## 10. 한계
 
 - unknown format/version은 자동 변환하지 않는다.
 - payload는 압축하지 않아 Typie base64와 Canvas JSON 크기에 비례해 커진다.
-- named snapshot마다 SCENE/ENTITY note/Canvas document/Reader preset을 복제하므로 저장 공간은
+- named snapshot마다 SCENE/ENTITY note/Canvas document/Reader preset/cover/export preset을
+  복제하므로 저장 공간은
   snapshot 수와 project 크기에 비례한다.
 - hash는 무결성 검사용이며 서명, 인증, 암호화 또는 비밀성 보장이 아니다.
 - runtime Undo history는 payload에 포함하지 않는다.
@@ -325,6 +366,7 @@ V1/v2 restore가 현재 Canvas를, v1/v2/v3 restore가 현재 Reader preset을 �
 
 ## 11. 관련 문서
 
-- [Phase 1F result](./PHASE_1F_RESULT.md)
+- [Phase 1G result](./PHASE_1G_RESULT.md)
 - [`.madi` file format v1 draft](./MADI_FILE_FORMAT_V1_DRAFT.md)
 - [Reader profile format v1](./READER_PROFILE_FORMAT_V1.md)
+- [Export preset format v1](./EXPORT_PRESET_FORMAT_V1.md)

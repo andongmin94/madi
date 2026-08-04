@@ -399,7 +399,7 @@ fn named_snapshot_hash_crud_diff_restore_and_reopen_preserve_the_logical_project
     .unwrap();
     assert_eq!(created.snapshot.content_hash.len(), 64);
     assert_eq!(created.snapshot.payload_format, "MADI_LOGICAL_JSON");
-    assert_eq!(created.snapshot.payload_version, 4);
+    assert_eq!(created.snapshot.payload_version, 5);
 
     let second = create_named_snapshot(CreateNamedSnapshotParams {
         file_path: path.clone(),

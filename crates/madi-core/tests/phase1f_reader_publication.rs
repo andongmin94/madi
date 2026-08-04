@@ -460,8 +460,8 @@ fn reader_preset_color_case_is_canonical_and_a_lowercase_resave_is_a_no_op() {
 }
 
 #[test]
-fn snapshot_v4_diffs_restores_and_rolls_back_reader_presets_atomically() {
-    let fixture = fixture("snapshot-v4.madi", "snapshot-project");
+fn snapshot_v5_diffs_restores_and_rolls_back_reader_presets_atomically() {
+    let fixture = fixture("snapshot-v5.madi", "snapshot-project");
     let first = create_custom_preset(&fixture.path, "preset-change", "변경", 0);
     let second = create_custom_preset(
         &fixture.path,
@@ -489,7 +489,7 @@ fn snapshot_v4_diffs_restores_and_rolls_back_reader_presets_atomically() {
         saved_by: None,
     })
     .unwrap();
-    assert_eq!(baseline.snapshot.payload_version, 4);
+    assert_eq!(baseline.snapshot.payload_version, 5);
 
     let changed = update_reader_preset(UpdateReaderPresetParams {
         file_path: fixture.path.clone(),
@@ -560,8 +560,8 @@ fn snapshot_v4_diffs_restores_and_rolls_back_reader_presets_atomically() {
     insert_derived_snapshot(
         &fixture.path,
         "reader-baseline",
-        "corrupt-reader-v4",
-        4,
+        "corrupt-reader-v5",
+        5,
         corrupt,
     );
     let revision_before_failure = project_revision(&fixture.path);
@@ -574,7 +574,7 @@ fn snapshot_v4_diffs_restores_and_rolls_back_reader_presets_atomically() {
     assert!(matches!(
         restore_named_snapshot(RestoreNamedSnapshotParams {
             file_path: fixture.path.clone(),
-            snapshot_id: "corrupt-reader-v4".to_owned(),
+            snapshot_id: "corrupt-reader-v5".to_owned(),
             auto_snapshot_name: None,
             expected_revision: Some(revision_before_failure),
             saved_by: None,
@@ -606,14 +606,14 @@ fn snapshot_v4_diffs_restores_and_rolls_back_reader_presets_atomically() {
     insert_derived_snapshot(
         &fixture.path,
         "reader-baseline",
-        "foreign-reader-v4",
-        4,
+        "foreign-reader-v5",
+        5,
         foreign,
     );
     assert!(matches!(
         restore_named_snapshot(RestoreNamedSnapshotParams {
             file_path: fixture.path.clone(),
-            snapshot_id: "foreign-reader-v4".to_owned(),
+            snapshot_id: "foreign-reader-v5".to_owned(),
             auto_snapshot_name: None,
             expected_revision: Some(revision_before_failure),
             saved_by: None,
@@ -650,21 +650,37 @@ fn legacy_snapshot_v1_v2_v3_restore_with_reader_presets_empty() {
         name: "Legacy source".to_owned(),
         note: None,
         kind: NamedSnapshotKind::Manual,
-        snapshot_id: Some("legacy-source-v4".to_owned()),
+        snapshot_id: Some("legacy-source-v5".to_owned()),
         expected_revision: Some(canvas.metadata.revision),
         saved_by: None,
     })
     .unwrap();
-    let source = read_snapshot_payload(&fixture.path, "legacy-source-v4");
+    let source_v5 = read_snapshot_payload(&fixture.path, "legacy-source-v5");
+    let mut source = source_v5;
+    source["version"] = json!(4);
+    for key in [
+        "publication_metadata",
+        "publication_assets",
+        "export_presets",
+    ] {
+        source.as_object_mut().unwrap().remove(key);
+    }
+    insert_derived_snapshot(
+        &fixture.path,
+        "legacy-source-v5",
+        "legacy-source-v4",
+        4,
+        source.clone(),
+    );
     let mut v3 = source.clone();
     v3["version"] = json!(3);
     v3.as_object_mut().unwrap().remove("reader_presets");
-    insert_derived_snapshot(&fixture.path, "legacy-source-v4", "legacy-v3", 3, v3);
+    insert_derived_snapshot(&fixture.path, "legacy-source-v5", "legacy-v3", 3, v3);
     let mut v2 = source.clone();
     v2["version"] = json!(2);
     v2.as_object_mut().unwrap().remove("canvases");
     v2.as_object_mut().unwrap().remove("reader_presets");
-    insert_derived_snapshot(&fixture.path, "legacy-source-v4", "legacy-v2", 2, v2);
+    insert_derived_snapshot(&fixture.path, "legacy-source-v5", "legacy-v2", 2, v2);
     let mut v1 = source;
     v1["version"] = json!(1);
     for key in [
@@ -680,7 +696,7 @@ fn legacy_snapshot_v1_v2_v3_restore_with_reader_presets_empty() {
     ] {
         v1.as_object_mut().unwrap().remove(key);
     }
-    insert_derived_snapshot(&fixture.path, "legacy-source-v4", "legacy-v1", 1, v1);
+    insert_derived_snapshot(&fixture.path, "legacy-source-v5", "legacy-v1", 1, v1);
 
     let restored_v3 = restore_named_snapshot(RestoreNamedSnapshotParams {
         file_path: fixture.path.clone(),

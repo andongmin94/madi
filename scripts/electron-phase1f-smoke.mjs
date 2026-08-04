@@ -824,6 +824,9 @@ async function readReaderEvidence(page) {
       diagnosticMeasurementStatus: workspace.getAttribute(
         "data-reader-diagnostic-measurement-status",
       ),
+      layoutDiagnosticsStatus: workspace.getAttribute(
+        "data-reader-layout-diagnostics-status",
+      ),
       scrollSync: workspace.getAttribute("data-reader-scroll-sync") === "true",
       leftPanelWidth: numeric(workspace, "data-reader-left-panel-width"),
       rightPanelWidth: numeric(workspace, "data-reader-right-panel-width"),
@@ -1267,7 +1270,11 @@ async function setDiagnosticsExpanded(run, expanded) {
   );
 }
 
-async function waitForMeasurementComplete(run, timeoutMs = 180_000) {
+async function waitForMeasurementComplete(
+  run,
+  timeoutMs = 180_000,
+  { requireLayoutDiagnostics = false } = {},
+) {
   return poll(
     async () => {
       const evidence = await readReaderEvidence(run.page);
@@ -1277,7 +1284,9 @@ async function waitForMeasurementComplete(run, timeoutMs = 180_000) {
             pane.measurementStatus === "complete" &&
             pane.measuredSections === pane.totalSections &&
             pane.measuredBlocks === pane.canonicalBlocks,
-        )
+        ) &&
+        (!requireLayoutDiagnostics ||
+          evidence.layoutDiagnosticsStatus === "complete")
         ? evidence
         : null;
     },
@@ -1620,7 +1629,9 @@ async function selectBlockAndOpenSource(run, blockId, expectedSource) {
 }
 
 async function exerciseDiagnosticNavigation(run, expectedSceneId) {
-  await waitForMeasurementComplete(run, 120_000);
+  await waitForMeasurementComplete(run, 120_000, {
+    requireLayoutDiagnostics: true,
+  });
   const section = run.page.locator('section[aria-label="Reader 검토 후보"]');
   const toggle = section.locator(".reader-diagnostics__toggle");
   if ((await toggle.getAttribute("aria-expanded")) !== "true") {
@@ -1790,6 +1801,46 @@ async function closeGlobalPanel(run) {
 }
 
 async function createReaderSnapshot(run) {
+  reportStage("normal-snapshot-create-reader-ready");
+  await waitForTwoAnimationFrames(run.page);
+  let stableKey = "";
+  let stableObservationCount = 0;
+  await poll(
+    async () => {
+      const workspace = run.page.locator('section[aria-label="읽기 실험실"]');
+      const status = await workspace.getAttribute("data-reader-compile-status");
+      const revision = await workspace.getAttribute("data-reader-project-revision");
+      const scopeKind = await workspace.getAttribute("data-reader-scope-kind");
+      const readerBusy = await workspace.getAttribute("aria-busy");
+      const refreshEnabled = await run.page
+        .getByRole("button", { name: "미리보기 새로고침", exact: true })
+        .isEnabled();
+      const paneCount = await workspace.locator("[data-reader-pane]").count();
+      if (
+        status !== "ready" ||
+        !revision ||
+        !scopeKind ||
+        readerBusy === "true" ||
+        !refreshEnabled ||
+        paneCount === 0
+      ) {
+        stableKey = "";
+        stableObservationCount = 0;
+        return null;
+      }
+      const nextKey = `${revision}:${scopeKind}:${paneCount}`;
+      if (nextKey === stableKey) {
+        stableObservationCount += 1;
+      } else {
+        stableKey = nextKey;
+        stableObservationCount = 1;
+      }
+      return stableObservationCount >= 4 ? true : null;
+    },
+    "reader-stable-before-snapshot",
+    120_000,
+  );
+  reportStage("normal-snapshot-create-panel-open");
   await openSnapshotPanel(run);
   const panel = run.page.getByRole("complementary", {
     name: "Named snapshot",
@@ -1823,7 +1874,7 @@ async function createReaderSnapshot(run) {
     60_000,
   );
   await closeGlobalPanel(run);
-  verify(created.payloadVersion === 4, "reader-snapshot-payload-version", {
+  verify(created.payloadVersion === 5, "reader-snapshot-payload-version", {
     observed: created.payloadVersion,
   });
   return {
@@ -1851,7 +1902,7 @@ async function restoreReaderSnapshot(
   const observedPayloadVersion = Number(
     await item.getAttribute("data-snapshot-payload-version"),
   );
-  verify(observedPayloadVersion === 4, "reader-restore-payload-version", {
+  verify(observedPayloadVersion === 5, "reader-restore-payload-version", {
     observed: observedPayloadVersion,
   });
   reportStage("normal-snapshot-restore-click-restore");
@@ -2243,7 +2294,9 @@ async function runNormalScenario({ fixture, projectPath, userDataPath }) {
       2,
       "data-reader-line-height",
     );
-    const configuredPanes = await waitForMeasurementComplete(firstRun, 120_000);
+    const configuredPanes = await waitForMeasurementComplete(firstRun, 120_000, {
+      requireLayoutDiagnostics: true,
+    });
     const diagnosticsMeasurementMs =
       performance.now() - normalMeasurementStartedAt;
     verify(
@@ -2853,6 +2906,7 @@ async function runNormalScenario({ fixture, projectPath, userDataPath }) {
         calculationMs: roundMilliseconds(diagnosticsMeasurementMs),
         count: configuredPanes.diagnosticCount,
         measurementStatus: configuredPanes.diagnosticMeasurementStatus,
+        layoutStatus: configuredPanes.layoutDiagnosticsStatus,
         navigation: diagnosticNavigation,
       },
       configuredPanes: configuredPanes.panes.map((pane) => ({
@@ -3009,7 +3063,9 @@ async function runLongScenario({ fixture, projectPath, userDataPath }) {
       2,
       "data-reader-line-height",
     );
-    const measured = await waitForMeasurementComplete(run, 300_000);
+    const measured = await waitForMeasurementComplete(run, 300_000, {
+      requireLayoutDiagnostics: true,
+    });
     const diagnosticsMeasurementMs = performance.now() - longMeasurementStartedAt;
     verify(
       measured.diagnosticMeasurementStatus === "COMPLETE" &&
@@ -3144,6 +3200,7 @@ async function runLongScenario({ fixture, projectPath, userDataPath }) {
         calculationMs: roundMilliseconds(diagnosticsMeasurementMs),
         count: measured.diagnosticCount,
         measurementStatus: measured.diagnosticMeasurementStatus,
+        layoutStatus: measured.layoutDiagnosticsStatus,
       },
       panes: measured.panes.map((pane) => ({
         virtualized: pane.virtualized,
@@ -3403,7 +3460,7 @@ async function main() {
       status: fastDiagnostic ? "DIAGNOSTIC_PASS" : "PASS",
       phase: "1F",
       packaged,
-      schemaVersion: 6,
+      schemaVersion: 7,
       logicalFormatVersion: 1,
       snapshotPayloadVersion: normal.snapshot.payloadVersion,
       measurementRuns: expensiveMeasurementRuns,

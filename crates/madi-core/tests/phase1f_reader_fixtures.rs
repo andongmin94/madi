@@ -3,15 +3,18 @@ use std::path::{Path, PathBuf};
 
 use editor_codec::{encode_changesets, ReencodableChangesets};
 use editor_model::{
-    HorizontalRuleVariant, PlainDoc, PlainHorizontalRuleNode, PlainNode, PlainNodeEntry,
-    PlainParagraphNode, PlainRootNode, PlainTextNode,
+    HorizontalRuleVariant, Modifier, PlainBlockquoteNode, PlainDoc, PlainHorizontalRuleNode,
+    PlainNode, PlainNodeEntry, PlainParagraphNode, PlainRootNode, PlainTextNode,
 };
-use editor_state::State;
+use editor_state::{prose_annotated, State};
 use madi_core::{
     compile_publication_scope, create_project, load_project_tree, CompilePublicationParams,
     CreateProjectParams, LoadProjectTreeParams, NodeKind,
 };
-use madi_publication::PINNED_TYPIE_COMMIT;
+use madi_publication::{
+    decode_typie_snapshot, MadiSemanticBlock, MadiSemanticInline, PublicationBlock,
+    PublicationInline, PINNED_TYPIE_COMMIT,
+};
 use rusqlite::{params, Connection, Transaction};
 
 const FIXED_TIMESTAMP: &str = "2026-08-09T00:00:00.000Z";
@@ -60,10 +63,67 @@ fn paragraph(text: String) -> PlainNodeEntry {
     )
 }
 
+fn text_with_modifier(text: String, modifier: Modifier) -> PlainNodeEntry {
+    entry_with_modifiers(
+        PlainNode::Text(PlainTextNode { text }),
+        BTreeMap::from([(modifier.as_type(), modifier)]),
+        Vec::new(),
+    )
+}
+
+fn entry_with_modifiers(
+    node: PlainNode,
+    modifiers: BTreeMap<editor_model::ModifierType, Modifier>,
+    children: Vec<PlainNodeEntry>,
+) -> PlainNodeEntry {
+    PlainNodeEntry {
+        node,
+        modifiers,
+        carry: Vec::new(),
+        children,
+    }
+}
+
+fn rich_paragraph(text: String) -> PlainNodeEntry {
+    let mut characters = text.chars();
+    let modifiers = [
+        Modifier::Bold,
+        Modifier::Italic,
+        Modifier::Underline,
+        Modifier::Strikethrough,
+        Modifier::Ruby {
+            text: "루비".to_owned(),
+        },
+    ];
+    let mut children = modifiers
+        .into_iter()
+        .map(|modifier| {
+            text_with_modifier(
+                characters
+                    .next()
+                    .expect("rich fixture text must have at least five characters")
+                    .to_string(),
+                modifier,
+            )
+        })
+        .collect::<Vec<_>>();
+    let remainder = characters.collect::<String>();
+    if !remainder.is_empty() {
+        children.push(entry(
+            PlainNode::Text(PlainTextNode { text: remainder }),
+            Vec::new(),
+        ));
+    }
+    entry(PlainNode::Paragraph(PlainParagraphNode {}), children)
+}
+
 fn deterministic_text(character_count: usize) -> String {
+    const PREFIX: &str = "한국어검증 <script>alert('&')</script> EPUB XML & < > ";
     const PATTERN: &[char] = &['가', '나', '다', '라', ' '];
-    (0..character_count)
-        .map(|index| PATTERN[index % PATTERN.len()])
+    PREFIX
+        .chars()
+        .chain((0..character_count).map(|index| PATTERN[index % PATTERN.len()]))
+        .take(character_count)
         .collect()
 }
 
@@ -75,7 +135,7 @@ fn reusable_snapshot(character_count: usize) -> (Vec<u8>, String) {
         root: entry(
             PlainNode::Root(PlainRootNode::default()),
             vec![
-                paragraph(first.clone()),
+                rich_paragraph(first),
                 paragraph(String::new()),
                 entry(
                     PlainNode::HorizontalRule(PlainHorizontalRuleNode {
@@ -83,17 +143,98 @@ fn reusable_snapshot(character_count: usize) -> (Vec<u8>, String) {
                     }),
                     Vec::new(),
                 ),
-                paragraph(second.clone()),
+                entry(
+                    PlainNode::Blockquote(PlainBlockquoteNode::default()),
+                    vec![paragraph(second)],
+                ),
             ],
         ),
     };
     let state = State::from_plain(&document).unwrap();
+    let recovery = prose_annotated(&state.view()).text().to_owned();
     let snapshot = encode_changesets(ReencodableChangesets::from_local_ops(
         state.graph().changesets_as_vec(),
     ))
     .unwrap();
-    let recovery = format!("{first}\n\n\n***\n\n{second}");
     (snapshot, recovery)
+}
+
+fn contains_inline_kind(
+    inlines: &[PublicationInline],
+    predicate: fn(&PublicationInline) -> bool,
+) -> bool {
+    inlines.iter().any(|inline| {
+        predicate(inline)
+            || match inline {
+                PublicationInline::Text { .. } => false,
+                PublicationInline::Strong { children }
+                | PublicationInline::Emphasis { children }
+                | PublicationInline::Underline { children }
+                | PublicationInline::Strike { children }
+                | PublicationInline::Ruby { children, .. } => {
+                    contains_inline_kind(children, predicate)
+                }
+            }
+    })
+}
+
+fn contains_semantic_inline_kind(
+    inlines: &[MadiSemanticInline],
+    predicate: fn(&MadiSemanticInline) -> bool,
+) -> bool {
+    inlines.iter().any(|inline| {
+        predicate(inline)
+            || match inline {
+                MadiSemanticInline::Text { .. } => false,
+                MadiSemanticInline::Strong { children }
+                | MadiSemanticInline::Emphasis { children }
+                | MadiSemanticInline::Underline { children }
+                | MadiSemanticInline::Strike { children }
+                | MadiSemanticInline::Ruby { children, .. } => {
+                    contains_semantic_inline_kind(children, predicate)
+                }
+            }
+    })
+}
+
+#[test]
+fn reusable_reader_fixture_snapshot_contains_export_semantics_and_xml_special_korean() {
+    let (snapshot, recovery) = reusable_snapshot(1_500);
+    let decoded = decode_typie_snapshot("phase1f-rich-fixture-document", &snapshot).unwrap();
+    let rich = decoded
+        .blocks
+        .iter()
+        .find_map(|block| match block {
+            MadiSemanticBlock::Paragraph { inlines, .. }
+                if contains_semantic_inline_kind(inlines, |inline| {
+                    matches!(inline, MadiSemanticInline::Strong { .. })
+                }) =>
+            {
+                Some(inlines.as_slice())
+            }
+            _ => None,
+        })
+        .expect("fixture snapshot must decode a rich paragraph");
+    for predicate in [
+        (|inline| matches!(inline, MadiSemanticInline::Strong { .. }))
+            as fn(&MadiSemanticInline) -> bool,
+        |inline| matches!(inline, MadiSemanticInline::Emphasis { .. }),
+        |inline| matches!(inline, MadiSemanticInline::Underline { .. }),
+        |inline| matches!(inline, MadiSemanticInline::Strike { .. }),
+        |inline| matches!(inline, MadiSemanticInline::Ruby { .. }),
+    ] {
+        assert!(contains_semantic_inline_kind(rich, predicate));
+    }
+    assert!(decoded
+        .blocks
+        .iter()
+        .any(|block| matches!(block, MadiSemanticBlock::Quote { .. })));
+    assert!(decoded
+        .blocks
+        .iter()
+        .any(|block| matches!(block, MadiSemanticBlock::SceneBreak { .. })));
+    assert!(recovery.contains("한국어검증"));
+    assert!(recovery.contains("<script>alert('&')</script>"));
 }
 
 fn insert_node(
@@ -315,6 +456,41 @@ fn seed_fixture(path: &Path, spec: FixtureSpec) {
             .sum::<usize>(),
         8
     );
+    let blocks = compiled
+        .document
+        .sections
+        .iter()
+        .flat_map(|section| section.blocks.iter())
+        .collect::<Vec<_>>();
+    let rich = blocks
+        .iter()
+        .find_map(|block| match block {
+            PublicationBlock::Paragraph { inlines, .. }
+                if contains_inline_kind(inlines, |inline| {
+                    matches!(inline, PublicationInline::Strong { .. })
+                }) =>
+            {
+                Some(inlines.as_slice())
+            }
+            _ => None,
+        })
+        .expect("fixture must expose rich inline semantics through Publication IR");
+    for predicate in [
+        (|inline| matches!(inline, PublicationInline::Strong { .. }))
+            as fn(&PublicationInline) -> bool,
+        |inline| matches!(inline, PublicationInline::Emphasis { .. }),
+        |inline| matches!(inline, PublicationInline::Underline { .. }),
+        |inline| matches!(inline, PublicationInline::Strike { .. }),
+        |inline| matches!(inline, PublicationInline::Ruby { .. }),
+    ] {
+        assert!(contains_inline_kind(rich, predicate));
+    }
+    assert!(blocks
+        .iter()
+        .any(|block| matches!(block, PublicationBlock::Quote { .. })));
+    assert!(blocks
+        .iter()
+        .any(|block| matches!(block, PublicationBlock::SceneBreak { .. })));
 }
 
 #[test]

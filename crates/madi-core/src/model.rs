@@ -710,6 +710,11 @@ pub struct SnapshotDiffSummary {
     pub added_reader_presets: u64,
     pub deleted_reader_presets: u64,
     pub changed_reader_presets: u64,
+    pub publication_metadata_changed: bool,
+    pub cover_changed: bool,
+    pub added_export_presets: u64,
+    pub deleted_export_presets: u64,
+    pub changed_export_presets: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

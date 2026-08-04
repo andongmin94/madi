@@ -305,7 +305,7 @@ async function run() {
       editor_schema_version: 1,
     });
     verify(created.project.metadata.revision === 0, "create-project-revision");
-    verify(created.project.metadata.schema_version === 6, "schema-version-six");
+    verify(created.project.metadata.schema_version === 7, "schema-version-seven");
     const workId = created.work_node_id;
     const defaultSceneId = created.default_scene_node_id;
     let revision = 0;
@@ -968,8 +968,8 @@ async function run() {
       "create-phase1c-snapshot",
     );
     verify(
-      baselineSnapshot.snapshot.payload_version === 4,
-      "snapshot-payload-version-three",
+      baselineSnapshot.snapshot.payload_version === 5,
+      "snapshot-payload-version-five",
     );
 
     const baselineRelationInventory = relationInventory(initialRelations.relations);
@@ -1116,7 +1116,7 @@ async function run() {
       file_path: projectPath,
       snapshot_id: baselineSnapshot.snapshot.id,
     });
-    verify(diff.snapshot.payload_version === 4, "diff-payload-version");
+    verify(diff.snapshot.payload_version === 5, "diff-payload-version");
     verify(diff.summary.changed_entities >= 1, "diff-changed-entities");
     verify(diff.summary.changed_relations >= 1, "diff-changed-relations");
     verify(diff.summary.changed_scene_links >= 1, "diff-changed-scene-links");
@@ -1154,8 +1154,8 @@ async function run() {
     );
     verify(
       restored.safety_snapshot.kind === "AUTO_BEFORE_RESTORE" &&
-        restored.safety_snapshot.payload_version === 4,
-      "restore-safety-snapshot-v4",
+        restored.safety_snapshot.payload_version === 5,
+      "restore-safety-snapshot-v5",
     );
     verify(
       equalJson(restored.changes_before_restore, diff.summary),
@@ -1255,9 +1255,9 @@ async function run() {
     );
     verify(
       snapshotsBeforeRestart.snapshots.every(
-        (snapshot) => snapshot.payload_version === 4,
+        (snapshot) => snapshot.payload_version === 5,
       ),
-      "snapshot-inventory-v4",
+      "snapshot-inventory-v5",
     );
     const finalWorldGraph = await firstProcess.request("get_world_graph", {
       file_path: projectPath,
@@ -1276,7 +1276,7 @@ async function run() {
       file_path: projectPath,
     });
     verify(reopened.metadata.revision === revision, "restart-revision");
-    verify(reopened.metadata.schema_version === 6, "restart-schema-version");
+    verify(reopened.metadata.schema_version === 7, "restart-schema-version");
     const restartEntities = await secondProcess.request("list_entities", {
       file_path: projectPath,
       sort: "NAME_ASC",
@@ -1430,7 +1430,7 @@ async function run() {
             snapshotAndRecoveryRestored: true,
           },
           snapshots: {
-            payloadVersion: 4,
+            payloadVersion: 5,
             diff: diff.summary,
             restoreVerified: true,
           },

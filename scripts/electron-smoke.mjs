@@ -3134,9 +3134,9 @@ try {
   const phase1cSnapshotMetadata = (
     await phase1cSnapshotItem.locator(".snapshot-metadata").innerText()
   ).trim();
-  if (!/형식\s+[^\r\n]+ \bv4\b/u.test(phase1cSnapshotMetadata)) {
+  if (!/형식\s+[^\r\n]+ \bv5\b/u.test(phase1cSnapshotMetadata)) {
     throw new Error(
-      `Phase 1C named snapshot is not payload v4; metadataLength=${phase1cSnapshotMetadata.length}`
+      `Phase 1C named snapshot is not payload v5; metadataLength=${phase1cSnapshotMetadata.length}`
     );
   }
 
@@ -3347,14 +3347,14 @@ try {
       role: "POV"
     },
     namedSnapshot: {
-      payloadVersion: 4,
+      payloadVersion: 5,
       countAfterRestore: 5,
       temporaryEntityMutationDetected: true,
       restored: true
     }
   };
   reportStage(
-    "Phase 1C Story Bible, mention promotion, scene link, and snapshot v4 restore verified"
+    "Phase 1C Story Bible, mention promotion, scene link, and snapshot v5 restore verified"
   );
 
   const firstGraphEntry = await openWorldGraph(firstPage, 2, 1);

@@ -67,6 +67,9 @@ pub enum CoreError {
     #[error("reader preset revision conflict: expected {expected}, current revision is {actual}")]
     ReaderPresetRevisionConflict { expected: i64, actual: i64 },
 
+    #[error("export preset revision conflict: expected {expected}, current revision is {actual}")]
+    ExportPresetRevisionConflict { expected: i64, actual: i64 },
+
     #[error("replacement source content changed for scene {scene_id}")]
     SourceContentConflict { scene_id: String },
 
