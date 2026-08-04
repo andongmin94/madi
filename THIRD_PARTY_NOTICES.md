@@ -1,8 +1,13 @@
 # Third-Party Notices
 
-이 파일은 Phase 1D 저장소에서 직접 포함하거나 주요 runtime/build dependency로
+이 파일은 Phase 1E 저장소에서 직접 포함하거나 주요 runtime/build dependency로
 사용하는 제3자 자료를 요약한다. 각 license 원문이 우선하며, 이 요약은 license
 조건을 대체하지 않는다.
+
+```text
+Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
+Public/paid/customer distribution: NOT AUTHORIZED
+```
 
 ## Typie
 
@@ -79,6 +84,39 @@ Phase 1D는 별도 layout extension을 추가하지 않고 Cytoscape.js에 포�
 사용한다. Cytoscape element와 instance는 renderer 내부 파생 표현이며 Rust core,
 preload 계약 또는 Story Bible canonical 저장 모델에 포함하지 않는다.
 
+## React Flow
+
+- Project: React Flow
+- Package: `@xyflow/react`
+- Exact version: `12.11.2`
+- Repository: `https://github.com/xyflow/xyflow`
+- License: MIT
+- Copyright notice: `Copyright (c) 2019-2025 webkid GmbH`
+- Runtime role: Phase 1E Plot Canvas의 renderer 전용 interaction/visualization
+- License text: packaged artifact의
+  `resources/licenses/REACT-FLOW-MIT.txt`
+
+Version은 `apps/desktop/package.json`과 `pnpm-lock.yaml`에 exact `12.11.2`로 고정한다.
+React Flow `Node`, `Edge`, instance와 event는 renderer runtime 파생 표현이며 Rust core,
+SQLite, preload 공개 계약 또는 named snapshot payload에 포함하지 않는다. 저장 계약은
+JSON Canvas 1.0 기반 `MadiCanvasDocument`다.
+
+## JSON Canvas
+
+- Project/specification: JSON Canvas
+- Specification version: `1.0` (2024-03-11)
+- Specification: `https://jsoncanvas.org/spec/1.0/`
+- Repository: `https://github.com/obsidianmd/jsoncanvas`
+- License: MIT
+- Copyright notice: `Copyright (c) 2024 Obsidian.md`
+- Repository license text: `docs/licenses/JSON-CANVAS-MIT.txt`
+- Packaged license text: `resources/licenses/JSON-CANVAS-MIT.txt`
+
+JSON Canvas는 npm runtime dependency가 아니라 Canvas 저장·import/export 구조의 기준
+specification이다. Madi는 표준 `text`/`group` node와 edge를 사용하고 `madi` extension으로
+entity/SCENE reference와 line style을 표현한다. 지원 범위와 strict-conformance 차이는
+`docs/JSON_CANVAS_COMPATIBILITY.md`를 따른다.
+
 ## 주요 npm dependency
 
 정확한 direct dependency와 version range:
@@ -98,6 +136,7 @@ preload 계약 또는 Story Bible canonical 저장 모델에 포함하지 않는
 | Electron | Windows desktop runtime | MIT |
 | React / React DOM | renderer UI | MIT |
 | Cytoscape.js 3.34.0 | World Graph renderer와 `cose` layout | MIT |
+| `@xyflow/react` 12.11.2 | Plot Canvas renderer | MIT |
 | Vite / `@vitejs/plugin-react` | renderer/preload bundle | MIT |
 | TypeScript | compile/typecheck | Apache-2.0 |
 | Vitest | unit test | MIT |

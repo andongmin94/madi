@@ -105,6 +105,22 @@ await Promise.all([
     ),
     resolve(resourcesDirectory, "licenses", "CYTOSCAPE-MIT.txt"),
   ),
+  cp(
+    resolve(
+      repositoryRoot,
+      "apps",
+      "desktop",
+      "node_modules",
+      "@xyflow",
+      "react",
+      "LICENSE",
+    ),
+    resolve(resourcesDirectory, "licenses", "REACT-FLOW-MIT.txt"),
+  ),
+  cp(
+    resolve(repositoryRoot, "docs", "licenses", "JSON-CANVAS-MIT.txt"),
+    resolve(resourcesDirectory, "licenses", "JSON-CANVAS-MIT.txt"),
+  ),
 ]);
 
 const executable = resolve(packageDirectory, "madi.exe");
@@ -131,6 +147,8 @@ process.stdout.write(
         "resources/licenses/TYPIE-AGPL-3.0.txt",
         "resources/licenses/NANUM_GOTHIC-OFL-1.1.txt",
         "resources/licenses/CYTOSCAPE-MIT.txt",
+        "resources/licenses/REACT-FLOW-MIT.txt",
+        "resources/licenses/JSON-CANVAS-MIT.txt",
       ],
     },
     null,
