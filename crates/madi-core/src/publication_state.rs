@@ -6,7 +6,7 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use image::{ImageFormat, ImageReader, Limits};
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -149,20 +149,232 @@ pub struct EpubExportPresetConfig {
     pub stylesheet_token: EpubStylesheetToken,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ExportPresetKind {
+    Epub,
+    Hwpx,
+}
+
+impl ExportPresetKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Epub => "EPUB",
+            Self::Hwpx => "HWPX",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "EPUB" => Ok(Self::Epub),
+            "HWPX" => Ok(Self::Hwpx),
+            _ => Err(CoreError::Integrity(
+                "export preset kind is invalid".to_owned(),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum HwpxPageSizeToken {
+    A4,
+    Letter,
+    Custom,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum HwpxOrientation {
+    Portrait,
+    Landscape,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum HwpxLineSpacingMode {
+    Percent,
+    FixedPt,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum HwpxTextAlign {
+    Left,
+    Center,
+    Right,
+    Justify,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum HwpxPageNumberPosition {
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum HwpxSceneBreakToken {
+    Ornament,
+    Rule,
+    Space,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum HwpxSectionSplitMode {
+    Single,
+    Volume,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HwpxHeadingStyleConfig {
+    pub font_family_token: String,
+    pub font_size_pt: f64,
+    pub bold: bool,
+    pub alignment: HwpxTextAlign,
+    pub spacing_before: f64,
+    pub spacing_after: f64,
+    pub page_break_before: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HwpxExportPresetConfig {
+    pub format_version: i64,
+    pub page_size_token: HwpxPageSizeToken,
+    pub custom_page_width: Option<f64>,
+    pub custom_page_height: Option<f64>,
+    pub orientation: HwpxOrientation,
+    pub margin_top: f64,
+    pub margin_bottom: f64,
+    pub margin_left: f64,
+    pub margin_right: f64,
+    pub header_margin: f64,
+    pub footer_margin: f64,
+    pub gutter: f64,
+    pub font_family_token: String,
+    pub font_size_pt: f64,
+    pub line_spacing_mode: HwpxLineSpacingMode,
+    pub line_spacing_value: f64,
+    pub first_line_indent: f64,
+    pub paragraph_spacing_before: f64,
+    pub paragraph_spacing_after: f64,
+    pub text_align: HwpxTextAlign,
+    pub work_title_style: HwpxHeadingStyleConfig,
+    pub volume_title_style: HwpxHeadingStyleConfig,
+    pub chapter_title_style: HwpxHeadingStyleConfig,
+    pub scene_title_style: HwpxHeadingStyleConfig,
+    pub include_title_page: bool,
+    pub include_work_title: bool,
+    pub include_volume_titles: bool,
+    pub include_chapter_titles: bool,
+    pub include_scene_titles: bool,
+    pub section_split_mode: HwpxSectionSplitMode,
+    pub include_page_number: bool,
+    pub page_number_start: i64,
+    pub page_number_position: HwpxPageNumberPosition,
+    pub include_header: bool,
+    pub header_text: String,
+    pub include_footer: bool,
+    pub footer_text: String,
+    pub scene_break_token: HwpxSceneBreakToken,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExportPresetConfig {
+    Epub(EpubExportPresetConfig),
+    Hwpx(HwpxExportPresetConfig),
+}
+
+impl Serialize for ExportPresetConfig {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Epub(config) => config.serialize(serializer),
+            Self::Hwpx(config) => config.serialize(serializer),
+        }
+    }
+}
+
+impl ExportPresetConfig {
+    pub const fn kind(&self) -> ExportPresetKind {
+        match self {
+            Self::Epub(_) => ExportPresetKind::Epub,
+            Self::Hwpx(_) => ExportPresetKind::Hwpx,
+        }
+    }
+
+    fn deserialize_for_kind(
+        kind: ExportPresetKind,
+        value: Value,
+    ) -> std::result::Result<Self, serde_json::Error> {
+        match kind {
+            ExportPresetKind::Epub => serde_json::from_value(value).map(Self::Epub),
+            ExportPresetKind::Hwpx => serde_json::from_value(value).map(Self::Hwpx),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ExportPresetRecord {
     pub id: String,
     pub project_id: String,
-    pub kind: String,
+    pub kind: ExportPresetKind,
     pub name: String,
     pub preset_format: String,
     pub preset_version: i64,
-    pub preset_json: EpubExportPresetConfig,
+    pub preset_json: ExportPresetConfig,
     pub content_hash: String,
     pub revision: i64,
     pub created_at: String,
     pub updated_at: String,
+}
+
+impl<'de> Deserialize<'de> for ExportPresetRecord {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WireRecord {
+            id: String,
+            project_id: String,
+            kind: ExportPresetKind,
+            name: String,
+            preset_format: String,
+            preset_version: i64,
+            preset_json: Value,
+            content_hash: String,
+            revision: i64,
+            created_at: String,
+            updated_at: String,
+        }
+
+        let wire = WireRecord::deserialize(deserializer)?;
+        let preset_json = ExportPresetConfig::deserialize_for_kind(wire.kind, wire.preset_json)
+            .map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            id: wire.id,
+            project_id: wire.project_id,
+            kind: wire.kind,
+            name: wire.name,
+            preset_format: wire.preset_format,
+            preset_version: wire.preset_version,
+            preset_json,
+            content_hash: wire.content_hash,
+            revision: wire.revision,
+            created_at: wire.created_at,
+            updated_at: wire.updated_at,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -171,7 +383,7 @@ pub struct GetPublicationExportStateParams {
     pub file_path: PathBuf,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PublicationExportStateResult {
     pub metadata: AppMeta,
     pub publication_metadata: PublicationMetadataRecord,
@@ -258,7 +470,7 @@ pub struct ListExportPresetsParams {
     pub file_path: PathBuf,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ListExportPresetsResult {
     pub metadata: AppMeta,
     pub presets: Vec<ExportPresetRecord>,
@@ -266,30 +478,103 @@ pub struct ListExportPresetsResult {
     pub revision: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct CreateExportPresetParams {
     #[serde(alias = "path")]
     pub file_path: PathBuf,
     #[serde(default)]
     pub preset_id: Option<String>,
+    pub kind: ExportPresetKind,
     pub name: String,
-    pub preset_json: EpubExportPresetConfig,
+    pub preset_json: ExportPresetConfig,
     pub expected_revision: i64,
     #[serde(default)]
     pub saved_by: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+impl<'de> Deserialize<'de> for CreateExportPresetParams {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WireParams {
+            #[serde(alias = "path")]
+            file_path: PathBuf,
+            #[serde(default)]
+            preset_id: Option<String>,
+            kind: ExportPresetKind,
+            name: String,
+            preset_json: Value,
+            expected_revision: i64,
+            #[serde(default)]
+            saved_by: Option<String>,
+        }
+
+        let wire = WireParams::deserialize(deserializer)?;
+        let preset_json = ExportPresetConfig::deserialize_for_kind(wire.kind, wire.preset_json)
+            .map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            file_path: wire.file_path,
+            preset_id: wire.preset_id,
+            kind: wire.kind,
+            name: wire.name,
+            preset_json,
+            expected_revision: wire.expected_revision,
+            saved_by: wire.saved_by,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct UpdateExportPresetParams {
     #[serde(alias = "path")]
     pub file_path: PathBuf,
     pub preset_id: String,
+    pub kind: ExportPresetKind,
     pub name: String,
-    pub preset_json: EpubExportPresetConfig,
+    pub preset_json: ExportPresetConfig,
     pub expected_revision: i64,
     pub expected_preset_revision: i64,
     #[serde(default)]
     pub saved_by: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for UpdateExportPresetParams {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WireParams {
+            #[serde(alias = "path")]
+            file_path: PathBuf,
+            preset_id: String,
+            kind: ExportPresetKind,
+            name: String,
+            preset_json: Value,
+            expected_revision: i64,
+            expected_preset_revision: i64,
+            #[serde(default)]
+            saved_by: Option<String>,
+        }
+
+        let wire = WireParams::deserialize(deserializer)?;
+        let preset_json = ExportPresetConfig::deserialize_for_kind(wire.kind, wire.preset_json)
+            .map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            file_path: wire.file_path,
+            preset_id: wire.preset_id,
+            kind: wire.kind,
+            name: wire.name,
+            preset_json,
+            expected_revision: wire.expected_revision,
+            expected_preset_revision: wire.expected_preset_revision,
+            saved_by: wire.saved_by,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -317,7 +602,7 @@ pub struct DeleteExportPresetParams {
     pub saved_by: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExportPresetMutationResult {
     pub metadata: AppMeta,
     pub preset: ExportPresetRecord,
@@ -686,11 +971,12 @@ pub fn create_export_preset(
 ) -> Result<ExportPresetMutationResult> {
     validate_name(&params.name)?;
     validate_revision(params.expected_revision, "expected_revision")?;
+    let kind = params.kind;
     let preset_id = params
         .preset_id
         .unwrap_or_else(|| Uuid::new_v4().to_string());
     validate_identifier("preset_id", &preset_id)?;
-    let (preset_json, content_hash) = canonical_export_preset(&params.preset_json)?;
+    let (preset_json, content_hash) = canonical_export_preset(kind, &params.preset_json)?;
     let saved_by = validated_saved_by(params.saved_by.as_deref())?;
     let mut connection = open_existing(&params.file_path)?;
     let before = load_app_meta(&connection)?;
@@ -703,10 +989,11 @@ pub fn create_export_preset(
             "INSERT INTO export_presets (
                 id, project_id, kind, name, preset_format, preset_version,
                 preset_json, content_hash, revision, created_at, updated_at
-             ) VALUES (?1, ?2, 'EPUB', ?3, ?4, ?5, ?6, ?7, 0, ?8, ?8)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?9)",
             params![
                 preset_id,
                 before.project_id,
+                kind.as_str(),
                 params.name,
                 EXPORT_PRESET_FORMAT,
                 EXPORT_PRESET_VERSION,
@@ -749,13 +1036,19 @@ pub fn update_export_preset(
     validate_name(&params.name)?;
     validate_revision(params.expected_revision, "expected_revision")?;
     validate_revision(params.expected_preset_revision, "expected_preset_revision")?;
-    let (preset_json, content_hash) = canonical_export_preset(&params.preset_json)?;
+    let kind = params.kind;
+    let (preset_json, content_hash) = canonical_export_preset(kind, &params.preset_json)?;
     let saved_by = validated_saved_by(params.saved_by.as_deref())?;
     let mut connection = open_existing(&params.file_path)?;
     let before = load_app_meta(&connection)?;
     ensure_metadata_revision(before.revision, params.expected_revision)?;
     let current = load_project_export_preset(&connection, &before.project_id, &params.preset_id)?;
     ensure_preset_revision(current.revision, params.expected_preset_revision)?;
+    if current.kind != kind {
+        return Err(CoreError::InvalidInput(
+            "export preset kind cannot be changed".to_owned(),
+        ));
+    }
     if current.name == params.name && current.content_hash == content_hash {
         let revision = before.revision;
         connection.close().map_err(|(_, error)| error)?;
@@ -774,7 +1067,7 @@ pub fn update_export_preset(
             "UPDATE export_presets
              SET name = ?1, preset_json = ?2, content_hash = ?3,
                  revision = revision + 1, updated_at = ?4
-             WHERE id = ?5 AND project_id = ?6 AND kind = 'EPUB' AND revision = ?7",
+             WHERE id = ?5 AND project_id = ?6 AND kind = ?7 AND revision = ?8",
             params![
                 params.name,
                 preset_json,
@@ -782,6 +1075,7 @@ pub fn update_export_preset(
                 now,
                 params.preset_id,
                 before.project_id,
+                kind.as_str(),
                 params.expected_preset_revision,
             ],
         )?;
@@ -822,7 +1116,7 @@ pub fn duplicate_export_preset(
         .name
         .unwrap_or_else(|| format!("{} copy", source.name));
     validate_name(&name)?;
-    let (preset_json, content_hash) = canonical_export_preset(&source.preset_json)?;
+    let (preset_json, content_hash) = canonical_export_preset(source.kind, &source.preset_json)?;
     let now = database_timestamp(&connection)?;
     {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -831,10 +1125,11 @@ pub fn duplicate_export_preset(
             "INSERT INTO export_presets (
                 id, project_id, kind, name, preset_format, preset_version,
                 preset_json, content_hash, revision, created_at, updated_at
-             ) VALUES (?1, ?2, 'EPUB', ?3, ?4, ?5, ?6, ?7, 0, ?8, ?8)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?9)",
             params![
                 preset_id,
                 before.project_id,
+                source.kind.as_str(),
                 name,
                 EXPORT_PRESET_FORMAT,
                 EXPORT_PRESET_VERSION,
@@ -886,10 +1181,11 @@ pub fn delete_export_preset(params: DeleteExportPresetParams) -> Result<DeleteEx
         ensure_project_revision(&transaction, params.expected_revision)?;
         let changed = transaction.execute(
             "DELETE FROM export_presets
-             WHERE id = ?1 AND project_id = ?2 AND kind = 'EPUB' AND revision = ?3",
+             WHERE id = ?1 AND project_id = ?2 AND kind = ?3 AND revision = ?4",
             params![
                 params.preset_id,
                 before.project_id,
+                current.kind.as_str(),
                 params.expected_preset_revision,
             ],
         )?;
@@ -1002,8 +1298,8 @@ pub(crate) fn load_project_export_presets(
     let mut statement = connection.prepare(
         "SELECT id, project_id, kind, name, preset_format, preset_version,
                 preset_json, content_hash, revision, created_at, updated_at
-         FROM export_presets WHERE project_id = ?1 AND kind = 'EPUB'
-         ORDER BY name COLLATE NOCASE, id",
+         FROM export_presets WHERE project_id = ?1
+         ORDER BY kind, name COLLATE NOCASE, id",
     )?;
     let rows = statement.query_map([project_id], export_preset_row)?;
     rows.collect::<std::result::Result<Vec<_>, _>>()?
@@ -1023,7 +1319,7 @@ fn load_project_export_preset(
             "SELECT id, project_id, kind, name, preset_format, preset_version,
                     preset_json, content_hash, revision, created_at, updated_at
              FROM export_presets
-             WHERE id = ?1 AND project_id = ?2 AND kind = 'EPUB'",
+             WHERE id = ?1 AND project_id = ?2",
             params![preset_id, project_id],
             export_preset_row,
         )
@@ -1083,14 +1379,24 @@ fn publication_asset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Publicatio
 }
 
 fn export_preset_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ExportPresetRecord> {
+    let kind_text: String = row.get(2)?;
+    let kind = ExportPresetKind::parse(&kind_text).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(error))
+    })?;
     let preset_json: String = row.get(6)?;
-    let config = serde_json::from_str::<EpubExportPresetConfig>(&preset_json).map_err(|error| {
+    let config = match kind {
+        ExportPresetKind::Epub => serde_json::from_str::<EpubExportPresetConfig>(&preset_json)
+            .map(ExportPresetConfig::Epub),
+        ExportPresetKind::Hwpx => serde_json::from_str::<HwpxExportPresetConfig>(&preset_json)
+            .map(ExportPresetConfig::Hwpx),
+    }
+    .map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(6, rusqlite::types::Type::Text, Box::new(error))
     })?;
     Ok(ExportPresetRecord {
         id: row.get(0)?,
         project_id: row.get(1)?,
-        kind: row.get(2)?,
+        kind,
         name: row.get(3)?,
         preset_format: row.get(4)?,
         preset_version: row.get(5)?,
@@ -1145,15 +1451,15 @@ pub(crate) fn validate_loaded_export_preset(
     validate_identifier("export preset project_id", &record.project_id)?;
     validate_name(&record.name)?;
     validate_revision(record.revision, "export preset revision")?;
-    if record.kind != "EPUB"
-        || record.preset_format != EXPORT_PRESET_FORMAT
+    if record.preset_format != EXPORT_PRESET_FORMAT
         || record.preset_version != EXPORT_PRESET_VERSION
     {
         return Err(CoreError::Integrity(
             "export preset envelope is invalid".to_owned(),
         ));
     }
-    let (_, expected_hash) = canonical_export_preset(&record.preset_json)?;
+    ensure_preset_kind_matches_config(record.kind, &record.preset_json)?;
+    let (_, expected_hash) = canonical_export_preset(record.kind, &record.preset_json)?;
     if record.content_hash != expected_hash {
         return Err(CoreError::Integrity(
             "export preset canonical content hash is invalid".to_owned(),
@@ -1162,7 +1468,11 @@ pub(crate) fn validate_loaded_export_preset(
     Ok(record)
 }
 
-pub(crate) fn canonical_export_preset(config: &EpubExportPresetConfig) -> Result<(String, String)> {
+pub(crate) fn canonical_export_preset(
+    kind: ExportPresetKind,
+    config: &ExportPresetConfig,
+) -> Result<(String, String)> {
+    ensure_preset_kind_matches_config(kind, config)?;
     validate_export_preset(config)?;
     let value = canonical_value(serde_json::to_value(config)?);
     let json = serde_json::to_string(&value)?;
@@ -1170,7 +1480,26 @@ pub(crate) fn canonical_export_preset(config: &EpubExportPresetConfig) -> Result
     Ok((json, hash))
 }
 
-pub fn validate_export_preset(config: &EpubExportPresetConfig) -> Result<()> {
+pub fn validate_export_preset(config: &ExportPresetConfig) -> Result<()> {
+    match config {
+        ExportPresetConfig::Epub(config) => validate_epub_export_preset(config),
+        ExportPresetConfig::Hwpx(config) => validate_hwpx_export_preset(config),
+    }
+}
+
+fn ensure_preset_kind_matches_config(
+    kind: ExportPresetKind,
+    config: &ExportPresetConfig,
+) -> Result<()> {
+    if kind != config.kind() {
+        return Err(CoreError::InvalidInput(
+            "export preset kind does not match preset_json".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_epub_export_preset(config: &EpubExportPresetConfig) -> Result<()> {
     if config.format_version != EXPORT_PRESET_VERSION {
         return invalid("unsupported EPUB export preset format version");
     }
@@ -1178,6 +1507,153 @@ pub fn validate_export_preset(config: &EpubExportPresetConfig) -> Result<()> {
         return invalid("tocDepth must be between 1 and 4");
     }
     Ok(())
+}
+
+fn validate_hwpx_export_preset(config: &HwpxExportPresetConfig) -> Result<()> {
+    if config.format_version != EXPORT_PRESET_VERSION {
+        return invalid("unsupported HWPX export preset format version");
+    }
+    match config.page_size_token {
+        HwpxPageSizeToken::Custom => {
+            validate_number_range("customPageWidth", config.custom_page_width, 50.0, 500.0)?;
+            validate_number_range("customPageHeight", config.custom_page_height, 50.0, 500.0)?;
+        }
+        HwpxPageSizeToken::A4 | HwpxPageSizeToken::Letter => {
+            if config.custom_page_width.is_some() || config.custom_page_height.is_some() {
+                return invalid("custom page dimensions are only valid for CUSTOM page size");
+            }
+        }
+    }
+    for (name, value) in [
+        ("marginTop", config.margin_top),
+        ("marginBottom", config.margin_bottom),
+        ("marginLeft", config.margin_left),
+        ("marginRight", config.margin_right),
+        ("headerMargin", config.header_margin),
+        ("footerMargin", config.footer_margin),
+        ("gutter", config.gutter),
+    ] {
+        validate_number_range(name, Some(value), 0.0, 100.0)?;
+    }
+    validate_font_family_token("fontFamilyToken", &config.font_family_token)?;
+    validate_number_range("fontSizePt", Some(config.font_size_pt), 6.0, 72.0)?;
+    match config.line_spacing_mode {
+        HwpxLineSpacingMode::Percent => validate_number_range(
+            "lineSpacingValue",
+            Some(config.line_spacing_value),
+            50.0,
+            400.0,
+        )?,
+        HwpxLineSpacingMode::FixedPt => validate_number_range(
+            "lineSpacingValue",
+            Some(config.line_spacing_value),
+            6.0,
+            200.0,
+        )?,
+    }
+    validate_number_range(
+        "firstLineIndent",
+        Some(config.first_line_indent),
+        -100.0,
+        100.0,
+    )?;
+    validate_number_range(
+        "paragraphSpacingBefore",
+        Some(config.paragraph_spacing_before),
+        0.0,
+        100.0,
+    )?;
+    validate_number_range(
+        "paragraphSpacingAfter",
+        Some(config.paragraph_spacing_after),
+        0.0,
+        100.0,
+    )?;
+    for (name, heading) in [
+        ("workTitleStyle", &config.work_title_style),
+        ("volumeTitleStyle", &config.volume_title_style),
+        ("chapterTitleStyle", &config.chapter_title_style),
+        ("sceneTitleStyle", &config.scene_title_style),
+    ] {
+        validate_heading_style(name, heading)?;
+    }
+    if !(1..=1_000_000).contains(&config.page_number_start) {
+        return invalid("pageNumberStart must be between 1 and 1000000");
+    }
+    validate_bounded_xml_text("headerText", &config.header_text, 1_000)?;
+    validate_bounded_xml_text("footerText", &config.footer_text, 1_000)?;
+    if !config.include_header && !config.header_text.is_empty() {
+        return invalid("headerText must be empty when includeHeader is false");
+    }
+    if !config.include_footer && !config.footer_text.is_empty() {
+        return invalid("footerText must be empty when includeFooter is false");
+    }
+    Ok(())
+}
+
+fn validate_heading_style(name: &str, style: &HwpxHeadingStyleConfig) -> Result<()> {
+    validate_font_family_token(&format!("{name}.fontFamilyToken"), &style.font_family_token)?;
+    validate_number_range(
+        &format!("{name}.fontSizePt"),
+        Some(style.font_size_pt),
+        6.0,
+        72.0,
+    )?;
+    validate_number_range(
+        &format!("{name}.spacingBefore"),
+        Some(style.spacing_before),
+        0.0,
+        100.0,
+    )?;
+    validate_number_range(
+        &format!("{name}.spacingAfter"),
+        Some(style.spacing_after),
+        0.0,
+        100.0,
+    )?;
+    Ok(())
+}
+
+fn validate_number_range(name: &str, value: Option<f64>, minimum: f64, maximum: f64) -> Result<()> {
+    let Some(value) = value else {
+        return invalid(&format!("{name} is required"));
+    };
+    if !value.is_finite() || value < minimum || value > maximum {
+        return invalid(&format!(
+            "{name} must be a finite number between {minimum} and {maximum}"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_font_family_token(name: &str, value: &str) -> Result<()> {
+    let length = value.chars().count();
+    if length == 0 || length > 128 || value.trim() != value {
+        return invalid(&format!("{name} must contain 1 to 128 trimmed characters"));
+    }
+    if value.chars().any(|character| {
+        character.is_control() || matches!(character, '<' | '>' | '&' | '\"' | '\'')
+    }) {
+        return invalid(&format!("{name} contains unsafe characters"));
+    }
+    Ok(())
+}
+
+fn validate_bounded_xml_text(name: &str, value: &str, maximum: usize) -> Result<()> {
+    if value.chars().count() > maximum {
+        return invalid(&format!("{name} exceeds {maximum} characters"));
+    }
+    if value.chars().any(is_invalid_xml_character) {
+        return invalid(&format!("{name} contains an invalid XML character"));
+    }
+    Ok(())
+}
+
+fn is_invalid_xml_character(character: char) -> bool {
+    !matches!(
+        character as u32,
+        0x9 | 0xA | 0xD | 0x20..=0xD7FF | 0xE000..=0xFFFD | 0x10000..=0x10FFFF
+    )
 }
 
 pub fn validate_cover_bytes(media_type: &str, bytes: &[u8]) -> Result<(u32, u32)> {

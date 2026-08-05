@@ -20,7 +20,7 @@ use crate::publication_state::seed_publication_metadata;
 pub const APPLICATION_ID: i64 = 0x4D41_4449;
 pub const FORMAT_NAME: &str = "madi";
 pub const FORMAT_VERSION: i64 = 1;
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 8;
 
 const DEFAULT_EDITOR_ENGINE: &str = "typie";
 const UNINITIALIZED_EDITOR_COMMIT: &str = "uninitialized";
@@ -517,6 +517,48 @@ CREATE TABLE IF NOT EXISTS export_presets (
 CREATE INDEX IF NOT EXISTS export_presets_project_name_idx
     ON export_presets(project_id, kind, name COLLATE NOCASE, id);
 CREATE INDEX IF NOT EXISTS export_presets_project_updated_idx
+    ON export_presets(project_id, updated_at DESC, id);
+"#;
+
+const MIGRATION_V8: &str = r#"
+DROP INDEX IF EXISTS export_presets_project_name_idx;
+DROP INDEX IF EXISTS export_presets_project_updated_idx;
+
+ALTER TABLE export_presets RENAME TO export_presets_v7;
+
+CREATE TABLE export_presets (
+    id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('EPUB', 'HWPX')),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    preset_format TEXT NOT NULL CHECK (preset_format = 'MADI_EXPORT_PRESET'),
+    preset_version INTEGER NOT NULL CHECK (preset_version = 1),
+    preset_json TEXT NOT NULL CHECK (json_valid(preset_json)),
+    content_hash TEXT NOT NULL CHECK (
+        length(content_hash) = 64
+        AND content_hash = lower(content_hash)
+        AND content_hash NOT GLOB '*[^0-9a-f]*'
+    ),
+    revision INTEGER NOT NULL CHECK (revision >= 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+INSERT INTO export_presets (
+    id, project_id, kind, name, preset_format, preset_version,
+    preset_json, content_hash, revision, created_at, updated_at
+)
+SELECT
+    id, project_id, kind, name, preset_format, preset_version,
+    preset_json, content_hash, revision, created_at, updated_at
+FROM export_presets_v7;
+
+DROP TABLE export_presets_v7;
+
+CREATE INDEX export_presets_project_name_idx
+    ON export_presets(project_id, kind, name COLLATE NOCASE, id);
+CREATE INDEX export_presets_project_updated_idx
     ON export_presets(project_id, updated_at DESC, id);
 "#;
 
@@ -1136,6 +1178,30 @@ fn migrate(connection: &mut Connection) -> Result<()> {
             [],
         )?;
         transaction.pragma_update(None, "user_version", 7_i64)?;
+        transaction.commit()?;
+        current = 7;
+    }
+
+    if current < 8 {
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute_batch(MIGRATION_V8)?;
+        let applied_at = database_timestamp(&transaction)?;
+        transaction.execute(
+            "INSERT OR IGNORE INTO schema_migrations
+                (version, applied_at, description)
+             VALUES (8, ?1, ?2)",
+            params![
+                applied_at,
+                "Phase 1H typed EPUB and HWPX export preset coexistence"
+            ],
+        )?;
+        transaction.execute(
+            "UPDATE app_meta
+             SET format_version = 1, schema_version = 8
+             WHERE singleton = 1",
+            [],
+        )?;
+        transaction.pragma_update(None, "user_version", 8_i64)?;
         transaction.commit()?;
     }
 

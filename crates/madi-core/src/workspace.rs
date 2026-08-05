@@ -3119,8 +3119,9 @@ fn restore_payload(transaction: &Transaction<'_>, payload: &LogicalSnapshotPaylo
             ],
         )?;
         for preset in &payload.export_presets {
-            let (preset_json, content_hash) = canonical_export_preset(&preset.preset_json)
-                .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
+            let (preset_json, content_hash) =
+                canonical_export_preset(preset.kind, &preset.preset_json)
+                    .map_err(|error| CoreError::SnapshotIntegrity(error.to_string()))?;
             if content_hash != preset.content_hash {
                 return Err(CoreError::SnapshotIntegrity(
                     "export preset canonical hash changed during restore".to_owned(),
@@ -3134,7 +3135,7 @@ fn restore_payload(transaction: &Transaction<'_>, payload: &LogicalSnapshotPaylo
                 params![
                     preset.id,
                     preset.project_id,
-                    preset.kind,
+                    preset.kind.as_str(),
                     preset.name,
                     preset.preset_format,
                     preset.preset_version,

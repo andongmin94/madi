@@ -196,13 +196,13 @@ fn insert_derived_snapshot(
 }
 
 #[test]
-fn schema_seven_defaults_are_stable_and_schema_six_migrates_without_data_loss() {
+fn schema_eight_defaults_are_stable_and_schema_six_migrates_without_data_loss() {
     let no_author = new_fixture("no-author.madi", "no-author-project", None);
     let first = get_publication_export_state(GetPublicationExportStateParams {
         file_path: no_author.path.clone(),
     })
     .unwrap();
-    assert_eq!(first.metadata.schema_version, 7);
+    assert_eq!(first.metadata.schema_version, 8);
     assert_eq!(first.metadata.format_version, 1);
     assert_eq!(first.publication_metadata.creator_name, "");
     assert_eq!(first.publication_metadata.language, "ko-KR");
@@ -240,7 +240,7 @@ fn schema_seven_defaults_are_stable_and_schema_six_migrates_without_data_loss() 
         file_path: migrated.path.clone(),
     })
     .unwrap();
-    assert_eq!(opened.metadata.schema_version, 7);
+    assert_eq!(opened.metadata.schema_version, 8);
     assert_eq!(opened.metadata.revision, 0);
     assert_eq!(opened.documents.len(), 1);
     let tree_after = load_project_tree(LoadProjectTreeParams {
@@ -351,8 +351,9 @@ fn metadata_cover_and_export_preset_crud_are_revisioned_no_op_and_project_owned(
     let created = create_export_preset(CreateExportPresetParams {
         file_path: fixture.path.clone(),
         preset_id: Some("epub-main".to_owned()),
+        kind: ExportPresetKind::Epub,
         name: "기본 EPUB".to_owned(),
-        preset_json: default_preset(),
+        preset_json: ExportPresetConfig::Epub(default_preset()),
         expected_revision: metadata_with_implicit_cover.revision,
         saved_by: None,
     })
@@ -362,6 +363,7 @@ fn metadata_cover_and_export_preset_crud_are_revisioned_no_op_and_project_owned(
     let update_no_op = update_export_preset(UpdateExportPresetParams {
         file_path: fixture.path.clone(),
         preset_id: created.preset.id.clone(),
+        kind: ExportPresetKind::Epub,
         name: created.preset.name.clone(),
         preset_json: created.preset.preset_json.clone(),
         expected_revision: created.revision,
@@ -372,11 +374,15 @@ fn metadata_cover_and_export_preset_crud_are_revisioned_no_op_and_project_owned(
     assert!(update_no_op.no_op);
     assert_eq!(update_no_op.revision, created.revision);
     let mut changed_config = created.preset.preset_json.clone();
-    changed_config.target_profile = EpubTargetProfile::Epub33Compatibility;
-    changed_config.split_mode = EpubSplitMode::Scene;
+    let ExportPresetConfig::Epub(epub_config) = &mut changed_config else {
+        panic!("created EPUB preset changed kind");
+    };
+    epub_config.target_profile = EpubTargetProfile::Epub33Compatibility;
+    epub_config.split_mode = EpubSplitMode::Scene;
     let changed = update_export_preset(UpdateExportPresetParams {
         file_path: fixture.path.clone(),
         preset_id: created.preset.id.clone(),
+        kind: ExportPresetKind::Epub,
         name: "EPUB 3.3".to_owned(),
         preset_json: changed_config,
         expected_revision: created.revision,
@@ -586,8 +592,9 @@ fn snapshot_v5_restores_export_state_diffs_rolls_back_and_decodes_v4() {
     let preset = create_export_preset(CreateExportPresetParams {
         file_path: fixture.path.clone(),
         preset_id: Some("snapshot-preset".to_owned()),
+        kind: ExportPresetKind::Epub,
         name: "기준 preset".to_owned(),
-        preset_json: default_preset(),
+        preset_json: ExportPresetConfig::Epub(default_preset()),
         expected_revision: cover.revision,
         saved_by: None,
     })
@@ -624,10 +631,14 @@ fn snapshot_v5_restores_export_state_diffs_rolls_back_and_decodes_v4() {
     })
     .unwrap();
     let mut changed_config = preset.preset.preset_json.clone();
-    changed_config.split_mode = EpubSplitMode::Scene;
+    let ExportPresetConfig::Epub(epub_config) = &mut changed_config else {
+        panic!("snapshot EPUB preset changed kind");
+    };
+    epub_config.split_mode = EpubSplitMode::Scene;
     let changed_preset = update_export_preset(UpdateExportPresetParams {
         file_path: fixture.path.clone(),
         preset_id: preset.preset.id.clone(),
+        kind: ExportPresetKind::Epub,
         name: "변경 preset".to_owned(),
         preset_json: changed_config,
         expected_revision: changed_cover.revision,
@@ -638,8 +649,9 @@ fn snapshot_v5_restores_export_state_diffs_rolls_back_and_decodes_v4() {
     let added = create_export_preset(CreateExportPresetParams {
         file_path: fixture.path.clone(),
         preset_id: Some("added-preset".to_owned()),
+        kind: ExportPresetKind::Epub,
         name: "추가 preset".to_owned(),
-        preset_json: default_preset(),
+        preset_json: ExportPresetConfig::Epub(default_preset()),
         expected_revision: changed_preset.revision,
         saved_by: None,
     })
@@ -792,6 +804,7 @@ fn strict_rpc_rejects_arbitrary_preset_fields_and_reports_exact_profile_tokens()
         json!({
             "file_path": fixture.path,
             "preset_id": "rpc-preset",
+            "kind": "EPUB",
             "name": "RPC preset",
             "preset_json": {
                 "formatVersion": 1,
@@ -819,6 +832,7 @@ fn strict_rpc_rejects_arbitrary_preset_fields_and_reports_exact_profile_tokens()
         "create_export_preset",
         json!({
             "file_path": fixture.path,
+            "kind": "EPUB",
             "name": "Unsafe CSS",
             "preset_json": {
                 "formatVersion": 1,
@@ -841,5 +855,5 @@ fn strict_rpc_rejects_arbitrary_preset_fields_and_reports_exact_profile_tokens()
         toc_depth: 0,
         ..default_preset()
     };
-    assert!(validate_export_preset(&invalid_toc).is_err());
+    assert!(validate_export_preset(&ExportPresetConfig::Epub(invalid_toc)).is_err());
 }

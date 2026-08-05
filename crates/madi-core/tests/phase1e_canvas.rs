@@ -156,17 +156,17 @@ fn sample_document() -> MadiCanvasDocument {
 }
 
 #[test]
-fn schema_v7_keeps_format_v1_and_enforces_canvas_table_constraints() {
+fn current_schema_keeps_format_v1_and_enforces_canvas_table_constraints() {
     let fixture = fixture("schema-v5.madi");
     let opened = open_project(OpenProjectParams {
         file_path: fixture.path.clone(),
     })
     .unwrap();
     assert_eq!(FORMAT_VERSION, 1);
-    assert_eq!(SCHEMA_VERSION, 7);
+    assert_eq!(SCHEMA_VERSION, 8);
     assert_eq!(opened.metadata.format_version, 1);
-    assert_eq!(opened.metadata.schema_version, 7);
-    assert_eq!(opened.schema_migrations.last().unwrap().version, 7);
+    assert_eq!(opened.metadata.schema_version, 8);
+    assert_eq!(opened.schema_migrations.last().unwrap().version, 8);
 
     let connection = Connection::open(&fixture.path).unwrap();
     let project_id = opened.metadata.project_id;
