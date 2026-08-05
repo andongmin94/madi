@@ -1,68 +1,96 @@
-# Phase 1I — User-owned LLM Adapter Foundation
+# Phase 1I — User-owned LLM Adapter
 
 ## Status
 
 ```text
-Phase 1I-A implementation: IN PROGRESS ON main
+Phase 1I-A transport contracts: IMPLEMENTED
+Phase 1I-B protected provider store and Electron IPC: IMPLEMENTED ON main
+Local strict TypeScript compile: PASS
+Local provider-store/runtime exercise: PASS
+Full repository Windows verification: PENDING
+Provider UI and proposal review/apply: NOT YET IMPLEMENTED
 Distribution boundary: PRIVATE LOCAL ONLY
 Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Windows native Korean IME: MANUAL VALIDATION PENDING
-Phase 1H Windows actual: CI VERIFICATION IN PROGRESS
 ```
 
-Phase 1I starts with a small, testable transport boundary instead of adding an AI writing UI directly to the existing renderer monolith. The first slice defines the provider and invocation contracts, enforces explicit scope consent, and implements a bounded OpenAI-compatible client in the Electron main-process codebase.
+Phase 1I adds optional user-owned LLM assistance without adding a Madi server, account system, shared API key, or mandatory network connection. The product remains fully usable when no provider is configured.
 
 ## Product rules
 
-1. AI is optional. Every non-AI writing, organization, preview, and export feature continues to work without a provider.
-2. madi does not operate an LLM proxy or account service.
-3. The user owns the provider account, API key, local model, and resulting charges.
-4. A remote provider must use HTTPS. Plain HTTP is accepted only for loopback endpoints such as `127.0.0.1`, `localhost`, or `::1`.
-5. A provider URL must not contain credentials, query parameters, or fragments.
-6. API keys are not part of the provider config, `.madi` project file, logs, evidence, reports, or error messages.
-7. A request is rejected if the selected manuscript scope changes after the user confirms transmission.
-8. Provider output is a proposal. It is not written into a Typie document automatically.
-9. Manuscript and provider response bodies are never included in application logs or sanitized errors.
-10. Redirects are rejected so a configured provider cannot silently forward manuscript content to another host.
+1. AI is optional and disabled until the user configures a provider.
+2. The user owns the provider account, local model, API key, and resulting charges.
+3. Remote providers require HTTPS. Plain HTTP is accepted only for loopback endpoints.
+4. Provider URLs may not contain credentials, query parameters, or fragments.
+5. API keys are not stored in `.madi`, provider config JSON, logs, evidence, or error reports.
+6. Electron `safeStorage` protects credentials in the app-level provider store under `userData`.
+7. If protected storage is unavailable, remote key-based providers remain unavailable while the rest of madi continues to work.
+8. Every invocation is bound to an explicitly confirmed manuscript scope SHA-256.
+9. If the scope changes after confirmation, the main process rejects the request before any network call.
+10. Redirects are rejected.
+11. Provider output is a proposal and is never applied to Typie canonical content automatically.
+12. Manuscript text, provider response bodies, and API keys are excluded from sanitized errors.
 
-## Phase 1I-A implementation
+## Implemented repository layers
 
-- `apps/desktop/src/shared/llm.ts`
-  - versioned provider config
-  - safe base-URL validation and normalization
-  - OpenAI-compatible chat endpoint resolution
-  - invocation scope, consent, usage, and result contracts
-  - no secret-bearing fields
-- `apps/desktop/src/main/llm/openAiCompatibleClient.ts`
-  - SHA-256 binding of user consent to the exact selected scope
-  - request and response size bounds
-  - timeout and cancellation
-  - redirect rejection
-  - generic status/error mapping without response-body leakage
-  - string and text-part assistant response support
-- automated contract and transport tests using injected `fetch`; tests make no real network request
+### Shared contracts
 
-## Deferred to the next Phase 1I slice
+- versioned OpenAI-compatible provider configuration
+- safe endpoint normalization
+- task, scope, consent, usage, and result types
+- closed `madi:llm:*` IPC channel set
+- provider CRUD and invocation contracts with no secret-bearing config field
 
-- Electron IPC and typed preload methods
-- OS-protected credential storage using Electron `safeStorage`
-- provider CRUD UI
-- explicit send-confirmation UI showing provider, model, selected scope, and character count
-- streaming response UI
-- proposal diff, partial apply, reject, and snapshot-before-apply
-- scene, chapter, Story Bible, and custom prompt recipes
-- local-model discovery
-- usage/cost display
-- real-provider manual validation
+### Main-process transport
+
+- bounded non-streaming chat-completions request
+- explicit-scope consent hash verification
+- timeout and caller cancellation
+- response-size limit
+- redirect rejection
+- generic status/error mapping
+- string and text-part assistant response parsing
+
+### Protected provider store
+
+- provider config stored outside `.madi`
+- credentials encrypted with Electron `safeStorage`
+- revision-checked provider mutations
+- bounded JSON parser with exact schema and duplicate-ID rejection
+- temporary-file write, primary/backup recovery, and stale-temp cleanup
+- optional-store failure does not stop the authoring application
+
+### Electron boundary
+
+- fixed, trusted-sender IPC handlers
+- separate narrow `window.madiLlm` preload API
+- no raw `ipcRenderer`, `fetch`, filesystem, or secret storage exposed to the renderer
+- active requests are aborted on application shutdown
+
+## Verification performed in this implementation turn
+
+- strict TypeScript compilation of the split LLM store/service/transport modules
+- local runtime exercise covering create, encrypted persistence, no plaintext-at-rest, update, invoke, and delete
+- automated repository tests added for contracts, transport privacy, provider storage, preload routing, cancellation, and optional-store failure
+
+The full repository `pnpm verify`, Electron package tests, and Windows workflow remain the authoritative aggregate gates and were not claimed as passed in this turn.
+
+## Next Phase 1I slice
+
+- provider settings UI
+- explicit send-confirmation UI showing provider, model, scope, and character count
+- optional streaming proposal display
+- proposal diff, reject, partial apply, and full apply
+- automatic safety snapshot before accepted multi-block changes
+- prompt recipes for selection, scene, chapter, Story Bible extraction, and consistency review
+- real remote-provider and loopback-provider manual validation
 
 ## Explicitly out of scope
 
-- automatic background manuscript upload
-- server-owned provider keys
+- background manuscript upload
+- Madi-operated proxy or shared keys
 - automatic rewrite without review
-- LLM output stored as canonical manuscript before user approval
 - provider-specific SDKs
-- arbitrary request headers or scripts
-- remote HTTP endpoints
+- arbitrary headers or scripts
 - collaborative AI sessions
 - AI telemetry

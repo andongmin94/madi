@@ -5,6 +5,7 @@ import {
   dialog,
   ipcMain,
   protocol,
+  safeStorage,
   session,
   shell
 } from "electron";
@@ -34,6 +35,10 @@ import {
   resolveAtomicOutputBinary
 } from "./atomicOutputClient";
 import { EpubShutdownCoordinator } from "./epubShutdownCoordinator";
+import { ElectronSafeStorageProtector } from "./llm/electronSecretProtector";
+import { registerMadiLlmIpc } from "./llm/ipc";
+import { FileLlmProviderStore } from "./llm/providerStore";
+import { LlmRuntimeService } from "./llm/service";
 import {
   createMainWindow,
   installRuntimeProcessNetworkBoundary,
@@ -60,10 +65,13 @@ app.enableSandbox();
 
 let core: JsonRpcCoreClient | undefined;
 let disposeIpc: (() => void) | undefined;
+let disposeLlmIpc: (() => void) | undefined;
+let llmService: LlmRuntimeService | undefined;
 let networkGuardInstalled = false;
 let appProtocolInstalled = false;
 let hwpxCrashRecovery: FileHwpxCrashRecoveryRegistry | undefined;
 let atomicOutput: ProcessAtomicOutput | undefined;
+
 class ProcessExportRuntime {
   public readonly epub: ProcessEpubExporter;
   public readonly hwpx: ProcessHwpxExporter;
@@ -128,13 +136,24 @@ function scheduleEpubShutdown(): void {
     return;
   }
   epubShutdownStartScheduled = true;
-  // Start cleanup on the next Node turn. An accepted close leaves a 100 ms
-  // authorization gap before the window disappears, while crash and quit
-  // fallbacks unwind their native lifecycle callback before cleanup begins.
   setImmediate(() => {
     epubShutdownStartScheduled = false;
     epubShutdown.beginShutdown();
   });
+}
+
+async function getOrCreateLlmService(): Promise<LlmRuntimeService> {
+  if (llmService) {
+    return llmService;
+  }
+  const store = new FileLlmProviderStore(
+    path.join(app.getPath("userData"), "llm-providers-v1"),
+    new ElectronSafeStorageProtector(safeStorage)
+  );
+  const service = new LlmRuntimeService(store);
+  await service.initialize();
+  llmService = service;
+  return service;
 }
 
 async function openApplicationWindow(): Promise<void> {
@@ -194,8 +213,10 @@ async function openApplicationWindow(): Promise<void> {
   const exportRuntime = epubShutdown.getOrCreateExporter(
     () => new ProcessExportRuntime()
   );
+  const optionalLlmService = await getOrCreateLlmService();
 
   disposeIpc?.();
+  disposeLlmIpc?.();
   const service = new DesktopService(
     window,
     dialog,
@@ -225,11 +246,19 @@ async function openApplicationWindow(): Promise<void> {
       return safeClose.complete(readyToClose);
     }
   });
+  disposeLlmIpc = registerMadiLlmIpc({
+    ipcMain,
+    window,
+    rendererUrl: target.rendererUrl,
+    service: optionalLlmService
+  });
 
   window.once("closed", () => {
     safeClose.dispose();
     disposeIpc?.();
     disposeIpc = undefined;
+    disposeLlmIpc?.();
+    disposeLlmIpc = undefined;
     void epubShutdown.releaseService(service).catch(() => {
       // Keep the service registered so application quit remains fail-closed.
     });
@@ -262,12 +291,11 @@ app.on("window-all-closed", () => {
 app.on("will-quit", (event) => {
   if (!epubShutdown.isComplete) {
     event.preventDefault();
-    // The renderer has already authorized every window close at will-quit.
-    // Scheduling shutdown now bounds any abandoned PREPARING compilation
-    // after a renderer crash; a refused close never reaches this point.
     scheduleEpubShutdown();
     return;
   }
   disposeIpc?.();
+  disposeLlmIpc?.();
+  llmService?.dispose();
   core?.dispose();
 });

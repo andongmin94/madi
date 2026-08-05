@@ -1,9 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { createMadiDesktopApi } from "./bridge";
+import { createMadiLlmApi } from "./llmBridge";
+
+const invoke = (channel: string, ...arguments_: readonly unknown[]) =>
+  ipcRenderer.invoke(channel, ...arguments_);
 
 const api = createMadiDesktopApi(
-  (channel, ...arguments_) =>
-    ipcRenderer.invoke(channel, ...arguments_),
+  invoke,
   (channel, listener) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload?: unknown) =>
       listener(payload);
@@ -13,3 +16,4 @@ const api = createMadiDesktopApi(
 );
 
 contextBridge.exposeInMainWorld("madi", api);
+contextBridge.exposeInMainWorld("madiLlm", createMadiLlmApi(invoke));

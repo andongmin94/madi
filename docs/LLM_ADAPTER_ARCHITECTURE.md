@@ -7,25 +7,27 @@ Typie canonical manuscript
         │
         ├─ user selects an explicit scope
         ▼
-Madi LLM invocation scope
-        │  SHA-256
+Madi invocation scope + scope SHA-256
+        │
         ├─ user confirms provider/model/scope
         ▼
-Electron main OpenAI-compatible client
-        │
-        ├─ HTTPS remote provider, or
-        └─ loopback HTTP local provider
+Trusted Electron IPC
+        ▼
+Main-process LLM runtime service
+        ├─ app-level provider config store
+        ├─ Electron safeStorage credential protector
+        └─ bounded OpenAI-compatible transport
         ▼
 Proposal result
         │
         └─ future diff/review/apply workflow
 ```
 
-The LLM adapter is not part of the Typie editor engine and does not change the Publication IR or export pipeline. It consumes a user-selected copy of text and optional context, and returns a proposal. Canonical manuscript changes remain Typie transactions initiated after user review.
+The LLM adapter is not part of the Typie editor engine and does not change Publication IR or export behavior. It consumes only the text and context explicitly selected by the user, then returns a non-canonical proposal.
 
-## Provider config and secrets
+## Provider configuration and credentials
 
-`LlmProviderConfig` contains only non-secret, versioned configuration:
+`LlmProviderConfig` contains only versioned, non-secret values:
 
 - provider ID and revision
 - display name
@@ -38,27 +40,30 @@ The LLM adapter is not part of the Typie editor engine and does not change the P
 - maximum output tokens
 - temperature
 
-The actual API key is passed to the main-process transport at invocation time. It is never serialized into provider config. The next implementation slice will bind credential references to Electron `safeStorage`-protected records outside `.madi`.
+Provider configuration is stored under Electron `userData/llm-providers-v1`, not in a `.madi` project. The encrypted credential bytes are stored beside the config, but plaintext keys are never serialized. Electron `safeStorage` provides encryption and decryption. When OS-protected storage is unavailable, keyless loopback providers can still work, while key-based providers report a locked or unavailable credential state.
+
+The store uses a bounded exact-schema JSON format, revision-checked updates, unique provider IDs, temporary files, and recoverable primary/backup replacement. A corrupt optional store does not prevent the rest of madi from opening.
 
 ## Endpoint policy
 
 Remote endpoints:
 
-- must use HTTPS
-- may not contain username/password
-- may not contain a query string or fragment
+- require HTTPS
+- may not contain username or password
+- may not contain query parameters or fragments
 - do not follow redirects
 
 Local endpoints:
 
-- `http://127.0.0.1`, `http://localhost`, and `http://[::1]` are allowed
-- this supports user-operated OpenAI-compatible local gateways
+- `http://127.0.0.1`
+- `http://localhost`
+- `http://[::1]`
 
-The adapter resolves a base URL to `/v1/chat/completions`, unless the URL already ends with `/v1` or `/chat/completions`.
+The adapter resolves an OpenAI-compatible base URL to `/v1/chat/completions`, unless the configured URL already ends with `/v1` or `/chat/completions`.
 
 ## Explicit scope consent
 
-The consent record contains the SHA-256 of this ordered scope payload:
+The consent record stores the SHA-256 of the ordered scope payload:
 
 ```text
 scope kind
@@ -67,18 +72,30 @@ manuscript text
 optional context text
 ```
 
-Immediately before transport, the main process recomputes the hash. A changed selection, scene, or context causes `CONSENT_MISMATCH`, and no network call occurs.
+Immediately before transport, the main process recomputes the hash. A changed selection, scene, or context causes `CONSENT_MISMATCH`, and no network call occurs. This prevents editor updates from silently expanding or altering the text sent after the user reviewed the confirmation screen.
 
-This prevents an asynchronous editor update from silently increasing the text sent after the confirmation UI was shown.
+## Electron boundary
+
+The renderer receives only a frozen `window.madiLlm` API with six operations:
+
+- get runtime status
+- list providers
+- save provider
+- delete provider
+- invoke
+- cancel
+
+The preload bridge routes these operations through fixed `madi:llm:*` channels. Main-process handlers reuse the existing trusted-sender check, accept exact request shapes, and return sanitized errors. The renderer does not receive raw `ipcRenderer`, filesystem access, Node fetch, or decrypted credentials.
 
 ## Transport constraints
 
 The OpenAI-compatible client:
 
+- runs in the Electron main process
 - accepts an injected `fetch` implementation for deterministic tests
 - sends one non-streaming chat-completions POST request
 - enforces request-field and text-size limits
-- rejects missing or header-unsafe API keys
+- validates credentials before header construction
 - applies a per-provider timeout
 - supports caller cancellation
 - rejects redirects
@@ -86,28 +103,12 @@ The OpenAI-compatible client:
 - accepts string content and arrays of text content parts
 - exposes normalized usage and finish metadata only
 
-Provider error bodies are consumed only to release the stream. They are not copied into thrown errors, evidence, or logs.
+Provider error bodies are consumed only to release the response stream. They are not copied into errors, evidence, or logs.
 
-## Error model
+## Failure isolation
 
-Errors are reduced to Madi-owned codes:
+The LLM provider store is optional. Initialization errors are retained inside `LlmRuntimeService`, which reports the LLM subsystem as unavailable but does not block the editor, project storage, Reader Lab, EPUB, or HWPX workflows. Active LLM requests are aborted when the app quits.
 
-- invalid request or consent mismatch
-- missing/invalid credential
-- cancellation or timeout
-- network failure
-- authentication failure
-- rate limit
-- provider unavailable/rejected
-- oversized or malformed response
+## Proposal application boundary
 
-The error object carries only a generic description, optional HTTP status, and retryable flag. It does not retain the request, response body, prompt, manuscript, or API key.
-
-## Next integration slice
-
-1. Add OS-protected credential storage.
-2. Add typed main/preload IPC without exposing `fetch`, filesystem, or secrets to the renderer.
-3. Add provider CRUD and explicit send confirmation.
-4. Show proposals in a non-canonical review buffer.
-5. Add a Typie semantic diff/apply adapter with an automatic safety snapshot before any accepted multi-block change.
-6. Preserve the current offline/no-provider path as the default product state.
+This phase does not write model output to Typie. The next slice must keep proposals in a separate review buffer and apply accepted edits through Madi-owned editor transactions. Multi-block application must create a safety snapshot first, following the existing project-wide rollback policy.
