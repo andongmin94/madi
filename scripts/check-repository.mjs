@@ -29,6 +29,18 @@ const epubExporterRoot = resolve(
   "madi-export-epub",
   "src",
 );
+const hwpxExporterRoot = resolve(
+  repositoryRoot,
+  "crates",
+  "madi-export-hwpx",
+  "src",
+);
+const hwpBridgeRoot = resolve(repositoryRoot, "sidecars", "hwp-bridge");
+const atomicOutputRoot = resolve(
+  repositoryRoot,
+  "crates",
+  "madi-atomic-output",
+);
 
 async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -36,6 +48,23 @@ async function walk(directory) {
     entries.map(async (entry) => {
       const path = join(directory, entry.name);
       return entry.isDirectory() ? walk(path) : [path];
+    }),
+  );
+  return paths.flat();
+}
+
+async function walkWithoutBuildOutput(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const paths = await Promise.all(
+    entries.map(async (entry) => {
+      if (
+        entry.isDirectory() &&
+        (entry.name === "bin" || entry.name === "obj" || entry.name === "target")
+      ) {
+        return [];
+      }
+      const path = join(directory, entry.name);
+      return entry.isDirectory() ? walkWithoutBuildOutput(path) : [path];
     }),
   );
   return paths.flat();
@@ -137,6 +166,74 @@ const epubExporterManifest = await readFile(
 );
 if (/\b(?:typie|editor-(?:codec|model|crdt|state|ffi))\b/i.test(epubExporterManifest)) {
   throw new Error("EPUB exporter Cargo manifest directly depends on Typie internals");
+}
+
+const hwpxExporterFiles = (await walk(hwpxExporterRoot)).filter((path) =>
+  path.endsWith(".rs"),
+);
+for (const path of hwpxExporterFiles) {
+  const source = await readFile(path, "utf8");
+  if (/\btypie::|editor_ffi|vendor[\\/]typie/i.test(source)) {
+    throw new Error(
+      `HWPX exporter directly references Typie internals: ${relative(
+        repositoryRoot,
+        path,
+      )}`,
+    );
+  }
+}
+const hwpxExporterManifest = await readFile(
+  resolve(repositoryRoot, "crates", "madi-export-hwpx", "Cargo.toml"),
+  "utf8",
+);
+if (
+  /\b(?:typie|editor-(?:codec|model|crdt|state|ffi))\b/i.test(
+    hwpxExporterManifest,
+  )
+) {
+  throw new Error("HWPX exporter Cargo manifest directly depends on Typie internals");
+}
+
+const hwpBridgeFiles = await walkWithoutBuildOutput(hwpBridgeRoot);
+const atomicOutputFiles = await walkWithoutBuildOutput(atomicOutputRoot);
+for (const path of atomicOutputFiles) {
+  if (/\.(?:dll|exe|msi|ocx)$/iu.test(path)) {
+    throw new Error(
+      `Atomic output source contains a checked-in binary: ${relative(
+        repositoryRoot,
+        path,
+      )}`,
+    );
+  }
+}
+const atomicOutputManifest = await readFile(
+  resolve(atomicOutputRoot, "Cargo.toml"),
+  "utf8",
+);
+if (
+  /\b(?:typie|editor-(?:codec|model|crdt|state|ffi))\b/i.test(
+    atomicOutputManifest,
+  )
+) {
+  throw new Error("Atomic output helper must not depend on editor internals");
+}
+for (const path of hwpBridgeFiles.filter((entry) => entry.endsWith(".csproj"))) {
+  const manifest = await readFile(path, "utf8");
+  if (/<(?:PackageReference|Reference|COMReference)\b/iu.test(manifest)) {
+    throw new Error(
+      "HWP bridge must not compile or package a third-party or Hancom assembly",
+    );
+  }
+}
+for (const path of hwpBridgeFiles) {
+  if (/\.(?:dll|exe|msi|ocx|hwp)$/iu.test(path)) {
+    throw new Error(
+      `HWP bridge source contains a forbidden binary: ${relative(
+        repositoryRoot,
+        path,
+      )}`,
+    );
+  }
 }
 
 const buildInfoPath = resolve(
@@ -270,12 +367,17 @@ const hygieneRoots = [
   resolve(repositoryRoot, "crates", "madi-core", "src"),
   publicationRoot,
   epubExporterRoot,
+  hwpxExporterRoot,
+  resolve(atomicOutputRoot, "src"),
 ];
 const hygieneFiles = (
   await Promise.all(hygieneRoots.map((directory) => walk(directory)))
 )
   .flat()
-  .filter((path) => /\.(?:ts|tsx|js|mjs|rs)$/.test(path));
+  .concat(
+    hwpBridgeFiles.filter((path) => /\.(?:cs|csproj)$/iu.test(path)),
+  )
+  .filter((path) => /\.(?:ts|tsx|js|mjs|rs|cs|csproj)$/.test(path));
 for (const path of hygieneFiles) {
   const source = await readFile(path, "utf8");
   if (source.includes("\u0000") || /[ \t]+$/m.test(source)) {
@@ -294,6 +396,9 @@ process.stdout.write(
       adapterBoundaryFilesScanned: boundaryFiles.length,
       rustCoreFilesScanned: coreFiles.length,
       epubExporterFilesScanned: epubExporterFiles.length,
+      hwpxExporterFilesScanned: hwpxExporterFiles.length,
+      hwpBridgeSourceFilesScanned: hwpBridgeFiles.length,
+      atomicOutputFilesScanned: atomicOutputFiles.length,
       negativeBoundaryFixture: "rejected",
       sourceHygieneFilesScanned: hygieneFiles.length,
     },

@@ -10,7 +10,11 @@ const roots = [
   "crates/madi-publication/src",
   "crates/madi-export-epub/src",
   "crates/madi-export-epub/tests",
+  "crates/madi-export-hwpx/src",
+  "crates/madi-atomic-output/src",
+  "sidecars/hwp-bridge",
   "scripts",
+  "global.json",
 ];
 const extensions = new Set([
   ".ts",
@@ -26,7 +30,11 @@ async function walk(directory) {
   const nested = await Promise.all(
     entries.map(async (entry) => {
       const path = join(directory, entry.name);
-      return entry.isDirectory() ? walk(path) : [path];
+      return entry.isDirectory()
+        ? new Set(["bin", "obj", "target"]).has(entry.name)
+          ? []
+          : walk(path)
+        : [path];
     }),
   );
   return nested.flat();
@@ -34,7 +42,10 @@ async function walk(directory) {
 
 const files = (
   await Promise.all(
-    roots.map((root) => walk(resolve(repositoryRoot, root))),
+    roots.map(async (root) => {
+      const path = resolve(repositoryRoot, root);
+      return extname(path) ? [path] : walk(path);
+    }),
   )
 )
   .flat()

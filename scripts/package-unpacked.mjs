@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   cp,
   mkdir,
+  readdir,
   readFile,
   rename,
   rm,
@@ -41,7 +42,39 @@ const epubExporter = resolve(
   "release",
   "madi-export-epub.exe",
 );
-const rustLicenseCopies = [
+const hwpxExporter = resolve(
+  repositoryRoot,
+  "crates",
+  "madi-export-hwpx",
+  "target",
+  "release",
+  "madi-export-hwpx.exe",
+);
+const atomicOutput = resolve(
+  repositoryRoot,
+  "crates",
+  "madi-atomic-output",
+  "target",
+  "release",
+  "madi-atomic-output.exe",
+);
+const hwpBridgePublishDirectory = resolve(
+  repositoryRoot,
+  "sidecars",
+  "hwp-bridge",
+  "bin",
+  "package",
+  "win-x86",
+);
+const hwpBridgeFiles = [
+  "madi-hwp-bridge.exe",
+  "madi-hwp-bridge.dll",
+  "madi-hwp-bridge.deps.json",
+  "madi-hwp-bridge.runtimeconfig.json",
+];
+const forbiddenHancomBinaryName =
+  /(?:^|[-_.])(?:hancom|hwpobject|filepathcheckermoduleexample)(?:[-_.]|$)/iu;
+const pinnedLicenseCopies = [
   {
     source: resolve(repositoryRoot, "docs", "licenses", "SHA2-MIT.txt"),
     name: "SHA2-MIT.txt",
@@ -127,6 +160,16 @@ const rustLicenseCopies = [
     name: "EPUBCHECK-5.3.0-BSD-3-CLAUSE.txt",
     sha256: "851180aaf3e14dddafb23f62abf46123aa354cc9379c650952073823ee6b128e",
   },
+  {
+    source: resolve(
+      repositoryRoot,
+      "docs",
+      "licenses",
+      "DOTNET-RUNTIME-MIT.txt",
+    ),
+    name: "DOTNET-RUNTIME-MIT.txt",
+    sha256: "cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310",
+  },
 ];
 
 if (
@@ -141,7 +184,41 @@ await Promise.all([
   stat(electronDist),
   stat(sidecar),
   stat(epubExporter),
+  stat(hwpxExporter),
+  stat(atomicOutput),
+  ...hwpBridgeFiles.map((name) =>
+    stat(resolve(hwpBridgePublishDirectory, name)),
+  ),
 ]);
+const hwpBridgeRuntimeConfig = JSON.parse(
+  await readFile(
+    resolve(
+      hwpBridgePublishDirectory,
+      "madi-hwp-bridge.runtimeconfig.json",
+    ),
+    "utf8",
+  ),
+);
+const hwpBridgeDependencies = JSON.parse(
+  await readFile(
+    resolve(hwpBridgePublishDirectory, "madi-hwp-bridge.deps.json"),
+    "utf8",
+  ),
+);
+const hwpBridgeRuntimeOptions = hwpBridgeRuntimeConfig.runtimeOptions;
+if (
+  hwpBridgeRuntimeOptions?.tfm !== "net10.0" ||
+  hwpBridgeRuntimeOptions.framework?.name !== "Microsoft.NETCore.App" ||
+  hwpBridgeRuntimeOptions.framework?.version !== "10.0.0" ||
+  hwpBridgeDependencies.runtimeTarget?.name !==
+    ".NETCoreApp,Version=v10.0/win-x86" ||
+  Object.keys(hwpBridgeDependencies.libraries ?? {}).length !== 1 ||
+  !("madi-hwp-bridge/1.0.0" in (hwpBridgeDependencies.libraries ?? {}))
+) {
+  throw new Error(
+    "The HWP bridge publish output is not the pinned framework-dependent win-x86 deployment",
+  );
+}
 await mkdir(outputRoot, { recursive: true });
 await rm(packageDirectory, { recursive: true, force: true });
 await cp(electronDist, packageDirectory, {
@@ -178,6 +255,28 @@ await cp(sidecar, resolve(resourcesDirectory, "bin", "madi-core.exe"));
 await cp(
   epubExporter,
   resolve(resourcesDirectory, "bin", "madi-export-epub.exe"),
+);
+await cp(
+  hwpxExporter,
+  resolve(resourcesDirectory, "bin", "madi-export-hwpx.exe"),
+);
+await cp(
+  atomicOutput,
+  resolve(resourcesDirectory, "bin", "madi-atomic-output.exe"),
+);
+const packagedHwpBridgeDirectory = resolve(
+  resourcesDirectory,
+  "bin",
+  "hwp-bridge",
+);
+await mkdir(packagedHwpBridgeDirectory, { recursive: true });
+await Promise.all(
+  hwpBridgeFiles.map((name) =>
+    cp(
+      resolve(hwpBridgePublishDirectory, name),
+      resolve(packagedHwpBridgeDirectory, name),
+    ),
+  ),
 );
 await mkdir(resolve(resourcesDirectory, "licenses"), { recursive: true });
 await Promise.all([
@@ -225,12 +324,12 @@ await Promise.all([
     resolve(repositoryRoot, "docs", "licenses", "JSON-CANVAS-MIT.txt"),
     resolve(resourcesDirectory, "licenses", "JSON-CANVAS-MIT.txt"),
   ),
-  ...rustLicenseCopies.map(({ source, name }) =>
+  ...pinnedLicenseCopies.map(({ source, name }) =>
     cp(source, resolve(resourcesDirectory, "licenses", name)),
   ),
 ]);
 
-for (const license of rustLicenseCopies) {
+for (const license of pinnedLicenseCopies) {
   const [sourceBytes, packagedBytes] = await Promise.all([
     readFile(license.source),
     readFile(resolve(resourcesDirectory, "licenses", license.name)),
@@ -240,7 +339,7 @@ for (const license of rustLicenseCopies) {
     .update(packagedBytes)
     .digest("hex");
   if (sourceHash !== license.sha256 || packagedHash !== license.sha256) {
-    throw new Error(`Packaged Rust license hash mismatch: ${license.name}`);
+    throw new Error(`Packaged license hash mismatch: ${license.name}`);
   }
 }
 
@@ -251,6 +350,28 @@ const sidecarBytes = await readFile(
 const epubExporterBytes = await readFile(
   resolve(resourcesDirectory, "bin", "madi-export-epub.exe"),
 );
+const hwpxExporterBytes = await readFile(
+  resolve(resourcesDirectory, "bin", "madi-export-hwpx.exe"),
+);
+const atomicOutputBytes = await readFile(
+  resolve(resourcesDirectory, "bin", "madi-atomic-output.exe"),
+);
+const packagedHwpBridgeFiles = await Promise.all(
+  hwpBridgeFiles.map(async (name) => {
+    const bytes = await readFile(resolve(packagedHwpBridgeDirectory, name));
+    return {
+      path: `resources/bin/hwp-bridge/${name}`,
+      bytes: bytes.byteLength,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    };
+  }),
+);
+const packagedBinaryNames = await readdir(resolve(resourcesDirectory, "bin"), {
+  recursive: true,
+});
+if (packagedBinaryNames.some((name) => forbiddenHancomBinaryName.test(name))) {
+  throw new Error("The unpacked package must not contain a Hancom binary");
+}
 const executableSize = (await stat(executable)).size;
 
 process.stdout.write(
@@ -271,6 +392,24 @@ process.stdout.write(
       epubExporterSha256: createHash("sha256")
         .update(epubExporterBytes)
         .digest("hex"),
+      hwpxExporter: "resources/bin/madi-export-hwpx.exe",
+      hwpxExporterBytes: hwpxExporterBytes.byteLength,
+      hwpxExporterSha256: createHash("sha256")
+        .update(hwpxExporterBytes)
+        .digest("hex"),
+      atomicOutput: "resources/bin/madi-atomic-output.exe",
+      atomicOutputBytes: atomicOutputBytes.byteLength,
+      atomicOutputSha256: createHash("sha256")
+        .update(atomicOutputBytes)
+        .digest("hex"),
+      hwpBridge: {
+        deployment: "framework-dependent .NET 10 win-x86",
+        runtimeFramework: "Microsoft.NETCore.App/10.0.0",
+        executable:
+          "resources/bin/hwp-bridge/madi-hwp-bridge.exe",
+        files: packagedHwpBridgeFiles,
+        hancomBinariesBundled: false,
+      },
       notices: [
         "resources/licenses/THIRD_PARTY_NOTICES.md",
         "resources/licenses/TYPIE-AGPL-3.0.txt",
@@ -290,6 +429,7 @@ process.stdout.write(
         "resources/licenses/TEMPFILE-MIT.txt",
         "resources/licenses/ZIP-MIT.txt",
         "resources/licenses/EPUBCHECK-5.3.0-BSD-3-CLAUSE.txt",
+        "resources/licenses/DOTNET-RUNTIME-MIT.txt",
       ],
     },
     null,

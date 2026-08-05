@@ -8,6 +8,8 @@ dist/
 **/dist/
 coverage/
 **/coverage/
+sidecars/**/bin/
+sidecars/**/obj/
 
 # Runtime and test artifacts
 *.madi
