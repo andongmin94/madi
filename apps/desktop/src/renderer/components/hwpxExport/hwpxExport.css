@@ -1,0 +1,61 @@
+.publication-export-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-block-end: 1rem;
+}
+
+.publication-export-tabs [role="tab"][aria-selected="true"] {
+  border-color: var(--accent, #3b82f6);
+  font-weight: 700;
+}
+
+.hwpx-export {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.hwpx-export fieldset {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.hwpx-export label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.hwpx-export input[type="checkbox"] {
+  margin-inline-end: 0.4rem;
+}
+
+.hwpx-export__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
+}
+
+.hwpx-export__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.hwpx-export progress {
+  inline-size: min(100%, 32rem);
+}
+
+.hwpx-export__success {
+  border: 1px solid var(--border-color, #64748b);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hwpx-export *,
+  .publication-export-tabs * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}

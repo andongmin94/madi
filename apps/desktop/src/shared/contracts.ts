@@ -39,9 +39,31 @@ import type {
   ValidateEpubExportRequest,
   ValidateEpubExportResult
 } from "./epubExport";
+import type {
+  CancelHwpxExportRequest,
+  ChooseHwpxOutputRequest,
+  CreateHwpxExportPresetRequest,
+  DeleteHwpxExportPresetRequest,
+  DeleteHwpxExportPresetResult,
+  DuplicateHwpxExportPresetRequest,
+  HwpxExportPresetMutationResult,
+  HwpxExportProgress,
+  HwpxExportState,
+  HwpxOutputSelection,
+  RevealHwpxExportRequest,
+  RunHwpxExportRequest,
+  RunHwpxExportResult,
+  SaveHwpxExportReportRequest,
+  SaveHwpxExportReportResult,
+  UpdateHwpxExportPresetRequest,
+  ValidateHwpxExportRequest,
+  ValidateHwpxExportResult
+} from "./hwpxExport";
 
 export * from "./publication";
 export * from "./epubExport";
+export * from "./hwpxExport";
+export * from "./hwpxBuiltins";
 
 export const IPC_CHANNELS = {
   createProject: "madi:create-project",
@@ -87,6 +109,17 @@ export const IPC_CHANNELS = {
   cancelEpubExport: "madi:cancel-epub-export",
   saveEpubExportReport: "madi:save-epub-export-report",
   revealEpubExport: "madi:reveal-epub-export",
+  getHwpxExportState: "madi:get-hwpx-export-state",
+  createHwpxExportPreset: "madi:create-hwpx-export-preset",
+  updateHwpxExportPreset: "madi:update-hwpx-export-preset",
+  duplicateHwpxExportPreset: "madi:duplicate-hwpx-export-preset",
+  deleteHwpxExportPreset: "madi:delete-hwpx-export-preset",
+  chooseHwpxOutput: "madi:choose-hwpx-output",
+  validateHwpxExport: "madi:validate-hwpx-export",
+  runHwpxExport: "madi:run-hwpx-export",
+  cancelHwpxExport: "madi:cancel-hwpx-export",
+  saveHwpxExportReport: "madi:save-hwpx-export-report",
+  revealHwpxExport: "madi:reveal-hwpx-export",
   listDescendantScenes: "madi:list-descendant-scenes",
   searchProject: "madi:search-project",
   getTextStatistics: "madi:get-text-statistics",
@@ -146,7 +179,8 @@ export const IPC_CHANNELS = {
 
 export const IPC_EVENTS = {
   closeRequested: "madi:close-requested",
-  epubExportProgress: "madi:epub-export-progress"
+  epubExportProgress: "madi:epub-export-progress",
+  hwpxExportProgress: "madi:hwpx-export-progress"
 } as const;
 
 export type MadiIpcChannel =
@@ -1603,6 +1637,34 @@ export interface MadiDesktopApi {
   revealEpubExport(request: RevealEpubExportRequest): Promise<boolean>;
   onEpubExportProgress(
     listener: (progress: EpubExportProgress) => void
+  ): () => void;
+  getHwpxExportState(request: SessionRequest): Promise<HwpxExportState>;
+  createHwpxExportPreset(
+    request: CreateHwpxExportPresetRequest
+  ): Promise<HwpxExportPresetMutationResult>;
+  updateHwpxExportPreset(
+    request: UpdateHwpxExportPresetRequest
+  ): Promise<HwpxExportPresetMutationResult>;
+  duplicateHwpxExportPreset(
+    request: DuplicateHwpxExportPresetRequest
+  ): Promise<HwpxExportPresetMutationResult>;
+  deleteHwpxExportPreset(
+    request: DeleteHwpxExportPresetRequest
+  ): Promise<DeleteHwpxExportPresetResult>;
+  chooseHwpxOutput(
+    request: ChooseHwpxOutputRequest
+  ): Promise<HwpxOutputSelection | null>;
+  validateHwpxExport(
+    request: ValidateHwpxExportRequest
+  ): Promise<ValidateHwpxExportResult>;
+  runHwpxExport(request: RunHwpxExportRequest): Promise<RunHwpxExportResult>;
+  cancelHwpxExport(request: CancelHwpxExportRequest): Promise<boolean>;
+  saveHwpxExportReport(
+    request: SaveHwpxExportReportRequest
+  ): Promise<SaveHwpxExportReportResult | null>;
+  revealHwpxExport(request: RevealHwpxExportRequest): Promise<boolean>;
+  onHwpxExportProgress(
+    listener: (progress: HwpxExportProgress) => void
   ): () => void;
   pickCanvasImport(): Promise<PickCanvasImportResult | null>;
   exportCanvas(

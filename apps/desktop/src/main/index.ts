@@ -20,6 +20,19 @@ import {
   ProcessEpubExporter,
   resolveEpubExporterBinary
 } from "./epubExportClient";
+import {
+  ProcessHwpxExporter,
+  resolveHwpxExporterBinary
+} from "./hwpxExportClient";
+import {
+  ProcessHwpBridge,
+  resolveHwpBridgeBinary
+} from "./hwpBridgeClient";
+import { FileHwpxCrashRecoveryRegistry } from "./hwpxCrashRecovery";
+import {
+  ProcessAtomicOutput,
+  resolveAtomicOutputBinary
+} from "./atomicOutputClient";
 import { EpubShutdownCoordinator } from "./epubShutdownCoordinator";
 import {
   createMainWindow,
@@ -47,9 +60,39 @@ let core: JsonRpcCoreClient | undefined;
 let disposeIpc: (() => void) | undefined;
 let networkGuardInstalled = false;
 let appProtocolInstalled = false;
+let hwpxCrashRecovery: FileHwpxCrashRecoveryRegistry | undefined;
+let atomicOutput: ProcessAtomicOutput | undefined;
+class ProcessExportRuntime {
+  public readonly epub: ProcessEpubExporter;
+  public readonly hwpx: ProcessHwpxExporter;
+  public readonly hwpBridge: ProcessHwpBridge;
+
+  public constructor() {
+    const options = {
+      appPath: app.getAppPath(),
+      resourcesPath: process.resourcesPath,
+      isPackaged: app.isPackaged
+    };
+    this.epub = new ProcessEpubExporter(resolveEpubExporterBinary(options));
+    this.hwpx = new ProcessHwpxExporter(resolveHwpxExporterBinary(options));
+    this.hwpBridge = new ProcessHwpBridge(resolveHwpBridgeBinary(options));
+  }
+
+  public async dispose(): Promise<void> {
+    const results = await Promise.allSettled([
+      this.epub.dispose(),
+      this.hwpx.dispose(),
+      this.hwpBridge.dispose()
+    ]);
+    if (results.some((result) => result.status === "rejected")) {
+      throw new Error("One or more export utilities did not shut down cleanly");
+    }
+  }
+}
+
 const epubShutdown = new EpubShutdownCoordinator<
   DesktopService,
-  ProcessEpubExporter
+  ProcessExportRuntime
 >({
   abortPreparation: () => {
     const coreAtShutdown = core;
@@ -67,7 +110,7 @@ const epubShutdown = new EpubShutdownCoordinator<
   recoverApplication: () => {
     dialog.showErrorBox(
       "madi 종료 보류",
-      "EPUB 임시 파일 정리를 완료하지 못했습니다. 작업 창을 복구했으니 잠시 후 다시 종료해 주세요."
+      "내보내기 임시 파일 정리를 완료하지 못했습니다. 작업 창을 복구했으니 잠시 후 다시 종료해 주세요."
     );
     void openApplicationWindow();
   }
@@ -93,6 +136,22 @@ function scheduleEpubShutdown(): void {
 }
 
 async function openApplicationWindow(): Promise<void> {
+  if (!atomicOutput) {
+    atomicOutput = new ProcessAtomicOutput(
+      resolveAtomicOutputBinary({
+        appPath: app.getAppPath(),
+        resourcesPath: process.resourcesPath,
+        isPackaged: app.isPackaged
+      })
+    );
+  }
+  if (!hwpxCrashRecovery) {
+    hwpxCrashRecovery = new FileHwpxCrashRecoveryRegistry(
+      path.join(app.getPath("userData"), "hwpx-recovery-v1"),
+      { atomicOutput }
+    );
+  }
+  await hwpxCrashRecovery.initialize();
   const target = resolveWindowTarget(
     {
       isPackaged: app.isPackaged,
@@ -130,14 +189,8 @@ async function openApplicationWindow(): Promise<void> {
     });
     core = new JsonRpcCoreClient(binaryPath);
   }
-  const epubExporter = epubShutdown.getOrCreateExporter(
-    () => new ProcessEpubExporter(
-      resolveEpubExporterBinary({
-        appPath: app.getAppPath(),
-        resourcesPath: process.resourcesPath,
-        isPackaged: app.isPackaged
-      })
-    )
+  const exportRuntime = epubShutdown.getOrCreateExporter(
+    () => new ProcessExportRuntime()
   );
 
   disposeIpc?.();
@@ -147,8 +200,14 @@ async function openApplicationWindow(): Promise<void> {
     core,
     new ProjectSessionRegistry(),
     app.getVersion(),
-    epubExporter,
-    shell
+    exportRuntime.epub,
+    shell,
+    exportRuntime.hwpx,
+    exportRuntime.hwpBridge,
+    undefined,
+    process.platform,
+    hwpxCrashRecovery,
+    atomicOutput
   );
   epubShutdown.registerService(service);
   disposeIpc = registerMadiIpc({

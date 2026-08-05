@@ -95,6 +95,18 @@ import type {
   UpdatePublicationMetadataRequest,
   ValidateEpubExportRequest
 } from "../shared/epubExport";
+import type {
+  CancelHwpxExportRequest,
+  ChooseHwpxOutputRequest,
+  CreateHwpxExportPresetRequest,
+  DeleteHwpxExportPresetRequest,
+  DuplicateHwpxExportPresetRequest,
+  RevealHwpxExportRequest,
+  RunHwpxExportRequest,
+  SaveHwpxExportReportRequest,
+  UpdateHwpxExportPresetRequest,
+  ValidateHwpxExportRequest
+} from "../shared/hwpxExport";
 
 function requireObject(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -193,6 +205,8 @@ export function registerMadiIpc({
   };
   const runEpubIpcTask = <T>(task: () => Promise<T>): Promise<T> =>
     service.runEpubIpcTask(task);
+  const runHwpxIpcTask = <T>(task: () => Promise<T>): Promise<T> =>
+    service.runHwpxIpcTask(task);
 
   ipcMain.handle(
     IPC_CHANNELS.createProject,
@@ -697,6 +711,188 @@ export function registerMadiIpc({
             "sessionId",
             "operationId"
           ]) as unknown as RevealEpubExportRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.getHwpxExportState,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runHwpxIpcTask(() =>
+        service.getHwpxExportState(
+          requireExactRequest(rawRequest, ["sessionId"]) as unknown as SessionRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.createHwpxExportPreset,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runHwpxIpcTask(() =>
+        service.createHwpxExportPreset(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "name",
+            "config"
+          ]) as unknown as CreateHwpxExportPresetRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.updateHwpxExportPreset,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runHwpxIpcTask(() =>
+        service.updateHwpxExportPreset(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "presetId",
+            "name",
+            "config",
+            "expectedPresetRevision"
+          ]) as unknown as UpdateHwpxExportPresetRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.duplicateHwpxExportPreset,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runHwpxIpcTask(() =>
+        service.duplicateHwpxExportPreset(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "sourcePresetId",
+            "name"
+          ]) as unknown as DuplicateHwpxExportPresetRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.deleteHwpxExportPreset,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runHwpxIpcTask(() =>
+        service.deleteHwpxExportPreset(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "presetId",
+            "expectedPresetRevision"
+          ]) as unknown as DeleteHwpxExportPresetRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.chooseHwpxOutput,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runHwpxIpcTask(() =>
+        service.chooseHwpxOutput(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "suggestedFileName",
+            "outputType"
+          ]) as unknown as ChooseHwpxOutputRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.validateHwpxExport,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.validateHwpxExport(
+        requireExactRequest(rawRequest, [
+          "sessionId",
+          "operationId",
+          "scopeNodeId",
+          "scopeKind",
+          "expectedProjectRevision",
+          "presetId",
+          "presetContentHash",
+          "metadata",
+          "config",
+          "titlePage"
+        ]) as unknown as ValidateHwpxExportRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.runHwpxExport,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.runHwpxExport(
+        requireExactRequest(rawRequest, [
+          "sessionId",
+          "operationId",
+          "scopeNodeId",
+          "scopeKind",
+          "expectedProjectRevision",
+          "presetId",
+          "presetContentHash",
+          "metadata",
+          "config",
+          "titlePage",
+          "outputSelectionId",
+          "outputType"
+        ]) as unknown as RunHwpxExportRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.cancelHwpxExport,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.cancelHwpxExport(
+        requireExactRequest(rawRequest, [
+          "sessionId",
+          "operationId"
+        ]) as unknown as CancelHwpxExportRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.saveHwpxExportReport,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runHwpxIpcTask(() =>
+        service.saveHwpxExportReport(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "operationId",
+            "format"
+          ]) as unknown as SaveHwpxExportReportRequest
+        )
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.revealHwpxExport,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return runHwpxIpcTask(() =>
+        service.revealHwpxExport(
+          requireExactRequest(rawRequest, [
+            "sessionId",
+            "operationId"
+          ]) as unknown as RevealHwpxExportRequest
         )
       );
     }

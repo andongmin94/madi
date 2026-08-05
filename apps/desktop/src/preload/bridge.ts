@@ -112,6 +112,37 @@ import {
   validateRunEpubExportResult
 } from "../shared/epubExportValidation";
 import type {
+  CancelHwpxExportRequest,
+  ChooseHwpxOutputRequest,
+  CreateHwpxExportPresetRequest,
+  DeleteHwpxExportPresetRequest,
+  DeleteHwpxExportPresetResult,
+  DuplicateHwpxExportPresetRequest,
+  HwpxExportPresetMutationResult,
+  HwpxExportProgress,
+  HwpxExportState,
+  HwpxOutputSelection,
+  RevealHwpxExportRequest,
+  RunHwpxExportRequest,
+  RunHwpxExportResult,
+  SaveHwpxExportReportRequest,
+  SaveHwpxExportReportResult,
+  UpdateHwpxExportPresetRequest,
+  ValidateHwpxExportRequest,
+  ValidateHwpxExportResult
+} from "../shared/hwpxExport";
+import {
+  validateDeleteHwpxPresetResult,
+  validateHwpxExportState,
+  validateHwpxExportProgress,
+  validateHwpxOutputSelection,
+  validateHwpxOperationId,
+  validateHwpxPresetMutationResult,
+  validateSaveHwpxExportReportResult,
+  validateValidateHwpxExportResult,
+  validateRunHwpxExportResult
+} from "../shared/hwpxExportValidation";
+import type {
   CreateEntityAliasRequest,
   CreateEntityRelationRequest,
   CreateEntityRequest,
@@ -988,6 +1019,108 @@ export function createMadiDesktopApi(
     ): () => void {
       return subscribe(IPC_EVENTS.epubExportProgress, (payload) => {
         listener(validateEpubExportProgress(payload));
+      });
+    },
+
+    async getHwpxExportState(request: SessionRequest): Promise<HwpxExportState> {
+      return validateHwpxExportState(
+        await invoke(IPC_CHANNELS.getHwpxExportState, request)
+      );
+    },
+
+    async createHwpxExportPreset(
+      request: CreateHwpxExportPresetRequest
+    ): Promise<HwpxExportPresetMutationResult> {
+      return validateHwpxPresetMutationResult(
+        await invoke(IPC_CHANNELS.createHwpxExportPreset, request)
+      );
+    },
+
+    async updateHwpxExportPreset(
+      request: UpdateHwpxExportPresetRequest
+    ): Promise<HwpxExportPresetMutationResult> {
+      return validateHwpxPresetMutationResult(
+        await invoke(IPC_CHANNELS.updateHwpxExportPreset, request)
+      );
+    },
+
+    async duplicateHwpxExportPreset(
+      request: DuplicateHwpxExportPresetRequest
+    ): Promise<HwpxExportPresetMutationResult> {
+      return validateHwpxPresetMutationResult(
+        await invoke(IPC_CHANNELS.duplicateHwpxExportPreset, request)
+      );
+    },
+
+    async deleteHwpxExportPreset(
+      request: DeleteHwpxExportPresetRequest
+    ): Promise<DeleteHwpxExportPresetResult> {
+      return validateDeleteHwpxPresetResult(
+        await invoke(IPC_CHANNELS.deleteHwpxExportPreset, request)
+      );
+    },
+
+    async chooseHwpxOutput(
+      request: ChooseHwpxOutputRequest
+    ): Promise<HwpxOutputSelection | null> {
+      return validateHwpxOutputSelection(
+        await invoke(IPC_CHANNELS.chooseHwpxOutput, request)
+      );
+    },
+
+    async validateHwpxExport(
+      request: ValidateHwpxExportRequest
+    ): Promise<ValidateHwpxExportResult> {
+      const result = validateValidateHwpxExportResult(
+        await invoke(IPC_CHANNELS.validateHwpxExport, request)
+      );
+      if (result.operationId !== validateHwpxOperationId(request.operationId)) {
+        throw new Error("Mismatched HWPX validation operation id");
+      }
+      return result;
+    },
+
+    async runHwpxExport(
+      request: RunHwpxExportRequest
+    ): Promise<RunHwpxExportResult> {
+      const result = validateRunHwpxExportResult(
+        await invoke(IPC_CHANNELS.runHwpxExport, request)
+      );
+      if (result.operationId !== validateHwpxOperationId(request.operationId)) {
+        throw new Error("Mismatched HWPX export operation id");
+      }
+      return result;
+    },
+
+    async cancelHwpxExport(request: CancelHwpxExportRequest): Promise<boolean> {
+      const result = await invoke(IPC_CHANNELS.cancelHwpxExport, request);
+      if (typeof result !== "boolean") {
+        throw new Error("Invalid HWPX cancellation result");
+      }
+      return result;
+    },
+
+    async saveHwpxExportReport(
+      request: SaveHwpxExportReportRequest
+    ): Promise<SaveHwpxExportReportResult | null> {
+      return validateSaveHwpxExportReportResult(
+        await invoke(IPC_CHANNELS.saveHwpxExportReport, request)
+      );
+    },
+
+    async revealHwpxExport(request: RevealHwpxExportRequest): Promise<boolean> {
+      const result = await invoke(IPC_CHANNELS.revealHwpxExport, request);
+      if (typeof result !== "boolean") {
+        throw new Error("Invalid HWPX reveal result");
+      }
+      return result;
+    },
+
+    onHwpxExportProgress(
+      listener: (progress: HwpxExportProgress) => void
+    ): () => void {
+      return subscribe(IPC_EVENTS.hwpxExportProgress, (payload) => {
+        listener(validateHwpxExportProgress(payload));
       });
     },
 

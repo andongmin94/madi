@@ -51,7 +51,7 @@ import { ImeChecklist } from "./components/ImeChecklist";
 import type { CompositionEventSummary } from "./components/imeManualResults";
 import type { PlotCanvasModeHandle } from "./components/PlotCanvasMode";
 import type { ReaderLabModeHandle } from "./components/ReaderLabMode";
-import type { EpubExportModeHandle } from "./components/EpubExportMode";
+import type { PublicationExportModeHandle } from "./components/PublicationExportMode";
 import { ScriveningsView } from "./components/ScriveningsView";
 import {
   SearchReplacePanel,
@@ -105,9 +105,9 @@ const ReaderLabMode = lazy(async () => {
   return { default: module.ReaderLabMode };
 });
 
-const EpubExportMode = lazy(async () => {
-  const module = await import("./components/EpubExportMode");
-  return { default: module.EpubExportMode };
+const PublicationExportMode = lazy(async () => {
+  const module = await import("./components/PublicationExportMode");
+  return { default: module.PublicationExportMode };
 });
 
 const INITIAL_WORKSPACE: WorkspaceState = {
@@ -144,7 +144,7 @@ type AppMode =
   | "WORLD_GRAPH"
   | "PLOT_CANVAS"
   | "READER_LAB"
-  | "EPUB_EXPORT";
+  | "PUBLICATION_EXPORT";
 const AUTOSAVE_DELAY_MS = 550;
 const DEFAULT_BINDER_WIDTH = 300;
 const WORKSPACE_PAGE_LIMIT = 200;
@@ -575,7 +575,7 @@ export function App({
   const worldGraphPersistenceGenerationRef = useRef(0);
   const plotCanvasModeRef = useRef<PlotCanvasModeHandle>(null);
   const readerLabModeRef = useRef<ReaderLabModeHandle>(null);
-  const epubExportModeRef = useRef<EpubExportModeHandle>(null);
+  const publicationExportModeRef = useRef<PublicationExportModeHandle>(null);
   const projectStateSessionRef = useRef<string | null>(null);
   const compositionActiveRef = useRef(false);
   const lifecycleContextRef = useRef({
@@ -1521,14 +1521,14 @@ export function App({
                 setStoryBibleError("Reader Lab 종료 전 상태 저장에 실패했습니다.");
               }
             }
-            if (readyToClose && current.appMode === "EPUB_EXPORT") {
+            if (readyToClose && current.appMode === "PUBLICATION_EXPORT") {
               try {
                 readyToClose =
-                  (await epubExportModeRef.current?.prepareToClose()) ?? true;
+                  (await publicationExportModeRef.current?.prepareToClose()) ?? true;
               } catch {
                 readyToClose = false;
                 setStoryBibleError(
-                  "진행 중인 EPUB 작업을 종료하지 못했습니다."
+                  "진행 중인 출판 파일 작업을 종료하지 못했습니다."
                 );
               }
             }
@@ -2064,11 +2064,11 @@ export function App({
     setSearchBusy(true);
     setSearchError("");
     try {
-      if (appMode === "EPUB_EXPORT") {
-        const ready = await epubExportModeRef.current?.prepareToLeave();
+      if (appMode === "PUBLICATION_EXPORT") {
+        const ready = await publicationExportModeRef.current?.prepareToLeave();
         if (ready === false) {
           throw new Error(
-            "EPUB metadata와 진행 중인 작업을 정리하지 못했습니다."
+            "출판 metadata와 진행 중인 작업을 정리하지 못했습니다."
           );
         }
       }
@@ -2144,13 +2144,13 @@ export function App({
   };
 
   const prepareEpubExportForProjectMutation = async (): Promise<void> => {
-    if (appMode !== "EPUB_EXPORT") {
+    if (appMode !== "PUBLICATION_EXPORT") {
       return;
     }
-    const ready = await epubExportModeRef.current?.prepareToLeave();
+    const ready = await publicationExportModeRef.current?.prepareToLeave();
     if (ready === false) {
       throw new Error(
-        "EPUB metadata와 진행 중인 작업을 정리하지 못했습니다."
+        "출판 metadata와 진행 중인 작업을 정리하지 못했습니다."
       );
     }
   };
@@ -2476,10 +2476,10 @@ export function App({
         return;
       }
     }
-    if (appMode === "EPUB_EXPORT") {
-      const ready = await epubExportModeRef.current?.prepareToLeave();
+    if (appMode === "PUBLICATION_EXPORT") {
+      const ready = await publicationExportModeRef.current?.prepareToLeave();
       if (ready === false) {
-        setStoryBibleError("진행 중인 EPUB 작업을 취소하지 못했습니다.");
+        setStoryBibleError("진행 중인 출판 파일 작업을 취소하지 못했습니다.");
         return;
       }
     }
@@ -2511,11 +2511,11 @@ export function App({
       setAppMode("READER_LAB");
       return;
     }
-    if (nextMode === "EPUB_EXPORT") {
+    if (nextMode === "PUBLICATION_EXPORT") {
       if (mountRef.current) {
         controller.relocateEditor(mountRef.current);
       }
-      setAppMode("EPUB_EXPORT");
+      setAppMode("PUBLICATION_EXPORT");
       return;
     }
     if (nextMode === "STORY_BIBLE") {
@@ -3024,10 +3024,10 @@ export function App({
         return;
       }
     }
-    if (appMode === "EPUB_EXPORT") {
-      const ready = await epubExportModeRef.current?.prepareToLeave();
+    if (appMode === "PUBLICATION_EXPORT") {
+      const ready = await publicationExportModeRef.current?.prepareToLeave();
       if (ready === false) {
-        setStoryBibleError("원고 이동 전 EPUB 작업을 취소하지 못했습니다.");
+        setStoryBibleError("원고 이동 전 출판 파일 작업을 취소하지 못했습니다.");
         return;
       }
     }
@@ -3107,11 +3107,11 @@ export function App({
         return;
       }
     }
-    if (appMode === "EPUB_EXPORT") {
-      const ready = await epubExportModeRef.current?.prepareToLeave();
+    if (appMode === "PUBLICATION_EXPORT") {
+      const ready = await publicationExportModeRef.current?.prepareToLeave();
       if (ready === false) {
         setStoryBibleError(
-          "새 프로젝트를 만들기 전 EPUB 작업을 취소하지 못했습니다."
+          "새 프로젝트를 만들기 전 출판 파일 작업을 취소하지 못했습니다."
         );
         return;
       }
@@ -3146,11 +3146,11 @@ export function App({
         return;
       }
     }
-    if (appMode === "EPUB_EXPORT") {
-      const ready = await epubExportModeRef.current?.prepareToLeave();
+    if (appMode === "PUBLICATION_EXPORT") {
+      const ready = await publicationExportModeRef.current?.prepareToLeave();
       if (ready === false) {
         setStoryBibleError(
-          "다른 프로젝트를 열기 전 EPUB 작업을 취소하지 못했습니다."
+          "다른 프로젝트를 열기 전 출판 파일 작업을 취소하지 못했습니다."
         );
         return;
       }
@@ -3195,7 +3195,7 @@ export function App({
     appMode === "WORLD_GRAPH" ||
     appMode === "PLOT_CANVAS" ||
     appMode === "READER_LAB" ||
-    appMode === "EPUB_EXPORT"
+    appMode === "PUBLICATION_EXPORT"
       ? false
       : appMode === "STORY_BIBLE"
       ? hasActiveEntityNote
@@ -3218,7 +3218,7 @@ export function App({
       <header className="titlebar">
         <div className="wordmark" aria-label="madi">
           madi
-          <span>phase 1G</span>
+          <span>phase 1H</span>
         </div>
         <label className="document-title">
           <span className="sr-only">현재 작품명</span>
@@ -3323,11 +3323,11 @@ export function App({
           </button>
           <button
             type="button"
-            aria-pressed={appMode === "EPUB_EXPORT"}
+            aria-pressed={appMode === "PUBLICATION_EXPORT"}
             disabled={!modeSwitchReady || busy}
-            onClick={() => void switchAppMode("EPUB_EXPORT")}
+            onClick={() => void switchAppMode("PUBLICATION_EXPORT")}
           >
-            EPUB
+            내보내기
           </button>
         </div>
         <div className="toolbar__spacer" />
@@ -3560,7 +3560,7 @@ export function App({
       {(appMode === "MANUSCRIPT" ||
         ((appMode === "PLOT_CANVAS" ||
           appMode === "READER_LAB" ||
-          appMode === "EPUB_EXPORT") &&
+          appMode === "PUBLICATION_EXPORT") &&
           (panel === "search" || panel === "snapshots"))) && (
         <div className="inspector-drawer">
         {panel === "search" ? (
@@ -3848,16 +3848,16 @@ export function App({
         </Suspense>
       )}
 
-      {appMode === "EPUB_EXPORT" && workspace.session && projectTree && (
+      {appMode === "PUBLICATION_EXPORT" && workspace.session && projectTree && (
         <Suspense
           fallback={
             <section className="workspace-empty" aria-busy="true">
-              EPUB 내보내기 모듈 불러오는 중…
+              출판 파일 내보내기 모듈 불러오는 중…
             </section>
           }
         >
-          <EpubExportMode
-            ref={epubExportModeRef}
+          <PublicationExportMode
+            ref={publicationExportModeRef}
             api={api}
             sessionId={workspace.session.sessionId}
             projectId={workspace.session.projectId}

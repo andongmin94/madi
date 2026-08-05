@@ -1,8 +1,11 @@
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import {
+  copyFile,
   link,
+  lstat,
   mkdir,
   open,
   readFile,
@@ -258,6 +261,57 @@ import {
   EpubExportCancelledError,
   EpubUtilityValidationError
 } from "./epubExportClient";
+import type {
+  CancelHwpxExportRequest,
+  ChooseHwpxOutputRequest,
+  CreateHwpxExportPresetRequest,
+  DeleteHwpxExportPresetRequest,
+  DeleteHwpxExportPresetResult,
+  DuplicateHwpxExportPresetRequest,
+  HwpxExportPresetConfig,
+  HwpxExportPresetMutationResult,
+  HwpxExportPresetRecord,
+  HwpxExportReport,
+  HwpxExportState,
+  HwpxOutputSelection,
+  RevealHwpxExportRequest,
+  RunHwpxExportRequest,
+  RunHwpxExportResult,
+  SaveHwpxExportReportRequest,
+  SaveHwpxExportReportResult,
+  UpdateHwpxExportPresetRequest,
+  ValidateHwpxExportRequest,
+  ValidateHwpxExportResult
+} from "../shared/hwpxExport";
+import {
+  validateHwpxExportPresetConfig,
+  validateHwpxIdentifier,
+  validateHwpxOperationId,
+  validateHwpxPresetName
+} from "../shared/hwpxExportValidation";
+import type {
+  HwpxExporterPort,
+  HwpxExporterRunInput,
+  HwpxUtilityResult
+} from "./hwpxExportClient";
+import {
+  HwpxExportCancelledError,
+  HwpxUtilityValidationError
+} from "./hwpxExportClient";
+import type { HwpBridgePort } from "./hwpBridgeClient";
+import {
+  HwpBridgeCancelledError,
+  HwpBridgeOperationError
+} from "./hwpBridgeClient";
+import type { FontInstallationPort } from "./fontInstallation";
+import { WindowsFontInstallationDetector } from "./fontInstallation";
+import type { HwpxCrashRecoveryPort } from "./hwpxCrashRecovery";
+import {
+  AtomicOutputError,
+  type AtomicOutputIdentity,
+  type AtomicOutputPort
+} from "./atomicOutputClient";
+import { BUILT_IN_HWPX_PRESETS } from "../shared/hwpxBuiltins";
 
 const MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
 const MAX_RECOVERY_TEXT_CODE_UNITS = 32 * 1024 * 1024;
@@ -270,6 +324,8 @@ const MAX_COVER_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_COVER_BASE64_LENGTH = Math.ceil(MAX_COVER_FILE_BYTES / 3) * 4;
 const MAX_EPUB_FILE_BYTES = 512 * 1024 * 1024;
 const MAX_EPUB_REPORT_BYTES = 8 * 1024 * 1024;
+const MAX_HWPX_FILE_BYTES = 512 * 1024 * 1024;
+const MAX_HWPX_REPORT_BYTES = 8 * 1024 * 1024;
 const MAX_CANVAS_NODES = 500;
 const MAX_CANVAS_EDGES = 1_000;
 const MAX_WORLD_GRAPH_NODES = 500;
@@ -2878,6 +2934,81 @@ function parseEpubExportPreset(
   };
 }
 
+function parseHwpxExportPreset(
+  value: unknown,
+  expectedProjectId: string
+): HwpxExportPresetRecord {
+  const preset = asRecord(value, "HWPX export preset");
+  assertExactKeys(
+    preset,
+    [
+      "id",
+      "project_id",
+      "kind",
+      "name",
+      "preset_format",
+      "preset_version",
+      "preset_json",
+      "content_hash",
+      "revision",
+      "created_at",
+      "updated_at"
+    ],
+    "HWPX export preset"
+  );
+  const projectId = requiredString(preset, "project_id");
+  if (
+    projectId !== expectedProjectId ||
+    preset.kind !== "HWPX" ||
+    preset.preset_format !== "MADI_EXPORT_PRESET" ||
+    preset.preset_version !== 1
+  ) {
+    throw new Error("The local core returned an unsupported HWPX export preset");
+  }
+  return {
+    id: requiredString(preset, "id"),
+    projectId,
+    kind: "HWPX",
+    name: validateHwpxPresetName(preset.name),
+    presetFormat: "MADI_EXPORT_PRESET",
+    presetVersion: 1,
+    config: validateHwpxExportPresetConfig(preset.preset_json),
+    contentHash: validateSha256(preset.content_hash, "HWPX export preset hash"),
+    revision: requiredInteger(preset, "revision"),
+    createdAt: requiredString(preset, "created_at"),
+    updatedAt: requiredString(preset, "updated_at")
+  };
+}
+
+function parseExportPresets(
+  value: unknown,
+  expectedProjectId: string
+): {
+  readonly epub: EpubExportPresetRecord[];
+  readonly hwpx: HwpxExportPresetRecord[];
+} {
+  if (!Array.isArray(value) || value.length > 10_000) {
+    throw new Error("The local core returned invalid export presets");
+  }
+  const epub: EpubExportPresetRecord[] = [];
+  const hwpx: HwpxExportPresetRecord[] = [];
+  for (const candidate of value) {
+    const record = asRecord(candidate, "export preset");
+    if (record.kind === "EPUB") {
+      epub.push(parseEpubExportPreset(record, expectedProjectId));
+    } else if (record.kind === "HWPX") {
+      hwpx.push(parseHwpxExportPreset(record, expectedProjectId));
+    } else {
+      throw new Error("The local core returned an unsupported export preset kind");
+    }
+  }
+  const identities = [...epub, ...hwpx].map((preset) => preset.id);
+  if (new Set(identities).size !== identities.length) {
+    throw new Error("The local core returned duplicate export preset identities");
+  }
+  return { epub, hwpx };
+}
+
 function duplicateNames(values: readonly { readonly name: string }[]): string[] {
   const counts = new Map<string, number>();
   for (const value of values) {
@@ -2898,6 +3029,8 @@ interface EpubOutputSelectionRecord {
   readonly existingFile: {
     readonly byteLength: number;
     readonly sha256: string;
+    readonly device: number;
+    readonly inode: number;
   } | null;
 }
 
@@ -2905,6 +3038,42 @@ interface EpubOperationRecord {
   readonly sessionId: string;
   readonly report: EpubExportReport;
   readonly outputPath: string | null;
+}
+
+interface HwpxOutputSelectionRecord {
+  readonly sessionId: string;
+  readonly filePath: string;
+  readonly fileName: string;
+  readonly outputType: "HWPX" | "HWP";
+  readonly replaceExisting: boolean;
+  readonly maximumBytes: number;
+  readonly existingFile: {
+    readonly byteLength: number;
+    readonly sha256: string;
+    readonly device: number;
+    readonly inode: number;
+  } | null;
+  readonly atomicIdentity: AtomicOutputIdentity | null;
+}
+
+interface HwpxOperationRecord {
+  readonly sessionId: string;
+  readonly report: HwpxExportReport;
+  readonly outputPath: string | null;
+}
+
+class HwpxDestinationChangedError extends Error {
+  public constructor() {
+    super("The HWPX destination changed after selection");
+    this.name = "HwpxDestinationChangedError";
+  }
+}
+
+class HwpxRecoveryRequiredError extends Error {
+  public constructor(public readonly recoveryFileName: string | null) {
+    super("The HWPX output requires recovery");
+    this.name = "HwpxRecoveryRequiredError";
+  }
 }
 
 class EpubDestinationChangedError extends Error {
@@ -2935,10 +3104,81 @@ function safeEpubFileName(value: unknown): string {
   return safe;
 }
 
+function safeHwpxFileName(
+  value: unknown,
+  outputType: "HWPX" | "HWP"
+): string {
+  const extension = outputType === "HWPX" ? ".hwpx" : ".hwp";
+  const raw = typeof value === "string" ? value.trim() : "";
+  const base = path
+    .basename(raw || `작품${extension}`)
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "_")
+    .replace(/[. ]+$/u, "")
+    .slice(0, 180);
+  let safe = base || `작품${extension}`;
+  if (!safe.toLocaleLowerCase().endsWith(extension)) {
+    safe = `${safe}${extension}`;
+  }
+  if (/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(safe)) {
+    safe = `_${safe}`;
+  }
+  return safe;
+}
+
+function stagedHwpxDirectory(destination: string, operationId: string): string {
+  return path.join(
+    path.dirname(destination),
+    `.madi-hwpx-operation-${operationId}`
+  );
+}
+
+function stagedHwpxPath(stagedDirectory: string): string {
+  return path.join(stagedDirectory, "publication.hwpx");
+}
+
+function stagedHwpPath(stagedDirectory: string): string {
+  return path.join(stagedDirectory, "publication.hwp");
+}
+
+function stagedPreservedHwpxPath(stagedDirectory: string): string {
+  return path.join(stagedDirectory, "preserved-publication.hwpx");
+}
+
+function stagedRecoveryHwpxPath(stagedDirectory: string): string {
+  return path.join(stagedDirectory, "recovery-publication.hwpx");
+}
+
+function preservedHwpxCompanionPath(hwpDestination: string): string {
+  return path.join(
+    path.dirname(hwpDestination),
+    `${path.basename(hwpDestination, path.extname(hwpDestination))}.hwpx`
+  );
+}
+
+async function removeOwnedHwpxDirectory(directoryPath: string): Promise<void> {
+  try {
+    await rm(directoryPath, {
+      recursive: true,
+      force: false,
+      maxRetries: 3,
+      retryDelay: 100
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+    throw new Error("The owned HWPX temporary directory could not be removed");
+  }
+}
+
 async function existingEpubIdentity(
   filePath: string,
   maximumBytes = MAX_EPUB_FILE_BYTES
 ): Promise<NonNullable<EpubOutputSelectionRecord["existingFile"]>> {
+  const selectedPath = await lstat(filePath);
+  if (!selectedPath.isFile() || selectedPath.isSymbolicLink()) {
+    throw new Error("The selected destination must be a regular file");
+  }
   const handle = await open(filePath, "r");
   try {
     const before = await handle.stat();
@@ -2959,11 +3199,12 @@ async function existingEpubIdentity(
     }
     const [afterHandle, afterPath] = await Promise.all([
       handle.stat(),
-      stat(filePath)
+      lstat(filePath)
     ]);
     if (
       !afterHandle.isFile() ||
       !afterPath.isFile() ||
+      afterPath.isSymbolicLink() ||
       before.size !== afterHandle.size ||
       before.mtimeMs !== afterHandle.mtimeMs ||
       before.ctimeMs !== afterHandle.ctimeMs ||
@@ -2975,7 +3216,12 @@ async function existingEpubIdentity(
     ) {
       throw new Error("The EPUB destination changed while it was selected");
     }
-    return { byteLength: afterHandle.size, sha256: hash.digest("hex") };
+    return {
+      byteLength: afterHandle.size,
+      sha256: hash.digest("hex"),
+      device: afterHandle.dev,
+      inode: afterHandle.ino
+    };
   } finally {
     await handle.close();
   }
@@ -3351,6 +3597,606 @@ function validationFailureReport(
   };
 }
 
+function canonicalJsonSha256(value: unknown): string {
+  return createHash("sha256")
+    .update(canonicalCanvasJson(value), "utf8")
+    .digest("hex");
+}
+
+function validateHwpxFrontMatterText(
+  value: unknown,
+  label: string
+): string | null {
+  if (value === null) {
+    return null;
+  }
+  if (
+    typeof value !== "string" ||
+    value.length < 1 ||
+    value.length > 20_000 ||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)
+  ) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value;
+}
+
+function assertHwpxPresetContent(
+  preset: HwpxExportPresetRecord,
+  expected: {
+    readonly id: string;
+    readonly name?: string;
+    readonly config: HwpxExportPresetConfig;
+    readonly revision: number;
+  }
+): void {
+  if (
+    preset.id !== expected.id ||
+    (expected.name !== undefined && preset.name !== expected.name) ||
+    preset.revision !== expected.revision ||
+    canonicalCanvasJson(preset.config) !== canonicalCanvasJson(expected.config)
+  ) {
+    throw new Error("The local core returned a different HWPX export preset");
+  }
+}
+
+interface HwpxInlineCounts {
+  readonly ruby: number;
+  readonly strong: number;
+  readonly emphasis: number;
+  readonly underline: number;
+  readonly strike: number;
+}
+
+const HWPX_VALIDATION_CODES = new Set([
+  "HWPX_ACTIVE_CONTENT",
+  "HWPX_ARCHIVE_SIZE",
+  "HWPX_CASE_COLLIDING_ENTRY",
+  "HWPX_CHAR_PROPERTY_REFERENCE",
+  "HWPX_CONFIGURED_HEADING_OMISSION",
+  "HWPX_CONFIGURED_OMISSION_SEQUENCE",
+  "HWPX_CONTAINER_DANGLING_ROOT",
+  "HWPX_CONTAINER_STRUCTURE",
+  "HWPX_CONTENT_STRUCTURE",
+  "HWPX_DOCUMENT_COUNTS",
+  "HWPX_DUPLICATE_ENTRY",
+  "HWPX_DUPLICATE_PARAGRAPH_ID",
+  "HWPX_DUPLICATE_XML_ID",
+  "HWPX_ENTRY_COUNT",
+  "HWPX_ENTRY_PATH",
+  "HWPX_ENTRY_READ",
+  "HWPX_ENTRY_SIZE",
+  "HWPX_ENTRY_TRUNCATED",
+  "HWPX_EXTERNAL_REFERENCE",
+  "HWPX_FILE_COUNT_MISMATCH",
+  "HWPX_HEADER_ROOT",
+  "HWPX_HEADER_TABLE_COUNT",
+  "HWPX_INLINE_STYLE_COVERAGE",
+  "HWPX_INLINE_TABLE_COVERAGE",
+  "HWPX_MANIFEST_DUPLICATE_ID",
+  "HWPX_MANIFEST_REQUIRED_ID",
+  "HWPX_MANIFEST_RESOURCE",
+  "HWPX_MIMETYPE",
+  "HWPX_NAMESPACE",
+  "HWPX_ODF_MANIFEST_STRUCTURE",
+  "HWPX_PAGE_SETTINGS",
+  "HWPX_PARAGRAPH_REFERENCE",
+  "HWPX_PARA_PROPERTY_REFERENCE",
+  "HWPX_PUBLICATION_BLOCK_COUNT",
+  "HWPX_PUBLICATION_SCALAR_COVERAGE",
+  "HWPX_PUBLICATION_SECTION_SPLIT",
+  "HWPX_RDF_STRUCTURE",
+  "HWPX_REQUIRED_ENTRY_MISSING",
+  "HWPX_RUBY_PLAIN_TEXT_FALLBACK",
+  "HWPX_RUN_REFERENCE",
+  "HWPX_SECTION_FILE_COVERAGE",
+  "HWPX_SECTION_MANIFEST_COVERAGE",
+  "HWPX_SECTION_STRUCTURE",
+  "HWPX_SETTINGS_STRUCTURE",
+  "HWPX_SOURCE_BLOCK_MISSING",
+  "HWPX_SOURCE_BLOCK_PLAN",
+  "HWPX_SOURCE_BLOCK_SEQUENCE",
+  "HWPX_SOURCE_COVERAGE",
+  "HWPX_SOURCE_DISPOSITION",
+  "HWPX_SPINE_DANGLING_REF",
+  "HWPX_SPINE_ORDER",
+  "HWPX_STYLE_REFERENCE",
+  "HWPX_UNCOMPRESSED_SIZE",
+  "HWPX_UNEXPECTED_PACKAGE_ENTRY",
+  "HWPX_UNSUPPORTED_BLOCK_FALLBACK",
+  "HWPX_UNSUPPORTED_COMPRESSION",
+  "HWPX_UNSUPPORTED_PROTECTED_PACKAGE",
+  "HWPX_VERSION_STRUCTURE",
+  "HWPX_XML_WELL_FORMED",
+  "HWPX_ZIP_REOPEN"
+]);
+
+function hwpxInlineCounts(
+  inlines: readonly import("../shared/publication").PublicationInline[]
+): HwpxInlineCounts {
+  let ruby = 0;
+  let strong = 0;
+  let emphasis = 0;
+  let underline = 0;
+  let strike = 0;
+  for (const inline of inlines) {
+    if (inline.kind === "TEXT") {
+      continue;
+    }
+    switch (inline.kind) {
+      case "RUBY":
+        ruby += 1;
+        break;
+      case "STRONG":
+        strong += 1;
+        break;
+      case "EMPHASIS":
+        emphasis += 1;
+        break;
+      case "UNDERLINE":
+        underline += 1;
+        break;
+      case "STRIKE":
+        strike += 1;
+        break;
+    }
+    const nested = hwpxInlineCounts(inline.children);
+    ruby += nested.ruby;
+    strong += nested.strong;
+    emphasis += nested.emphasis;
+    underline += nested.underline;
+    strike += nested.strike;
+  }
+  return { ruby, strong, emphasis, underline, strike };
+}
+
+function hwpxHeadingIncluded(
+  level: 1 | 2 | 3 | 4,
+  config: HwpxExportPresetConfig
+): boolean {
+  switch (level) {
+    case 1:
+      return config.includeWorkTitle;
+    case 2:
+      return config.includeVolumeTitles;
+    case 3:
+      return config.includeChapterTitles;
+    case 4:
+      return config.includeSceneTitles;
+  }
+}
+
+function hwpxValidationMessagesForDocument(
+  messages: HwpxUtilityResult["summary"]["validationReport"]["messages"],
+  document: CompilePublicationResult["document"]
+): HwpxExportReport["validation"]["messages"] {
+  const sectionBySourceNode = new Map<string, string>();
+  for (const section of document.sections) {
+    sectionBySourceNode.set(section.sourceNodeId, section.id);
+    for (const block of section.blocks) {
+      sectionBySourceNode.set(block.source.sourceNodeId, section.id);
+    }
+  }
+  return messages.map((message) => {
+    if (!HWPX_VALIDATION_CODES.has(message.code)) {
+      throw new Error("The HWPX utility returned an unknown validation code");
+    }
+    if (
+      message.sourceNodeId !== null &&
+      !sectionBySourceNode.has(message.sourceNodeId)
+    ) {
+      throw new Error("The HWPX utility returned an unknown source node");
+    }
+    if (
+      message.hwpxPath !== null &&
+      message.hwpxPath !== "mimetype" &&
+      message.hwpxPath !== "version.xml" &&
+      message.hwpxPath !== "settings.xml" &&
+      message.hwpxPath !== "Contents/header.xml" &&
+      message.hwpxPath !== "Contents/content.hpf" &&
+      message.hwpxPath !== "META-INF/container.xml" &&
+      message.hwpxPath !== "META-INF/container.rdf" &&
+      message.hwpxPath !== "META-INF/manifest.xml" &&
+      !/^Contents\/section(?:0|[1-9][0-9]*)\.xml$/u.test(message.hwpxPath)
+    ) {
+      throw new Error("The HWPX utility returned an unknown package path");
+    }
+    return {
+      code: message.code,
+      severity: message.severity,
+      description: `HWPX 내부 검증 메시지: ${message.code}`,
+      sourceNodeId: message.sourceNodeId,
+      hwpxPath: message.hwpxPath,
+      suggestion: null,
+      sectionId:
+        message.sourceNodeId === null
+          ? null
+          : sectionBySourceNode.get(message.sourceNodeId) ?? null
+    };
+  });
+}
+
+function hwpxReportFromUtility(
+  utility: HwpxUtilityResult,
+  document: CompilePublicationResult["document"],
+  config: HwpxExportPresetConfig,
+  sourcePublicationHash: string,
+  presetId: string,
+  presetContentHash: string,
+  sourceProjectRevision: number,
+  appVersion: string
+): HwpxExportReport {
+  const { summary } = utility;
+  const statistics = summary.statistics;
+  const blocks = document.sections.flatMap((section) => section.blocks);
+  let expectedRuby = 0;
+  let expectedStrong = 0;
+  let expectedEmphasis = 0;
+  let expectedUnderline = 0;
+  let expectedStrike = 0;
+  let expectedFallback = 0;
+  let expectedConfiguredOmission = 0;
+  let expectedHeadings = 0;
+  for (const block of blocks) {
+    if (block.kind === "UNSUPPORTED") {
+      expectedFallback += 1;
+      continue;
+    }
+    if (block.kind === "HEADING") {
+      if (hwpxHeadingIncluded(block.level, config)) {
+        expectedHeadings += 1;
+      } else {
+        expectedConfiguredOmission += 1;
+      }
+      continue;
+    }
+    if (block.kind === "PARAGRAPH" || block.kind === "QUOTE") {
+      const counts = hwpxInlineCounts(block.inlines);
+      expectedRuby += counts.ruby;
+      expectedStrong += counts.strong;
+      expectedEmphasis += counts.emphasis;
+      expectedUnderline += counts.underline;
+      expectedStrike += counts.strike;
+      if (counts.ruby > 0) {
+        expectedFallback += 1;
+      }
+    }
+  }
+  const expectedSceneBreaks = blocks.filter(
+    (block) => block.kind === "SCENE_BREAK"
+  ).length;
+  const expectedPackageSectionCount =
+    config.sectionSplitMode === "SINGLE"
+      ? 1
+      : Math.max(
+          1,
+          blocks.filter(
+            (block) => block.kind === "HEADING" && block.level === 2
+          ).length
+        );
+  const expectedExported =
+    blocks.length - expectedFallback - expectedConfiguredOmission;
+  if (
+    summary.validationReport.status !== "PASS" ||
+    summary.packageXmlVersion !== "1.31" ||
+    summary.sourcePublicationHash !== sourcePublicationHash ||
+    summary.presetId !== presetId ||
+    summary.presetContentHash !== presetContentHash ||
+    summary.fontFamily !== config.fontFamilyToken ||
+    statistics.sourceSectionCount !== document.sections.length ||
+    statistics.exportedSectionCount !== document.sections.length ||
+    statistics.sectionCount !== expectedPackageSectionCount ||
+    statistics.sourceBlockCount !== blocks.length ||
+    statistics.exportedBlockCount !== expectedExported ||
+    statistics.fallbackBlockCount !== expectedFallback ||
+    statistics.configuredOmissionBlockCount !== expectedConfiguredOmission ||
+    statistics.rejectedBlockCount !== 0 ||
+    statistics.exportedBlockCount +
+      statistics.fallbackBlockCount +
+      statistics.configuredOmissionBlockCount +
+      statistics.rejectedBlockCount !==
+      statistics.sourceBlockCount ||
+    statistics.sourceCharacterCount !== document.stats.withSpaces ||
+    statistics.exportedCharacterCount !== document.stats.withSpaces ||
+    statistics.headingCount !== expectedHeadings ||
+    statistics.sceneBreakCount !== expectedSceneBreaks ||
+    statistics.rubyCount !== expectedRuby ||
+    statistics.rubyFallbackCount !== expectedRuby ||
+    statistics.strongSegmentCount !== expectedStrong ||
+    statistics.emphasisSegmentCount !== expectedEmphasis ||
+    statistics.underlineSegmentCount !== expectedUnderline ||
+    statistics.strikeSegmentCount !== expectedStrike ||
+    statistics.paragraphCount < expectedExported + expectedFallback ||
+    statistics.runCount < expectedExported + expectedFallback
+  ) {
+    throw new Error("The HWPX utility reported publication content loss");
+  }
+  return {
+    formatVersion: 1,
+    outputType: "HWPX",
+    packageProfile: "HANCOM_OFFICIAL_MODEL_1_31",
+    sourceScope: document.scopeKind,
+    sourceScopeNodeId: document.scopeNodeId,
+    sourceProjectRevision,
+    sourcePublicationHash: summary.sourcePublicationHash,
+    presetId,
+    presetContentHash,
+    hwpxSha256: utility.mode === "EXPORT" ? summary.sha256 : null,
+    outputSha256: utility.mode === "EXPORT" ? summary.sha256 : null,
+    preservedHwpxFileName: null,
+    logicalPackageHash: summary.logicalPackageHash,
+    byteLength: utility.mode === "EXPORT" ? summary.byteLength : null,
+    coverage: {
+      packageSectionCount: statistics.sectionCount,
+      sourceSectionCount: statistics.sourceSectionCount,
+      exportedSectionCount: statistics.exportedSectionCount,
+      sourceBlockCount: statistics.sourceBlockCount,
+      exportedBlockCount: statistics.exportedBlockCount,
+      fallbackBlockCount: statistics.fallbackBlockCount,
+      configuredOmissionBlockCount:
+        statistics.configuredOmissionBlockCount,
+      rejectedBlockCount: statistics.rejectedBlockCount,
+      sourceCharacterCount: statistics.sourceCharacterCount,
+      exportedCharacterCount: statistics.exportedCharacterCount,
+      paragraphCount: statistics.paragraphCount,
+      runCount: statistics.runCount,
+      headingCount: statistics.headingCount,
+      sceneBreakCount: statistics.sceneBreakCount,
+      rubyCount: statistics.rubyCount,
+      inlineModifierCount:
+        statistics.strongSegmentCount +
+        statistics.emphasisSegmentCount +
+        statistics.underlineSegmentCount +
+        statistics.strikeSegmentCount
+    },
+    validation: {
+      status: "VALID",
+      fatalCount: summary.validationReport.fatalCount,
+      errorCount: summary.validationReport.errorCount,
+      warningCount: summary.validationReport.warningCount,
+      infoCount: summary.validationReport.infoCount,
+      messages: hwpxValidationMessagesForDocument(
+        summary.validationReport.messages,
+        document
+      )
+    },
+    fontFamily: summary.fontFamily,
+    fontInstalled: null,
+    page: {
+      pageSizeToken: config.pageSizeToken,
+      orientation: config.orientation,
+      marginTop: config.marginTop,
+      marginBottom: config.marginBottom,
+      marginLeft: config.marginLeft,
+      marginRight: config.marginRight
+    },
+    hancomReopen: "NOT_RUN",
+    hwpConverted: false,
+    timing: {
+      semanticMappingMs: 0,
+      styleTableMs: summary.exportTiming.styleTableMs,
+      sectionXmlMs: summary.exportTiming.sectionXmlMs,
+      packageMs:
+        summary.exportTiming.packageDocumentsMs +
+        summary.exportTiming.zipPackagingMs,
+      internalValidationMs: summary.exportTiming.internalValidationMs,
+      zipReopenMs: summary.exportTiming.zipReopenMs,
+      sourceCoverageMs: summary.exportTiming.sourceCoverageMs,
+      totalMs: summary.exportTiming.totalMs,
+      hwpConversionMs: null,
+      hwpReopenMs: null
+    },
+    generatedAt: new Date().toISOString(),
+    madiVersion: appVersion
+  };
+}
+
+function hwpxValidationFailureReport(
+  document: CompilePublicationResult["document"],
+  sourcePublicationHash: string,
+  config: HwpxExportPresetConfig,
+  presetId: string,
+  presetContentHash: string,
+  validation: HwpxUtilityValidationError["report"],
+  appVersion: string
+): HwpxExportReport {
+  const blocks = document.sections.flatMap((section) => section.blocks);
+  let rubyCount = 0;
+  let inlineModifierCount = 0;
+  for (const block of blocks) {
+    if (block.kind === "PARAGRAPH" || block.kind === "QUOTE") {
+      const counts = hwpxInlineCounts(block.inlines);
+      rubyCount += counts.ruby;
+      inlineModifierCount +=
+        counts.strong + counts.emphasis + counts.underline + counts.strike;
+    }
+  }
+  return {
+    formatVersion: 1,
+    outputType: "HWPX",
+    packageProfile: "HANCOM_OFFICIAL_MODEL_1_31",
+    sourceScope: document.scopeKind,
+    sourceScopeNodeId: document.scopeNodeId,
+    sourceProjectRevision: document.projectRevision,
+    sourcePublicationHash,
+    presetId,
+    presetContentHash,
+    hwpxSha256: null,
+    outputSha256: null,
+    preservedHwpxFileName: null,
+    logicalPackageHash: "0".repeat(64),
+    byteLength: null,
+    coverage: {
+      packageSectionCount: 0,
+      sourceSectionCount: document.sections.length,
+      exportedSectionCount: 0,
+      sourceBlockCount: blocks.length,
+      exportedBlockCount: 0,
+      fallbackBlockCount: 0,
+      configuredOmissionBlockCount: 0,
+      rejectedBlockCount: blocks.length,
+      sourceCharacterCount: document.stats.withSpaces,
+      exportedCharacterCount: 0,
+      paragraphCount: 0,
+      runCount: 0,
+      headingCount: blocks.filter((block) => block.kind === "HEADING").length,
+      sceneBreakCount: blocks.filter((block) => block.kind === "SCENE_BREAK").length,
+      rubyCount,
+      inlineModifierCount
+    },
+    validation: {
+      status: "INVALID",
+      fatalCount: validation.fatalCount,
+      errorCount: validation.errorCount,
+      warningCount: validation.warningCount,
+      infoCount: validation.infoCount,
+      messages: hwpxValidationMessagesForDocument(validation.messages, document)
+    },
+    fontFamily: config.fontFamilyToken,
+    fontInstalled: null,
+    page: {
+      pageSizeToken: config.pageSizeToken,
+      orientation: config.orientation,
+      marginTop: config.marginTop,
+      marginBottom: config.marginBottom,
+      marginLeft: config.marginLeft,
+      marginRight: config.marginRight
+    },
+    hancomReopen: "NOT_RUN",
+    hwpConverted: false,
+    timing: {
+      semanticMappingMs: 0,
+      styleTableMs: 0,
+      sectionXmlMs: 0,
+      packageMs: 0,
+      internalValidationMs: 0,
+      zipReopenMs: 0,
+      sourceCoverageMs: 0,
+      totalMs: 0,
+      hwpConversionMs: null,
+      hwpReopenMs: null
+    },
+    generatedAt: new Date().toISOString(),
+    madiVersion: appVersion
+  };
+}
+
+function hwpxReportWithFontInstallation(
+  report: HwpxExportReport,
+  installed: boolean | null
+): HwpxExportReport {
+  if (installed === true) {
+    return { ...report, fontInstalled: true };
+  }
+  if (report.validation.messages.length >= 1_000) {
+    return { ...report, fontInstalled: installed };
+  }
+  const message =
+    installed === false
+      ? {
+          severity: "WARNING" as const,
+          code: "HWPX_FONT_NOT_INSTALLED",
+          description: `선택한 글꼴 '${report.fontFamily}'을(를) Windows 설치 글꼴에서 확인하지 못했습니다.`,
+          suggestion: "설치된 글꼴을 선택하거나 이 문서를 열 환경에 해당 글꼴을 설치하세요."
+        }
+      : {
+          severity: "INFO" as const,
+          code: "HWPX_FONT_INSTALLATION_UNVERIFIED",
+          description: `선택한 글꼴 '${report.fontFamily}'의 설치 여부를 이 환경에서 확인할 수 없습니다.`,
+          suggestion: "문서를 열 Windows 환경에서 글꼴 설치 상태를 확인하세요."
+        };
+  return {
+    ...report,
+    fontInstalled: installed,
+    validation: {
+      ...report.validation,
+      warningCount:
+        report.validation.warningCount + (message.severity === "WARNING" ? 1 : 0),
+      infoCount:
+        report.validation.infoCount + (message.severity === "INFO" ? 1 : 0),
+      messages: [
+        ...report.validation.messages,
+        {
+          ...message,
+          sourceNodeId: null,
+          sectionId: null,
+          hwpxPath: null
+        }
+      ]
+    }
+  };
+}
+
+function hwpxReportForHwp(
+  report: HwpxExportReport,
+  options: {
+    readonly preservedHwpxFileName: string;
+    readonly outputSha256: string | null;
+    readonly byteLength: number | null;
+    readonly hwpConverted: boolean;
+    readonly hancomReopen: "NOT_RUN" | "PASSED" | "FAILED";
+    readonly hwpConversionMs: number;
+    readonly hwpReopenMs: number | null;
+  }
+): HwpxExportReport {
+  const bridgeTiming = options.hwpConversionMs + (options.hwpReopenMs ?? 0);
+  return {
+    ...report,
+    outputType: "HWP",
+    outputSha256: options.outputSha256,
+    preservedHwpxFileName: options.preservedHwpxFileName,
+    byteLength: options.byteLength,
+    hwpConverted: options.hwpConverted,
+    hancomReopen: options.hancomReopen,
+    timing: {
+      ...report.timing,
+      totalMs: report.timing.totalMs + bridgeTiming,
+      hwpConversionMs: options.hwpConversionMs,
+      hwpReopenMs: options.hwpReopenMs
+    }
+  };
+}
+
+function markdownHwpxExportReport(report: HwpxExportReport): string {
+  const lines = [
+    "# madi HWPX export report",
+    "",
+    `- Output: ${report.outputType}`,
+    `- Package profile: ${report.packageProfile}`,
+    `- Source scope/revision: ${report.sourceScope} (${report.sourceScopeNodeId})/${report.sourceProjectRevision}`,
+    `- Publication IR SHA-256: ${report.sourcePublicationHash}`,
+    `- Preset/hash: ${report.presetId}/${report.presetContentHash}`,
+    `- HWPX SHA-256: ${report.hwpxSha256 ?? "not written"}`,
+    `- Output SHA-256: ${report.outputSha256 ?? "not written"}`,
+    `- Preserved HWPX: ${report.preservedHwpxFileName ?? "not applicable"}`,
+    `- Logical package SHA-256: ${report.logicalPackageHash}`,
+    `- Publication IR sections: ${report.coverage.exportedSectionCount}/${report.coverage.sourceSectionCount}`,
+    `- Physical HWPX sections: ${report.coverage.packageSectionCount}`,
+    `- Blocks (exported/fallback/configured omission/rejected/source): ${report.coverage.exportedBlockCount}/${report.coverage.fallbackBlockCount}/${report.coverage.configuredOmissionBlockCount}/${report.coverage.rejectedBlockCount}/${report.coverage.sourceBlockCount}`,
+    `- Characters: ${report.coverage.exportedCharacterCount}/${report.coverage.sourceCharacterCount}`,
+    `- Paragraphs/runs/headings: ${report.coverage.paragraphCount}/${report.coverage.runCount}/${report.coverage.headingCount}`,
+    `- Scene breaks/Ruby/inline modifiers: ${report.coverage.sceneBreakCount}/${report.coverage.rubyCount}/${report.coverage.inlineModifierCount}`,
+    `- Internal validation: ${report.validation.status}`,
+    `- Validation F/E/W/I: ${report.validation.fatalCount}/${report.validation.errorCount}/${report.validation.warningCount}/${report.validation.infoCount}`,
+    `- Font installed: ${report.fontFamily}/${report.fontInstalled === null ? "unverified" : report.fontInstalled}`,
+    `- Hancom reopen/HWP converted: ${report.hancomReopen}/${report.hwpConverted}`,
+    `- Total: ${report.timing.totalMs} ms`,
+    `- Generated: ${report.generatedAt}`,
+    `- madi: ${report.madiVersion}`,
+    ""
+  ];
+  if (report.validation.messages.length > 0) {
+    lines.push("## Validation messages", "");
+    for (const message of report.validation.messages) {
+      lines.push(
+        `- ${message.severity} ${message.code}: ${message.description}${message.hwpxPath ? ` [${message.hwpxPath}]` : ""}${message.suggestion ? ` — ${message.suggestion}` : ""}`
+      );
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 export class DesktopService {
   private readonly epubOutputSelections = new Map<
     string,
@@ -3380,6 +4226,38 @@ export class DesktopService {
   >();
   private epubShuttingDown = false;
   private epubShutdownPromise: Promise<void> | null = null;
+  private readonly hwpxOutputSelections = new Map<
+    string,
+    HwpxOutputSelectionRecord
+  >();
+  private readonly hwpxOperations = new Map<string, HwpxOperationRecord>();
+  private readonly usedHwpxOperationIds = new Set<string>();
+  private readonly activeHwpxOperations = new Map<
+    string,
+    {
+      readonly sessionId: string;
+      readonly phase:
+        | "PREPARING"
+        | "EXPORTING"
+        | "PROCESSING"
+        | "FINALIZING";
+    }
+  >();
+  private readonly cancelledHwpxOperations = new Set<string>();
+  private readonly hwpxOperationCompletions = new Map<
+    string,
+    {
+      readonly promise: Promise<{ readonly cleanupFailed: boolean }>;
+      readonly resolve: (result: { readonly cleanupFailed: boolean }) => void;
+    }
+  >();
+  private readonly hwpxIpcCompletions = new Set<Promise<void>>();
+  private readonly ownedHwpxTemporaryDirectories = new Set<string>();
+  private readonly registeredHwpxRecoveryDirectories = new Set<string>();
+  private readonly preservedHwpxRecoveryDirectories = new Set<string>();
+  private hwpxShuttingDown = false;
+  private hwpxShutdownPromise: Promise<void> | null = null;
+  private hancomProbePromise: Promise<HwpxExportState["hancom"]> | null = null;
 
   public constructor(
     private readonly window: BrowserWindow,
@@ -3388,7 +4266,14 @@ export class DesktopService {
     private readonly sessions: ProjectSessionRegistry,
     private readonly appVersion: string,
     private readonly epubExporter?: EpubExporterPort,
-    private readonly shellPort?: ShellPort
+    private readonly shellPort?: ShellPort,
+    private readonly hwpxExporter?: HwpxExporterPort,
+    private readonly hwpBridge?: HwpBridgePort,
+    private readonly fontInstallation: FontInstallationPort =
+      new WindowsFontInstallationDetector(),
+    private readonly runtimePlatform: NodeJS.Platform = process.platform,
+    private readonly hwpxCrashRecovery?: HwpxCrashRecoveryPort,
+    private readonly atomicOutput?: AtomicOutputPort
   ) {}
 
   public async createProject(
@@ -4536,15 +5421,10 @@ export class DesktopService {
     if (metadata.coverAssetId !== (cover?.id ?? null)) {
       throw new Error("The local core returned inconsistent publication cover state");
     }
-    if (!Array.isArray(response.export_presets)) {
-      throw new Error("The local core returned invalid export presets");
-    }
-    const presets = response.export_presets.map((preset) =>
-      parseEpubExportPreset(preset, session.projectId)
-    );
-    if (new Set(presets.map((preset) => preset.id)).size !== presets.length) {
-      throw new Error("The local core returned duplicate EPUB preset identities");
-    }
+    const presets = parseExportPresets(
+      response.export_presets,
+      session.projectId
+    ).epub;
     const revision = responseRevision(response, "publication export state");
     this.sessions.updateProject(sessionId, { revision });
     return {
@@ -4554,6 +5434,298 @@ export class DesktopService {
       duplicatePresetNames: duplicateNames(presets),
       revision
     };
+  }
+
+  private getHancomAutomationAvailability(): Promise<HwpxExportState["hancom"]> {
+    if (this.runtimePlatform !== "win32") {
+      return Promise.resolve({ status: "UNAVAILABLE", reason: "NOT_WINDOWS" });
+    }
+    if (!this.hwpBridge) {
+      return Promise.resolve({
+        status: "UNAVAILABLE",
+        reason: "BRIDGE_UNAVAILABLE"
+      });
+    }
+    if (!this.hancomProbePromise) {
+      this.hancomProbePromise = this.hwpBridge
+        .probe()
+        .then((probe): HwpxExportState["hancom"] => {
+          if (probe.available) {
+            return { status: "AVAILABLE", version: probe.hancomVersion };
+          }
+          if (probe.availabilityCode === "NOT_INSTALLED") {
+            return { status: "UNAVAILABLE", reason: "NOT_INSTALLED" };
+          }
+          return {
+            status: "REGISTERED_UNVERIFIED",
+            version: probe.hancomVersion
+          };
+        })
+        .catch((error): HwpxExportState["hancom"] => {
+          if (
+            error instanceof HwpBridgeOperationError &&
+            error.code === "NOT_INSTALLED"
+          ) {
+            return { status: "UNAVAILABLE", reason: "NOT_INSTALLED" };
+          }
+          return { status: "UNAVAILABLE", reason: "BRIDGE_UNAVAILABLE" };
+        });
+    }
+    return this.hancomProbePromise;
+  }
+
+  private async reportWithFontInstallation(
+    report: HwpxExportReport
+  ): Promise<HwpxExportReport> {
+    let installed: boolean | null = null;
+    try {
+      installed = await this.fontInstallation.isInstalled(report.fontFamily);
+    } catch {
+      // Font detection is read-only best effort; the report remains explicit.
+    }
+    return hwpxReportWithFontInstallation(report, installed);
+  }
+
+  public async getHwpxExportState(
+    input: SessionRequest
+  ): Promise<HwpxExportState> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const response = asRecord(
+      await this.core.request("get_publication_export_state", {
+        file_path: session.filePath
+      }),
+      "publication export state response"
+    );
+    assertRequiredExactKeys(
+      response,
+      [
+        "metadata",
+        "publication_metadata",
+        "cover_asset",
+        "export_presets",
+        "revision"
+      ],
+      "publication export state response"
+    );
+    const metadata = parsePublicationExportMetadata(
+      response.publication_metadata,
+      session.projectId
+    );
+    const presets = parseExportPresets(
+      response.export_presets,
+      session.projectId
+    ).hwpx;
+    const revision = responseRevision(response, "publication export state");
+    this.sessions.updateProject(sessionId, { revision });
+    return {
+      metadata,
+      presets,
+      duplicatePresetNames: duplicateNames(presets),
+      hancom: await this.getHancomAutomationAvailability(),
+      revision
+    };
+  }
+
+  public async createHwpxExportPreset(
+    input: CreateHwpxExportPresetRequest
+  ): Promise<HwpxExportPresetMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const presetId = randomUUID();
+    const name = validateHwpxPresetName(input.name);
+    const config = validateHwpxExportPresetConfig(input.config);
+    const response = asRecord(
+      await this.core.request("create_export_preset", {
+        file_path: session.filePath,
+        preset_id: presetId,
+        kind: "HWPX",
+        name,
+        preset_json: config,
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "create HWPX export preset response"
+    );
+    assertRequiredExactKeys(
+      response,
+      ["metadata", "preset", "no_op", "revision"],
+      "create HWPX export preset response"
+    );
+    const revision = responseRevision(response, "create HWPX export preset");
+    const preset = parseHwpxExportPreset(response.preset, session.projectId);
+    const noOp = requiredBoolean(response, "no_op");
+    if (noOp) {
+      throw new Error("The local core did not create the HWPX export preset");
+    }
+    assertHwpxPresetContent(preset, {
+      id: presetId,
+      name,
+      config,
+      revision: 0
+    });
+    assertEpubMutationRevision(
+      session.revision,
+      revision,
+      false,
+      "HWPX export preset creation"
+    );
+    this.sessions.updateProject(sessionId, { revision });
+    return { preset, revision, noOp };
+  }
+
+  public async updateHwpxExportPreset(
+    input: UpdateHwpxExportPresetRequest
+  ): Promise<HwpxExportPresetMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    if (
+      !Number.isSafeInteger(input.expectedPresetRevision) ||
+      input.expectedPresetRevision < 0
+    ) {
+      throw new Error("Invalid expected HWPX export preset revision");
+    }
+    const presetId = validateHwpxIdentifier(
+      input.presetId,
+      "HWPX export preset id"
+    );
+    const name = validateHwpxPresetName(input.name);
+    const config = validateHwpxExportPresetConfig(input.config);
+    const response = asRecord(
+      await this.core.request("update_export_preset", {
+        file_path: session.filePath,
+        preset_id: presetId,
+        kind: "HWPX",
+        name,
+        preset_json: config,
+        expected_revision: session.revision,
+        expected_preset_revision: input.expectedPresetRevision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "update HWPX export preset response"
+    );
+    assertRequiredExactKeys(
+      response,
+      ["metadata", "preset", "no_op", "revision"],
+      "update HWPX export preset response"
+    );
+    const revision = responseRevision(response, "update HWPX export preset");
+    const preset = parseHwpxExportPreset(response.preset, session.projectId);
+    const noOp = requiredBoolean(response, "no_op");
+    assertHwpxPresetContent(preset, {
+      id: presetId,
+      name,
+      config,
+      revision: input.expectedPresetRevision + (noOp ? 0 : 1)
+    });
+    assertEpubMutationRevision(
+      session.revision,
+      revision,
+      noOp,
+      "HWPX export preset update"
+    );
+    this.sessions.updateProject(sessionId, { revision });
+    return { preset, revision, noOp };
+  }
+
+  public async duplicateHwpxExportPreset(
+    input: DuplicateHwpxExportPresetRequest
+  ): Promise<HwpxExportPresetMutationResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const sourcePresetId = validateHwpxIdentifier(
+      input.sourcePresetId,
+      "source HWPX export preset id"
+    );
+    const state = await this.getHwpxExportState({ sessionId });
+    if (state.revision !== session.revision) {
+      throw new Error("HWPX export presets changed before duplication");
+    }
+    const source = state.presets.find((preset) => preset.id === sourcePresetId);
+    if (!source) {
+      throw new Error("The source HWPX export preset is unavailable");
+    }
+    const presetId = randomUUID();
+    const name =
+      input.name === undefined ? undefined : validateHwpxPresetName(input.name);
+    const response = asRecord(
+      await this.core.request("duplicate_export_preset", {
+        file_path: session.filePath,
+        source_preset_id: sourcePresetId,
+        preset_id: presetId,
+        ...(name === undefined ? {} : { name }),
+        expected_revision: session.revision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "duplicate HWPX export preset response"
+    );
+    assertRequiredExactKeys(
+      response,
+      ["metadata", "preset", "no_op", "revision"],
+      "duplicate HWPX export preset response"
+    );
+    const revision = responseRevision(response, "duplicate HWPX export preset");
+    const preset = parseHwpxExportPreset(response.preset, session.projectId);
+    const noOp = requiredBoolean(response, "no_op");
+    if (noOp) {
+      throw new Error("The local core did not duplicate the HWPX export preset");
+    }
+    assertHwpxPresetContent(preset, {
+      id: presetId,
+      ...(name === undefined ? {} : { name }),
+      config: source.config,
+      revision: 0
+    });
+    assertEpubMutationRevision(
+      session.revision,
+      revision,
+      false,
+      "HWPX export preset duplication"
+    );
+    this.sessions.updateProject(sessionId, { revision });
+    return { preset, revision, noOp };
+  }
+
+  public async deleteHwpxExportPreset(
+    input: DeleteHwpxExportPresetRequest
+  ): Promise<DeleteHwpxExportPresetResult> {
+    const sessionId = validateSessionId(input?.sessionId);
+    const session = this.sessions.require(sessionId);
+    const presetId = validateHwpxIdentifier(
+      input.presetId,
+      "HWPX export preset id"
+    );
+    if (
+      !Number.isSafeInteger(input.expectedPresetRevision) ||
+      input.expectedPresetRevision < 0
+    ) {
+      throw new Error("Invalid expected HWPX export preset revision");
+    }
+    const response = asRecord(
+      await this.core.request("delete_export_preset", {
+        file_path: session.filePath,
+        preset_id: presetId,
+        expected_revision: session.revision,
+        expected_preset_revision: input.expectedPresetRevision,
+        saved_by: `madi/${this.appVersion}`
+      }),
+      "delete HWPX export preset response"
+    );
+    assertRequiredExactKeys(
+      response,
+      ["metadata", "deleted_preset_id", "revision"],
+      "delete HWPX export preset response"
+    );
+    const deletedPresetId = requiredString(response, "deleted_preset_id");
+    if (deletedPresetId !== presetId) {
+      throw new Error("The local core deleted another HWPX export preset");
+    }
+    const revision = responseRevision(response, "delete HWPX export preset");
+    if (revision !== session.revision + 1) {
+      throw new Error("The local core returned an invalid preset deletion revision");
+    }
+    this.sessions.updateProject(sessionId, { revision });
+    return { deletedPresetId, revision };
   }
 
   public async updatePublicationMetadata(
@@ -4754,6 +5926,7 @@ export class DesktopService {
       await this.core.request("create_export_preset", {
         file_path: session.filePath,
         preset_id: presetId,
+        kind: "EPUB",
         name,
         preset_json: config,
         expected_revision: session.revision,
@@ -4809,6 +5982,7 @@ export class DesktopService {
       await this.core.request("update_export_preset", {
         file_path: session.filePath,
         preset_id: presetId,
+        kind: "EPUB",
         name,
         preset_json: config,
         expected_revision: session.revision,
@@ -5546,7 +6720,10 @@ export class DesktopService {
       return this.epubShutdownPromise;
     }
     this.epubShuttingDown = true;
-    const attempt = this.shutdownEpubOperations();
+    const attempt = Promise.all([
+      this.shutdownEpubOperations(),
+      this.prepareHwpxShutdown()
+    ]).then(() => undefined);
     this.epubShutdownPromise = attempt;
     void attempt.catch(() => {
       if (this.epubShutdownPromise === attempt) {
@@ -5722,6 +6899,1416 @@ export class DesktopService {
     const operationId = validateEpubOperationId(input?.operationId);
     const sessionId = validateSessionId(input?.sessionId);
     const record = this.epubOperations.get(operationId);
+    if (
+      !record?.outputPath ||
+      record.sessionId !== sessionId ||
+      !this.shellPort
+    ) {
+      return false;
+    }
+    const fileStat = await stat(record.outputPath);
+    if (!fileStat.isFile()) {
+      return false;
+    }
+    this.shellPort.showItemInFolder(record.outputPath);
+    return true;
+  }
+
+  public async chooseHwpxOutput(
+    input: ChooseHwpxOutputRequest
+  ): Promise<HwpxOutputSelection | null> {
+    const sessionId = validateSessionId(input?.sessionId);
+    this.sessions.require(sessionId);
+    if (input.outputType !== "HWPX" && input.outputType !== "HWP") {
+      throw new Error("Unsupported HWPX output type");
+    }
+    const extension = input.outputType === "HWPX" ? "hwpx" : "hwp";
+    const fileName = safeHwpxFileName(input.suggestedFileName, input.outputType);
+    const selection = await this.dialog.showSaveDialog(this.window, {
+      title: input.outputType === "HWPX" ? "HWPX 내보내기" : "HWP 내보내기",
+      defaultPath: fileName,
+      filters: [
+        {
+          name: input.outputType === "HWPX" ? "HWPX publication" : "HWP document",
+          extensions: [extension]
+        }
+      ],
+      properties: ["createDirectory", "showOverwriteConfirmation"]
+    });
+    if (selection.canceled || !selection.filePath) {
+      return null;
+    }
+    if (!selection.filePath.toLocaleLowerCase().endsWith(`.${extension}`)) {
+      throw new Error(`HWPX destination must use the .${extension} extension`);
+    }
+    const resolvedPath = path.resolve(selection.filePath);
+    let replaceExisting = false;
+    let existingFile: HwpxOutputSelectionRecord["existingFile"] = null;
+    let atomicIdentity: AtomicOutputIdentity | null = null;
+    try {
+      const existing = await stat(resolvedPath);
+      if (!existing.isFile()) {
+        throw new Error("HWPX destination is not a file");
+      }
+      replaceExisting = true;
+      existingFile = await existingEpubIdentity(
+        resolvedPath,
+        MAX_HWPX_FILE_BYTES
+      );
+      if (!this.atomicOutput) {
+        throw new Error("The atomic output utility is unavailable");
+      }
+      atomicIdentity = await this.atomicOutput.inspect(
+        resolvedPath,
+        MAX_HWPX_FILE_BYTES
+      );
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        (error as NodeJS.ErrnoException).code !== "ENOENT"
+      ) {
+        throw error;
+      }
+    }
+    const selectionId = randomUUID();
+    this.hwpxOutputSelections.set(selectionId, {
+      sessionId,
+      filePath: resolvedPath,
+      fileName: path.basename(resolvedPath),
+      outputType: input.outputType,
+      replaceExisting,
+      maximumBytes: MAX_HWPX_FILE_BYTES,
+      existingFile,
+      atomicIdentity
+    });
+    while (this.hwpxOutputSelections.size > 32) {
+      this.hwpxOutputSelections.delete(
+        this.hwpxOutputSelections.keys().next().value as string
+      );
+    }
+    return {
+      selectionId,
+      fileName: path.basename(resolvedPath),
+      outputType: input.outputType
+    };
+  }
+
+  private async prepareHwpxUtilityInput(
+    input: ValidateHwpxExportRequest,
+    mode: HwpxExporterRunInput["mode"],
+    outputPath: string,
+    replaceExisting: boolean
+  ): Promise<{
+    readonly utilityInput: HwpxExporterRunInput;
+    readonly revision: number;
+    readonly document: CompilePublicationResult["document"];
+  }> {
+    if (!this.hwpxExporter) {
+      throw new Error("The local HWPX utility is unavailable");
+    }
+    const sessionId = validateSessionId(input?.sessionId);
+    const operationId = validateHwpxOperationId(input.operationId);
+    const session = this.sessions.require(sessionId);
+    if (
+      !Number.isSafeInteger(input.expectedProjectRevision) ||
+      input.expectedProjectRevision < 0 ||
+      input.expectedProjectRevision !== session.revision
+    ) {
+      throw new Error("HWPX export project revision is stale");
+    }
+    const scopeKind = validateEnum(
+      input.scopeKind,
+      TREE_NODE_KINDS,
+      "HWPX scope kind"
+    );
+    const suppliedConfig = validateHwpxExportPresetConfig(input.config);
+    const presetId = validateHwpxIdentifier(input.presetId, "HWPX preset id");
+    const suppliedPresetHash = validateSha256(
+      input.presetContentHash,
+      "HWPX preset content hash"
+    );
+    const rendererMetadataRecord = asRecord(
+      input.metadata,
+      "HWPX export metadata"
+    );
+    assertExactKeys(
+      rendererMetadataRecord,
+      [
+        "projectId",
+        "publicationTitle",
+        "creatorName",
+        "language",
+        "identifier",
+        "publisher",
+        "description",
+        "rights",
+        "subjects",
+        "coverAssetId",
+        "createdAt",
+        "updatedAt"
+      ],
+      "HWPX export metadata"
+    );
+    const rendererMetadata = validatePublicationMetadataInput({
+      publicationTitle: rendererMetadataRecord.publicationTitle,
+      creatorName: rendererMetadataRecord.creatorName,
+      language: rendererMetadataRecord.language,
+      identifier: rendererMetadataRecord.identifier,
+      publisher: rendererMetadataRecord.publisher,
+      description: rendererMetadataRecord.description,
+      rights: rendererMetadataRecord.rights,
+      subjects: rendererMetadataRecord.subjects
+    });
+    const titlePageRecord = asRecord(input.titlePage, "HWPX title page");
+    assertExactKeys(
+      titlePageRecord,
+      ["subtitle", "genre", "contact"],
+      "HWPX title page"
+    );
+    const titlePage = {
+      subtitle: validateHwpxFrontMatterText(
+        titlePageRecord.subtitle,
+        "HWPX subtitle"
+      ),
+      genre: validateHwpxFrontMatterText(titlePageRecord.genre, "HWPX genre"),
+      contact: validateHwpxFrontMatterText(
+        titlePageRecord.contact,
+        "HWPX contact"
+      )
+    };
+    if (
+      !suppliedConfig.includeTitlePage &&
+      (titlePage.subtitle !== null ||
+        titlePage.genre !== null ||
+        titlePage.contact !== null)
+    ) {
+      throw new Error("HWPX title-page fields require the title page option");
+    }
+    const exportStateResponse = asRecord(
+      await this.core.request("get_publication_export_state", {
+        file_path: session.filePath
+      }),
+      "publication export state response"
+    );
+    assertRequiredExactKeys(
+      exportStateResponse,
+      [
+        "metadata",
+        "publication_metadata",
+        "cover_asset",
+        "export_presets",
+        "revision"
+      ],
+      "publication export state response"
+    );
+    const stateRevision = responseRevision(
+      exportStateResponse,
+      "publication export state"
+    );
+    if (this.cancelledHwpxOperations.delete(operationId)) {
+      throw new HwpxExportCancelledError();
+    }
+    if (stateRevision !== input.expectedProjectRevision) {
+      this.sessions.updateProject(sessionId, { revision: stateRevision });
+      throw new Error("HWPX export project revision changed");
+    }
+    const metadata = parsePublicationExportMetadata(
+      exportStateResponse.publication_metadata,
+      session.projectId
+    );
+    const canonicalMetadata = validatePublicationMetadataInput(
+      editableMetadataForValidation(metadata)
+    );
+    if (
+      input.metadata.projectId !== session.projectId ||
+      rendererMetadataRecord.coverAssetId !== metadata.coverAssetId ||
+      rendererMetadataRecord.createdAt !== metadata.createdAt ||
+      rendererMetadataRecord.updatedAt !== metadata.updatedAt ||
+      canonicalCanvasJson(rendererMetadata) !== canonicalCanvasJson(canonicalMetadata)
+    ) {
+      throw new Error("HWPX export metadata is stale");
+    }
+    const storedPresets = parseExportPresets(
+      exportStateResponse.export_presets,
+      session.projectId
+    ).hwpx;
+    let config: HwpxExportPresetConfig;
+    let presetContentHash: string;
+    const builtIn = BUILT_IN_HWPX_PRESETS.find(
+      (candidate) => candidate.id === presetId
+    );
+    if (builtIn) {
+      const canonicalBuiltIn = validateHwpxExportPresetConfig(builtIn.config);
+      if (
+        canonicalCanvasJson(suppliedConfig) !==
+        canonicalCanvasJson(canonicalBuiltIn)
+      ) {
+        throw new Error("The HWPX built-in preset configuration was modified");
+      }
+      config = canonicalBuiltIn;
+      presetContentHash = canonicalJsonSha256(config);
+    } else if (presetId === "ONE_OFF") {
+      config = suppliedConfig;
+      presetContentHash = canonicalJsonSha256(config);
+    } else {
+      const stored = storedPresets.find((preset) => preset.id === presetId);
+      if (!stored) {
+        throw new Error("The selected HWPX export preset is unavailable");
+      }
+      const computedHash = canonicalJsonSha256(stored.config);
+      if (
+        stored.contentHash !== computedHash ||
+        suppliedPresetHash !== stored.contentHash ||
+        canonicalCanvasJson(suppliedConfig) !== canonicalCanvasJson(stored.config)
+      ) {
+        throw new Error("The selected HWPX export preset is stale");
+      }
+      config = stored.config;
+      presetContentHash = stored.contentHash;
+    }
+    this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
+      operationId,
+      stage: "PUBLICATION_COMPILE",
+      completed: 0,
+      total: 1
+    });
+    let compiled: CompilePublicationResult;
+    let cancelled = false;
+    try {
+      compiled = await this.compilePublication({
+        sessionId,
+        scopeNodeId: validateNodeId(input.scopeNodeId, "HWPX scope node id"),
+        expectedProjectRevision: stateRevision
+      });
+    } finally {
+      cancelled = this.cancelledHwpxOperations.delete(operationId);
+    }
+    if (cancelled) {
+      throw new HwpxExportCancelledError();
+    }
+    if (compiled.document.scopeKind !== scopeKind) {
+      throw new Error("The HWPX scope kind does not match Publication IR");
+    }
+    this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
+      operationId,
+      stage: "PUBLICATION_COMPILE",
+      completed: 1,
+      total: 1
+    });
+    return {
+      utilityInput: {
+        operationId,
+        mode,
+        document: compiled.document,
+        sourcePublicationHash: compiled.contentHash,
+        presetId,
+        presetContentHash,
+        metadata,
+        titlePage,
+        config,
+        outputPath,
+        replaceExisting
+      },
+      revision: compiled.revision,
+      document: compiled.document
+    };
+  }
+
+  private rememberHwpxOperation(
+    operationId: string,
+    record: HwpxOperationRecord
+  ): void {
+    this.hwpxOperations.set(operationId, record);
+    while (this.hwpxOperations.size > 20) {
+      this.hwpxOperations.delete(this.hwpxOperations.keys().next().value as string);
+    }
+  }
+
+  private beginHwpxOperation(operationId: string, sessionId: string): void {
+    if (this.hwpxShuttingDown) {
+      throw new Error("HWPX operations are shutting down");
+    }
+    if (
+      this.usedHwpxOperationIds.has(operationId) ||
+      this.activeHwpxOperations.has(operationId)
+    ) {
+      throw new Error("HWPX operation id was already used");
+    }
+    this.usedHwpxOperationIds.add(operationId);
+    while (this.usedHwpxOperationIds.size > 1_024) {
+      this.usedHwpxOperationIds.delete(
+        this.usedHwpxOperationIds.values().next().value as string
+      );
+    }
+    this.activeHwpxOperations.set(operationId, {
+      sessionId,
+      phase: "PREPARING"
+    });
+    let resolveCompletion!: (result: {
+      readonly cleanupFailed: boolean;
+    }) => void;
+    const promise = new Promise<{ readonly cleanupFailed: boolean }>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    this.hwpxOperationCompletions.set(operationId, {
+      promise,
+      resolve: resolveCompletion
+    });
+  }
+
+  private finishHwpxOperation(
+    operationId: string,
+    cleanupFailed = false
+  ): void {
+    this.activeHwpxOperations.delete(operationId);
+    this.cancelledHwpxOperations.delete(operationId);
+    const completion = this.hwpxOperationCompletions.get(operationId);
+    this.hwpxOperationCompletions.delete(operationId);
+    completion?.resolve({ cleanupFailed });
+  }
+
+  public async runHwpxIpcTask<T>(task: () => Promise<T>): Promise<T> {
+    if (this.hwpxShuttingDown) {
+      throw new Error("HWPX operations are shutting down");
+    }
+    let resolveCompletion!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    this.hwpxIpcCompletions.add(completion);
+    try {
+      return await task();
+    } finally {
+      this.hwpxIpcCompletions.delete(completion);
+      resolveCompletion();
+    }
+  }
+
+  private transitionHwpxOperationToExporting(
+    operationId: string,
+    sessionId: string
+  ): void {
+    if (
+      this.hwpxShuttingDown ||
+      this.cancelledHwpxOperations.delete(operationId)
+    ) {
+      throw new HwpxExportCancelledError();
+    }
+    this.activeHwpxOperations.set(operationId, {
+      sessionId,
+      phase: "EXPORTING"
+    });
+  }
+
+  private ensureHwpxOperationContinues(operationId: string): void {
+    if (
+      this.hwpxShuttingDown ||
+      this.cancelledHwpxOperations.has(operationId)
+    ) {
+      throw new HwpxExportCancelledError();
+    }
+  }
+
+  private transitionHwpxOperationToFinalizing(
+    operationId: string,
+    sessionId: string
+  ): void {
+    this.ensureHwpxOperationContinues(operationId);
+    this.activeHwpxOperations.set(operationId, {
+      sessionId,
+      phase: "FINALIZING"
+    });
+  }
+
+  private transitionHwpxOperationToProcessing(
+    operationId: string,
+    sessionId: string
+  ): void {
+    this.ensureHwpxOperationContinues(operationId);
+    this.activeHwpxOperations.set(operationId, {
+      sessionId,
+      phase: "PROCESSING"
+    });
+  }
+
+  private async cleanupOwnedHwpxDirectory(directoryPath: string): Promise<void> {
+    if (!this.ownedHwpxTemporaryDirectories.has(directoryPath)) {
+      return;
+    }
+    if (this.preservedHwpxRecoveryDirectories.has(directoryPath)) {
+      return;
+    }
+    if (this.registeredHwpxRecoveryDirectories.has(directoryPath)) {
+      if (!this.hwpxCrashRecovery) {
+        throw new Error("The HWPX crash recovery registry is unavailable");
+      }
+      await this.hwpxCrashRecovery.remove(directoryPath);
+      this.registeredHwpxRecoveryDirectories.delete(directoryPath);
+    } else {
+      await removeOwnedHwpxDirectory(directoryPath);
+    }
+    this.ownedHwpxTemporaryDirectories.delete(directoryPath);
+  }
+
+  private async registerOwnedHwpxDirectory(
+    directoryPath: string
+  ): Promise<void> {
+    this.ownedHwpxTemporaryDirectories.add(directoryPath);
+    if (!this.hwpxCrashRecovery) {
+      throw new Error("The HWPX crash recovery registry is unavailable");
+    }
+    await this.hwpxCrashRecovery.register(directoryPath);
+    this.registeredHwpxRecoveryDirectories.add(directoryPath);
+  }
+
+  private async commitStagedHwpx(
+    stagedPath: string,
+    selection: HwpxOutputSelectionRecord
+  ): Promise<void> {
+    if (!selection.replaceExisting) {
+      try {
+        await link(stagedPath, selection.filePath);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (error as NodeJS.ErrnoException).code === "EEXIST"
+        ) {
+          throw new HwpxDestinationChangedError();
+        }
+        throw error;
+      }
+      return;
+    }
+    if (!selection.existingFile) {
+      throw new Error("The confirmed HWPX destination identity is missing");
+    }
+    if (!selection.atomicIdentity || !this.atomicOutput || !this.hwpxCrashRecovery) {
+      throw new Error("The recoverable atomic output utility is unavailable");
+    }
+    const stagedDirectory = path.dirname(stagedPath);
+    const privateId = randomUUID();
+    const backupPath = path.join(
+      stagedDirectory,
+      `madi-atomic-backup-${privateId}.bin`
+    );
+    const rollbackPath = path.join(
+      stagedDirectory,
+      `madi-atomic-rollback-${privateId}.bin`
+    );
+    const extension = path.extname(selection.filePath);
+    const baseName = path.basename(selection.filePath, extension);
+    const recoveryPath = path.join(
+      path.dirname(selection.filePath),
+      `${baseName}.madi-recovery-${randomUUID()}${extension}`
+    );
+    const stagedIdentity = await this.atomicOutput.inspect(
+      stagedPath,
+      selection.maximumBytes
+    );
+    await this.hwpxCrashRecovery.prepareAtomicOutput(stagedDirectory, {
+      stagedPath,
+      destinationPath: selection.filePath,
+      backupPath,
+      rollbackPath,
+      recoveryPath,
+      maximumBytes: selection.maximumBytes,
+      expected: selection.atomicIdentity,
+      stagedIdentity
+    });
+    try {
+      await this.atomicOutput.commit({
+        stagedPath,
+        destinationPath: selection.filePath,
+        backupPath,
+        rollbackPath,
+        maximumBytes: selection.maximumBytes,
+        expected: selection.atomicIdentity,
+        stagedIdentity
+      });
+      await this.hwpxCrashRecovery.markAtomicOutputTerminal(
+        stagedDirectory,
+        "COMMITTED"
+      );
+    } catch (error) {
+      const reconciliation =
+        await this.hwpxCrashRecovery.reconcileAtomicOutput(stagedDirectory);
+      if (reconciliation.status === "RECOVERY_REQUIRED") {
+        this.preservedHwpxRecoveryDirectories.add(stagedDirectory);
+        throw new HwpxRecoveryRequiredError(null);
+      }
+      await this.hwpxCrashRecovery.markAtomicOutputTerminal(
+        stagedDirectory,
+        "ABORTED_SAFE"
+      );
+      if (reconciliation.status === "RECOVERY_PUBLISHED") {
+        throw new HwpxRecoveryRequiredError(reconciliation.recoveryFileName);
+      }
+      if (
+        error instanceof AtomicOutputError &&
+        error.code === "DESTINATION_CHANGED"
+      ) {
+        throw new HwpxDestinationChangedError();
+      }
+      throw error;
+    }
+  }
+
+  public async validateHwpxExport(
+    input: ValidateHwpxExportRequest
+  ): Promise<ValidateHwpxExportResult> {
+    const operationId = validateHwpxOperationId(input?.operationId);
+    const sessionId = validateSessionId(input?.sessionId);
+    this.sessions.require(sessionId);
+    this.beginHwpxOperation(operationId, sessionId);
+    try {
+      const prepared = await this.prepareHwpxUtilityInput(
+        input,
+        "VALIDATE_ONLY",
+        path.join(tmpdir(), `madi-hwpx-validation-${operationId}.hwpx`),
+        false
+      );
+      try {
+        this.transitionHwpxOperationToExporting(operationId, sessionId);
+        const utility = await this.hwpxExporter!.run(
+          prepared.utilityInput,
+          (progress) =>
+            this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, progress)
+        );
+        this.transitionHwpxOperationToProcessing(operationId, sessionId);
+        const report = await this.reportWithFontInstallation(
+          hwpxReportFromUtility(
+            utility,
+            prepared.document,
+            prepared.utilityInput.config,
+            prepared.utilityInput.sourcePublicationHash,
+            prepared.utilityInput.presetId,
+            prepared.utilityInput.presetContentHash,
+            prepared.revision,
+            this.appVersion
+          )
+        );
+        this.transitionHwpxOperationToFinalizing(operationId, sessionId);
+        this.rememberHwpxOperation(operationId, {
+          sessionId,
+          report,
+          outputPath: null
+        });
+        return {
+          operationId,
+          sourcePublicationHash: utility.summary.sourcePublicationHash,
+          report,
+          revision: prepared.revision
+        };
+      } catch (error) {
+        if (!(error instanceof HwpxUtilityValidationError)) {
+          throw error;
+        }
+        const report = await this.reportWithFontInstallation(
+          hwpxValidationFailureReport(
+            prepared.document,
+            prepared.utilityInput.sourcePublicationHash,
+            prepared.utilityInput.config,
+            prepared.utilityInput.presetId,
+            prepared.utilityInput.presetContentHash,
+            error.report,
+            this.appVersion
+          )
+        );
+        this.transitionHwpxOperationToFinalizing(operationId, sessionId);
+        this.rememberHwpxOperation(operationId, {
+          sessionId,
+          report,
+          outputPath: null
+        });
+        return {
+          operationId,
+          sourcePublicationHash: prepared.utilityInput.sourcePublicationHash,
+          report,
+          revision: prepared.revision
+        };
+      }
+    } finally {
+      this.finishHwpxOperation(operationId);
+    }
+  }
+
+  public async runHwpxExport(
+    input: RunHwpxExportRequest
+  ): Promise<RunHwpxExportResult> {
+    const operationId = validateHwpxOperationId(input?.operationId);
+    const sessionId = validateSessionId(input?.sessionId);
+    this.sessions.require(sessionId);
+    if (input.outputType !== "HWPX" && input.outputType !== "HWP") {
+      throw new Error("Unsupported HWPX output type");
+    }
+    const selectionId = validateHwpxIdentifier(
+      input.outputSelectionId,
+      "HWPX output selection id"
+    );
+    const selection = this.hwpxOutputSelections.get(selectionId);
+    if (
+      !selection ||
+      selection.sessionId !== sessionId ||
+      selection.outputType !== input.outputType
+    ) {
+      throw new Error("HWPX output selection is missing or belongs to another project");
+    }
+    this.beginHwpxOperation(operationId, sessionId);
+    this.hwpxOutputSelections.delete(selectionId);
+    if (input.outputType === "HWP") {
+      let hancom: HwpxExportState["hancom"];
+      try {
+        hancom = await this.getHancomAutomationAvailability();
+        this.ensureHwpxOperationContinues(operationId);
+      } catch (error) {
+        this.finishHwpxOperation(operationId);
+        if (error instanceof HwpxExportCancelledError) {
+          return { status: "CANCELLED", operationId };
+        }
+        throw new Error("The local HWP bridge availability check failed");
+      }
+      if (hancom.status !== "AVAILABLE" || !this.hwpBridge) {
+        this.finishHwpxOperation(operationId);
+        return {
+          status: "FAILED",
+          operationId,
+          code: "HWP_CONVERSION_UNAVAILABLE"
+        };
+      }
+    }
+    const stagedDirectory = stagedHwpxDirectory(
+      selection.filePath,
+      operationId
+    );
+    const stagedPath = stagedHwpxPath(stagedDirectory);
+    const stagedHwp = stagedHwpPath(stagedDirectory);
+    const stagedPreservedHwpx = stagedPreservedHwpxPath(stagedDirectory);
+    const stagedRecoveryHwpx = stagedRecoveryHwpxPath(stagedDirectory);
+    const hwpOutput = input.outputType === "HWP";
+    let preservedHwpxPath = hwpOutput
+      ? preservedHwpxCompanionPath(selection.filePath)
+      : null;
+    let stagedDirectoryOwned = false;
+    let committed = false;
+    let hwpxPreserved = false;
+    let trustedHwpxIdentity: NonNullable<
+      HwpxOutputSelectionRecord["existingFile"]
+    > | null = null;
+    let reportForFailure: HwpxExportReport | null = null;
+    const publishAlternatePreservedHwpx = async (
+      expected: NonNullable<HwpxOutputSelectionRecord["existingFile"]>
+    ): Promise<void> => {
+      if (!preservedHwpxPath) {
+        throw new Error("The preserved HWPX destination is unavailable");
+      }
+      const extension = path.extname(preservedHwpxPath);
+      const base = path.basename(preservedHwpxPath, extension);
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const candidate = path.join(
+          path.dirname(preservedHwpxPath),
+          `${base}.madi-preserved-${randomUUID()}${extension}`
+        );
+        try {
+          await link(stagedRecoveryHwpx, candidate);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+            continue;
+          }
+          try {
+            await copyFile(
+              stagedRecoveryHwpx,
+              candidate,
+              fsConstants.COPYFILE_EXCL
+            );
+          } catch (copyError) {
+            if ((copyError as NodeJS.ErrnoException).code === "EEXIST") {
+              continue;
+            }
+            throw copyError;
+          }
+        }
+        const candidateHandle = await open(candidate, "r+");
+        try {
+          await candidateHandle.sync();
+        } finally {
+          await candidateHandle.close();
+        }
+        const visible = await existingEpubIdentity(
+          candidate,
+          MAX_HWPX_FILE_BYTES
+        );
+        if (
+          visible.byteLength !== expected.byteLength ||
+          visible.sha256 !== expected.sha256
+        ) {
+          throw new Error("The preserved HWPX output identity changed");
+        }
+        preservedHwpxPath = candidate;
+        return;
+      }
+      throw new Error("A no-clobber HWPX recovery name is unavailable");
+    };
+    const ensurePreservedHwpxIdentity = async (
+      expected: NonNullable<HwpxOutputSelectionRecord["existingFile"]>
+    ): Promise<void> => {
+      if (!hwpxPreserved || !preservedHwpxPath) {
+        return;
+      }
+      try {
+        const visible = await existingEpubIdentity(
+          preservedHwpxPath,
+          MAX_HWPX_FILE_BYTES
+        );
+        if (
+          visible.byteLength === expected.byteLength &&
+          visible.sha256 === expected.sha256
+        ) {
+          return;
+        }
+      } catch {
+        // Publish an alternate no-clobber copy below.
+      }
+      await publishAlternatePreservedHwpx(expected);
+    };
+    try {
+      await mkdir(stagedDirectory);
+      stagedDirectoryOwned = true;
+      await this.registerOwnedHwpxDirectory(stagedDirectory);
+      const prepared = await this.prepareHwpxUtilityInput(
+        input,
+        "EXPORT",
+        stagedPath,
+        true
+      );
+      this.transitionHwpxOperationToExporting(operationId, sessionId);
+      const utility = await this.hwpxExporter!.run(
+        prepared.utilityInput,
+        (progress) => {
+          if (!hwpOutput || progress.stage !== "FINALIZE") {
+            this.window.webContents.send(
+              IPC_EVENTS.hwpxExportProgress,
+              progress
+            );
+          }
+        }
+      );
+      this.transitionHwpxOperationToProcessing(operationId, sessionId);
+      const hwpxReport = await this.reportWithFontInstallation(
+        hwpxReportFromUtility(
+          utility,
+          prepared.document,
+          prepared.utilityInput.config,
+          prepared.utilityInput.sourcePublicationHash,
+          prepared.utilityInput.presetId,
+          prepared.utilityInput.presetContentHash,
+          prepared.revision,
+          this.appVersion
+        )
+      );
+      this.ensureHwpxOperationContinues(operationId);
+      if (
+        hwpxReport.validation.status !== "VALID" ||
+        utility.outputPath === null
+      ) {
+        throw new Error("The HWPX utility did not produce a valid output");
+      }
+      const stagedIdentity = await existingEpubIdentity(
+        stagedPath,
+        MAX_HWPX_FILE_BYTES
+      );
+      if (
+        stagedIdentity.byteLength < 1 ||
+        stagedIdentity.byteLength !== utility.summary.byteLength ||
+        stagedIdentity.sha256 !== utility.summary.sha256
+      ) {
+        throw new Error("The generated HWPX does not match the export result");
+      }
+      trustedHwpxIdentity = stagedIdentity;
+
+      let outputPath = stagedPath;
+      let outputIdentity = stagedIdentity;
+      let report = hwpxReport;
+      if (hwpOutput) {
+        const bridge = this.hwpBridge!;
+        let conversionMs = 0;
+        let reopenMs: number | null = null;
+        await copyFile(
+          stagedPath,
+          stagedPreservedHwpx,
+          fsConstants.COPYFILE_EXCL
+        );
+        await copyFile(
+          stagedPath,
+          stagedRecoveryHwpx,
+          fsConstants.COPYFILE_EXCL
+        );
+        const preservedStagedHandle = await open(stagedPreservedHwpx, "r+");
+        try {
+          await preservedStagedHandle.sync();
+        } finally {
+          await preservedStagedHandle.close();
+        }
+        const recoveryStagedHandle = await open(stagedRecoveryHwpx, "r+");
+        try {
+          await recoveryStagedHandle.sync();
+        } finally {
+          await recoveryStagedHandle.close();
+        }
+        const preservedStagedIdentity = await existingEpubIdentity(
+          stagedPreservedHwpx,
+          MAX_HWPX_FILE_BYTES
+        );
+        const recoveryStagedIdentity = await existingEpubIdentity(
+          stagedRecoveryHwpx,
+          MAX_HWPX_FILE_BYTES
+        );
+        if (
+          preservedStagedIdentity.byteLength !== stagedIdentity.byteLength ||
+          preservedStagedIdentity.sha256 !== stagedIdentity.sha256 ||
+          recoveryStagedIdentity.byteLength !== stagedIdentity.byteLength ||
+          recoveryStagedIdentity.sha256 !== stagedIdentity.sha256
+        ) {
+          throw new Error("The preserved HWPX staging copy does not match the export");
+        }
+        try {
+          await link(stagedPreservedHwpx, preservedHwpxPath!);
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            (error as NodeJS.ErrnoException).code === "EEXIST"
+          ) {
+            await publishAlternatePreservedHwpx(stagedIdentity);
+          } else {
+            throw error;
+          }
+        }
+        hwpxPreserved = true;
+        await ensurePreservedHwpxIdentity(stagedIdentity);
+        const preservedHwpxFileName = path.basename(preservedHwpxPath!);
+        reportForFailure = hwpxReportForHwp(hwpxReport, {
+          preservedHwpxFileName,
+          outputSha256: null,
+          byteLength: null,
+          hwpConverted: false,
+          hancomReopen: "NOT_RUN",
+          hwpConversionMs: 0,
+          hwpReopenMs: null
+        });
+        this.rememberHwpxOperation(operationId, {
+          sessionId,
+          report: reportForFailure,
+          outputPath: preservedHwpxPath
+        });
+        this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
+          operationId,
+          stage: "HWP_CONVERSION",
+          completed: 0,
+          total: 1
+        });
+        this.ensureHwpxOperationContinues(operationId);
+        const bridgeInputIdentity = await existingEpubIdentity(
+          stagedPath,
+          MAX_HWPX_FILE_BYTES
+        );
+        if (
+          bridgeInputIdentity.byteLength !== stagedIdentity.byteLength ||
+          bridgeInputIdentity.sha256 !== stagedIdentity.sha256
+        ) {
+          throw new HwpBridgeOperationError("INPUT_IDENTITY_MISMATCH");
+        }
+        this.ensureHwpxOperationContinues(operationId);
+        this.transitionHwpxOperationToExporting(operationId, sessionId);
+        const conversionStartedAt = Date.now();
+        let conversion: Awaited<ReturnType<HwpBridgePort["convert"]>>;
+        try {
+          conversion = await bridge.convert(operationId, stagedPath, stagedHwp);
+        } catch (error) {
+          conversionMs = Math.max(0, Date.now() - conversionStartedAt);
+          reportForFailure = hwpxReportForHwp(hwpxReport, {
+            preservedHwpxFileName,
+            outputSha256: null,
+            byteLength: null,
+            hwpConverted: false,
+            hancomReopen: "NOT_RUN",
+            hwpConversionMs: conversionMs,
+            hwpReopenMs: null
+          });
+          throw error instanceof HwpBridgeCancelledError ||
+            error instanceof HwpBridgeOperationError
+            ? error
+            : new HwpBridgeOperationError("CONVERSION_FAILED");
+        }
+        conversionMs = Math.max(0, Date.now() - conversionStartedAt);
+        this.transitionHwpxOperationToProcessing(operationId, sessionId);
+        const postConversionInputIdentity = await existingEpubIdentity(
+          stagedPath,
+          MAX_HWPX_FILE_BYTES
+        );
+        if (
+          postConversionInputIdentity.byteLength !== stagedIdentity.byteLength ||
+          postConversionInputIdentity.sha256 !== stagedIdentity.sha256
+        ) {
+          throw new HwpBridgeOperationError("INPUT_IDENTITY_MISMATCH");
+        }
+        reportForFailure = hwpxReportForHwp(hwpxReport, {
+          preservedHwpxFileName,
+          outputSha256: null,
+          byteLength: null,
+          hwpConverted: false,
+          hancomReopen: "NOT_RUN",
+          hwpConversionMs: conversionMs,
+          hwpReopenMs: null
+        });
+        this.ensureHwpxOperationContinues(operationId);
+        let convertedIdentity: Awaited<ReturnType<typeof existingEpubIdentity>>;
+        try {
+          convertedIdentity = await existingEpubIdentity(
+            stagedHwp,
+            MAX_HWPX_FILE_BYTES
+          );
+          if (
+            convertedIdentity.byteLength < 1 ||
+            convertedIdentity.byteLength !== conversion.byteLength ||
+            convertedIdentity.sha256 !== conversion.sha256
+          ) {
+            throw new HwpBridgeOperationError("OUTPUT_IDENTITY_MISMATCH");
+          }
+        } catch (error) {
+          throw error instanceof HwpBridgeOperationError
+            ? error
+            : new HwpBridgeOperationError("OUTPUT_IDENTITY_MISMATCH");
+        }
+        reportForFailure = hwpxReportForHwp(hwpxReport, {
+          preservedHwpxFileName,
+          outputSha256: convertedIdentity.sha256,
+          byteLength: convertedIdentity.byteLength,
+          hwpConverted: true,
+          hancomReopen: "NOT_RUN",
+          hwpConversionMs: conversionMs,
+          hwpReopenMs: null
+        });
+        this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
+          operationId,
+          stage: "HWP_CONVERSION",
+          completed: 1,
+          total: 1
+        });
+        this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
+          operationId,
+          stage: "REOPEN_VERIFICATION",
+          completed: 0,
+          total: 1
+        });
+        this.ensureHwpxOperationContinues(operationId);
+        this.transitionHwpxOperationToExporting(operationId, sessionId);
+        const reopenStartedAt = Date.now();
+        try {
+          await bridge.reopen(operationId, stagedHwp);
+        } catch (error) {
+          reopenMs = Math.max(0, Date.now() - reopenStartedAt);
+          reportForFailure = hwpxReportForHwp(hwpxReport, {
+            preservedHwpxFileName,
+            outputSha256: convertedIdentity.sha256,
+            byteLength: convertedIdentity.byteLength,
+            hwpConverted: true,
+            hancomReopen: "FAILED",
+            hwpConversionMs: conversionMs,
+            hwpReopenMs: reopenMs
+          });
+          throw error instanceof HwpBridgeCancelledError ||
+            error instanceof HwpBridgeOperationError
+            ? error
+            : new HwpBridgeOperationError("REOPEN_FAILED");
+        }
+        reopenMs = Math.max(0, Date.now() - reopenStartedAt);
+        this.transitionHwpxOperationToProcessing(operationId, sessionId);
+        const reopenedIdentity = await existingEpubIdentity(
+          stagedHwp,
+          MAX_HWPX_FILE_BYTES
+        );
+        if (
+          reopenedIdentity.byteLength !== convertedIdentity.byteLength ||
+          reopenedIdentity.sha256 !== convertedIdentity.sha256
+        ) {
+          throw new HwpBridgeOperationError("REOPEN_IDENTITY_MISMATCH");
+        }
+        await ensurePreservedHwpxIdentity(stagedIdentity);
+        const finalPreservedHwpxFileName = path.basename(preservedHwpxPath!);
+        this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
+          operationId,
+          stage: "REOPEN_VERIFICATION",
+          completed: 1,
+          total: 1
+        });
+        outputPath = stagedHwp;
+        outputIdentity = reopenedIdentity;
+        report = hwpxReportForHwp(hwpxReport, {
+          preservedHwpxFileName: finalPreservedHwpxFileName,
+          outputSha256: reopenedIdentity.sha256,
+          byteLength: reopenedIdentity.byteLength,
+          hwpConverted: true,
+          hancomReopen: "PASSED",
+          hwpConversionMs: conversionMs,
+          hwpReopenMs: reopenMs
+        });
+        reportForFailure = report;
+      }
+
+      this.transitionHwpxOperationToFinalizing(operationId, sessionId);
+      if (hwpOutput) {
+        this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
+          operationId,
+          stage: "FINALIZE",
+          completed: 0,
+          total: 1
+        });
+      }
+      await this.commitStagedHwpx(outputPath, selection);
+      committed = true;
+      if (hwpOutput) {
+        this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
+          operationId,
+          stage: "FINALIZE",
+          completed: 1,
+          total: 1
+        });
+      }
+      this.rememberHwpxOperation(operationId, {
+        sessionId,
+        report,
+        outputPath: selection.filePath
+      });
+      return {
+        status: "COMPLETED",
+        operationId,
+        fileName: selection.fileName,
+        byteLength: outputIdentity.byteLength,
+        sha256: outputIdentity.sha256,
+        report,
+        revision: prepared.revision
+      };
+    } catch (error) {
+      if (hwpxPreserved) {
+        try {
+          if (!trustedHwpxIdentity) {
+            throw new Error("The trusted HWPX identity is unavailable");
+          }
+          await ensurePreservedHwpxIdentity(trustedHwpxIdentity);
+          if (reportForFailure && preservedHwpxPath) {
+            reportForFailure = {
+              ...reportForFailure,
+              preservedHwpxFileName: path.basename(preservedHwpxPath)
+            };
+          }
+        } catch {
+          throw new Error("A verified public HWPX recovery copy could not be preserved");
+        }
+      }
+      if (hwpxPreserved && reportForFailure && preservedHwpxPath) {
+        this.rememberHwpxOperation(operationId, {
+          sessionId,
+          report: reportForFailure,
+          outputPath: preservedHwpxPath
+        });
+      }
+      if (
+        error instanceof HwpxExportCancelledError ||
+        error instanceof HwpBridgeCancelledError
+      ) {
+        if (hwpxPreserved && reportForFailure && preservedHwpxPath) {
+          return {
+            status: "CANCELLED",
+            operationId,
+            preservedHwpxFileName: path.basename(preservedHwpxPath),
+            report: reportForFailure
+          };
+        }
+        return { status: "CANCELLED", operationId };
+      }
+      if (error instanceof HwpxDestinationChangedError) {
+        if (hwpxPreserved && reportForFailure && preservedHwpxPath) {
+          return {
+            status: "FAILED",
+            operationId,
+            code: "DESTINATION_CHANGED",
+            preservedHwpxFileName: path.basename(preservedHwpxPath),
+            report: reportForFailure
+          };
+        }
+        return {
+          status: "FAILED",
+          operationId,
+          code: "DESTINATION_CHANGED"
+        };
+      }
+      if (error instanceof HwpxRecoveryRequiredError) {
+        return {
+          status: "FAILED",
+          operationId,
+          code: "RECOVERY_REQUIRED",
+          recoveryFileName: error.recoveryFileName
+        };
+      }
+      if (error instanceof HwpBridgeOperationError) {
+        if (!hwpxPreserved || !reportForFailure || !preservedHwpxPath) {
+          throw error;
+        }
+        return {
+          status: "FAILED",
+          operationId,
+          code: "HWP_CONVERSION_FAILED",
+          preservedHwpxFileName: path.basename(preservedHwpxPath),
+          report: reportForFailure
+        };
+      }
+      if (hwpxPreserved && reportForFailure && preservedHwpxPath) {
+        return {
+          status: "FAILED",
+          operationId,
+          code: "HWP_OUTPUT_FAILED",
+          preservedHwpxFileName: path.basename(preservedHwpxPath),
+          report: reportForFailure
+        };
+      }
+      throw error;
+    } finally {
+      let cleanupFailed = false;
+      try {
+        if (stagedDirectoryOwned) {
+          await this.cleanupOwnedHwpxDirectory(stagedDirectory);
+        }
+      } catch {
+        cleanupFailed = true;
+        if (!committed && !hwpxPreserved) {
+          throw new Error("The staged HWPX/HWP files could not be removed");
+        }
+      } finally {
+        this.finishHwpxOperation(operationId, cleanupFailed);
+      }
+    }
+  }
+
+  public prepareHwpxShutdown(): Promise<void> {
+    if (this.hwpxShutdownPromise) {
+      return this.hwpxShutdownPromise;
+    }
+    this.hwpxShuttingDown = true;
+    const attempt = this.shutdownHwpxOperations();
+    this.hwpxShutdownPromise = attempt;
+    void attempt.catch(() => {
+      if (this.hwpxShutdownPromise === attempt) {
+        this.hwpxShutdownPromise = null;
+      }
+    });
+    return attempt;
+  }
+
+  private async waitForHwpxCompletion<T>(
+    completion: Promise<T>,
+    label: string
+  ): Promise<T> {
+    let timeout: NodeJS.Timeout | null = null;
+    try {
+      return await Promise.race([
+        completion,
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => reject(new Error(label)), 25_000);
+        })
+      ]);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
+  }
+
+  private async shutdownHwpxOperations(): Promise<void> {
+    const operations = [...this.activeHwpxOperations.entries()];
+    const ipcCompletions = [...this.hwpxIpcCompletions];
+    const results = await Promise.allSettled([
+      ...operations.map(async ([operationId, active]) => {
+        const completion = this.hwpxOperationCompletions.get(operationId)?.promise;
+        if (!completion) {
+          throw new Error("The HWPX completion state is missing");
+        }
+        if (active.phase === "PREPARING") {
+          this.cancelledHwpxOperations.add(operationId);
+        } else if (active.phase === "PROCESSING") {
+          this.cancelledHwpxOperations.add(operationId);
+        } else if (active.phase === "EXPORTING") {
+          this.cancelledHwpxOperations.add(operationId);
+          await Promise.allSettled([
+            this.hwpxExporter?.cancel(operationId),
+            this.hwpBridge?.cancel(operationId)
+          ]);
+        }
+        return this.waitForHwpxCompletion(
+          completion,
+          "The HWPX operation did not stop"
+        );
+      }),
+      ...ipcCompletions.map((completion) =>
+        this.waitForHwpxCompletion(completion, "The HWPX IPC task did not stop")
+      )
+    ]);
+    if (results.some((result) => result.status === "rejected")) {
+      throw new Error("HWPX operations did not stop within the shutdown bound");
+    }
+    const cleanup = await Promise.allSettled(
+      [...this.ownedHwpxTemporaryDirectories].map((directory) =>
+        this.cleanupOwnedHwpxDirectory(directory)
+      )
+    );
+    if (
+      cleanup.some((result) => result.status === "rejected") ||
+      this.ownedHwpxTemporaryDirectories.size > 0
+    ) {
+      throw new Error("HWPX operations did not shut down cleanly");
+    }
+  }
+
+  public async cancelHwpxExport(
+    input: CancelHwpxExportRequest
+  ): Promise<boolean> {
+    const operationId = validateHwpxOperationId(input?.operationId);
+    const sessionId = validateSessionId(input?.sessionId);
+    const active = this.activeHwpxOperations.get(operationId);
+    if (!active || active.sessionId !== sessionId) {
+      return false;
+    }
+    if (active.phase === "PREPARING") {
+      this.cancelledHwpxOperations.add(operationId);
+      return true;
+    }
+    if (active.phase === "PROCESSING") {
+      this.cancelledHwpxOperations.add(operationId);
+      return true;
+    }
+    if (active.phase === "EXPORTING") {
+      const results = await Promise.allSettled([
+        this.hwpxExporter?.cancel(operationId) ?? Promise.resolve(false),
+        this.hwpBridge?.cancel(operationId) ?? Promise.resolve(false)
+      ]);
+      const accepted = results.some(
+        (result) => result.status === "fulfilled" && result.value === true
+      );
+      if (accepted) {
+        this.cancelledHwpxOperations.add(operationId);
+      }
+      return accepted;
+    }
+    return false;
+  }
+
+  public async saveHwpxExportReport(
+    input: SaveHwpxExportReportRequest
+  ): Promise<SaveHwpxExportReportResult | null> {
+    const operationId = validateHwpxOperationId(input?.operationId);
+    const sessionId = validateSessionId(input?.sessionId);
+    const record = this.hwpxOperations.get(operationId);
+    if (!record || record.sessionId !== sessionId) {
+      throw new Error("HWPX export report is unavailable");
+    }
+    if (input.format !== "JSON" && input.format !== "MARKDOWN") {
+      throw new Error("Unsupported HWPX export report format");
+    }
+    const extension = input.format === "JSON" ? "json" : "md";
+    const result = await this.dialog.showSaveDialog(this.window, {
+      title: "HWPX export report 저장",
+      defaultPath: `madi-hwpx-export-report.${extension}`,
+      filters: [
+        {
+          name: input.format === "JSON" ? "JSON report" : "Markdown report",
+          extensions: [extension]
+        }
+      ],
+      properties: ["createDirectory", "showOverwriteConfirmation"]
+    });
+    if (result.canceled || !result.filePath) {
+      return null;
+    }
+    if (!result.filePath.toLocaleLowerCase().endsWith(`.${extension}`)) {
+      throw new Error(`HWPX report destination must use the .${extension} extension`);
+    }
+    const filePath = path.resolve(result.filePath);
+    const source =
+      input.format === "JSON"
+        ? `${JSON.stringify(record.report, null, 2)}\n`
+        : markdownHwpxExportReport(record.report);
+    const byteLength = Buffer.byteLength(source, "utf8");
+    if (byteLength < 1 || byteLength > MAX_HWPX_REPORT_BYTES) {
+      throw new Error("HWPX export report exceeds the size limit");
+    }
+    let existingFile: HwpxOutputSelectionRecord["existingFile"] = null;
+    let atomicIdentity: AtomicOutputIdentity | null = null;
+    let replaceExisting = false;
+    try {
+      existingFile = await existingEpubIdentity(filePath, MAX_HWPX_REPORT_BYTES);
+      if (!this.atomicOutput) {
+        throw new Error("The atomic output utility is unavailable");
+      }
+      atomicIdentity = await this.atomicOutput.inspect(
+        filePath,
+        MAX_HWPX_REPORT_BYTES
+      );
+      replaceExisting = true;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        (error as NodeJS.ErrnoException).code !== "ENOENT"
+      ) {
+        throw error;
+      }
+    }
+    const stagedDirectory = path.join(
+      path.dirname(filePath),
+      `.madi-hwpx-report-${operationId}-${extension}`
+    );
+    const stagedPath = path.join(stagedDirectory, `report.${extension}`);
+    let stagedDirectoryOwned = false;
+    let committed = false;
+    try {
+      await mkdir(stagedDirectory);
+      stagedDirectoryOwned = true;
+      await this.registerOwnedHwpxDirectory(stagedDirectory);
+      const handle = await open(stagedPath, "wx");
+      try {
+        await handle.writeFile(source, "utf8");
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      await this.commitStagedHwpx(stagedPath, {
+        sessionId,
+        filePath,
+        fileName: path.basename(filePath),
+        outputType: "HWPX",
+        replaceExisting,
+        maximumBytes: MAX_HWPX_REPORT_BYTES,
+        existingFile,
+        atomicIdentity
+      });
+      committed = true;
+    } finally {
+      if (stagedDirectoryOwned) {
+        try {
+          await this.cleanupOwnedHwpxDirectory(stagedDirectory);
+        } catch {
+          if (!committed) {
+            throw new Error("The staged HWPX report could not be removed");
+          }
+        }
+      }
+    }
+    return { fileName: path.basename(filePath), byteLength };
+  }
+
+  public async revealHwpxExport(input: RevealHwpxExportRequest): Promise<boolean> {
+    const operationId = validateHwpxOperationId(input?.operationId);
+    const sessionId = validateSessionId(input?.sessionId);
+    const record = this.hwpxOperations.get(operationId);
     if (
       !record?.outputPath ||
       record.sessionId !== sessionId ||

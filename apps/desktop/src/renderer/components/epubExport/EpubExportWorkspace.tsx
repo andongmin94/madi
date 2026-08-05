@@ -24,9 +24,9 @@ import {
   validatePublicationMetadataInput
 } from "../../../shared/epubExportValidation";
 import type {
-  EpubExportModeHandle,
-  EpubExportModeProps
-} from "../EpubExportMode";
+  PublicationExportModeHandle,
+  PublicationExportModeProps
+} from "../PublicationExportMode";
 
 const DEFAULT_CONFIG: EpubExportPresetConfig = {
   formatVersion: 1,
@@ -109,8 +109,8 @@ function severityLabel(message: EpubValidationMessage): string {
 }
 
 export const EpubExportWorkspace = forwardRef<
-  EpubExportModeHandle,
-  EpubExportModeProps
+  PublicationExportModeHandle,
+  PublicationExportModeProps
 >(function EpubExportWorkspace(
   {
     api,
