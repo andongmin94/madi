@@ -1,6 +1,7 @@
 import path from "node:path";
 import {
   BrowserWindow,
+  type CommandLine,
   type Event,
   type Session,
   type WebPreferences
@@ -24,6 +25,25 @@ export interface WindowTarget {
 export interface ResolveWindowTargetOptions {
   readonly isPackaged: boolean;
   readonly developmentUrl: string | undefined;
+}
+
+const RUNTIME_PROCESS_NETWORK_SWITCHES = [
+  "disable-background-networking",
+  "disable-component-update",
+  "disable-quic",
+  "no-proxy-server"
+] as const;
+
+export function installRuntimeProcessNetworkBoundary(
+  commandLine: Pick<CommandLine, "appendSwitch">
+): void {
+  for (const switchName of RUNTIME_PROCESS_NETWORK_SWITCHES) {
+    commandLine.appendSwitch(switchName);
+  }
+  commandLine.appendSwitch(
+    "disable-features",
+    "CertificateTransparencyComponentUpdater,DialMediaRouteProvider,MediaRouter"
+  );
 }
 
 export function resolveRendererDirectory(

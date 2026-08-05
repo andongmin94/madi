@@ -107,10 +107,16 @@ async function main() {
     "output",
     "phase1h-packaged-bridge-override-must-not-run.exe",
   );
+  const atomicOutputOverrideCanaryPath = resolve(
+    repositoryRoot,
+    "output",
+    "phase1h-packaged-atomic-output-override-must-not-run.exe",
+  );
   if (
     existsSync(coreOverrideCanaryPath) ||
     existsSync(exporterOverrideCanaryPath) ||
-    existsSync(bridgeOverrideCanaryPath)
+    existsSync(bridgeOverrideCanaryPath) ||
+    existsSync(atomicOutputOverrideCanaryPath)
   ) {
     throw new Error("Packaged Phase 1H override canary path must not exist");
   }
@@ -153,6 +159,7 @@ async function main() {
     process.env.MADI_CORE_BIN = coreOverrideCanaryPath;
     process.env.MADI_HWPX_EXPORT_BIN = exporterOverrideCanaryPath;
     process.env.MADI_HWP_BRIDGE_BIN = bridgeOverrideCanaryPath;
+    process.env.MADI_ATOMIC_OUTPUT_BIN = atomicOutputOverrideCanaryPath;
     Reflect.set(
       globalThis,
       "__madiPhase1hFinalizePackagedOverrideCanaries",
@@ -166,6 +173,9 @@ async function main() {
           coreOverridePresent: existsSync(coreOverrideCanaryPath),
           exporterOverridePresent: existsSync(exporterOverrideCanaryPath),
           bridgeOverridePresent: existsSync(bridgeOverrideCanaryPath),
+          atomicOutputOverridePresent: existsSync(
+            atomicOutputOverrideCanaryPath,
+          ),
         };
         Reflect.deleteProperty(
           globalThis,
@@ -175,7 +185,8 @@ async function main() {
           evidence.rendererRequestCount !== 0 ||
           evidence.coreOverridePresent ||
           evidence.exporterOverridePresent ||
-          evidence.bridgeOverridePresent
+          evidence.bridgeOverridePresent ||
+          evidence.atomicOutputOverridePresent
         ) {
           throw new Error("Packaged Phase 1H development override canary changed");
         }
@@ -215,7 +226,8 @@ async function main() {
   if (
     existsSync(coreOverrideCanaryPath) ||
     existsSync(exporterOverrideCanaryPath) ||
-    existsSync(bridgeOverrideCanaryPath)
+    existsSync(bridgeOverrideCanaryPath) ||
+    existsSync(atomicOutputOverrideCanaryPath)
   ) {
     throw new Error("Packaged Phase 1H binary override canary changed");
   }
@@ -248,7 +260,10 @@ async function main() {
     evidence.security.packagedDevelopmentOverrides?.coreOverridePresent !== false ||
     evidence.security.packagedDevelopmentOverrides?.exporterOverridePresent !==
       false ||
-    evidence.security.packagedDevelopmentOverrides?.bridgeOverridePresent !== false
+    evidence.security.packagedDevelopmentOverrides?.bridgeOverridePresent !==
+      false ||
+    evidence.security.packagedDevelopmentOverrides
+      ?.atomicOutputOverridePresent !== false
   ) {
     throw new Error("Packaged Phase 1H canary evidence is invalid");
   }
@@ -259,6 +274,7 @@ async function main() {
       coreOverridePresent: false,
       exporterOverridePresent: false,
       bridgeOverridePresent: false,
+      atomicOutputOverridePresent: false,
     })}\n`,
   );
 }

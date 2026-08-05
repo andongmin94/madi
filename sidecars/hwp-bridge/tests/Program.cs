@@ -9,18 +9,19 @@ namespace Madi.HwpBridge.ContractTests;
 public static class Program
 {
     private static readonly HancomInstallation AvailableInstallation = new(
-        ComRegistered: true,
-        SecurityModuleRegistered: true,
-        SecurityModulePath: @"C:\Hancom\FilePathCheckerModuleExample.dll",
-        Version: "12.0-test");
+        ComRegistrationPresent: true,
+        SecurityModuleRegistrationPresent: true);
 
     public static async Task<int> Main()
     {
         var tests = new (string Name, Func<Task> Run)[]
         {
             ("protocol parse is closed and typed", ProtocolParseIsClosed),
-            ("probe reports mock automation availability", ProbeReportsAvailability),
+            ("registry classification never dereferences path values", RegistryClassificationIsDataOnly),
+            ("probe is registry-only and never activates automation", ProbeIsRegistryOnly),
             ("probe reports Hancom not installed", ProbeReportsNotInstalled),
+            ("JSONL host returns a probe while stdin stays open", HostReturnsProbeWithOpenInput),
+            ("built bridge returns a probe while stdin stays open", BuiltBridgeReturnsProbeWithOpenInput),
             ("convert rejects relative paths", ConvertRejectsRelativePath),
             ("convert rejects wrong extensions", ConvertRejectsWrongExtension),
             ("convert enforces no-clobber", ConvertEnforcesNoClobber),
@@ -73,7 +74,40 @@ public static class Program
         return Task.CompletedTask;
     }
 
-    private static async Task ProbeReportsAvailability()
+    private static Task RegistryClassificationIsDataOnly()
+    {
+        const string validClassId = "{00000000-0000-0000-0000-000000000001}";
+        var registered = WindowsHancomInstallationProbe.ClassifyRegistration(
+            validClassId,
+            "https://unreachable.invalid/Hwp.exe",
+            "https://unreachable.invalid/FilePathCheckerModuleExample.dll");
+        True(registered.ComRegistrationPresent);
+        True(registered.SecurityModuleRegistrationPresent);
+
+        var invalidClassId = WindowsHancomInstallationProbe.ClassifyRegistration(
+            "not-a-guid",
+            @"C:\Hancom\Hwp.exe",
+            @"C:\Hancom\FilePathCheckerModuleExample.dll");
+        False(invalidClassId.ComRegistrationPresent);
+        True(invalidClassId.SecurityModuleRegistrationPresent);
+
+        var missingServer = WindowsHancomInstallationProbe.ClassifyRegistration(
+            validClassId,
+            "  ",
+            @"C:\Hancom\FilePathCheckerModuleExample.dll");
+        False(missingServer.ComRegistrationPresent);
+        True(missingServer.SecurityModuleRegistrationPresent);
+
+        var missingModule = WindowsHancomInstallationProbe.ClassifyRegistration(
+            validClassId,
+            @"C:\Hancom\Hwp.exe",
+            "  ");
+        True(missingModule.ComRegistrationPresent);
+        False(missingModule.SecurityModuleRegistrationPresent);
+        return Task.CompletedTask;
+    }
+
+    private static async Task ProbeIsRegistryOnly()
     {
         var factory = new FakeAutomationFactory(() => new FakeAutomationSession());
         var service = Service(AvailableInstallation, factory);
@@ -82,17 +116,16 @@ public static class Program
             CancellationToken.None).ConfigureAwait(false);
 
         Equal("SUCCESS", response.Status);
-        Equal(true, response.Available);
-        Equal("AVAILABLE", response.AvailabilityCode);
-        Equal(1, factory.CreateCount);
-        True(factory.Sessions.Single().Disposed);
+        Equal(false, response.Available);
+        Equal("REGISTERED_UNVERIFIED", response.AvailabilityCode);
+        Equal(0, factory.CreateCount);
     }
 
     private static async Task ProbeReportsNotInstalled()
     {
         var factory = new FakeAutomationFactory(() => new FakeAutomationSession());
         var service = Service(
-            new HancomInstallation(false, false, null, null),
+            new HancomInstallation(false, false),
             factory);
         var response = await service.ExecuteAsync(
             new ProbeRequest("probe_2", 2_000),
@@ -102,6 +135,147 @@ public static class Program
         Equal(false, response.Available);
         Equal("NOT_INSTALLED", response.AvailabilityCode);
         Equal(0, factory.CreateCount);
+    }
+
+    private static async Task HostReturnsProbeWithOpenInput()
+    {
+        using var secondReadStarted = new ManualResetEventSlim(initialState: false);
+        using var releaseSecondRead = new ManualResetEventSlim(initialState: false);
+        using var secondReadFinished = new ManualResetEventSlim(initialState: false);
+        var factory = new FakeAutomationFactory(() => new FakeAutomationSession());
+        var host = new BridgeHost(new HwpBridgeService(
+            new GatedInstallationProbe(AvailableInstallation, secondReadStarted),
+            factory));
+        var request = JsonSerializer.Serialize(new
+        {
+            requestId = "host_probe",
+            command = "probe",
+            timeoutMs = 2_000,
+        });
+        using var inputReader = new OpenInputLineReader(
+            request,
+            secondReadStarted,
+            releaseSecondRead,
+            secondReadFinished);
+        using var outputWriter = new StringWriter();
+        var run = Task.Run(
+            async () => await host.RunAsync(inputReader, outputWriter).ConfigureAwait(false));
+
+        try
+        {
+            True(secondReadStarted.Wait(2_000));
+            if (await Task.WhenAny(run, Task.Delay(2_000)).ConfigureAwait(false) != run)
+            {
+                releaseSecondRead.Set();
+                await run.ConfigureAwait(false);
+                throw new InvalidOperationException();
+            }
+
+            Equal(0, await run.ConfigureAwait(false));
+        }
+        finally
+        {
+            releaseSecondRead.Set();
+            True(secondReadFinished.Wait(2_000));
+        }
+
+        var lines = outputWriter.ToString()
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        Equal(1, lines.Length);
+        using var response = JsonDocument.Parse(lines[0]);
+        Equal("host_probe", response.RootElement.GetProperty("requestId").GetString());
+        Equal("probe", response.RootElement.GetProperty("command").GetString());
+        Equal("SUCCESS", response.RootElement.GetProperty("status").GetString());
+        Equal(false, response.RootElement.GetProperty("available").GetBoolean());
+        Equal(
+            "REGISTERED_UNVERIFIED",
+            response.RootElement.GetProperty("availabilityCode").GetString());
+        Equal(0, factory.CreateCount);
+    }
+
+    private static async Task BuiltBridgeReturnsProbeWithOpenInput()
+    {
+        var executable = Path.Combine(
+            AppContext.BaseDirectory,
+            OperatingSystem.IsWindows() ? "madi-hwp-bridge.exe" : "madi-hwp-bridge");
+        True(File.Exists(executable));
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = executable,
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            },
+        };
+        var started = false;
+        try
+        {
+            True(process.Start());
+            started = true;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+            var request = JsonSerializer.Serialize(new
+            {
+                requestId = "built_probe",
+                command = "probe",
+                timeoutMs = 2_000,
+            });
+            await process.StandardInput.WriteLineAsync(request).ConfigureAwait(false);
+            await process.StandardInput.FlushAsync(timeout.Token).ConfigureAwait(false);
+
+            var line = await process.StandardOutput
+                .ReadLineAsync(timeout.Token)
+                .ConfigureAwait(false);
+            True(line is not null);
+            using var response = JsonDocument.Parse(line!);
+            Equal("built_probe", response.RootElement.GetProperty("requestId").GetString());
+            Equal("probe", response.RootElement.GetProperty("command").GetString());
+            Equal("SUCCESS", response.RootElement.GetProperty("status").GetString());
+            Equal(false, response.RootElement.GetProperty("available").GetBoolean());
+            var availabilityCode = response.RootElement
+                .GetProperty("availabilityCode")
+                .GetString();
+            True(
+                availabilityCode is "NOT_INSTALLED" or
+                    "SECURITY_MODULE_REQUIRED" or
+                    "REGISTERED_UNVERIFIED");
+
+            await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            Equal(0, process.ExitCode);
+            Equal(string.Empty, await stderr.ConfigureAwait(false));
+            Equal<string?>(
+                null,
+                await process.StandardOutput
+                    .ReadLineAsync(timeout.Token)
+                    .ConfigureAwait(false));
+        }
+        finally
+        {
+            if (started)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // The process won the race and exited before Kill.
+                }
+
+                using var cleanupTimeout = new CancellationTokenSource(
+                    TimeSpan.FromSeconds(5));
+                await process
+                    .WaitForExitAsync(cleanupTimeout.Token)
+                    .ConfigureAwait(false);
+            }
+        }
     }
 
     private static async Task ConvertRejectsRelativePath()
@@ -472,6 +646,71 @@ internal sealed class FakeInstallationProbe : IHancomInstallationProbe
     }
 
     public HancomInstallation Inspect() => installation;
+}
+
+internal sealed class GatedInstallationProbe : IHancomInstallationProbe
+{
+    private readonly HancomInstallation installation;
+    private readonly ManualResetEventSlim secondReadStarted;
+
+    public GatedInstallationProbe(
+        HancomInstallation installation,
+        ManualResetEventSlim secondReadStarted)
+    {
+        this.installation = installation;
+        this.secondReadStarted = secondReadStarted;
+    }
+
+    public HancomInstallation Inspect()
+    {
+        secondReadStarted.Wait();
+        return installation;
+    }
+}
+
+internal sealed class OpenInputLineReader : TextReader
+{
+    private readonly string first;
+    private readonly ManualResetEventSlim secondReadStarted;
+    private readonly ManualResetEventSlim releaseSecondRead;
+    private readonly ManualResetEventSlim secondReadFinished;
+    private int lineIndex;
+
+    public OpenInputLineReader(
+        string first,
+        ManualResetEventSlim secondReadStarted,
+        ManualResetEventSlim releaseSecondRead,
+        ManualResetEventSlim secondReadFinished)
+    {
+        this.first = first;
+        this.secondReadStarted = secondReadStarted;
+        this.releaseSecondRead = releaseSecondRead;
+        this.secondReadFinished = secondReadFinished;
+    }
+
+    public override ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken)
+    {
+        var index = Interlocked.Increment(ref lineIndex);
+        if (index == 1)
+        {
+            return ValueTask.FromResult<string?>(first);
+        }
+
+        if (index == 2)
+        {
+            secondReadStarted.Set();
+            try
+            {
+                releaseSecondRead.Wait(cancellationToken);
+            }
+            finally
+            {
+                secondReadFinished.Set();
+            }
+        }
+
+        return ValueTask.FromResult<string?>(null);
+    }
 }
 
 internal sealed class GatedLineReader : TextReader

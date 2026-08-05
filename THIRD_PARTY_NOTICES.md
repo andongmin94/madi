@@ -430,7 +430,7 @@ apphost, Madi assembly, dependency metadata와 runtime configuration만 포함�
 자체는 번들하지 않으므로 실행 PC에 compatible x86 .NET 10 runtime이 설치되어 있어야 한다.
 현재 로컬 SDK에 self-contained win-x86 runtime pack이 없어 build가 runtime pack을
 자동 다운로드하거나 package에 임의로 복사하지 않는다. Build SDK는 repository
-`global.json`에서 `10.0.301`, roll-forward disabled로 고정한다.
+`global.json`에서 `10.0.400`, roll-forward disabled로 고정한다.
 
 .NET runtime/apphost source는 .NET Foundation MIT license다. Checked-in 원문과 hash:
 

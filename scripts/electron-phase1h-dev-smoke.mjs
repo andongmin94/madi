@@ -10,6 +10,7 @@ delete process.env.MADI_RENDERER_URL;
 delete process.env.MADI_CORE_BIN;
 delete process.env.MADI_HWPX_EXPORT_BIN;
 delete process.env.MADI_HWP_BRIDGE_BIN;
+delete process.env.MADI_ATOMIC_OUTPUT_BIN;
 process.env.MADI_PHASE1H_MANIFEST = resolve(
   repositoryRoot,
   "output",

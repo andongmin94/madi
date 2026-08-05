@@ -494,15 +494,15 @@ export class FileHwpxCrashRecoveryRegistry
       return "UNTRUSTED";
     }
     if (await atomicOutputJournalExists(registry.claimPath)) {
-      if (!this.atomicOutput) {
-        return "PRESERVED";
-      }
       const reconciliation = await reconcileAtomicOutputJournal(
         registry.claimPath,
         registry,
         this.atomicOutput
       );
-      if (reconciliation.status === "RECOVERY_REQUIRED") {
+      if (
+        reconciliation.status === "RECOVERY_REQUIRED" ||
+        reconciliation.status === "NO_INTENT"
+      ) {
         return "PRESERVED";
       }
     }

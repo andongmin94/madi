@@ -1,14 +1,11 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
 namespace Madi.HwpBridge;
 
 public sealed record HancomInstallation(
-    bool ComRegistered,
-    bool SecurityModuleRegistered,
-    string? SecurityModulePath,
-    string? Version);
+    bool ComRegistrationPresent,
+    bool SecurityModuleRegistrationPresent);
 
 public interface IHancomInstallationProbe
 {
@@ -38,7 +35,7 @@ public sealed class WindowsHancomInstallationProbe : IHancomInstallationProbe
     {
         if (!OperatingSystem.IsWindows())
         {
-            return new HancomInstallation(false, false, null, null);
+            return new HancomInstallation(false, false);
         }
 
         try
@@ -48,10 +45,14 @@ public sealed class WindowsHancomInstallationProbe : IHancomInstallationProbe
                 RegistryView.Registry32);
             using var progId = classes.OpenSubKey($@"{ProgId}\CLSID", writable: false);
             var classId = progId?.GetValue(null) as string;
-            var serverPath = RegisteredServerPath(classes, classId);
-            var comRegistered = !string.IsNullOrWhiteSpace(classId) &&
-                                !string.IsNullOrWhiteSpace(serverPath) &&
-                                File.Exists(serverPath);
+            string? localServerCommand = null;
+            if (Guid.TryParse(classId, out var parsedClassId))
+            {
+                using var server = classes.OpenSubKey(
+                    $@"CLSID\{parsedClassId:B}\LocalServer32",
+                    writable: false);
+                localServerCommand = server?.GetValue(null) as string;
+            }
 
             using var currentUser = RegistryKey.OpenBaseKey(
                 RegistryHive.CurrentUser,
@@ -59,78 +60,29 @@ public sealed class WindowsHancomInstallationProbe : IHancomInstallationProbe
             using var modules = currentUser.OpenSubKey(
                 SecurityModuleRegistryPath,
                 writable: false);
-            var modulePath = modules?.GetValue(SecurityModuleName) as string;
-            var moduleRegistered = IsRegularDll(modulePath);
-            return new HancomInstallation(
-                comRegistered,
-                moduleRegistered,
-                moduleRegistered ? Path.GetFullPath(modulePath!) : null,
-                ExecutableVersion(serverPath));
+            var moduleRegistration = modules?.GetValue(SecurityModuleName) as string;
+            return ClassifyRegistration(
+                classId,
+                localServerCommand,
+                moduleRegistration);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or
                 ArgumentException or System.Security.SecurityException)
         {
-            return new HancomInstallation(false, false, null, null);
+            return new HancomInstallation(false, false);
         }
     }
 
-    private static string? RegisteredServerPath(RegistryKey classes, string? classId)
+    public static HancomInstallation ClassifyRegistration(
+        string? classId,
+        string? localServerCommand,
+        string? securityModuleRegistration)
     {
-        if (string.IsNullOrWhiteSpace(classId))
-        {
-            return null;
-        }
-
-        using var server = classes.OpenSubKey(
-            $@"CLSID\{classId}\LocalServer32",
-            writable: false);
-        var command = server?.GetValue(null) as string;
-        if (string.IsNullOrWhiteSpace(command))
-        {
-            return null;
-        }
-
-        var trimmed = command.Trim();
-        if (trimmed.StartsWith('"'))
-        {
-            var endQuote = trimmed.IndexOf('"', 1);
-            return endQuote > 1 ? trimmed[1..endQuote] : null;
-        }
-
-        var executableEnd = trimmed.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
-        return executableEnd >= 0 ? trimmed[..(executableEnd + 4)].Trim() : null;
-    }
-
-    private static bool IsRegularDll(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path) ||
-            !Path.IsPathFullyQualified(path) ||
-            !string.Equals(Path.GetExtension(path), ".dll", StringComparison.OrdinalIgnoreCase) ||
-            !File.Exists(path))
-        {
-            return false;
-        }
-
-        return (File.GetAttributes(path) &
-                (FileAttributes.Directory | FileAttributes.ReparsePoint)) == 0;
-    }
-
-    private static string? ExecutableVersion(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-        {
-            return null;
-        }
-
-        try
-        {
-            return FileVersionInfo.GetVersionInfo(path).FileVersion;
-        }
-        catch (FileNotFoundException)
-        {
-            return null;
-        }
+        return new HancomInstallation(
+            Guid.TryParse(classId, out _) &&
+                !string.IsNullOrWhiteSpace(localServerCommand),
+            !string.IsNullOrWhiteSpace(securityModuleRegistration));
     }
 }
 
@@ -145,21 +97,21 @@ public sealed class HancomComAutomationFactory : IHancomAutomationFactory
                 "Windows Hancom Office automation is not installed.");
         }
 
-        if (!installation.ComRegistered)
+        if (!installation.ComRegistrationPresent)
         {
             throw new BridgeFailureException(
                 "NOT_INSTALLED",
                 "Windows Hancom Office automation is not installed.");
         }
 
-        if (!installation.SecurityModuleRegistered)
+        if (!installation.SecurityModuleRegistrationPresent)
         {
             throw new BridgeFailureException(
                 "SECURITY_MODULE_REQUIRED",
                 "The Hancom file-path security module is not registered.");
         }
 
-        return HancomComAutomationSession.Create(installation.Version);
+        return HancomComAutomationSession.Create();
     }
 }
 
@@ -178,15 +130,14 @@ internal sealed class HancomComAutomationSession : IHancomAutomationSession
     private dynamic? openedDocument;
     private int? previousMessageBoxMode;
 
-    private HancomComAutomationSession(dynamic automation, string? detectedVersion)
+    private HancomComAutomationSession(dynamic automation)
     {
         this.automation = automation;
-        Version = detectedVersion;
     }
 
     public string? Version { get; private set; }
 
-    public static HancomComAutomationSession Create(string? detectedVersion)
+    public static HancomComAutomationSession Create()
     {
         object? instance = null;
         try
@@ -200,7 +151,7 @@ internal sealed class HancomComAutomationSession : IHancomAutomationSession
                     "Hancom Office automation could not be started.");
             }
 
-            var session = new HancomComAutomationSession((dynamic)instance, detectedVersion);
+            var session = new HancomComAutomationSession((dynamic)instance);
             session.Initialize();
             return session;
         }

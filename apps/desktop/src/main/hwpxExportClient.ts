@@ -91,14 +91,15 @@ export interface HwpxUtilityResult {
       readonly messages: readonly HwpxUtilityValidationMessage[];
     };
     readonly exportTiming: {
+      readonly semanticMappingMs: number;
       readonly styleTableMs: number;
       readonly sectionXmlMs: number;
       readonly packageDocumentsMs: number;
       readonly zipPackagingMs: number;
-      readonly internalValidationMs: number;
       readonly zipReopenMs: number;
+      readonly internalValidationMs: number;
       readonly sourceCoverageMs: number;
-      readonly totalMs: number;
+      readonly exporterTotalMs: number;
     };
     readonly statistics: {
       readonly fileCount: number;
@@ -481,14 +482,15 @@ function parseResult(
   exact(
     timing,
     [
+      "semanticMappingMs",
       "styleTableMs",
       "sectionXmlMs",
       "packageDocumentsMs",
       "zipPackagingMs",
-      "internalValidationMs",
       "zipReopenMs",
+      "internalValidationMs",
       "sourceCoverageMs",
-      "totalMs"
+      "exporterTotalMs"
     ],
     "export timing"
   );
@@ -538,6 +540,10 @@ function parseResult(
       fontFamily: string(summary.fontFamily, "font family", 128),
       validationReport: validation(summary.validationReport),
       exportTiming: {
+        semanticMappingMs: integer(
+          timing.semanticMappingMs,
+          "semantic mapping timing"
+        ),
         styleTableMs: integer(timing.styleTableMs, "style timing"),
         sectionXmlMs: integer(timing.sectionXmlMs, "section timing"),
         packageDocumentsMs: integer(
@@ -545,16 +551,19 @@ function parseResult(
           "package document timing"
         ),
         zipPackagingMs: integer(timing.zipPackagingMs, "ZIP timing"),
+        zipReopenMs: integer(timing.zipReopenMs, "ZIP reopen timing"),
         internalValidationMs: integer(
           timing.internalValidationMs,
           "validation timing"
         ),
-        zipReopenMs: integer(timing.zipReopenMs, "ZIP reopen timing"),
         sourceCoverageMs: integer(
           timing.sourceCoverageMs,
           "source coverage timing"
         ),
-        totalMs: integer(timing.totalMs, "total timing")
+        exporterTotalMs: integer(
+          timing.exporterTotalMs,
+          "exporter total timing"
+        )
       },
       statistics: parsedStatistics
     }
@@ -566,6 +575,18 @@ function parseResult(
     result.summary.fontFamily !== expected.config.fontFamilyToken
   ) {
     throw new Error("The HWPX utility returned a mismatched summary");
+  }
+  const measuredStageTotal =
+    result.summary.exportTiming.semanticMappingMs +
+    result.summary.exportTiming.styleTableMs +
+    result.summary.exportTiming.sectionXmlMs +
+    result.summary.exportTiming.packageDocumentsMs +
+    result.summary.exportTiming.zipPackagingMs +
+    result.summary.exportTiming.zipReopenMs +
+    result.summary.exportTiming.internalValidationMs +
+    result.summary.exportTiming.sourceCoverageMs;
+  if (result.summary.exportTiming.exporterTotalMs < measuredStageTotal) {
+    throw new Error("The HWPX utility returned incoherent export timing");
   }
   return result;
 }

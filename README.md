@@ -371,7 +371,9 @@ Java/JAR가 없다. 자세한 경계는
 3. `검사`로 ZIP/XML/reference/source-coverage internal validation report를 확인한다.
 4. `HWPX 내보내기`에서 destination을 고르고 progress/cancel과 JSON/Markdown report를
    확인한다.
-5. HWP는 HWPX가 성공한 뒤 local bridge availability가 `AVAILABLE`일 때만 선택할 수 있다.
+5. HWP는 HWPX가 성공한 뒤 별도 수동 검증으로 local bridge가 안전하다고 승인된 경우에만
+   선택할 수 있다. 현재 자동 probe는 Automation을 활성화하지 않고
+   `REGISTERED_UNVERIFIED`까지만 보고하므로 HWP 선택은 비활성 상태다.
 
 현재 HWPX profile은 한컴 공식 `hwpx-owpml-model` XML 1.31 세대 상호운용 target이며
 `KS X 6101:2024` 전체 적합성 선언이 아니다. 현재 검증 PC에는 한컴오피스가 있지만
@@ -601,7 +603,7 @@ script는 clean/pinned submodule을 확인하고
 - pnpm `11.9.0` (`package.json#packageManager`)
 - Rust `1.97.1` MSVC (`rust-toolchain.toml`)
 - Rust targets `x86_64-pc-windows-msvc`, `wasm32-unknown-unknown`
-- HWP local bridge build용 .NET SDK `10.0.301` (`global.json`, roll-forward disabled)
+- HWP local bridge build용 .NET SDK `10.0.400` (`global.json`, roll-forward disabled)
 - HWP local bridge 실행용 compatible x86 .NET 10 runtime; HWPX export 자체에는 필요 없음
 - Visual Studio 2022 Build Tools의 C++ desktop workload와 Windows SDK
 
@@ -640,6 +642,7 @@ pnpm build
 # 집중 검증
 pnpm run test:publication
 pnpm run test:hwpx
+pnpm run test:atomic-output
 pnpm run test:hwp-bridge
 pnpm run test:core
 pnpm run typecheck
@@ -665,7 +668,7 @@ pnpm test:dev
 ```
 
 `pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust Publication/EPUB/HWPX test,
-C# bridge contract test, exact build/test-only EPUBCheck 5.3.0,
+atomic-output helper build/test, C# bridge contract test, exact build/test-only EPUBCheck 5.3.0,
 실제 Typie probe, `.madi` integration, production build, build 뒤 lazy bundle artifact
 test, 일반·scale development Electron과 fresh unpacked packaged smoke를 순서대로
 실행한다. Phase 1F smoke는 일반·675,000자 장편 Reader fixture를 각각 5회 측정하고 새
@@ -680,6 +683,7 @@ output/madi-win32-x64/resources/app/dist/
 output/madi-win32-x64/resources/bin/madi-core.exe
 output/madi-win32-x64/resources/bin/madi-export-epub.exe
 output/madi-win32-x64/resources/bin/madi-export-hwpx.exe
+output/madi-win32-x64/resources/bin/madi-atomic-output.exe
 output/madi-win32-x64/resources/bin/hwp-bridge/
 output/madi-win32-x64/resources/licenses/
 ```

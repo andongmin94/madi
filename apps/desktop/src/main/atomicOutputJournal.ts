@@ -171,6 +171,38 @@ function parsePrepared(
   return value as unknown as AtomicOutputPreparedIntent;
 }
 
+function parseTerminal(
+  source: string,
+  owner: AtomicOutputJournalOwner,
+  preparedSource: string,
+  expectedOutcome: AtomicOutputTerminalMarker["outcome"]
+): AtomicOutputTerminalMarker | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(source);
+  } catch {
+    return null;
+  }
+  if (
+    !isRecord(value) ||
+    !exact(value, [
+      "intentSha256",
+      "outcome",
+      "ownershipToken",
+      "registryId",
+      "schemaVersion"
+    ]) ||
+    value.schemaVersion !== JOURNAL_SCHEMA_VERSION ||
+    value.registryId !== owner.registryId ||
+    value.ownershipToken !== owner.ownershipToken ||
+    value.intentSha256 !== intentSha256(preparedSource) ||
+    value.outcome !== expectedOutcome
+  ) {
+    return null;
+  }
+  return value as unknown as AtomicOutputTerminalMarker;
+}
+
 async function readBounded(filePath: string): Promise<string | null> {
   let pathIdentity;
   try {
@@ -222,6 +254,33 @@ async function readBounded(filePath: string): Promise<string | null> {
     return bytes.subarray(0, length).toString("utf8");
   } finally {
     await handle.close();
+  }
+}
+
+async function journalEntryExists(filePath: string): Promise<boolean> {
+  try {
+    await lstat(filePath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function readBoundedFailClosed(filePath: string): Promise<
+  | { readonly status: "MISSING" }
+  | { readonly status: "READ"; readonly source: string }
+  | { readonly status: "UNTRUSTED" }
+> {
+  try {
+    const source = await readBounded(filePath);
+    return source === null
+      ? { status: "MISSING" }
+      : { status: "READ", source };
+  } catch {
+    return { status: "UNTRUSTED" };
   }
 }
 
@@ -293,6 +352,13 @@ export async function writeAtomicOutputTerminal(
   if (!preparedSource || !parsePrepared(preparedSource, owner)) {
     throw new Error("The prepared atomic output journal is unavailable");
   }
+  const [committedExists, abortedExists] = await Promise.all([
+    journalEntryExists(path.join(directoryPath, COMMITTED_FILE_NAME)),
+    journalEntryExists(path.join(directoryPath, ABORTED_FILE_NAME))
+  ]);
+  if (committedExists || abortedExists) {
+    throw new Error("The atomic output journal already has a terminal marker");
+  }
   const terminal: AtomicOutputTerminalMarker = {
     schemaVersion: JOURNAL_SCHEMA_VERSION,
     registryId: owner.registryId,
@@ -338,14 +404,44 @@ function samePublishedContent(
 export async function reconcileAtomicOutputJournal(
   directoryPath: string,
   owner: AtomicOutputJournalOwner,
-  atomicOutput: AtomicOutputPort
+  atomicOutput?: AtomicOutputPort
 ): Promise<AtomicOutputJournalReconcileResult> {
-  const preparedSource = await readBounded(path.join(directoryPath, PREPARED_FILE_NAME));
-  if (!preparedSource) {
+  const preparedEntry = await readBoundedFailClosed(
+    path.join(directoryPath, PREPARED_FILE_NAME)
+  );
+  if (preparedEntry.status === "MISSING") {
     return { status: "NO_INTENT", recoveryFileName: null };
   }
+  if (preparedEntry.status === "UNTRUSTED") {
+    return { status: "RECOVERY_REQUIRED", recoveryFileName: null };
+  }
+  const preparedSource = preparedEntry.source;
   const intent = parsePrepared(preparedSource, owner);
   if (!intent) {
+    return { status: "RECOVERY_REQUIRED", recoveryFileName: null };
+  }
+  const [committedEntry, abortedEntry] = await Promise.all([
+    readBoundedFailClosed(path.join(directoryPath, COMMITTED_FILE_NAME)),
+    readBoundedFailClosed(path.join(directoryPath, ABORTED_FILE_NAME))
+  ]);
+  if (
+    committedEntry.status === "UNTRUSTED" ||
+    abortedEntry.status === "UNTRUSTED" ||
+    (committedEntry.status === "READ" && abortedEntry.status === "READ")
+  ) {
+    return { status: "RECOVERY_REQUIRED", recoveryFileName: null };
+  }
+  if (committedEntry.status === "READ") {
+    return parseTerminal(committedEntry.source, owner, preparedSource, "COMMITTED")
+      ? { status: "SAFE", recoveryFileName: null }
+      : { status: "RECOVERY_REQUIRED", recoveryFileName: null };
+  }
+  if (abortedEntry.status === "READ") {
+    return parseTerminal(abortedEntry.source, owner, preparedSource, "ABORTED_SAFE")
+      ? { status: "SAFE", recoveryFileName: null }
+      : { status: "RECOVERY_REQUIRED", recoveryFileName: null };
+  }
+  if (!atomicOutput) {
     return { status: "RECOVERY_REQUIRED", recoveryFileName: null };
   }
   const input = {
@@ -392,5 +488,5 @@ export async function reconcileAtomicOutputJournal(
 }
 
 export async function atomicOutputJournalExists(directoryPath: string): Promise<boolean> {
-  return (await readBounded(path.join(directoryPath, PREPARED_FILE_NAME))) !== null;
+  return journalEntryExists(path.join(directoryPath, PREPARED_FILE_NAME));
 }

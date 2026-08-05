@@ -191,16 +191,41 @@ export interface HwpxCoverage {
 }
 
 export interface HwpxExportTiming {
+  readonly publicationIrCompileMs: number;
   readonly semanticMappingMs: number;
   readonly styleTableMs: number;
   readonly sectionXmlMs: number;
-  readonly packageMs: number;
-  readonly internalValidationMs: number;
+  readonly packageDocumentsMs: number;
+  readonly zipPackagingMs: number;
   readonly zipReopenMs: number;
+  readonly internalValidationMs: number;
   readonly sourceCoverageMs: number;
+  readonly exporterTotalMs: number;
   readonly totalMs: number;
   readonly hwpConversionMs: number | null;
   readonly hwpReopenMs: number | null;
+}
+
+export interface HwpxReportPageConfig {
+  readonly pageSizeToken: HwpxPageSizeToken;
+  readonly customPageWidth: number | null;
+  readonly customPageHeight: number | null;
+  readonly orientation: HwpxOrientation;
+  readonly marginTop: number;
+  readonly marginBottom: number;
+  readonly marginLeft: number;
+  readonly marginRight: number;
+  readonly headerMargin: number;
+  readonly footerMargin: number;
+  readonly gutter: number;
+  readonly includeTitlePage: boolean;
+  readonly includePageNumber: boolean;
+  readonly pageNumberStart: number;
+  readonly pageNumberPosition: HwpxPageNumberPosition;
+  readonly includeHeader: boolean;
+  readonly headerHasText: boolean;
+  readonly includeFooter: boolean;
+  readonly footerHasText: boolean;
 }
 
 export interface HwpxExportReport {
@@ -223,14 +248,7 @@ export interface HwpxExportReport {
   readonly validation: HwpxValidationReport;
   readonly fontFamily: string;
   readonly fontInstalled: boolean | null;
-  readonly page: {
-    readonly pageSizeToken: HwpxPageSizeToken;
-    readonly orientation: HwpxOrientation;
-    readonly marginTop: number;
-    readonly marginBottom: number;
-    readonly marginLeft: number;
-    readonly marginRight: number;
-  };
+  readonly page: HwpxReportPageConfig;
   readonly hancomReopen: "NOT_RUN" | "PASSED" | "FAILED";
   readonly hwpConverted: boolean;
   readonly timing: HwpxExportTiming;

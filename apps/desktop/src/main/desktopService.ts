@@ -3816,6 +3816,32 @@ function hwpxValidationMessagesForDocument(
   });
 }
 
+function hwpxReportPage(
+  config: HwpxExportPresetConfig
+): HwpxExportReport["page"] {
+  return {
+    pageSizeToken: config.pageSizeToken,
+    customPageWidth: config.customPageWidth,
+    customPageHeight: config.customPageHeight,
+    orientation: config.orientation,
+    marginTop: config.marginTop,
+    marginBottom: config.marginBottom,
+    marginLeft: config.marginLeft,
+    marginRight: config.marginRight,
+    headerMargin: config.headerMargin,
+    footerMargin: config.footerMargin,
+    gutter: config.gutter,
+    includeTitlePage: config.includeTitlePage,
+    includePageNumber: config.includePageNumber,
+    pageNumberStart: config.pageNumberStart,
+    pageNumberPosition: config.pageNumberPosition,
+    includeHeader: config.includeHeader,
+    headerHasText: config.headerText.length > 0,
+    includeFooter: config.includeFooter,
+    footerHasText: config.footerText.length > 0
+  };
+}
+
 function hwpxReportFromUtility(
   utility: HwpxUtilityResult,
   document: CompilePublicationResult["document"],
@@ -3824,6 +3850,7 @@ function hwpxReportFromUtility(
   presetId: string,
   presetContentHash: string,
   sourceProjectRevision: number,
+  publicationIrCompileMs: number,
   appVersion: string
 ): HwpxExportReport {
   const { summary } = utility;
@@ -3962,27 +3989,22 @@ function hwpxReportFromUtility(
     },
     fontFamily: summary.fontFamily,
     fontInstalled: null,
-    page: {
-      pageSizeToken: config.pageSizeToken,
-      orientation: config.orientation,
-      marginTop: config.marginTop,
-      marginBottom: config.marginBottom,
-      marginLeft: config.marginLeft,
-      marginRight: config.marginRight
-    },
+    page: hwpxReportPage(config),
     hancomReopen: "NOT_RUN",
     hwpConverted: false,
     timing: {
-      semanticMappingMs: 0,
+      publicationIrCompileMs,
+      semanticMappingMs: summary.exportTiming.semanticMappingMs,
       styleTableMs: summary.exportTiming.styleTableMs,
       sectionXmlMs: summary.exportTiming.sectionXmlMs,
-      packageMs:
-        summary.exportTiming.packageDocumentsMs +
-        summary.exportTiming.zipPackagingMs,
-      internalValidationMs: summary.exportTiming.internalValidationMs,
+      packageDocumentsMs: summary.exportTiming.packageDocumentsMs,
+      zipPackagingMs: summary.exportTiming.zipPackagingMs,
       zipReopenMs: summary.exportTiming.zipReopenMs,
+      internalValidationMs: summary.exportTiming.internalValidationMs,
       sourceCoverageMs: summary.exportTiming.sourceCoverageMs,
-      totalMs: summary.exportTiming.totalMs,
+      exporterTotalMs: summary.exportTiming.exporterTotalMs,
+      totalMs:
+        publicationIrCompileMs + summary.exportTiming.exporterTotalMs,
       hwpConversionMs: null,
       hwpReopenMs: null
     },
@@ -3998,6 +4020,7 @@ function hwpxValidationFailureReport(
   presetId: string,
   presetContentHash: string,
   validation: HwpxUtilityValidationError["report"],
+  publicationIrCompileMs: number,
   appVersion: string
 ): HwpxExportReport {
   const blocks = document.sections.flatMap((section) => section.blocks);
@@ -4054,25 +4077,21 @@ function hwpxValidationFailureReport(
     },
     fontFamily: config.fontFamilyToken,
     fontInstalled: null,
-    page: {
-      pageSizeToken: config.pageSizeToken,
-      orientation: config.orientation,
-      marginTop: config.marginTop,
-      marginBottom: config.marginBottom,
-      marginLeft: config.marginLeft,
-      marginRight: config.marginRight
-    },
+    page: hwpxReportPage(config),
     hancomReopen: "NOT_RUN",
     hwpConverted: false,
     timing: {
+      publicationIrCompileMs,
       semanticMappingMs: 0,
       styleTableMs: 0,
       sectionXmlMs: 0,
-      packageMs: 0,
-      internalValidationMs: 0,
+      packageDocumentsMs: 0,
+      zipPackagingMs: 0,
       zipReopenMs: 0,
+      internalValidationMs: 0,
       sourceCoverageMs: 0,
-      totalMs: 0,
+      exporterTotalMs: 0,
+      totalMs: publicationIrCompileMs,
       hwpConversionMs: null,
       hwpReopenMs: null
     },
@@ -4139,7 +4158,6 @@ function hwpxReportForHwp(
     readonly hwpReopenMs: number | null;
   }
 ): HwpxExportReport {
-  const bridgeTiming = options.hwpConversionMs + (options.hwpReopenMs ?? 0);
   return {
     ...report,
     outputType: "HWP",
@@ -4150,7 +4168,10 @@ function hwpxReportForHwp(
     hancomReopen: options.hancomReopen,
     timing: {
       ...report.timing,
-      totalMs: report.timing.totalMs + bridgeTiming,
+      totalMs:
+        report.timing.totalMs +
+        options.hwpConversionMs +
+        (options.hwpReopenMs ?? 0),
       hwpConversionMs: options.hwpConversionMs,
       hwpReopenMs: options.hwpReopenMs
     }
@@ -4179,7 +4200,11 @@ function markdownHwpxExportReport(report: HwpxExportReport): string {
     `- Internal validation: ${report.validation.status}`,
     `- Validation F/E/W/I: ${report.validation.fatalCount}/${report.validation.errorCount}/${report.validation.warningCount}/${report.validation.infoCount}`,
     `- Font installed: ${report.fontFamily}/${report.fontInstalled === null ? "unverified" : report.fontInstalled}`,
+    `- Page config: ${JSON.stringify(report.page)}`,
     `- Hancom reopen/HWP converted: ${report.hancomReopen}/${report.hwpConverted}`,
+    `- Publication IR compile: ${report.timing.publicationIrCompileMs} ms`,
+    `- HWPX semantic mapping: ${report.timing.semanticMappingMs} ms`,
+    `- HWPX exporter: ${report.timing.exporterTotalMs} ms`,
     `- Total: ${report.timing.totalMs} ms`,
     `- Generated: ${report.generatedAt}`,
     `- madi: ${report.madiVersion}`,
@@ -7003,6 +7028,7 @@ export class DesktopService {
     readonly utilityInput: HwpxExporterRunInput;
     readonly revision: number;
     readonly document: CompilePublicationResult["document"];
+    readonly publicationIrCompileMs: number;
   }> {
     if (!this.hwpxExporter) {
       throw new Error("The local HWPX utility is unavailable");
@@ -7211,7 +7237,8 @@ export class DesktopService {
         replaceExisting
       },
       revision: compiled.revision,
-      document: compiled.document
+      document: compiled.document,
+      publicationIrCompileMs: compiled.compileTimingMs
     };
   }
 
@@ -7485,6 +7512,7 @@ export class DesktopService {
             prepared.utilityInput.presetId,
             prepared.utilityInput.presetContentHash,
             prepared.revision,
+            prepared.publicationIrCompileMs,
             this.appVersion
           )
         );
@@ -7512,6 +7540,7 @@ export class DesktopService {
             prepared.utilityInput.presetId,
             prepared.utilityInput.presetContentHash,
             error.report,
+            prepared.publicationIrCompileMs,
             this.appVersion
           )
         );
@@ -7703,6 +7732,7 @@ export class DesktopService {
           prepared.utilityInput.presetId,
           prepared.utilityInput.presetContentHash,
           prepared.revision,
+          prepared.publicationIrCompileMs,
           this.appVersion
         )
       );

@@ -11,12 +11,33 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type {
+  AtomicOutputIdentity,
+  AtomicOutputPort,
+  AtomicOutputRecoveryResult
+} from "../src/main/atomicOutputClient";
+import type { AtomicOutputJournalPreparation } from "../src/main/atomicOutputJournal";
 import { FileHwpxCrashRecoveryRegistry } from "../src/main/hwpxCrashRecovery";
 
 const OPERATION_ID = "123e4567-e89b-42d3-a456-426614174000";
 const OWNER_PID = 424_242;
 const OWNERSHIP_MARKER = ".madi-hwpx-ownership-v1.json";
+const ATOMIC_PREPARED_MARKER = ".madi-atomic-output-prepared-v1.json";
+const PRIVATE_ID = "123e4567-e89b-42d3-a456-426614174001";
+const RECOVERY_ID = "123e4567-e89b-42d3-a456-426614174002";
+const EXPECTED: AtomicOutputIdentity = {
+  byteLength: 11,
+  sha256: "a".repeat(64),
+  volumeSerialNumber: "b".repeat(16),
+  fileId: "c".repeat(32)
+};
+const STAGED: AtomicOutputIdentity = {
+  byteLength: 8,
+  sha256: "d".repeat(64),
+  volumeSerialNumber: "b".repeat(16),
+  fileId: "e".repeat(32)
+};
 const temporaryRoots: string[] = [];
 
 async function fixture(): Promise<{
@@ -60,6 +81,44 @@ async function soleRegistryRecord(registryRoot: string): Promise<{
     value: JSON.parse(
       await readFile(path.join(registryRoot, entries[0]!), "utf8")
     ) as Record<string, unknown>
+  };
+}
+
+function journalPreparation(value: {
+  readonly root: string;
+  readonly operationPath: string;
+}): AtomicOutputJournalPreparation {
+  const outputDirectory = path.join(value.root, "output");
+  return {
+    stagedPath: path.join(value.operationPath, "publication.hwpx"),
+    destinationPath: path.join(outputDirectory, "publication.hwpx"),
+    backupPath: path.join(
+      value.operationPath,
+      `madi-atomic-backup-${PRIVATE_ID}.bin`
+    ),
+    rollbackPath: path.join(
+      value.operationPath,
+      `madi-atomic-rollback-${PRIVATE_ID}.bin`
+    ),
+    recoveryPath: path.join(
+      outputDirectory,
+      `publication.madi-recovery-${RECOVERY_ID}.hwpx`
+    ),
+    maximumBytes: 1024,
+    expected: EXPECTED,
+    stagedIdentity: STAGED
+  };
+}
+
+function atomicPort(recovery: AtomicOutputRecoveryResult): AtomicOutputPort {
+  return {
+    inspect: vi.fn(async () => EXPECTED),
+    commit: vi.fn(async () => ({
+      stagedIdentity: STAGED,
+      backupIdentity: EXPECTED
+    })),
+    recover: vi.fn(async () => recovery),
+    publishRecovery: vi.fn(async ({ expected }) => expected)
   };
 }
 
@@ -279,6 +338,165 @@ describe("Phase 1H authenticated HWPX crash recovery", () => {
     await owner.remove(value.operationPath);
 
     expect(await exists(value.operationPath)).toBe(false);
+    expect(await readdir(value.registryRoot)).toEqual([]);
+  });
+
+  it.each(["COMMITTED", "ABORTED_SAFE"] as const)(
+    "cleans a dead operation with an authenticated %s terminal journal without a helper",
+    async (outcome) => {
+      const value = await fixture();
+      await mkdir(path.join(value.root, "output"));
+      const owner = new FileHwpxCrashRecoveryRegistry(value.registryRoot, {
+        ownerPid: OWNER_PID,
+        isProcessAlive: () => true
+      });
+      await owner.register(value.operationPath);
+      await owner.prepareAtomicOutput(
+        value.operationPath,
+        journalPreparation(value)
+      );
+      await owner.markAtomicOutputTerminal(value.operationPath, outcome);
+
+      const recovery = new FileHwpxCrashRecoveryRegistry(value.registryRoot, {
+        ownerPid: OWNER_PID + 1,
+        isProcessAlive: () => false
+      });
+      await recovery.initialize();
+
+      expect(await exists(value.operationPath)).toBe(false);
+      expect(await readdir(value.registryRoot)).toEqual([]);
+    }
+  );
+
+  it("preserves a dead PREPARED operation when the helper is unavailable", async () => {
+    const value = await fixture();
+    await mkdir(path.join(value.root, "output"));
+    const owner = new FileHwpxCrashRecoveryRegistry(value.registryRoot, {
+      ownerPid: OWNER_PID,
+      isProcessAlive: () => true
+    });
+    await owner.register(value.operationPath);
+    await owner.prepareAtomicOutput(
+      value.operationPath,
+      journalPreparation(value)
+    );
+    const record = await soleRegistryRecord(value.registryRoot);
+
+    const recovery = new FileHwpxCrashRecoveryRegistry(value.registryRoot, {
+      ownerPid: OWNER_PID + 1,
+      isProcessAlive: () => false
+    });
+    await recovery.initialize();
+
+    expect(await exists(value.operationPath)).toBe(false);
+    expect(await exists(record.value.claimPath as string)).toBe(true);
+    expect(
+      (await readdir(value.registryRoot)).filter((name) => name.endsWith(".json"))
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    ["corrupt", "{"],
+    ["oversized", "x".repeat(16 * 1024 + 1)]
+  ])("preserves a dead operation with a %s PREPARED journal", async (_name, source) => {
+    const value = await fixture();
+    await mkdir(path.join(value.root, "output"));
+    const owner = new FileHwpxCrashRecoveryRegistry(value.registryRoot, {
+      ownerPid: OWNER_PID,
+      isProcessAlive: () => true
+    });
+    await owner.register(value.operationPath);
+    await owner.prepareAtomicOutput(
+      value.operationPath,
+      journalPreparation(value)
+    );
+    await writeFile(
+      path.join(value.operationPath, ATOMIC_PREPARED_MARKER),
+      source,
+      "utf8"
+    );
+    const record = await soleRegistryRecord(value.registryRoot);
+
+    const recovery = new FileHwpxCrashRecoveryRegistry(value.registryRoot, {
+      ownerPid: OWNER_PID + 1,
+      isProcessAlive: () => false
+    });
+    await expect(recovery.initialize()).resolves.toBeUndefined();
+
+    expect(await exists(record.value.claimPath as string)).toBe(true);
+    expect(
+      (await readdir(value.registryRoot)).filter((name) => name.endsWith(".json"))
+    ).toHaveLength(1);
+  });
+
+  it("reconciles a dead PREPARED operation before deleting its claim", async () => {
+    const value = await fixture();
+    await mkdir(path.join(value.root, "output"));
+    const owner = new FileHwpxCrashRecoveryRegistry(value.registryRoot, {
+      ownerPid: OWNER_PID,
+      isProcessAlive: () => true
+    });
+    await owner.register(value.operationPath);
+    await owner.prepareAtomicOutput(
+      value.operationPath,
+      journalPreparation(value)
+    );
+    const port = atomicPort({
+      outcome: "COMMIT_COMPLETE",
+      recoveryArtifact: null
+    });
+
+    const recovery = new FileHwpxCrashRecoveryRegistry(value.registryRoot, {
+      ownerPid: OWNER_PID + 1,
+      isProcessAlive: () => false,
+      atomicOutput: port
+    });
+    await recovery.initialize();
+
+    expect(port.recover).toHaveBeenCalledTimes(1);
+    expect(await exists(value.operationPath)).toBe(false);
+    expect(await readdir(value.registryRoot)).toEqual([]);
+  });
+
+  it("publishes a recovery copy before deleting an ambiguous dead operation", async () => {
+    const value = await fixture();
+    const outputDirectory = path.join(value.root, "output");
+    await mkdir(outputDirectory);
+    const preparation = journalPreparation(value);
+    const owner = new FileHwpxCrashRecoveryRegistry(value.registryRoot, {
+      ownerPid: OWNER_PID,
+      isProcessAlive: () => true
+    });
+    await owner.register(value.operationPath);
+    await owner.prepareAtomicOutput(value.operationPath, preparation);
+    const record = await soleRegistryRecord(value.registryRoot);
+    const port = atomicPort({
+      outcome: "RECOVERY_REQUIRED",
+      recoveryArtifact: { source: "BACKUP", identity: EXPECTED }
+    });
+    vi.mocked(port.publishRecovery).mockImplementationOnce(async (input) => {
+      await writeFile(input.recoveryPath, "confirmed A", "utf8");
+      return input.expected;
+    });
+
+    const recovery = new FileHwpxCrashRecoveryRegistry(value.registryRoot, {
+      ownerPid: OWNER_PID + 1,
+      isProcessAlive: () => false,
+      atomicOutput: port
+    });
+    await recovery.initialize();
+
+    expect(port.publishRecovery).toHaveBeenCalledWith({
+      sourcePath: path.join(
+        record.value.claimPath as string,
+        path.basename(preparation.backupPath)
+      ),
+      recoveryPath: preparation.recoveryPath,
+      maximumBytes: preparation.maximumBytes,
+      expected: EXPECTED
+    });
+    expect(await readFile(preparation.recoveryPath, "utf8")).toBe("confirmed A");
+    expect(await exists(record.value.claimPath as string)).toBe(false);
     expect(await readdir(value.registryRoot)).toEqual([]);
   });
 });

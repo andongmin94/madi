@@ -290,8 +290,9 @@ export function validateHwpxExportPresetConfig(
     500
   );
   if (
-    (pageSizeToken === "CUSTOM") !==
-    (customPageWidth !== null && customPageHeight !== null)
+    pageSizeToken === "CUSTOM"
+      ? customPageWidth === null || customPageHeight === null
+      : customPageWidth !== null || customPageHeight !== null
   ) {
     throw new Error("Invalid HWPX custom page dimensions");
   }
@@ -430,7 +431,7 @@ function validateHwpxPresetRecord(value: unknown): HwpxExportPresetRecord {
     presetVersion: 1,
     config: validateHwpxExportPresetConfig(input.config),
     contentHash: hash(input.contentHash, "HWPX preset content hash"),
-    revision: integer(input.revision, "HWPX preset revision", 1),
+    revision: integer(input.revision, "HWPX preset revision"),
     createdAt: timestamp(input.createdAt, "HWPX preset created time"),
     updatedAt: timestamp(input.updatedAt, "HWPX preset updated time")
   };
@@ -619,6 +620,72 @@ export function validateHwpxExportProgress(value: unknown): HwpxExportProgress {
   };
 }
 
+type HwpxReportSemanticContext =
+  | "ANY"
+  | "VALIDATION_ONLY"
+  | "COMPLETED_HWPX"
+  | "COMPLETED_HWP"
+  | "PRESERVED_HWP";
+
+function validateHwpxReportSemanticState(
+  report: HwpxExportReport,
+  context: HwpxReportSemanticContext
+): void {
+  const hasWrittenHwpx = report.hwpxSha256 !== null;
+  const hasOutput = report.outputSha256 !== null && report.byteLength !== null;
+  const hasNoOutput = report.outputSha256 === null && report.byteLength === null;
+
+  if (report.outputType === "HWPX") {
+    const isValidationOnly = !hasWrittenHwpx && hasNoOutput;
+    const isCompleted =
+      hasWrittenHwpx &&
+      hasOutput &&
+      report.hwpxSha256 === report.outputSha256 &&
+      report.validation.status === "VALID";
+    if (
+      (!isValidationOnly && !isCompleted) ||
+      report.hwpConverted ||
+      report.hancomReopen !== "NOT_RUN" ||
+      report.timing.hwpConversionMs !== null ||
+      report.timing.hwpReopenMs !== null
+    ) {
+      throw new Error("Invalid HWPX report semantic state");
+    }
+    if (
+      (context === "VALIDATION_ONLY" && !isValidationOnly) ||
+      (context === "COMPLETED_HWPX" && !isCompleted) ||
+      context === "COMPLETED_HWP" ||
+      context === "PRESERVED_HWP"
+    ) {
+      throw new Error("Mismatched HWPX report semantic state");
+    }
+    return;
+  }
+
+  const conversionCompleted = report.hwpConverted;
+  const reopenAttempted = report.hancomReopen !== "NOT_RUN";
+  if (
+    !hasWrittenHwpx ||
+    report.validation.status !== "VALID" ||
+    report.timing.hwpConversionMs === null ||
+    (conversionCompleted ? !hasOutput : !hasNoOutput) ||
+    (reopenAttempted
+      ? !conversionCompleted || report.timing.hwpReopenMs === null
+      : report.timing.hwpReopenMs !== null) ||
+    (report.hancomReopen === "PASSED" && !conversionCompleted)
+  ) {
+    throw new Error("Invalid HWP report semantic state");
+  }
+  if (
+    context === "VALIDATION_ONLY" ||
+    context === "COMPLETED_HWPX" ||
+    (context === "COMPLETED_HWP" &&
+      (!conversionCompleted || report.hancomReopen !== "PASSED"))
+  ) {
+    throw new Error("Mismatched HWP report semantic state");
+  }
+}
+
 export function validateRunHwpxExportResult(
   value: unknown
 ): RunHwpxExportResult {
@@ -637,6 +704,7 @@ export function validateRunHwpxExportResult(
         1_000
       );
       const report = validateHwpxExportReport(input.report);
+      validateHwpxReportSemanticState(report, "PRESERVED_HWP");
       if (
         /[\\/:]/u.test(preservedHwpxFileName) ||
         !preservedHwpxFileName.toLocaleLowerCase().endsWith(".hwpx") ||
@@ -688,6 +756,7 @@ export function validateRunHwpxExportResult(
         throw new Error("Invalid preserved HWPX file identity");
       }
       const report = validateHwpxExportReport(input.report);
+      validateHwpxReportSemanticState(report, "PRESERVED_HWP");
       if (
         report.outputType !== "HWP" ||
         report.preservedHwpxFileName !== preservedHwpxFileName ||
@@ -718,6 +787,7 @@ export function validateRunHwpxExportResult(
         1_000
       );
       const report = validateHwpxExportReport(input.report);
+      validateHwpxReportSemanticState(report, "PRESERVED_HWP");
       if (
         /[\\/:]/u.test(preservedHwpxFileName) ||
         !preservedHwpxFileName.toLocaleLowerCase().endsWith(".hwpx") ||
@@ -796,9 +866,14 @@ export function validateRunHwpxExportResult(
     throw new Error("Invalid HWPX output identity");
   }
   const report = validateHwpxExportReport(input.report);
+  validateHwpxReportSemanticState(
+    report,
+    report.outputType === "HWP" ? "COMPLETED_HWP" : "COMPLETED_HWPX"
+  );
   if (
     report.byteLength !== input.byteLength ||
     report.outputSha256 !== input.sha256 ||
+    report.sourceProjectRevision !== input.revision ||
     (fileName.toLocaleLowerCase().endsWith(".hwp")
       ? report.outputType !== "HWP"
       : report.outputType !== "HWPX")
@@ -859,18 +934,23 @@ export function validateValidateHwpxExportResult(
     "HWPX validation result"
   );
   const report = validateHwpxExportReport(input.report);
+  validateHwpxReportSemanticState(report, "VALIDATION_ONLY");
   const sourcePublicationHash = hash(
     input.sourcePublicationHash,
     "HWPX source publication hash"
   );
-  if (report.sourcePublicationHash !== sourcePublicationHash) {
-    throw new Error("Mismatched HWPX source publication hash");
+  const revision = integer(input.revision, "HWPX validation revision");
+  if (
+    report.sourcePublicationHash !== sourcePublicationHash ||
+    report.sourceProjectRevision !== revision
+  ) {
+    throw new Error("Mismatched HWPX validation source identity");
   }
   return {
     operationId: validateHwpxOperationId(input.operationId),
     sourcePublicationHash,
     report,
-    revision: integer(input.revision, "HWPX validation revision")
+    revision
   };
 }
 
@@ -1043,23 +1123,76 @@ export function validateHwpxExportReport(value: unknown): HwpxExportReport {
     pageInput,
     [
       "pageSizeToken",
+      "customPageWidth",
+      "customPageHeight",
       "orientation",
       "marginTop",
       "marginBottom",
       "marginLeft",
-      "marginRight"
+      "marginRight",
+      "headerMargin",
+      "footerMargin",
+      "gutter",
+      "includeTitlePage",
+      "includePageNumber",
+      "pageNumberStart",
+      "pageNumberPosition",
+      "includeHeader",
+      "headerHasText",
+      "includeFooter",
+      "footerHasText"
     ],
     "HWPX report page"
   );
+  const pageSizeToken = enumValue<"A4" | "LETTER" | "CUSTOM">(
+    pageInput.pageSizeToken,
+    PAGE_SIZES,
+    "HWPX page size"
+  );
+  const customPageWidth = nullableNumber(
+    pageInput.customPageWidth,
+    "HWPX custom page width",
+    50,
+    500
+  );
+  const customPageHeight = nullableNumber(
+    pageInput.customPageHeight,
+    "HWPX custom page height",
+    50,
+    500
+  );
+  if (
+    pageSizeToken === "CUSTOM"
+      ? customPageWidth === null || customPageHeight === null
+      : customPageWidth !== null || customPageHeight !== null
+  ) {
+    throw new Error("Invalid HWPX report custom page dimensions");
+  }
+  const includeHeader = boolean(pageInput.includeHeader, "HWPX include header");
+  const includeFooter = boolean(pageInput.includeFooter, "HWPX include footer");
+  const headerHasText = boolean(
+    pageInput.headerHasText,
+    "HWPX header text presence"
+  );
+  const footerHasText = boolean(
+    pageInput.footerHasText,
+    "HWPX footer text presence"
+  );
+  if ((!includeHeader && headerHasText) || (!includeFooter && footerHasText)) {
+    throw new Error("Disabled HWPX report header or footer must not bind text");
+  }
   const timingInput = record(input.timing, "HWPX report timing");
   const timingKeys = [
+    "publicationIrCompileMs",
     "semanticMappingMs",
     "styleTableMs",
     "sectionXmlMs",
-    "packageMs",
-    "internalValidationMs",
+    "packageDocumentsMs",
+    "zipPackagingMs",
     "zipReopenMs",
+    "internalValidationMs",
     "sourceCoverageMs",
+    "exporterTotalMs",
     "totalMs",
     "hwpConversionMs",
     "hwpReopenMs"
@@ -1087,7 +1220,7 @@ export function validateHwpxExportReport(value: unknown): HwpxExportReport {
     throw new Error("Invalid preserved HWPX file identity");
   }
 
-  return {
+  const report: HwpxExportReport = {
     formatVersion: 1,
     outputType,
     packageProfile: "HANCOM_OFFICIAL_MODEL_1_31",
@@ -1119,12 +1252,40 @@ export function validateHwpxExportReport(value: unknown): HwpxExportReport {
     fontFamily: text(input.fontFamily, "HWPX font family", 128),
     fontInstalled: nullableBoolean(input.fontInstalled, "HWPX font installed"),
     page: {
-      pageSizeToken: enumValue(pageInput.pageSizeToken, PAGE_SIZES, "HWPX page size"),
+      pageSizeToken,
+      customPageWidth,
+      customPageHeight,
       orientation: enumValue(pageInput.orientation, ORIENTATIONS, "HWPX orientation"),
       marginTop: number(pageInput.marginTop, "HWPX top margin", 0, 100),
       marginBottom: number(pageInput.marginBottom, "HWPX bottom margin", 0, 100),
       marginLeft: number(pageInput.marginLeft, "HWPX left margin", 0, 100),
-      marginRight: number(pageInput.marginRight, "HWPX right margin", 0, 100)
+      marginRight: number(pageInput.marginRight, "HWPX right margin", 0, 100),
+      headerMargin: number(pageInput.headerMargin, "HWPX header margin", 0, 100),
+      footerMargin: number(pageInput.footerMargin, "HWPX footer margin", 0, 100),
+      gutter: number(pageInput.gutter, "HWPX gutter", 0, 100),
+      includeTitlePage: boolean(
+        pageInput.includeTitlePage,
+        "HWPX include title page"
+      ),
+      includePageNumber: boolean(
+        pageInput.includePageNumber,
+        "HWPX include page number"
+      ),
+      pageNumberStart: integer(
+        pageInput.pageNumberStart,
+        "HWPX page number start",
+        1,
+        1_000_000
+      ),
+      pageNumberPosition: enumValue(
+        pageInput.pageNumberPosition,
+        PAGE_NUMBER_POSITIONS,
+        "HWPX page number position"
+      ),
+      includeHeader,
+      headerHasText,
+      includeFooter,
+      footerHasText
     },
     hancomReopen: enumValue(
       input.hancomReopen,
@@ -1133,17 +1294,34 @@ export function validateHwpxExportReport(value: unknown): HwpxExportReport {
     ),
     hwpConverted: boolean(input.hwpConverted, "HWP converted"),
     timing: {
-      semanticMappingMs: integer(timingInput.semanticMappingMs, "semantic mapping time"),
+      publicationIrCompileMs: number(
+        timingInput.publicationIrCompileMs,
+        "Publication IR compile time",
+        0,
+        1_000_000_000
+      ),
+      semanticMappingMs: integer(
+        timingInput.semanticMappingMs,
+        "semantic mapping time",
+      ),
       styleTableMs: integer(timingInput.styleTableMs, "style table time"),
       sectionXmlMs: integer(timingInput.sectionXmlMs, "section XML time"),
-      packageMs: integer(timingInput.packageMs, "package time"),
+      packageDocumentsMs: integer(
+        timingInput.packageDocumentsMs,
+        "package document time"
+      ),
+      zipPackagingMs: integer(timingInput.zipPackagingMs, "ZIP packaging time"),
+      zipReopenMs: integer(timingInput.zipReopenMs, "ZIP reopen time"),
       internalValidationMs: integer(
         timingInput.internalValidationMs,
         "internal validation time"
       ),
-      zipReopenMs: integer(timingInput.zipReopenMs, "ZIP reopen time"),
       sourceCoverageMs: integer(timingInput.sourceCoverageMs, "source coverage time"),
-      totalMs: integer(timingInput.totalMs, "total export time"),
+      exporterTotalMs: integer(
+        timingInput.exporterTotalMs,
+        "exporter total time"
+      ),
+      totalMs: number(timingInput.totalMs, "total export time", 0, 1_000_000_000),
       hwpConversionMs:
         timingInput.hwpConversionMs === null
           ? null
@@ -1156,6 +1334,28 @@ export function validateHwpxExportReport(value: unknown): HwpxExportReport {
     generatedAt,
     madiVersion: text(input.madiVersion, "madi version", 128)
   };
+  const measuredExporterStageTotal =
+    report.timing.semanticMappingMs +
+    report.timing.styleTableMs +
+    report.timing.sectionXmlMs +
+    report.timing.packageDocumentsMs +
+    report.timing.zipPackagingMs +
+    report.timing.zipReopenMs +
+    report.timing.internalValidationMs +
+    report.timing.sourceCoverageMs;
+  const expectedTotalMs =
+    report.timing.publicationIrCompileMs +
+    report.timing.exporterTotalMs +
+    (report.timing.hwpConversionMs ?? 0) +
+    (report.timing.hwpReopenMs ?? 0);
+  if (
+    report.timing.exporterTotalMs < measuredExporterStageTotal ||
+    report.timing.totalMs !== expectedTotalMs
+  ) {
+    throw new Error("Incoherent HWPX report timing");
+  }
+  validateHwpxReportSemanticState(report, "ANY");
+  return report;
 }
 
 export function validateHwpxPresetName(value: unknown): string {

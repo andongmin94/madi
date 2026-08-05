@@ -188,12 +188,14 @@ where
     emit_progress(&mut progress, HwpxProgressStage::StyleTable, 1, 1);
 
     cancellation.check()?;
-    let section_started = Instant::now();
     emit_progress(&mut progress, HwpxProgressStage::SectionXml, 0, 1);
+    let semantic_mapping_started = Instant::now();
     let mut rendered = render_publication(document, request, cancellation)?;
     if rendered.sections.len() != planned_section_count {
         return Err(HwpxError::Package);
     }
+    let semantic_mapping_ms = elapsed_ms(semantic_mapping_started);
+    let section_started = Instant::now();
     let sections = rendered
         .sections
         .iter()
@@ -249,6 +251,7 @@ where
         font_family: request.options.body.font_family.clone(),
         validation_report: report,
         export_timing: HwpxExportTiming {
+            semantic_mapping_ms,
             style_table_ms,
             section_xml_ms,
             package_documents_ms,
@@ -256,7 +259,7 @@ where
             zip_reopen_ms,
             internal_validation_ms,
             source_coverage_ms,
-            total_ms: elapsed_ms(total_started),
+            exporter_total_ms: elapsed_ms(total_started),
         },
         statistics: rendered.statistics,
     };
@@ -366,7 +369,7 @@ where
                 }
             })?;
     }
-    compiled.summary.export_timing.total_ms = elapsed_ms(export_started);
+    compiled.summary.export_timing.exporter_total_ms = elapsed_ms(export_started);
     emit_progress(progress, HwpxProgressStage::WriteOutput, 1, 1);
     emit_progress(progress, HwpxProgressStage::Complete, 1, 1);
     Ok(HwpxExportResult {
@@ -425,11 +428,7 @@ fn validate_request(document: &PublicationDocument, request: &HwpxExportRequest)
     if !valid_bounded_xml(&request.preset_id, MAX_PRESET_ID_CHARACTERS, false)
         || !is_lower_hex_hash(&request.preset_content_hash)
         || !valid_bounded_xml(&request.metadata.title, MAX_METADATA_CHARACTERS, false)
-        || !valid_bounded_xml(
-            &request.metadata.author_name,
-            MAX_METADATA_CHARACTERS,
-            false,
-        )
+        || !valid_bounded_xml(&request.metadata.author_name, MAX_METADATA_CHARACTERS, true)
         || [
             request.metadata.subtitle.as_deref(),
             request.metadata.genre.as_deref(),
@@ -648,16 +647,16 @@ fn render_publication(
     let mut next_id = 1_u32;
 
     if request.options.include_title_page {
-        let mut front_matter = vec![
-            (
-                ParagraphKind::TitlePageTitle,
-                request.metadata.title.clone(),
-            ),
-            (
+        let mut front_matter = vec![(
+            ParagraphKind::TitlePageTitle,
+            request.metadata.title.clone(),
+        )];
+        if !request.metadata.author_name.trim().is_empty() {
+            front_matter.push((
                 ParagraphKind::TitlePageAuthor,
                 request.metadata.author_name.clone(),
-            ),
-        ];
+            ));
+        }
         for value in [
             request.metadata.subtitle.as_ref(),
             request.metadata.genre.as_ref(),

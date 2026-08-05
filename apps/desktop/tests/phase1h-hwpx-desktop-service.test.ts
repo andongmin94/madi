@@ -167,6 +167,7 @@ function utilityResult(
         ]
       },
       exportTiming: {
+        semanticMappingMs: 1,
         styleTableMs: 1,
         sectionXmlMs: 1,
         packageDocumentsMs: 1,
@@ -174,7 +175,7 @@ function utilityResult(
         internalValidationMs: 1,
         zipReopenMs: 1,
         sourceCoverageMs: 1,
-        totalMs: 7
+        exporterTotalMs: 8
       },
       statistics: {
         fileCount: 9,
@@ -413,6 +414,36 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
         }
       }
     });
+    if (result.status !== "COMPLETED") {
+      throw new Error("expected completed HWPX export");
+    }
+    expect(result.report.page).toEqual({
+      pageSizeToken: CONFIG.pageSizeToken,
+      customPageWidth: CONFIG.customPageWidth,
+      customPageHeight: CONFIG.customPageHeight,
+      orientation: CONFIG.orientation,
+      marginTop: CONFIG.marginTop,
+      marginBottom: CONFIG.marginBottom,
+      marginLeft: CONFIG.marginLeft,
+      marginRight: CONFIG.marginRight,
+      headerMargin: CONFIG.headerMargin,
+      footerMargin: CONFIG.footerMargin,
+      gutter: CONFIG.gutter,
+      includeTitlePage: CONFIG.includeTitlePage,
+      includePageNumber: CONFIG.includePageNumber,
+      pageNumberStart: CONFIG.pageNumberStart,
+      pageNumberPosition: CONFIG.pageNumberPosition,
+      includeHeader: CONFIG.includeHeader,
+      headerHasText: CONFIG.headerText.length > 0,
+      includeFooter: CONFIG.includeFooter,
+      footerHasText: CONFIG.footerText.length > 0
+    });
+    expect(result.report.timing).toMatchObject({
+      publicationIrCompileMs: 1,
+      semanticMappingMs: 1,
+      exporterTotalMs: 8,
+      totalMs: 9
+    });
     expect(harness.run.mock.calls[0]![0].presetContentHash).toBe(
       sha256(canonical(CONFIG))
     );
@@ -462,9 +493,26 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
     expect(harness.run).not.toHaveBeenCalled();
   });
 
-  it("registers report staging before writing and removes it after commit", async () => {
+  it("stages content-free JSON and Markdown reports without private text", async () => {
     const harness = createHarness();
     const directory = await makeTemporaryDirectory();
+    const headerSentinel = "PRIVATE_HEADER_<script>_SENTINEL";
+    const footerSentinel = "PRIVATE_FOOTER_[link]_SENTINEL";
+    const contactSentinel = "private-contact@example.invalid";
+    const bodySentinel = "한국어 Reader Lab 본문 1";
+    const privateSentinels = [
+      headerSentinel,
+      footerSentinel,
+      contactSentinel,
+      bodySentinel
+    ];
+    const privateConfig: HwpxExportPresetConfig = {
+      ...CONFIG,
+      includeHeader: true,
+      headerText: headerSentinel,
+      includeFooter: true,
+      footerText: footerSentinel
+    };
     vi.mocked(harness.dialog.showSaveDialog)
       .mockResolvedValueOnce({
         canceled: false,
@@ -473,6 +521,10 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
       .mockResolvedValueOnce({
         canceled: false,
         filePath: path.join(directory, "report.json")
+      })
+      .mockResolvedValueOnce({
+        canceled: false,
+        filePath: path.join(directory, "report.md")
       });
     const selection = await harness.service.chooseHwpxOutput({
       sessionId: harness.session.sessionId,
@@ -482,9 +534,30 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
     if (!selection) {
       throw new Error("expected HWPX selection");
     }
-    await harness.service.runHwpxExport(
-      runRequest(harness.session.sessionId, OPERATION_2, selection.selectionId)
+    const result = await harness.service.runHwpxExport(
+      runRequest(harness.session.sessionId, OPERATION_2, selection.selectionId, {
+        presetId: "ONE_OFF",
+        presetContentHash: "0".repeat(64),
+        config: privateConfig,
+        titlePage: {
+          subtitle: null,
+          genre: null,
+          contact: contactSentinel
+        }
+      })
     );
+    if (result.status !== "COMPLETED") {
+      throw new Error("expected completed private-text HWPX export");
+    }
+    expect(result.report.page).toMatchObject({
+      includeHeader: true,
+      headerHasText: true,
+      includeFooter: true,
+      footerHasText: true
+    });
+    for (const sentinel of privateSentinels) {
+      expect(JSON.stringify(result.report)).not.toContain(sentinel);
+    }
     vi.mocked(harness.crashRecovery.register).mockClear();
     vi.mocked(harness.crashRecovery.remove).mockClear();
 
@@ -495,6 +568,13 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
         format: "JSON"
       })
     ).resolves.toMatchObject({ fileName: "report.json" });
+    await expect(
+      harness.service.saveHwpxExportReport({
+        sessionId: harness.session.sessionId,
+        operationId: OPERATION_2,
+        format: "MARKDOWN"
+      })
+    ).resolves.toMatchObject({ fileName: "report.md" });
 
     const registeredPath = vi.mocked(harness.crashRecovery.register).mock
       .calls[0]![0];
@@ -502,9 +582,21 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
       `.madi-hwpx-report-${OPERATION_2}-json`
     );
     expect(harness.crashRecovery.remove).toHaveBeenCalledWith(registeredPath);
-    await expect(readFile(path.join(directory, "report.json"), "utf8")).resolves.toContain(
-      '"formatVersion": 1'
+    const jsonReport = await readFile(path.join(directory, "report.json"), "utf8");
+    const markdownReport = await readFile(
+      path.join(directory, "report.md"),
+      "utf8"
     );
+    expect(jsonReport).toContain('"formatVersion": 1');
+    expect(markdownReport).toContain("# madi HWPX export report");
+    expect(markdownReport).toContain("- Publication IR compile: 1 ms");
+    expect(markdownReport).toContain("- HWPX semantic mapping: 1 ms");
+    expect(markdownReport).toContain("- HWPX exporter: 8 ms");
+    expect(markdownReport).toContain("- Total: 9 ms");
+    for (const sentinel of privateSentinels) {
+      expect(jsonReport).not.toContain(sentinel);
+      expect(markdownReport).not.toContain(sentinel);
+    }
   });
 
   it("fails closed when another writer claims a no-clobber destination", async () => {
@@ -610,6 +702,15 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
         }
       }
     });
+    if (result.status !== "COMPLETED") {
+      throw new Error("expected completed HWP export");
+    }
+    expect(result.report.timing.totalMs).toBe(
+      result.report.timing.publicationIrCompileMs +
+        result.report.timing.exporterTotalMs +
+        (result.report.timing.hwpConversionMs ?? 0) +
+        (result.report.timing.hwpReopenMs ?? 0)
+    );
     expect(convert).toHaveBeenCalledWith(
       OPERATION_4,
       expect.stringMatching(/publication\.hwpx$/u),

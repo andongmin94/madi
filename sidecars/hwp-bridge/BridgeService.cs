@@ -79,42 +79,33 @@ public sealed class HwpBridgeService
     {
         cancellationToken.ThrowIfCancellationRequested();
         var installation = installationProbe.Inspect();
-        if (!installation.ComRegistered)
+        if (!installation.ComRegistrationPresent)
         {
             return BridgeResponse.Probe(
                 request,
                 available: false,
                 availabilityCode: "NOT_INSTALLED",
-                installation.Version);
+                null);
         }
 
-        if (!installation.SecurityModuleRegistered)
+        if (!installation.SecurityModuleRegistrationPresent)
         {
             return BridgeResponse.Probe(
                 request,
                 available: false,
                 availabilityCode: "SECURITY_MODULE_REQUIRED",
-                installation.Version);
+                null);
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        try
-        {
-            using var session = automationFactory.Create(installation);
-            return BridgeResponse.Probe(
-                request,
-                available: true,
-                availabilityCode: "AVAILABLE",
-                session.Version ?? installation.Version);
-        }
-        catch (BridgeFailureException failure)
-        {
-            return BridgeResponse.Probe(
-                request,
-                available: false,
-                availabilityCode: failure.Code,
-                installation.Version);
-        }
+        // Availability probing must not activate Automation. Hancom may attach a
+        // COM object to an existing user window, and ownership cannot be proven
+        // without an explicit conversion session. Keep HWP disabled until the
+        // installed product is validated by the separate manual gate.
+        return BridgeResponse.Probe(
+            request,
+            available: false,
+            availabilityCode: "REGISTERED_UNVERIFIED",
+            null);
     }
 
     private BridgeResponse Convert(ConvertRequest request, CancellationToken cancellationToken)
@@ -153,7 +144,7 @@ public sealed class HwpBridgeService
                     output,
                     byteLength,
                     sha256,
-                    session.Version ?? installation.Version);
+                    session.Version);
             }
         }
         finally
@@ -188,20 +179,20 @@ public sealed class HwpBridgeService
             session.CloseOpenedDocument();
         }
 
-        return BridgeResponse.Reopen(request, session.Version ?? installation.Version);
+        return BridgeResponse.Reopen(request, session.Version);
     }
 
     private HancomInstallation RequireAvailableInstallation()
     {
         var installation = installationProbe.Inspect();
-        if (!installation.ComRegistered)
+        if (!installation.ComRegistrationPresent)
         {
             throw new BridgeFailureException(
                 "NOT_INSTALLED",
                 "Windows Hancom Office automation is not installed.");
         }
 
-        if (!installation.SecurityModuleRegistered)
+        if (!installation.SecurityModuleRegistrationPresent)
         {
             throw new BridgeFailureException(
                 "SECURITY_MODULE_REQUIRED",

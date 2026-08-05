@@ -163,6 +163,7 @@ export const HwpxExportWorkspace = forwardRef<
     scopeNodeId,
     config,
     titlePage,
+    outputType,
     preset: effectivePreset
   });
   const busy = phase !== "IDLE" || auxiliaryBusy;
@@ -672,6 +673,12 @@ export const HwpxExportWorkspace = forwardRef<
               const next = event.target.value as "HWPX" | "HWP";
               setOutputType(next);
               setOutput(null);
+              setValidationResult(null);
+              setValidationKey(null);
+              setExportResult(null);
+              setResultKey(null);
+              setFailedConversion(null);
+              setError(null);
             }}
           >
             <option value="HWPX">HWPX</option>

@@ -126,6 +126,7 @@ function result(outputPath: string): Record<string, unknown> {
         messages: []
       },
       exportTiming: {
+        semanticMappingMs: 1,
         styleTableMs: 1,
         sectionXmlMs: 1,
         packageDocumentsMs: 1,
@@ -133,7 +134,7 @@ function result(outputPath: string): Record<string, unknown> {
         internalValidationMs: 1,
         zipReopenMs: 1,
         sourceCoverageMs: 1,
-        totalMs: 7
+        exporterTotalMs: 8
       },
       statistics: {
         fileCount: 9,
@@ -208,7 +209,18 @@ describe("Phase 1H HWPX child-process boundary", () => {
       summary: {
         packageXmlVersion: "1.31",
         sourcePublicationHash: SOURCE_HASH,
-        presetContentHash: PRESET_HASH
+        presetContentHash: PRESET_HASH,
+        exportTiming: {
+          semanticMappingMs: 1,
+          styleTableMs: 1,
+          sectionXmlMs: 1,
+          packageDocumentsMs: 1,
+          zipPackagingMs: 1,
+          internalValidationMs: 1,
+          zipReopenMs: 1,
+          sourceCoverageMs: 1,
+          exporterTotalMs: 8
+        }
       }
     });
     const request = JSON.parse(serialized) as Record<string, unknown>;
@@ -240,6 +252,55 @@ describe("Phase 1H HWPX child-process boundary", () => {
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"]
     });
+    await exporter.dispose();
+  });
+
+  it.each([
+    {
+      name: "the obsolete total timing alias",
+      timing: {
+        semanticMappingMs: 1,
+        styleTableMs: 1,
+        sectionXmlMs: 1,
+        packageDocumentsMs: 1,
+        zipPackagingMs: 1,
+        internalValidationMs: 1,
+        zipReopenMs: 1,
+        sourceCoverageMs: 1,
+        totalMs: 8
+      }
+    },
+    {
+      name: "an exporter total below its measured stages",
+      timing: {
+        semanticMappingMs: 1,
+        styleTableMs: 1,
+        sectionXmlMs: 1,
+        packageDocumentsMs: 1,
+        zipPackagingMs: 1,
+        internalValidationMs: 1,
+        zipReopenMs: 1,
+        sourceCoverageMs: 1,
+        exporterTotalMs: 7
+      }
+    }
+  ])("rejects $name", async ({ timing }) => {
+    const directory = await makeTemporaryDirectory();
+    const outputPath = path.join(directory, "output.hwpx");
+    const response = result(outputPath);
+    const summary = response.summary as Record<string, unknown>;
+    summary.exportTiming = timing;
+    const child = createChild((_source, current) => {
+      current.stdout.write(`${JSON.stringify(response)}\n`);
+      queueMicrotask(() => current.emit("close", 0));
+    });
+    returnChild(child);
+    const exporter = new ProcessHwpxExporter("fixture-hwpx-exporter");
+
+    await expect(exporter.run(input(outputPath), vi.fn())).rejects.toThrow(
+      "invalid message"
+    );
+    expect(child.kill).toHaveBeenCalledTimes(1);
     await exporter.dispose();
   });
 

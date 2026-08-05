@@ -371,6 +371,7 @@ impl HwpxValidationReport {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HwpxExportTiming {
+    pub semantic_mapping_ms: u64,
     pub style_table_ms: u64,
     pub section_xml_ms: u64,
     pub package_documents_ms: u64,
@@ -378,7 +379,7 @@ pub struct HwpxExportTiming {
     pub zip_reopen_ms: u64,
     pub internal_validation_ms: u64,
     pub source_coverage_ms: u64,
-    pub total_ms: u64,
+    pub exporter_total_ms: u64,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]

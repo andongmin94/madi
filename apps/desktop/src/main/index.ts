@@ -36,12 +36,14 @@ import {
 import { EpubShutdownCoordinator } from "./epubShutdownCoordinator";
 import {
   createMainWindow,
+  installRuntimeProcessNetworkBoundary,
   installSafeWindowClose,
   installRuntimeNetworkGuard,
   resolveRendererDirectory,
   resolveWindowTarget
 } from "./window";
 
+installRuntimeProcessNetworkBoundary(app.commandLine);
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "madi",

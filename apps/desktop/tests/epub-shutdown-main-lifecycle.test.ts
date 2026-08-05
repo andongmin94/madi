@@ -27,12 +27,15 @@ afterEach(() => {
 });
 
 describe("EPUB shutdown main lifecycle", () => {
-  it("starts cleanup in the authorized close gap and quits after the last window closes", async () => {
+  it("installs the process network boundary before readiness and quits after the last window closes", async () => {
     const appHandlers = new Map<string, (event?: QuitEvent) => void>();
     let resolveReady!: () => void;
     const ready = new Promise<void>((resolve) => {
       resolveReady = resolve;
     });
+    const appCommandLine = { appendSwitch: vi.fn() };
+    const appWhenReady = vi.fn(() => ready);
+    const installRuntimeProcessNetworkBoundary = vi.fn();
     const appQuit = vi.fn();
     const coreDispose = vi.fn();
     const serviceCleanup = deferred();
@@ -83,6 +86,7 @@ describe("EPUB shutdown main lifecycle", () => {
     vi.stubGlobal("setImmediate", scheduleNextTurn);
     vi.doMock("electron", () => ({
       app: {
+        commandLine: appCommandLine,
         enableSandbox: vi.fn(),
         getAppPath: vi.fn(() => "C:/madi"),
         getPath: vi.fn(() => "C:/madi-user-data"),
@@ -94,7 +98,7 @@ describe("EPUB shutdown main lifecycle", () => {
           }
         ),
         quit: appQuit,
-        whenReady: vi.fn(() => ready)
+        whenReady: appWhenReady
       },
       BrowserWindow: { getAllWindows },
       dialog: { showErrorBox: vi.fn() },
@@ -134,6 +138,7 @@ describe("EPUB shutdown main lifecycle", () => {
     vi.doMock("../src/main/window", () => ({
       createMainWindow: vi.fn(() => ({ once: vi.fn() })),
       installRuntimeNetworkGuard: vi.fn(),
+      installRuntimeProcessNetworkBoundary,
       installSafeWindowClose: vi.fn(() => ({
         complete: safeCloseComplete,
         dispose: vi.fn()
@@ -146,6 +151,13 @@ describe("EPUB shutdown main lifecycle", () => {
     }));
 
     await import("../src/main/index");
+    expect(installRuntimeProcessNetworkBoundary).toHaveBeenCalledTimes(1);
+    expect(installRuntimeProcessNetworkBoundary).toHaveBeenCalledWith(
+      appCommandLine
+    );
+    expect(
+      installRuntimeProcessNetworkBoundary.mock.invocationCallOrder[0]
+    ).toBeLessThan(appWhenReady.mock.invocationCallOrder[0]!);
     resolveReady();
     await vi.waitFor(() => {
       expect(services).toHaveLength(1);

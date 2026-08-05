@@ -13,7 +13,10 @@ ProgID/Open/SaveAs와 HWP token은 공식 Automation manual, HWPX token은 한�
 예에서 확인했다. 이 근거는 unattended prompt 없음이나 commercial license 승인을 뜻하지
 않는다. Source links는 [official profile](./HWPX_OFFICIAL_PROFILE_1_31.md)에 고정했다.
 
-## 2. Read-only installation evidence
+## 2. Independent read-only host inventory
+
+다음은 bridge probe가 아니라 별도 host inventory에서 관측한 값이다. Probe는 이 executable
+path, regular-file, signature 또는 version을 읽거나 검증하지 않는다.
 
 | Item | Observation |
 |---|---|
@@ -22,7 +25,7 @@ ProgID/Open/SaveAs와 HWP token은 공식 Automation manual, HWPX token은 한�
 | Signature | Valid, HANCOM INC. |
 | Registered ProgID | `HWPFrame.HwpObject`, `.1`, `.2` |
 | `.2` LocalServer32 | 32-bit `hwp.exe -Automation` |
-| Security module registry | key 존재, 등록 value 없음 |
+| Security module registry | 32-bit process의 current-user 등록 문자열 존재; value path/file은 probe가 검사하지 않음 |
 | HWP process before probe | 없음 |
 
 ## 3. Executed safe probe
@@ -34,17 +37,22 @@ Framework-dependent win-x86 bridge release를 unpacked resources에 복사한 �
 {
   "status": "SUCCESS",
   "available": false,
-  "availabilityCode": "SECURITY_MODULE_REQUIRED",
-  "hancomVersion": "12.0.0.4170"
+  "availabilityCode": "REGISTERED_UNVERIFIED",
+  "hancomVersion": null
 }
 ```
 
-Probe는 security-module gate에서 끝났고 COM object를 만들지 않았다. 따라서 이것은
-Automation activation, HWPX open, HWP save 또는 HWP reopen PASS 근거가 아니다.
+Probe는 명시적 32-bit ClassesRoot view의 ProgID/CLSID/LocalServer32 등록 문자열과 win-x86
+process의 current-user security-module 등록 문자열이 비어 있지 않은지만 확인했다.
+`File`/`Path` API, filesystem regular-file, executable/DLL signature·version, module load와
+COM activation은 실행하지 않았다. 따라서 이것은 Automation activation, HWPX open, HWP
+save 또는 HWP reopen PASS 근거가 아니다.
 
 ## 4. Automated mock/contract validation
 
-C# tests는 closed protocol, available/not-installed probe, invalid path/extension, no-clobber,
+C# tests는 closed protocol, 32-bit registry presence-only
+registered-unverified/not-installed probe,
+invalid path/extension, no-clobber,
 timeout, targeted cancel, failure preservation, mock conversion commit와 mock reopen 계약을
 검사한다. Mock PASS는 실제 한컴 호환성 PASS로 바꾸어 표현하지 않는다.
 
@@ -52,9 +60,10 @@ timeout, targeted cancel, failure preservation, mock conversion commit와 mock r
 
 | Gate | Status |
 |---|---|
-| Registry/file/signature inspection | PASS |
+| Independent registry/file/signature host inventory | PASS; bridge probe와 별도 |
 | Packaged x86 bridge starts and parses UTF-8 JSONL | PASS |
-| Security module registered and regular DLL | FAIL / missing |
+| 32-bit registry presence-only classification | `REGISTERED_UNVERIFIED`, version `null` |
+| Probe filesystem/path/regular-file/signature/version validation | NOT PERFORMED BY DESIGN |
 | COM object activation | NOT RUN |
 | Madi HWPX open in Hancom | MANUAL VALIDATION PENDING |
 | HWPX → HWP SaveAs | MANUAL VALIDATION PENDING |
@@ -82,7 +91,9 @@ process descendants, temp/global artifact와 prompt를 기록한다. Existing HW
 
 ```text
 Hancom installed: YES
-Automation safely available: NO — SECURITY_MODULE_REQUIRED
+Probe classification: REGISTERED_UNVERIFIED — 32-BIT REGISTRY PRESENCE ONLY
+Probe hancomVersion: null
+Automation safely available: NO
 COM activation performed: NO
 HWP technical verdict: MANUAL VALIDATION PENDING
 Distribution verdict: LICENSE REVIEW REQUIRED

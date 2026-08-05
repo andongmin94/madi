@@ -74,6 +74,16 @@ const hwpBridgeFiles = [
 ];
 const forbiddenHancomBinaryName =
   /(?:^|[-_.])(?:hancom|hwpobject|filepathcheckermoduleexample)(?:[-_.]|$)/iu;
+const packagedBinaryAllowlist = [
+  "hwp-bridge/madi-hwp-bridge.deps.json",
+  "hwp-bridge/madi-hwp-bridge.dll",
+  "hwp-bridge/madi-hwp-bridge.exe",
+  "hwp-bridge/madi-hwp-bridge.runtimeconfig.json",
+  "madi-atomic-output.exe",
+  "madi-core.exe",
+  "madi-export-epub.exe",
+  "madi-export-hwpx.exe",
+];
 const pinnedLicenseCopies = [
   {
     source: resolve(repositoryRoot, "docs", "licenses", "SHA2-MIT.txt"),
@@ -171,6 +181,53 @@ const pinnedLicenseCopies = [
     sha256: "cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310",
   },
 ];
+
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+async function exactCopyEvidence(sourcePath, packagedPath, relativePath) {
+  const [sourceBytes, packagedBytes] = await Promise.all([
+    readFile(sourcePath),
+    readFile(packagedPath),
+  ]);
+  const sourceHash = sha256(sourceBytes);
+  const packagedHash = sha256(packagedBytes);
+  if (
+    sourceBytes.byteLength !== packagedBytes.byteLength ||
+    sourceHash !== packagedHash
+  ) {
+    throw new Error(`Packaged binary copy mismatch: ${relativePath}`);
+  }
+  return {
+    path: relativePath,
+    bytes: packagedBytes.byteLength,
+    sha256: packagedHash,
+    sourceCopyMatched: true,
+  };
+}
+
+async function listPackagedBinaryFiles(directoryPath, prefix = "") {
+  const entries = await readdir(directoryPath, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const absolutePath = resolve(directoryPath, entry.name);
+    if (entry.isSymbolicLink()) {
+      throw new Error(`Packaged binary path must not be a symlink: ${relativePath}`);
+    }
+    if (entry.isDirectory()) {
+      files.push(
+        ...(await listPackagedBinaryFiles(absolutePath, relativePath)),
+      );
+    } else if (entry.isFile()) {
+      files.push(relativePath);
+    } else {
+      throw new Error(`Unsupported packaged binary entry: ${relativePath}`);
+    }
+  }
+  return files.sort();
+}
 
 if (
   process.platform !== "win32" ||
@@ -344,31 +401,44 @@ for (const license of pinnedLicenseCopies) {
 }
 
 const executable = resolve(packageDirectory, "madi.exe");
-const sidecarBytes = await readFile(
+const sidecarCopy = await exactCopyEvidence(
+  sidecar,
   resolve(resourcesDirectory, "bin", "madi-core.exe"),
+  "resources/bin/madi-core.exe",
 );
-const epubExporterBytes = await readFile(
+const epubExporterCopy = await exactCopyEvidence(
+  epubExporter,
   resolve(resourcesDirectory, "bin", "madi-export-epub.exe"),
+  "resources/bin/madi-export-epub.exe",
 );
-const hwpxExporterBytes = await readFile(
+const hwpxExporterCopy = await exactCopyEvidence(
+  hwpxExporter,
   resolve(resourcesDirectory, "bin", "madi-export-hwpx.exe"),
+  "resources/bin/madi-export-hwpx.exe",
 );
-const atomicOutputBytes = await readFile(
+const atomicOutputCopy = await exactCopyEvidence(
+  atomicOutput,
   resolve(resourcesDirectory, "bin", "madi-atomic-output.exe"),
+  "resources/bin/madi-atomic-output.exe",
 );
 const packagedHwpBridgeFiles = await Promise.all(
   hwpBridgeFiles.map(async (name) => {
-    const bytes = await readFile(resolve(packagedHwpBridgeDirectory, name));
-    return {
-      path: `resources/bin/hwp-bridge/${name}`,
-      bytes: bytes.byteLength,
-      sha256: createHash("sha256").update(bytes).digest("hex"),
-    };
+    return exactCopyEvidence(
+      resolve(hwpBridgePublishDirectory, name),
+      resolve(packagedHwpBridgeDirectory, name),
+      `resources/bin/hwp-bridge/${name}`,
+    );
   }),
 );
-const packagedBinaryNames = await readdir(resolve(resourcesDirectory, "bin"), {
-  recursive: true,
-});
+const packagedBinaryNames = await listPackagedBinaryFiles(
+  resolve(resourcesDirectory, "bin"),
+);
+if (
+  JSON.stringify(packagedBinaryNames) !==
+  JSON.stringify([...packagedBinaryAllowlist].sort())
+) {
+  throw new Error("The unpacked package binary allowlist does not match");
+}
 if (packagedBinaryNames.some((name) => forbiddenHancomBinaryName.test(name))) {
   throw new Error("The unpacked package must not contain a Hancom binary");
 }
@@ -383,25 +453,22 @@ process.stdout.write(
       executableBytes: executableSize,
       packagedApp: "resources/app",
       sidecar: "resources/bin/madi-core.exe",
-      sidecarBytes: sidecarBytes.byteLength,
-      sidecarSha256: createHash("sha256")
-        .update(sidecarBytes)
-        .digest("hex"),
+      sidecarBytes: sidecarCopy.bytes,
+      sidecarSha256: sidecarCopy.sha256,
+      sidecarSourceCopyMatched: sidecarCopy.sourceCopyMatched,
       epubExporter: "resources/bin/madi-export-epub.exe",
-      epubExporterBytes: epubExporterBytes.byteLength,
-      epubExporterSha256: createHash("sha256")
-        .update(epubExporterBytes)
-        .digest("hex"),
+      epubExporterBytes: epubExporterCopy.bytes,
+      epubExporterSha256: epubExporterCopy.sha256,
+      epubExporterSourceCopyMatched: epubExporterCopy.sourceCopyMatched,
       hwpxExporter: "resources/bin/madi-export-hwpx.exe",
-      hwpxExporterBytes: hwpxExporterBytes.byteLength,
-      hwpxExporterSha256: createHash("sha256")
-        .update(hwpxExporterBytes)
-        .digest("hex"),
+      hwpxExporterBytes: hwpxExporterCopy.bytes,
+      hwpxExporterSha256: hwpxExporterCopy.sha256,
+      hwpxExporterSourceCopyMatched: hwpxExporterCopy.sourceCopyMatched,
       atomicOutput: "resources/bin/madi-atomic-output.exe",
-      atomicOutputBytes: atomicOutputBytes.byteLength,
-      atomicOutputSha256: createHash("sha256")
-        .update(atomicOutputBytes)
-        .digest("hex"),
+      atomicOutputBytes: atomicOutputCopy.bytes,
+      atomicOutputSha256: atomicOutputCopy.sha256,
+      atomicOutputSourceCopyMatched: atomicOutputCopy.sourceCopyMatched,
+      packagedBinaryAllowlist,
       hwpBridge: {
         deployment: "framework-dependent .NET 10 win-x86",
         runtimeFramework: "Microsoft.NETCore.App/10.0.0",

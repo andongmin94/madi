@@ -163,6 +163,7 @@ describe("packaged runtime boundary", () => {
 
   it("pins the packaged atomic output helper before inspecting development overrides", () => {
     const resourcesPath = path.resolve("packaged-resources");
+    const maliciousOverride = path.resolve("malicious-atomic-output.exe");
 
     expect(
       resolveAtomicOutputBinary({
@@ -171,10 +172,20 @@ describe("packaged runtime boundary", () => {
         isPackaged: true,
         platform: "win32",
         environment: {
-          MADI_ATOMIC_OUTPUT_BIN: path.resolve("malicious-atomic-output.exe")
+          MADI_ATOMIC_OUTPUT_BIN: maliciousOverride
         }
       })
     ).toBe(path.join(resourcesPath, "bin", "madi-atomic-output.exe"));
+
+    expect(
+      resolveAtomicOutputBinary({
+        appPath: path.resolve("development-app"),
+        resourcesPath,
+        isPackaged: false,
+        platform: "win32",
+        environment: { MADI_ATOMIC_OUTPUT_BIN: maliciousOverride }
+      })
+    ).toBe(maliciousOverride);
   });
 
   it("always resolves the packaged renderer before parsing development URLs", () => {

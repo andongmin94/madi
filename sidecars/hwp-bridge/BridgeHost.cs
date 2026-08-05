@@ -68,10 +68,11 @@ public sealed class BridgeHost
             {
                 using var readCancellation = CancellationTokenSource.CreateLinkedTokenSource(
                     cancellationToken);
-                var read = input.ReadLineAsync(readCancellation.Token).AsTask();
+                var read = ReadLineInBackgroundAsync(input, readCancellation.Token);
                 if (await Task.WhenAny(operation, read).ConfigureAwait(false) == operation)
                 {
                     readCancellation.Cancel();
+                    ObserveCompletion(read);
                     break;
                 }
 
@@ -131,6 +132,26 @@ public sealed class BridgeHost
         var response = await operation.ConfigureAwait(false);
         await WriteAsync(output, response).ConfigureAwait(false);
         return 0;
+    }
+
+    private static Task<string?> ReadLineInBackgroundAsync(
+        TextReader input,
+        CancellationToken cancellationToken) =>
+        Task.Run(
+            async () => await input.ReadLineAsync(cancellationToken).ConfigureAwait(false),
+            CancellationToken.None);
+
+    private static void ObserveCompletion(Task task)
+    {
+        _ = task.ContinueWith(
+            static completed =>
+            {
+                _ = completed.Exception;
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted |
+                TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private static async Task WriteAsync(TextWriter output, BridgeResponse response)

@@ -1,13 +1,15 @@
-use std::io::Write;
+use std::io::{Cursor, Read, Write};
 use std::process::{Command, Output, Stdio};
 
 use madi_export_hwpx::{
-    HwpxExportMetadata, HwpxExportOptions, HwpxExportRequest, HwpxUtilityInput, HwpxUtilityMode,
-    HwpxValidationStatus, validate_hwpx_against_publication, validate_hwpx_bytes,
+    HWPX_CONTENT_PATH, HWPX_SECTION_PATH, HwpxExportMetadata, HwpxExportOptions, HwpxExportRequest,
+    HwpxUtilityInput, HwpxUtilityMode, HwpxValidationStatus, validate_hwpx_against_publication,
+    validate_hwpx_bytes,
 };
 use madi_publication::{PublicationDocument, canonical_publication_document};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use zip::ZipArchive;
 
 fn document() -> PublicationDocument {
     serde_json::from_value(json!({
@@ -157,6 +159,17 @@ fn messages(output: &Output) -> Vec<Value> {
         .collect()
 }
 
+fn archive_text(bytes: &[u8], path: &str) -> String {
+    let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
+    let mut text = String::new();
+    archive
+        .by_name(path)
+        .unwrap()
+        .read_to_string(&mut text)
+        .unwrap();
+    text
+}
+
 #[test]
 fn utility_emits_content_free_jsonl_and_a_valid_atomic_hwpx() {
     let directory = tempfile::tempdir().unwrap();
@@ -184,6 +197,38 @@ fn utility_emits_content_free_jsonl_and_a_valid_atomic_hwpx() {
         messages.last().unwrap()["summary"]["statistics"]["exportedSectionCount"],
         1
     );
+    let timing = messages.last().unwrap()["summary"]["exportTiming"]
+        .as_object()
+        .unwrap();
+    assert_eq!(timing.len(), 9);
+    for key in [
+        "semanticMappingMs",
+        "styleTableMs",
+        "sectionXmlMs",
+        "packageDocumentsMs",
+        "zipPackagingMs",
+        "zipReopenMs",
+        "internalValidationMs",
+        "sourceCoverageMs",
+        "exporterTotalMs",
+    ] {
+        assert!(timing.contains_key(key), "missing exact timing field {key}");
+    }
+    assert!(!timing.contains_key("totalMs"));
+    let measured_stage_total = [
+        "semanticMappingMs",
+        "styleTableMs",
+        "sectionXmlMs",
+        "packageDocumentsMs",
+        "zipPackagingMs",
+        "zipReopenMs",
+        "internalValidationMs",
+        "sourceCoverageMs",
+    ]
+    .iter()
+    .map(|key| timing[*key].as_u64().unwrap())
+    .sum::<u64>();
+    assert!(timing["exporterTotalMs"].as_u64().unwrap() >= measured_stage_total);
     let stages = messages
         .iter()
         .filter_map(|message| message.get("stage").and_then(Value::as_str))
@@ -193,6 +238,10 @@ fn utility_emits_content_free_jsonl_and_a_valid_atomic_hwpx() {
     assert_eq!(stages.last().copied(), Some("COMPLETE"));
 
     let bytes = std::fs::read(&request.output_path).unwrap();
+    assert!(
+        archive_text(&bytes, HWPX_CONTENT_PATH)
+            .contains("<opf:meta name=\"creator\" content=\"작가\"/>")
+    );
     assert_eq!(
         validate_hwpx_bytes(&bytes).status,
         HwpxValidationStatus::Pass
@@ -205,6 +254,68 @@ fn utility_emits_content_free_jsonl_and_a_valid_atomic_hwpx() {
         .path()
         .join(".madi-hwpx-12345678-1234-1234-1234-123456789abc.tmp");
     assert!(!temporary_path.exists());
+}
+
+#[test]
+fn default_empty_creator_validates_and_exports_without_fabricating_an_author() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut document = document();
+    document.metadata.author_name = Some(String::new());
+    let mut request = request(&document, directory.path().join("empty-creator.hwpx"));
+    request.metadata.author_name.clear();
+    request.metadata.subtitle = None;
+    request.metadata.genre = None;
+    request.metadata.contact = None;
+    request.options.include_title_page = true;
+
+    let validate_input = HwpxUtilityInput {
+        operation_id: "11111111-2222-3333-4444-555555555555".to_owned(),
+        mode: HwpxUtilityMode::ValidateOnly,
+        document: document.clone(),
+        request: request.clone(),
+    };
+    let validate_output = run_utility(&validate_input);
+    assert!(
+        validate_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&validate_output.stderr)
+    );
+    let validate_messages = messages(&validate_output);
+    assert_eq!(validate_messages.last().unwrap()["kind"], "RESULT");
+    assert_eq!(validate_messages.last().unwrap()["mode"], "VALIDATE_ONLY");
+    assert_eq!(
+        validate_messages.last().unwrap()["summary"]["validationReport"]["status"],
+        "PASS"
+    );
+    assert!(!request.output_path.exists());
+
+    let export_input = HwpxUtilityInput {
+        operation_id: "66666666-7777-8888-9999-aaaaaaaaaaaa".to_owned(),
+        mode: HwpxUtilityMode::Export,
+        document: document.clone(),
+        request: request.clone(),
+    };
+    let export_output = run_utility(&export_input);
+    assert!(
+        export_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&export_output.stderr)
+    );
+    let bytes = std::fs::read(&request.output_path).unwrap();
+    assert_eq!(
+        validate_hwpx_bytes(&bytes).status,
+        HwpxValidationStatus::Pass
+    );
+    assert_eq!(
+        validate_hwpx_against_publication(&bytes, &document, &request.options).status,
+        HwpxValidationStatus::Pass
+    );
+    let content = archive_text(&bytes, HWPX_CONTENT_PATH);
+    assert!(content.contains("<opf:meta name=\"creator\" content=\"\"/>"));
+    let section = archive_text(&bytes, HWPX_SECTION_PATH);
+    assert!(section.contains("paraPrIDRef=\"7\""));
+    assert!(!section.contains("paraPrIDRef=\"8\""));
+    assert!(!section.contains("<hp:t></hp:t>"));
 }
 
 #[test]
@@ -269,7 +380,7 @@ fn long_work_675k_characters_and_2400_blocks_has_zero_loss() {
     let wall_ms = started.elapsed().as_secs_f64() * 1_000.0;
     eprintln!(
         "[hwpx-long-work] wallMs={wall_ms:.2} exporterMs={} bytes={}",
-        compiled.summary.export_timing.total_ms, compiled.summary.byte_length,
+        compiled.summary.export_timing.exporter_total_ms, compiled.summary.byte_length,
     );
     assert!(wall_ms < 15_000.0);
     assert_eq!(compiled.summary.statistics.source_section_count, 450);
