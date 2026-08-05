@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - master
 
 permissions:
   contents: read
@@ -35,7 +36,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
-          cache: pnpm
 
       - name: Activate pinned pnpm
         shell: pwsh
