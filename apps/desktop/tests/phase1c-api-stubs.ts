@@ -78,6 +78,18 @@ export type Phase1cApi = Pick<
   | "saveEpubExportReport"
   | "revealEpubExport"
   | "onEpubExportProgress"
+  | "getHwpxExportState"
+  | "createHwpxExportPreset"
+  | "updateHwpxExportPreset"
+  | "duplicateHwpxExportPreset"
+  | "deleteHwpxExportPreset"
+  | "chooseHwpxOutput"
+  | "validateHwpxExport"
+  | "runHwpxExport"
+  | "cancelHwpxExport"
+  | "saveHwpxExportReport"
+  | "revealHwpxExport"
+  | "onHwpxExportProgress"
 >;
 
 function unused(): never {
@@ -206,6 +218,18 @@ export function phase1cApiStubs(): Phase1cApi {
     cancelEpubExport: vi.fn(async () => unused()),
     saveEpubExportReport: vi.fn(async () => unused()),
     revealEpubExport: vi.fn(async () => unused()),
-    onEpubExportProgress: vi.fn(() => () => undefined)
+    onEpubExportProgress: vi.fn(() => () => undefined),
+    getHwpxExportState: vi.fn(async () => unused()),
+    createHwpxExportPreset: vi.fn(async () => unused()),
+    updateHwpxExportPreset: vi.fn(async () => unused()),
+    duplicateHwpxExportPreset: vi.fn(async () => unused()),
+    deleteHwpxExportPreset: vi.fn(async () => unused()),
+    chooseHwpxOutput: vi.fn(async () => unused()),
+    validateHwpxExport: vi.fn(async () => unused()),
+    runHwpxExport: vi.fn(async () => unused()),
+    cancelHwpxExport: vi.fn(async () => unused()),
+    saveHwpxExportReport: vi.fn(async () => unused()),
+    revealHwpxExport: vi.fn(async () => unused()),
+    onHwpxExportProgress: vi.fn(() => () => undefined)
   };
 }

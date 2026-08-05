@@ -4,9 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createMadiDesktopApi } from "../src/preload/bridge";
 import { EpubExportWorkspace } from "../src/renderer/components/epubExport/EpubExportWorkspace";
 import type {
-  EpubExportModeHandle,
-  EpubExportModeProps
-} from "../src/renderer/components/EpubExportMode";
+  PublicationExportModeHandle,
+  PublicationExportModeProps
+} from "../src/renderer/components/PublicationExportMode";
 import {
   IPC_CHANNELS,
   IPC_EVENTS,
@@ -443,11 +443,11 @@ function createHarness(options: HarnessOptions = {}) {
 
 function renderWorkspace(
   harness = createHarness(),
-  overrides: Partial<EpubExportModeProps> & {
-    readonly ref?: ReturnType<typeof createRef<EpubExportModeHandle>>;
+  overrides: Partial<PublicationExportModeProps> & {
+    readonly ref?: ReturnType<typeof createRef<PublicationExportModeHandle>>;
   } = {}
 ) {
-  const props: EpubExportModeProps = {
+  const props: PublicationExportModeProps = {
     api: harness.api,
     sessionId: "session-1",
     projectId: "project-1",
@@ -468,7 +468,7 @@ function renderWorkspace(
   return {
     ...rendered,
     harness,
-    rerenderWorkspace(next: Partial<EpubExportModeProps>) {
+    rerenderWorkspace(next: Partial<PublicationExportModeProps>) {
       Object.assign(props, next);
       rendered.rerender(
         <EpubExportWorkspace ref={overrides.ref} {...props} />
@@ -525,7 +525,7 @@ describe("Phase 1G EPUB export workspace", () => {
           return attempts === 1 ? loadedState : reload.promise;
         }
       });
-      const handle = createRef<EpubExportModeHandle>();
+      const handle = createRef<PublicationExportModeHandle>();
       const view = renderWorkspace(harness, { ref: handle });
       await screen.findByLabelText("profile");
 
@@ -574,7 +574,7 @@ describe("Phase 1G EPUB export workspace", () => {
           return reload.promise;
         }
       });
-      const handle = createRef<EpubExportModeHandle>();
+      const handle = createRef<PublicationExportModeHandle>();
       const view = renderWorkspace(harness, { ref: handle });
       await screen.findByLabelText("profile");
 
@@ -600,7 +600,7 @@ describe("Phase 1G EPUB export workspace", () => {
   );
 
   it("does not issue hidden export-state IPC after close approval", async () => {
-    const handle = createRef<EpubExportModeHandle>();
+    const handle = createRef<PublicationExportModeHandle>();
     const view = renderWorkspace(createHarness(), { ref: handle });
     await screen.findByLabelText("profile");
     await expect(handle.current!.prepareToClose()).resolves.toBe(true);
@@ -749,7 +749,7 @@ describe("Phase 1G EPUB export workspace", () => {
   });
 
   it("saves dirty metadata before leaving and cancels local preparation durably", async () => {
-    const handle = createRef<EpubExportModeHandle>();
+    const handle = createRef<PublicationExportModeHandle>();
     const beforeExport = deferred<number | null>();
     const harness = createHarness({ beforeExport: () => beforeExport.promise });
     renderWorkspace(harness, { ref: handle });
@@ -781,7 +781,7 @@ describe("Phase 1G EPUB export workspace", () => {
   });
 
   it("hands an accepted main cancellation to close before validation settles", async () => {
-    const handle = createRef<EpubExportModeHandle>();
+    const handle = createRef<PublicationExportModeHandle>();
     const validation = deferred<ValidateEpubExportResult>();
     const harness = createHarness({ validate: () => validation.promise });
     renderWorkspace(harness, { ref: handle });
@@ -823,7 +823,7 @@ describe("Phase 1G EPUB export workspace", () => {
   });
 
   it("fails close closed when dirty metadata cannot be persisted", async () => {
-    const handle = createRef<EpubExportModeHandle>();
+    const handle = createRef<PublicationExportModeHandle>();
     const harness = createHarness({
       updateMetadata: async () => {
         throw new Error("fixture metadata failure");
@@ -843,7 +843,7 @@ describe("Phase 1G EPUB export workspace", () => {
   });
 
   it("serializes duplicate leave saves and preserves an edit made before a delayed response", async () => {
-    const handle = createRef<EpubExportModeHandle>();
+    const handle = createRef<PublicationExportModeHandle>();
     const firstSave = deferred<PublicationMetadataMutationResult>();
     const secondSave = deferred<PublicationMetadataMutationResult>();
     let saveNumber = 0;

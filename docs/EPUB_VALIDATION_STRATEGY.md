@@ -1,6 +1,6 @@
 # EPUB Validation Strategy
 
-기준일: 2026-08-09
+기준일: 2026-08-13
 
 ## 1. 이중 검증
 
@@ -96,7 +96,12 @@ reopen하고 exact block/character/TOC/entry/determinism을 확인한 뒤 EPUBCh
 
 ## 5. Runtime packaging 결정
 
-채택 방식은 우선순위 3, 즉 runtime internal validator + build/test EPUBCheck다. Runtime에
+Phase 1H에서 runtime EPUBCheck/JRE bundle은 HWPX 기능의 선행 조건이 아니라
+**pre-distribution hardening**으로 재분류했다. 이 재분류는 Phase 1G의 역사적 conditional
+verdict를 소급해 `PASS`로 바꾸거나 public/paid/customer distribution을 승인하지 않는다.
+배포 전에는 아래 7절 gate를 별도 완료해야 한다.
+
+현재 채택 방식은 우선순위 3, 즉 runtime internal validator + build/test EPUBCheck다. Runtime에
 Java/JAR를 넣으면 package 약 80 MiB 이상 증가뿐 아니라 JRE security update, exact
 transitive license, process lifecycle과 release patch 책임이 생긴다. 현재 private-local
 단계에서는 이 부담을 앱 기능에 넣지 않는다.
@@ -118,7 +123,7 @@ cache는 upstream `LICENSE.txt`, `THIRD-PARTY.txt`, `licenses/`를 그대로 보
 저장소 고지는 [Third-Party Notices](../THIRD_PARTY_NOTICES.md)에 버전/역할/비번들 경계를
 기록하고 unpacked package에는 EPUBCheck 본체의 BSD 원문을 복사한다.
 
-## 7. 향후 runtime 통합 gate
+## 7. 배포 전 runtime 통합 gate
 
 Runtime EPUBCheck를 도입하려면 exact JRE vendor/version, 전체 archive hash, updater/security
 owner, 모든 JAR/license corpus, package 증가량, offline/no-network test, timeout/cancel/cleanup,

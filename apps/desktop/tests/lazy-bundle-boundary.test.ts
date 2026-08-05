@@ -22,9 +22,13 @@ const readerModePath = resolve(
   desktopRoot,
   "src/renderer/components/ReaderLabMode.tsx"
 );
-const epubModePath = resolve(
+const publicationExportModePath = resolve(
   desktopRoot,
-  "src/renderer/components/EpubExportMode.tsx"
+  "src/renderer/components/PublicationExportMode.tsx"
+);
+const hwpxWorkspacePath = resolve(
+  desktopRoot,
+  "src/renderer/components/hwpxExport/HwpxExportWorkspace.tsx"
 );
 const rendererDistPath = resolve(desktopRoot, "dist/renderer");
 const rendererAssetsPath = resolve(rendererDistPath, "assets");
@@ -50,7 +54,7 @@ describe("Graph/Canvas/Reader/EPUB lazy bundle boundary", () => {
       /lazy\(async \(\) => \{[\s\S]*?import\([\s\S]*?\.\/components\/ReaderLabMode[\s\S]*?\)[\s\S]*?\}\)/
     );
     expect(appSource).toMatch(
-      /lazy\(async \(\) => \{[\s\S]*?import\([\s\S]*?\.\/components\/EpubExportMode[\s\S]*?\)[\s\S]*?\}\)/
+      /lazy\(async \(\) => \{[\s\S]*?import\([\s\S]*?\.\/components\/PublicationExportMode[\s\S]*?\)[\s\S]*?\}\)/
     );
     expect(eagerSource).not.toMatch(
       /(?:from\s+|import\s*\()\s*["']@xyflow\/react["']/
@@ -63,8 +67,15 @@ describe("Graph/Canvas/Reader/EPUB lazy bundle boundary", () => {
     expect(readFileSync(readerModePath, "utf8")).toContain(
       'from "./readerLab/ReaderLabWorkspace"'
     );
-    expect(readFileSync(epubModePath, "utf8")).toContain(
+    expect(readFileSync(publicationExportModePath, "utf8")).toContain(
       'from "./epubExport/EpubExportWorkspace"'
+    );
+    expect(readFileSync(publicationExportModePath, "utf8")).toMatch(
+      /lazy\(async \(\) => \{[\s\S]*?import\("\.\/hwpxExport\/HwpxExportWorkspace"\)/u
+    );
+    expect(eagerSource).not.toContain("HwpxExportWorkspace");
+    expect(readFileSync(hwpxWorkspacePath, "utf8")).toContain(
+      'aria-label="한글 문서 내보내기"'
     );
     expect(plotCanvasPublicIndex).not.toMatch(
       /@xyflow\/react|ReactFlow|ReactFlowCanvas(?:Node|Edge|Model)/
@@ -84,8 +95,13 @@ describe("Graph/Canvas/Reader/EPUB lazy bundle boundary", () => {
     );
   });
 
-  it.skipIf(!existsSync(rendererAssetsPath))(
-    "places React Flow, Cytoscape, Reader Lab, and EPUB export in separate production chunks",
+  it.skipIf(
+    !existsSync(rendererAssetsPath) ||
+      !readdirSync(rendererAssetsPath).some((name) =>
+        /^PublicationExportMode-.+\.js$/.test(name)
+      )
+  )(
+    "places React Flow, Cytoscape, Reader Lab, and publication export in separate production chunks",
     () => {
       const assetNames = readdirSync(rendererAssetsPath);
       const plotChunkName = assetNames.find((name) =>
@@ -97,19 +113,19 @@ describe("Graph/Canvas/Reader/EPUB lazy bundle boundary", () => {
       const readerChunkName = assetNames.find((name) =>
         /^ReaderLabMode-.+\.js$/.test(name)
       );
-      const epubChunkName = assetNames.find((name) =>
-        /^EpubExportMode-.+\.js$/.test(name)
+      const publicationExportChunkName = assetNames.find((name) =>
+        /^PublicationExportMode-.+\.js$/.test(name)
       );
       expect(plotChunkName).toBeDefined();
       expect(graphChunkName).toBeDefined();
       expect(readerChunkName).toBeDefined();
-      expect(epubChunkName).toBeDefined();
+      expect(publicationExportChunkName).toBeDefined();
       expect(plotChunkName).not.toBe(graphChunkName);
       expect(readerChunkName).not.toBe(plotChunkName);
       expect(readerChunkName).not.toBe(graphChunkName);
-      expect(epubChunkName).not.toBe(plotChunkName);
-      expect(epubChunkName).not.toBe(graphChunkName);
-      expect(epubChunkName).not.toBe(readerChunkName);
+      expect(publicationExportChunkName).not.toBe(plotChunkName);
+      expect(publicationExportChunkName).not.toBe(graphChunkName);
+      expect(publicationExportChunkName).not.toBe(readerChunkName);
 
       const html = readFileSync(`${rendererDistPath}/index.html`, "utf8");
       const mainChunkName = html.match(
@@ -133,15 +149,15 @@ describe("Graph/Canvas/Reader/EPUB lazy bundle boundary", () => {
         `${rendererAssetsPath}/${readerChunkName!}`,
         "utf8"
       );
-      const epubChunk = readFileSync(
-        `${rendererAssetsPath}/${epubChunkName!}`,
+      const publicationExportChunk = readFileSync(
+        `${rendererAssetsPath}/${publicationExportChunkName!}`,
         "utf8"
       );
 
       expect(mainChunk).toContain(plotChunkName);
       expect(mainChunk).toContain(graphChunkName);
       expect(mainChunk).toContain(readerChunkName);
-      expect(mainChunk).toContain(epubChunkName);
+      expect(mainChunk).toContain(publicationExportChunkName);
       expect(mainChunk).not.toContain("react-flow__renderer");
       expect(mainChunk).not.toContain("No such layout `");
       expect(mainChunk).not.toContain("reader-shadow-host");
@@ -156,12 +172,45 @@ describe("Graph/Canvas/Reader/EPUB lazy bundle boundary", () => {
       expect(readerChunk).not.toContain("react-flow__renderer");
       expect(readerChunk).not.toContain("No such layout `");
       expect(readerChunk).not.toContain("epub-export__validation");
-      expect(epubChunk).toContain("epub-export__validation");
-      expect(epubChunk).not.toContain("reader-shadow-host");
-      expect(epubChunk).not.toContain("react-flow__renderer");
-      expect(epubChunk).not.toContain("No such layout `");
+      expect(publicationExportChunk).toContain("epub-export__validation");
+      expect(publicationExportChunk).not.toContain("reader-shadow-host");
+      expect(publicationExportChunk).not.toContain("react-flow__renderer");
+      expect(publicationExportChunk).not.toContain("No such layout `");
     }
   );
+
+  it.skipIf(
+    !existsSync(rendererAssetsPath) ||
+      !readdirSync(rendererAssetsPath).some((name) =>
+        /^HwpxExportWorkspace-.+\.js$/.test(name)
+      )
+  )("places HWPX export in its own nested production chunk", () => {
+    const assetNames = readdirSync(rendererAssetsPath);
+    const publicationExportChunkName = assetNames.find((name) =>
+      /^PublicationExportMode-.+\.js$/.test(name)
+    );
+    const hwpxChunkName = assetNames.find((name) =>
+      /^HwpxExportWorkspace-.+\.js$/.test(name)
+    );
+    expect(publicationExportChunkName).toBeDefined();
+    expect(hwpxChunkName).toBeDefined();
+    expect(hwpxChunkName).not.toBe(publicationExportChunkName);
+
+    const publicationExportChunk = readFileSync(
+      `${rendererAssetsPath}/${publicationExportChunkName!}`,
+      "utf8"
+    );
+    const hwpxChunk = readFileSync(
+      `${rendererAssetsPath}/${hwpxChunkName!}`,
+      "utf8"
+    );
+    expect(publicationExportChunk).toContain(hwpxChunkName);
+    expect(publicationExportChunk).not.toContain("hwpx-export__success");
+    expect(hwpxChunk).toContain("hwpx-export__success");
+    expect(hwpxChunk).not.toContain("reader-shadow-host");
+    expect(hwpxChunk).not.toContain("react-flow__renderer");
+    expect(hwpxChunk).not.toContain("No such layout `");
+  });
 
   it.skipIf(!existsSync(`${rendererDistPath}/index.html`))(
     "removes the development WebSocket capability from production CSP",

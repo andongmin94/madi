@@ -1050,7 +1050,7 @@ function inspectProjectWithCore(projectPath) {
     inspectedPathMatched &&
       inspection.application_id === 0x4d41_4449 &&
       inspection.integrity_check === "ok" &&
-      inspection.metadata?.schema_version === 7 &&
+      inspection.metadata?.schema_version === 8 &&
       inspection.metadata?.format_version === 1,
     "phase1g-inspect-project-contract",
     {
@@ -3086,7 +3086,7 @@ async function captureRunFailureContext(run) {
 }
 
 async function enterEpubExport(run) {
-  const button = run.page.getByRole("button", { name: "EPUB", exact: true });
+  const button = run.page.getByRole("button", { name: "내보내기", exact: true });
   await poll(
     async () => ((await button.isEnabled()) ? true : null),
     "phase1g-epub-mode-enabled",

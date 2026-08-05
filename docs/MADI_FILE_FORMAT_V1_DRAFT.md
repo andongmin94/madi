@@ -1,19 +1,20 @@
 # `.madi` 파일 포맷 v1 초안
 
-기준일: 2026-08-09
+기준일: 2026-08-13
 
 ```text
 Specification status: DRAFT
 Logical format version: 1
-SQLite schema version: 7
-Implementation conformance: PHASE 1G PUBLICATION METADATA/ASSET/EXPORT PRESET DATA
-Migration/core-sidecar round-trip: SCHEMA 6 → 7
+SQLite schema version: 8
+Implementation conformance: PHASE 1H TYPED EPUB/HWPX EXPORT PRESET DATA
+Migration/core-sidecar round-trip: SCHEMA 7 → 8 STATIC/FOCUSED EVIDENCE ONLY
 ```
 
 이 문서는 Phase 1A의 저장 계약, Phase 1B의 exact search/named snapshot 확장,
 Phase 1C의 Story Bible 저장 계약, Phase 1D의 파생 World Graph UI state 경계와 Phase
 1E의 작가 소유 Plot Canvas 저장 계약, Phase 1F의 canonical Reader preset/read-only
-Publication compiler와 Phase 1G publication metadata/cover/export preset 경계를 기록한다.
+Publication compiler, Phase 1G publication metadata/cover/export preset 경계와 Phase 1H의
+typed EPUB/HWPX preset 확장을 기록한다.
 이 명세의 문구만으로 구현 적합성을 증명하지
 않으며, 실행 증거와 제한은 각 Phase 결과 문서를 따른다. 배포 전에는
 구현과 fixture를 다시 대조해 이 초안을 확정 문서로 승격해야 한다.
@@ -28,8 +29,8 @@ Publication compiler와 Phase 1G publication metadata/cover/export preset 경계
 - `PRAGMA application_id`: `0x4D414449` (`MADI`, decimal `1296122953`)
 - `app_meta.format_name`: `madi`
 - `app_meta.format_version`: `1`
-- `app_meta.schema_version`: `7`
-- `PRAGMA user_version`: `7`
+- `app_meta.schema_version`: `8`
+- `PRAGMA user_version`: `8`
 
 v0의 `application_id`와 container는 바꾸지 않는다. 확장자만 `.madi`인 임의
 SQLite 파일, 다른 `application_id`, 알 수 없는 format 또는 지원 값보다 높은
@@ -77,13 +78,14 @@ Phase 1F Publication compiler는 `plain_text_recovery`를 semantic fallback으�
 `madi-publication` bridge에서 lossless decode한다. Unknown/lossy/degraded projection은
 read-only compile 오류 또는 code diagnostic이며 원고나 database를 수정하지 않는다.
 
-## 3. schema v7
+## 3. schema v8
 
 Schema 6은 Phase 1A schema 2의 `projects`, `tree_nodes`, `ui_state`, Phase 1B schema 3의
 exact-search projection과 named logical snapshot table, Phase 1C schema 4의 Story Bible
 table, Phase 1E schema 5의 `canvases`, Phase 1F schema 6의 `reader_presets`를 그대로
 유지하고 Phase 1G의 `publication_assets`, `publication_metadata`, `export_presets`를
-추가한다. 아래 SQL은 v1의 목표 schema다. 실제 migration은
+추가했다. Schema 8은 그 table과 row를 보존하면서 `export_presets.kind`를 closed
+`EPUB | HWPX` union으로 확장한다. 아래 SQL은 v1의 목표 schema다. 실제 migration은
 `IF NOT EXISTS`만으로 성공을 판정하지 않고 migration record와 전체 불변식을 함께
 검증해야 한다.
 
@@ -506,7 +508,7 @@ CREATE TABLE publication_metadata (
 CREATE TABLE export_presets (
     id TEXT NOT NULL PRIMARY KEY,
     project_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind = 'EPUB'),
+    kind TEXT NOT NULL CHECK (kind IN ('EPUB', 'HWPX')),
     name TEXT NOT NULL CHECK (length(trim(name)) > 0),
     preset_format TEXT NOT NULL CHECK (preset_format = 'MADI_EXPORT_PRESET'),
     preset_version INTEGER NOT NULL CHECK (preset_version = 1),
@@ -530,8 +532,9 @@ decode, SHA-256, 최대 10 MiB, 각 변 10,000 px와 40,000,000 pixel 한계를 
 신규 project는 title, author name 또는 빈 creator, `ko-KR`, project ID UTF-8 bytes의
 SHA-256을 suffix로 쓰는 `urn:madi:publication:<64-lowercase-hex>` stable identifier로
 metadata row를 seed한다. Export preset JSON은
-closed EPUB config v1이며 arbitrary CSS/URL을 포함하지 않는다. Canonical JSON hash가 같은
-update는 no-op이다. 전체 config는 `EXPORT_PRESET_FORMAT_V1.md`를 따른다.
+`kind`가 정한 closed config v1이며 arbitrary CSS/URL 또는 다른 kind의 field를 포함하지
+않는다. Canonical JSON hash가 같은 update는 no-op이다. EPUB config는
+`EXPORT_PRESET_FORMAT_V1.md`, HWPX config는 `HWPX_EXPORT_PRESET_FORMAT_V1.md`를 따른다.
 
 ## 4. canonical hierarchy
 
@@ -648,25 +651,26 @@ transaction들을 적용한 뒤 canonical project row를 별도 transaction으�
 5. `canvases` table/index와 schema migration 5
 6. `reader_presets` table/index와 schema migration 6
 7. publication/export table/index/trigger와 schema migration 7
-8. `app_meta` 한 row
-9. 같은 ID의 `projects` 한 row, publication metadata 한 row와 built-in relation type 10개
-10. project title을 가진 WORK 한 row
-11. WORK 아래 초기 document title을 가진 CHAPTER 한 row
-12. CHAPTER 아래 같은 title의 SCENE과 document 한 쌍
+8. typed EPUB/HWPX export preset constraint와 schema migration 8
+9. `app_meta` 한 row
+10. 같은 ID의 `projects` 한 row, publication metadata 한 row와 built-in relation type 10개
+11. project title을 가진 WORK 한 row
+12. WORK 아래 초기 document title을 가진 CHAPTER 한 row
+13. CHAPTER 아래 같은 title의 SCENE과 document 한 쌍
 
 초기 VOLUME은 만들지 않는다. 기본 node/document는 기존 “새 파일을 만들면 바로 쓸
 수 있음” 동작을 유지하기 위한 최소값이다. core의 `document_title`을 생략하면 project
 title을 사용하며, 현재 desktop create path도 project title을 넘긴다. 이후 Binder의
 추가 동작은 `새 권`, `새 화`, `새 장면`을 기본 제목으로 사용한다.
 
-schema를 만들고 `application_id = 0x4D414449`, `user_version = 7`을 설정한 뒤 file을
+schema를 만들고 `application_id = 0x4D414449`, `user_version = 8`을 설정한 뒤 file을
 sync한다. destination이 이미 있으면 덮어쓰지 않는다. 완성된 임시 파일만 기존 v0의
 no-clobber publish 절차로 destination 이름에 연결한다.
 
-## 7. schema 1/2/3/4/5/6 → schema 7 migration
+## 7. schema 1/2/3/4/5/6/7 → schema 8 migration
 
 입력은 `format_version = 0`, `schema_version = 1`, `user_version = 1`인 유효한 v0
-파일 또는 schema 2 파일이다. 현재 open 순서는 migration 전에 application ID와
+파일 또는 지원하는 schema 2–7 파일이다. 현재 open 순서는 migration 전에 application ID와
 지원 가능한 `user_version`을 확인하고, migration 뒤 `quick_check`, metadata와
 hierarchy를 검증한다. unknown metadata preflight의 한계는 compatibility 절에 명시한다.
 
@@ -779,6 +783,27 @@ row를 변경하거나 버리지 않는다. 기존 project는 cover와 export pr
 시작한다. 기존 payload v1–v4 row를 rewrite하지 않고 version별 decoder가 restore할 때
 publication metadata를 current project default로 seed한다. 실패하면 신규 table/index/
 trigger/seed/migration record/version 변경이 함께 rollback된다.
+
+### schema 7 → 8 절차
+
+SQLite는 기존 table의 `CHECK` constraint를 직접 확장하지 않으므로 하나의 별도
+`BEGIN IMMEDIATE` transaction에서 다음을 수행한다.
+
+1. `export_presets`의 project/name과 project/updated index를 제거한다.
+2. 기존 table을 transaction-local `export_presets_v7`로 rename한다.
+3. 같은 column/foreign-key 계약과 `kind IN ('EPUB', 'HWPX')` constraint를 가진 새
+   `export_presets`를 만든다.
+4. 모든 v7 row를 column별로 그대로 copy한다. V7 constraint가 허용한 kind는 `EPUB`뿐이다.
+5. `export_presets_v7`을 제거하고 두 index를 current 정의로 다시 만든다.
+6. `schema_migrations(version = 8)`을 기록한다.
+7. `app_meta.schema_version = 8`로 바꾸고 `format_version = 1`을 유지한다.
+8. `PRAGMA user_version = 8`을 설정하고 성공하면 commit한다.
+
+Schema 7 → 8은 preset ID/project/name/envelope/config JSON/hash/revision/timestamp를 rewrite하지
+않으며 project revision도 올리지 않는다. Publication metadata, cover, manuscript,
+snapshot payload와 다른 canonical table도 변경하지 않는다. Migration 중 실패하면 table,
+index, row와 version 변경이 함께 rollback된다. HWPX preset은 migration 후 별도 정상 CRUD로
+생성한다.
 
 현재 구현은 migration 전 `.bak`을 만들지 않으므로 pre-migration backup이 있다고
 주장하지 않는다. 손상된 row를 버리고 migration을 성공 처리하거나 빈 v1 project로
@@ -942,7 +967,7 @@ cover/export preset/`workspace.v1`을
 복원한다. 다른 UI key와 기존 named snapshot row는 보존한다. Payload v1은 Story Bible,
 Canvas와 Reader preset을, payload v2는 Canvas와 Reader preset을, payload v3는 Reader
 preset을 빈 상태로 복원한다. Payload v1–v4는 publication export state가 없는 exact
-historical state다. Restore 직전 현재 schema 7 state는 Canvas, Reader preset과 publication
+historical state다. Restore 직전 현재 schema 8 state는 Canvas, Reader preset과 publication
 export state를 포함한 v5 `AUTO_BEFORE_RESTORE`로 보존한다. 자세한 payload는
 `docs/NAMED_SNAPSHOT_FORMAT.md`를 따른다.
 
@@ -987,21 +1012,22 @@ heading은 실제 source node ID와 첫/current descendant target SCENE/document
 가져 title click이 source SCENE을 열 수 있게 한다. Renderer/SQLite/RPC에는 Typie Rust
 type, editor DOM 또는 executable HTML/CSS가 노출되지 않는다.
 
-### Phase 1G publication/export state operation
+### Phase 1G/1H publication/export state operation
 
-- `get_publication_export_state`는 seeded metadata, optional cover와 EPUB presets를 같은
+- `get_publication_export_state`는 seeded metadata, optional cover와 EPUB/HWPX presets를 같은
   revision view에서 load하고 ownership/hash/config/asset bytes를 재검증한다.
 - `update_publication_metadata`는 editable field와 current cover reference를 project revision과
   대조하고 semantic no-op에서는 revision/timestamp를 올리지 않는다.
 - `set_publication_cover`는 magic/decode/hash/dimension/size를 검사하고 same-content save를
   no-op 처리한다. `remove_publication_cover`는 metadata link와 asset row를 transaction으로
   함께 정리한다.
-- `list/create/update/duplicate/delete_export_preset`은 exact `EPUB` kind, format/version,
-  closed config, canonical hash와 project/preset revision을 강제한다.
+- `list/create/update/duplicate/delete_export_preset`은 exact `EPUB | HWPX` kind,
+  format/version, kind-directed closed config, canonical hash와 project/preset revision을
+  강제한다. EPUB config를 HWPX row에 넣거나 그 반대인 경우를 거부한다.
 
 Publication metadata, cover와 export preset mutation은 canonical project revision을 정확히
-한 번 올린다. Output path, generated EPUB/report, progress/validation cache와 last export
-정보는 canonical table에 저장하지 않는다.
+한 번 올린다. Output path, generated EPUB/HWPX/HWP, report, progress/validation cache와 last
+export 정보는 canonical table에 저장하지 않는다.
 
 ## 12. UI state 정규화
 
@@ -1109,7 +1135,7 @@ renderer는 장면 load 시 현재 Typie engine/commit/schema compatibility를 �
 
 현재 open-time scan은 orphan documents, cross-project parent/document pair,
 `app_meta/projects/WORK` title mirror 및 모든 SCENE-document 역방향 1:1을 별도 query로
-완전 검증하지 않는다. Schema v7의 FK/trigger와 Story Bible/Canvas/Reader preset
+완전 검증하지 않는다. Schema v8의 FK/trigger와 Story Bible/Canvas/Reader preset
 mutation/snapshot restore는
 entity note ownership과 cross-project relation/link를 검증하지만, 임의로 변조한 SQLite
 전체를 open 시 재구성해 audit하는 추가 corruption scan은 별도 hardening 대상이다.
@@ -1159,7 +1185,7 @@ UI state write가 실패해도 마지막 성공 canonical manuscript는 유지�
 - Snapshot payload decoder는 version 1/2/3/4/5를 수용한다. v1은 Story Bible/Canvas/Reader
   preset, v2는 Canvas/Reader preset, v3는 Reader preset, v1–v4는 publication export state가
   없는 정확한 historical state로 restore한다.
-- `user_version > 7`, `schema_version > 7` 또는 알 수 없는 format은 downgrade하지
+- `user_version > 8`, `schema_version > 8` 또는 알 수 없는 format은 downgrade하지
   않는다.
 - Typie commit/schema 변경은 별도 upgrade rehearsal과 migration 없이는 자동
   변환하지 않는다.
@@ -1168,14 +1194,14 @@ UI state write가 실패해도 마지막 성공 canonical manuscript는 유지�
 - v1 파일을 v0 앱이 쓸 수 있다고 약속하지 않는다.
 
 위 unknown-format 선거부는 목표 계약이다. 현재 open 순서는 `application_id`와
-`user_version`을 본 뒤 v2/v3/v4/v5/v6/v7 migration을 먼저 실행하고, 그 다음 `quick_check`와
+`user_version`을 본 뒤 v2/v3/v4/v5/v6/v7/v8 migration을 먼저 실행하고, 그 다음 `quick_check`와
 `app_meta` format/schema를 검증한다. 따라서 `user_version = 1`인 변조 파일의
 unknown `app_meta.format_version`을 migration 전에 거부하는 conformance는
 `PENDING`이다.
 
 ## 16. 요구 test와 결과 기록 원칙
 
-Phase 1G core/storage에서는 최소한 다음을 검증한다.
+Phase 1G/1H core/storage에서는 최소한 다음을 검증한다.
 
 - Schema 5 → 6 data-preserving migration, 새 project schema/index/version
 - Reader preset create/update/duplicate/delete/list, revision 0 lifecycle, canonical hash/no-op,
@@ -1191,6 +1217,9 @@ Phase 1G core/storage에서는 최소한 다음을 검증한다.
 - publication metadata/PNG/JPEG cover/export preset CRUD, hash/no-op/revision/rollback/reopen
 - cover magic/size/dimension/pixel/cross-project ownership과 malformed/polyglot rejection
 - Snapshot payload v5 publication state capture/diff/restore/rollback와 exact v1–v4 shape
+- Schema 7 → 8 preset row/hash/revision/timestamp 보존, rollback과 reopen
+- typed EPUB/HWPX preset 공존, kind/config mismatch 거부, CRUD/no-op/revision/project isolation
+- Snapshot payload v5 mixed EPUB/HWPX preset capture/diff/restore와 generated artifact 제외
 
 집중 test, aggregate command, development/packaged Electron과 성능 결과는 실제 실행
 로그가 있는 Phase 결과/성능 문서에서만 `PASS` 또는 수치로
@@ -1203,13 +1232,17 @@ Phase 1D entry verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
 Phase 1E verdict: TECHNICAL GO — PRIVATE LOCAL
 Phase 1F verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
 Phase 1G verdict: NOT DECLARED IN THIS FORMAT DRAFT
+Phase 1H verdict: WITHHELD
+HWP Automation: MANUAL VALIDATION PENDING — SECURITY_MODULE_REQUIRED
 Windows native Korean IME: MANUAL VALIDATION PENDING
 Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
+Hancom Automation license/redistribution: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Public/paid/customer distribution: NOT AUTHORIZED
 ```
 
 이 문서는 계속 v1 **초안**이며 migration preflight, 임의 변조 DB의 full open-time
 audit와 power-loss fault injection은 별도 hardening 대상이다.
 
-실제 Phase 1G 판정과 schema 7 package 검증은
-[Phase 1G result](./PHASE_1G_RESULT.md)를 따른다.
+실제 Phase 1G 판정은 [Phase 1G result](./PHASE_1G_RESULT.md), Phase 1H schema 8/HWPX actual
+판정은 [Phase 1H result](./PHASE_1H_RESULT.md)를 따른다. Phase 1H 결과는 필요한 actual gate가
+끝날 때까지 `WITHHELD`다.

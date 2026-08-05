@@ -1,11 +1,12 @@
 # madi
 
 `madi`는 한국어 장편소설 작가를 위한 local-first Windows desktop 저작도구다.
-현재 작업트리는 Phase 1F Reader Lab 위에 Phase 1G EPUB Export & Validation을 구현한다.
+현재 작업트리는 Phase 1G EPUB Export & Validation 위에 Phase 1H HWPX Export와 선택적
+local HWP bridge를 구현한다.
 저장된 Typie 원고는 Madi 소유의 engine-independent Publication IR로 파생되고, Reader
-Lab과 EPUB exporter가 같은 IR을 소비한다. Plot Canvas의 canonical planning data,
-Publication IR의 파생 의미 모델과 generated EPUB artifact는 서로 다른 소유권 경계를
-유지한다.
+Lab, EPUB exporter와 HWPX exporter가 같은 IR을 소비한다. Plot Canvas의 canonical
+planning data, Publication IR의 파생 의미 모델과 generated EPUB/HWPX/HWP artifact는 서로
+다른 소유권 경계를 유지한다.
 
 ```text
 Phase 0.5 baseline: CONDITIONAL TECHNICAL GO
@@ -32,12 +33,19 @@ Phase 1F implementation: COMPLETE
 Phase 1F development/fresh packaged Electron Reader gates: PASS
 Phase 1F final pnpm verify gate: PASS
 Phase 1F verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
+Phase 1F Reader visible-setting interaction condition: RESOLVED — packaged median 184 ms
 Phase 1G repository implementation: COMPLETE
 Phase 1G development/fresh-unpacked EPUB actual: PASS
 Phase 1G final verdict: CONDITIONAL TECHNICAL GO — RUNTIME EPUBCHECK PACKAGING PENDING
 Phase 1G boundary: PRIVATE LOCAL ONLY
+Runtime EPUBCheck/JRE: DEFERRED TO PRE-RELEASE DISTRIBUTION HARDENING
+Phase 1H repository implementation: IN WORKING TREE
+Phase 1H final verdict: WITHHELD
+HWPX development/fresh-unpacked actual: PENDING
+HWP Automation: MANUAL VALIDATION PENDING — SECURITY_MODULE_REQUIRED
 Windows native Korean IME: MANUAL VALIDATION PENDING
 Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
+Hancom Automation license/redistribution: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Public/paid/customer distribution: NOT AUTHORIZED
 ```
 
@@ -46,8 +54,10 @@ DTO로 파생하고 전체 또는 특정 entity 중심 1~3 hop으로 보여주�
 화면이다. Plot Canvas는 작가가 node/edge/group과 배치를 직접 만드는 canonical planning
 data다. Canvas edge는 Story Bible relation을 만들지 않는다. Reader Lab은 canonical
 Typie snapshot을 Publication IR로 compile해 read-only Shadow DOM preview에 표시하고
-Story Bible/Canvas/Graph를 출판 원고로 섞지 않는다. EPUB exporter도 Typie/Reader DOM을
-읽지 않고 Publication IR만 소비한다. Phase 1G 경계와 실행 결과는
+Story Bible/Canvas/Graph를 출판 원고로 섞지 않는다. EPUB/HWPX exporter도 Typie/Reader
+DOM을 읽지 않고 Publication IR만 소비한다. Phase 1H 경계와 현재 판정은
+[`docs/PHASE_1H_SCOPE.md`](docs/PHASE_1H_SCOPE.md)와
+[`docs/PHASE_1H_RESULT.md`](docs/PHASE_1H_RESULT.md)를 따른다. Phase 1G 경계와 실행 결과는
 [`docs/PHASE_1G_SCOPE.md`](docs/PHASE_1G_SCOPE.md)와
 [`docs/PHASE_1G_RESULT.md`](docs/PHASE_1G_RESULT.md)를 따른다. Phase 1F 경계와 실제 검증은
 [`docs/PHASE_1F_SCOPE.md`](docs/PHASE_1F_SCOPE.md)와
@@ -81,7 +91,7 @@ Story Bible/Canvas/Graph를 출판 원고로 섞지 않는다. EPUB exporter도 
 - 이름 있는 snapshot 생성·목록·이름 변경·삭제·요약 diff·안전 복원
 - 현재 SCENE과 선택 subtree의 공백 포함/제외 Unicode scalar 글자 수
 - Electron 없이 UTF-8 plain-text recovery를 꺼내는 Rust CLI
-- `원고`, `설정`, `그래프`, `캔버스`, `읽기 실험실`, `EPUB 내보내기` 작업 모드 전환
+- `원고`, `설정`, `그래프`, `캔버스`, `읽기 실험실`, `출판 내보내기` 작업 모드 전환
 - 등장인물·장소·조직·물건·사건·세계관 규칙·복선·기타 설정 CRUD
 - 설정별 별칭, 태그, 상태, 요약, 색상 토큰, 아이콘 키와 확장 JSON 속성
 - 설정별 독립 Typie 상세 노트와 장면과 같은 저장 안전성
@@ -121,11 +131,19 @@ Story Bible/Canvas/Graph를 출판 원고로 섞지 않는다. EPUB exporter도 
 - 내부 ZIP/package/nav/XHTML/asset/content-coverage validator
 - staged atomic no-clobber/confirmed replace, progress/cancel, JSON/Markdown report와 reveal
 - build/test-only exact EPUBCheck 5.3.0 validation; 앱 runtime의 Java/JAR bundle 없음
+- 같은 Publication IR 기반의 deterministic HWPX XML 1.31 상호운용 profile export
+- WORK/VOLUME/CHAPTER/SCENE scope, SINGLE/VOLUME section split과 closed-token HWPX preset
+- `mimetype`, version/header/section/settings/RDF/HPF/container/manifest package와 internal validator
+- 제목·본문·heading·blockquote·list·scene break와 inline emphasis/underline/strike 의미 매핑
+- source coverage, exported/fallback/configured-omission/rejected block과 ruby text fallback을
+  보존하는 JSON/Markdown report
+- 한컴 설치가 있고 명시적 security module이 준비된 경우에만 사용하는 optional local HWP bridge
 
 그래프 canonical 관계 편집, Canvas edge의 Story Bible relation 자동 승격, docking
-workspace, 시간축/지식 시점 graph, EPUB import/edit, HWP/HWPX/PDF/DOCX export, 플랫폼 upload,
+workspace, 시간축/지식 시점 graph, EPUB/HWPX import/edit, binary HWP 직접 생성,
+PDF/DOCX export, 플랫폼 upload,
 LLM 추출, cloud/sync, collaboration, mobile/web, 장면별 상세 diff와 공식 플랫폼 page
-수 재현은 Phase 1F 범위가 아니다.
+수 재현은 Phase 1H 범위가 아니다.
 
 ## 실제 사용 흐름
 
@@ -342,7 +360,28 @@ Java/JAR가 없다. 자세한 경계는
 [`docs/EPUB_EXPORT_ARCHITECTURE.md`](docs/EPUB_EXPORT_ARCHITECTURE.md)와
 [`docs/EPUB_VALIDATION_STRATEGY.md`](docs/EPUB_VALIDATION_STRATEGY.md)를 따른다.
 
-### 12. 종료와 재열기
+### 12. HWPX와 선택적 HWP 내보내기
+
+`출판 내보내기`의 HWPX 탭은 EPUB과 동일한 Publication IR을 사용하고 Typie/Reader DOM을
+직접 읽지 않는다.
+
+1. metadata와 WORK/VOLUME/CHAPTER/SCENE scope를 확인한다.
+2. SINGLE/VOLUME section split, page/margin, body/heading/list/blockquote/scene-break style,
+   title page와 page number token을 고르거나 저장 HWPX preset을 사용한다.
+3. `검사`로 ZIP/XML/reference/source-coverage internal validation report를 확인한다.
+4. `HWPX 내보내기`에서 destination을 고르고 progress/cancel과 JSON/Markdown report를
+   확인한다.
+5. HWP는 HWPX가 성공한 뒤 local bridge availability가 `AVAILABLE`일 때만 선택할 수 있다.
+
+현재 HWPX profile은 한컴 공식 `hwpx-owpml-model` XML 1.31 세대 상호운용 target이며
+`KS X 6101:2024` 전체 적합성 선언이 아니다. 현재 검증 PC에는 한컴오피스가 있지만
+Automation file-path security module이 없어 probe가 `SECURITY_MODULE_REQUIRED`를 반환했다.
+COM activation/open/SaveAs는 실행하지 않았고 HWP 실제 검증은 `MANUAL VALIDATION PENDING`이다.
+자세한 경계는 [`docs/HWPX_EXPORT_ARCHITECTURE.md`](docs/HWPX_EXPORT_ARCHITECTURE.md),
+[`docs/HWPX_VALIDATION_STRATEGY.md`](docs/HWPX_VALIDATION_STRATEGY.md)와
+[`docs/HWP_LOCAL_BRIDGE.md`](docs/HWP_LOCAL_BRIDGE.md)를 따른다.
+
+### 13. 종료와 재열기
 
 1. 현재 IME 조합을 끝낸다.
 2. 창을 닫는다.
@@ -361,8 +400,8 @@ tree 복원을 막지 않고 기본 선택·펼침·폭으로 격리한다. Bind
 
 - `PRAGMA application_id = 0x4D414449`
 - `app_meta.format_version = 1`
-- `app_meta.schema_version = 7`
-- `PRAGMA user_version = 7`
+- `app_meta.schema_version = 8`
+- `PRAGMA user_version = 8`
 - 기존 table: `app_meta`, `documents`, `schema_migrations`
 - Phase 1A table: `projects`, `tree_nodes`, `ui_state`
 - Phase 1B table: `search_documents`, `named_snapshots`
@@ -371,6 +410,7 @@ tree 복원을 막지 않고 기본 선택·펼침·폭으로 격리한다. Bind
 - Phase 1E table: `canvases`
 - Phase 1F table: `reader_presets`
 - Phase 1G table: `publication_metadata`, `publication_assets`, `export_presets`
+- Phase 1H schema change: `export_presets.kind`를 closed `EPUB | HWPX` union으로 확장
 
 정규 hierarchy:
 
@@ -561,6 +601,8 @@ script는 clean/pinned submodule을 확인하고
 - pnpm `11.9.0` (`package.json#packageManager`)
 - Rust `1.97.1` MSVC (`rust-toolchain.toml`)
 - Rust targets `x86_64-pc-windows-msvc`, `wasm32-unknown-unknown`
+- HWP local bridge build용 .NET SDK `10.0.301` (`global.json`, roll-forward disabled)
+- HWP local bridge 실행용 compatible x86 .NET 10 runtime; HWPX export 자체에는 필요 없음
 - Visual Studio 2022 Build Tools의 C++ desktop workload와 Windows SDK
 
 Windows에서 pnpm CLI를 한 번만 준비한다. 이 명령은 전역 CLI 설치에만 npm을
@@ -597,6 +639,8 @@ pnpm build
 
 # 집중 검증
 pnpm run test:publication
+pnpm run test:hwpx
+pnpm run test:hwp-bridge
 pnpm run test:core
 pnpm run typecheck
 pnpm run test:desktop
@@ -620,8 +664,8 @@ pnpm format:check
 pnpm test:dev
 ```
 
-`pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust Publication/EPUB test,
-exact build/test-only EPUBCheck 5.3.0,
+`pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust Publication/EPUB/HWPX test,
+C# bridge contract test, exact build/test-only EPUBCheck 5.3.0,
 실제 Typie probe, `.madi` integration, production build, build 뒤 lazy bundle artifact
 test, 일반·scale development Electron과 fresh unpacked packaged smoke를 순서대로
 실행한다. Phase 1F smoke는 일반·675,000자 장편 Reader fixture를 각각 5회 측정하고 새
@@ -635,10 +679,14 @@ output/madi-win32-x64/madi.exe
 output/madi-win32-x64/resources/app/dist/
 output/madi-win32-x64/resources/bin/madi-core.exe
 output/madi-win32-x64/resources/bin/madi-export-epub.exe
+output/madi-win32-x64/resources/bin/madi-export-hwpx.exe
+output/madi-win32-x64/resources/bin/hwp-bridge/
 output/madi-win32-x64/resources/licenses/
 ```
 
-이 폴더는 installer, code signing 또는 자동 update가 아니다.
+`hwp-bridge/`에는 Madi가 빌드한 bridge와 framework-dependent .NET runtime metadata만
+들어간다. 한컴 binary와 Automation security module은 포함하거나 재배포하지 않는다. 이
+폴더는 installer, code signing 또는 자동 update가 아니다.
 
 ### 현재 검증 상태
 
@@ -650,7 +698,17 @@ Phase 1E verdict: TECHNICAL GO — PRIVATE LOCAL
 Phase 1F verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
 Phase 1G verdict: CONDITIONAL TECHNICAL GO — RUNTIME EPUBCHECK PACKAGING PENDING
 Phase 1G boundary: PRIVATE LOCAL ONLY
+Phase 1F Reader visible-setting interaction condition: RESOLVED — packaged median 184 ms
+Runtime EPUBCheck/JRE: DEFERRED TO PRE-RELEASE DISTRIBUTION HARDENING
+Phase 1H verdict: WITHHELD
+HWPX actual: PENDING
+HWP Automation: MANUAL VALIDATION PENDING — SECURITY_MODULE_REQUIRED
 ```
+
+Phase 1H의 repository/static evidence가 최종 development/fresh-unpacked actual을 대신하지
+않는다. HWPX 일반·장편 export/reopen/coverage/determinism과 fault matrix가 모두 끝나기 전에는
+Phase 1H `PASS` 또는 다음 Phase 진입을 선언하지 않는다. 현재 증거 경계는
+[`docs/PHASE_1H_RESULT.md`](docs/PHASE_1H_RESULT.md)를 따른다.
 
 Phase 1D World Graph의 Playwright search focus/selection 누적 clock과 Phase 1E Plot Canvas
 cold `Ctrl+K` 약 0.52초·autosave 누적값은 기록을 유지하되
@@ -784,7 +842,7 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 
 ## 후속 단계로 미룬 항목
 
-다음은 Phase 1F 구현으로 해소한 항목이 아니라 후속 지원·배포·hardening gate로 유지한다.
+다음은 Phase 1H 구현으로 해소한 항목이 아니라 후속 지원·배포·hardening gate로 유지한다.
 
 - Windows native 한국어 IME 수동검증
 - installer/installed-state lifecycle
@@ -795,6 +853,10 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 - 실제 후보 Typie commit upgrade rehearsal
 - remote recursive clean clone: `DEFERRED TO PRE-RELEASE`
 - Runtime EPUBCheck/JRE packaging과 security-update/license owner 결정
+- HWPX development/fresh-unpacked 실제 한컴 open/re-save와 deterministic output gate
+- 한컴 Automation file-path security module의 합법적 설치·등록·운영 절차 결정
+- HWPX → HWP SaveAs, HWP reopen, 반복 conversion/cleanup 수동·actual 검증
+- Hancom Automation 사용권과 한컴 binary/security module 비재배포 경계의 법무 확인
 - EPUB 3.4 final Recommendation/validator 지원 시 새 profile migration
 - Publication IR v1에 authored manuscript image block/asset ownership을 추가하는 별도 결정
 - exact search 성능 benchmark/index 전략
@@ -811,6 +873,19 @@ AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor �
 
 ## 문서
 
+- [Phase 1H 범위](docs/PHASE_1H_SCOPE.md)
+- [Phase 1H 저장소/actual 결과](docs/PHASE_1H_RESULT.md)
+- [HWPX export architecture](docs/HWPX_EXPORT_ARCHITECTURE.md)
+- [HWPX official model 1.31 profile](docs/HWPX_OFFICIAL_PROFILE_1_31.md)
+- [HWPX package layout](docs/HWPX_PACKAGE_LAYOUT.md)
+- [HWPX semantic mapping](docs/HWPX_SEMANTIC_MAPPING.md)
+- [HWPX validation strategy](docs/HWPX_VALIDATION_STRATEGY.md)
+- [HWPX export preset format v1](docs/HWPX_EXPORT_PRESET_FORMAT_V1.md)
+- [HWPX export performance](docs/HWPX_EXPORT_PERFORMANCE.md)
+- [Optional local HWP bridge](docs/HWP_LOCAL_BRIDGE.md)
+- [Hancom Automation validation](docs/HANCOM_AUTOMATION_VALIDATION.md)
+- [ADR-0009: HWPX exporter consumes Publication IR only](docs/decisions/ADR-0009-hwpx-exporter-consumes-publication-ir-only.md)
+- [ADR-0010: HWP output uses local Hancom conversion](docs/decisions/ADR-0010-hwp-output-uses-local-hancom-conversion.md)
 - [Phase 1G 범위](docs/PHASE_1G_SCOPE.md)
 - [Phase 1G 저장소/actual 결과](docs/PHASE_1G_RESULT.md)
 - [EPUB export architecture](docs/EPUB_EXPORT_ARCHITECTURE.md)

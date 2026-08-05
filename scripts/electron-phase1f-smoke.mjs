@@ -3460,7 +3460,6 @@ async function main() {
       status: fastDiagnostic ? "DIAGNOSTIC_PASS" : "PASS",
       phase: "1F",
       packaged,
-      schemaVersion: 7,
       logicalFormatVersion: 1,
       snapshotPayloadVersion: normal.snapshot.payloadVersion,
       measurementRuns: expensiveMeasurementRuns,

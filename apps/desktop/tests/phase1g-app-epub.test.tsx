@@ -10,9 +10,9 @@ const epubControl = vi.hoisted(() => ({
   canonicalTitles: [] as string[]
 }));
 
-vi.mock("../src/renderer/components/EpubExportMode", async () => {
+vi.mock("../src/renderer/components/PublicationExportMode", async () => {
   const React = await import("react");
-  const EpubExportMode = React.forwardRef(function FakeEpubExportMode(
+  const PublicationExportMode = React.forwardRef(function FakePublicationExportMode(
     props: any,
     ref
   ) {
@@ -67,7 +67,7 @@ vi.mock("../src/renderer/components/EpubExportMode", async () => {
         : null
     );
   });
-  return { EpubExportMode };
+  return { PublicationExportMode };
 });
 
 import { App } from "../src/renderer/App";
@@ -433,7 +433,7 @@ function createEnvironment(withSnapshot = false): EpubAppEnvironment {
 async function openEpub(withSnapshot = false): Promise<EpubAppEnvironment> {
   const environment = createEnvironment(withSnapshot);
   fireEvent.click(await screen.findByRole("button", { name: ".madi 열기" }));
-  const epubButton = screen.getByRole("button", { name: "EPUB" });
+  const epubButton = screen.getByRole("button", { name: "내보내기" });
   await waitFor(
     () => expect((epubButton as HTMLButtonElement).disabled).toBe(false),
     { timeout: 10_000 }
@@ -482,7 +482,7 @@ describe("Phase 1G App EPUB lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "원고" }));
     await waitFor(() => expect(epubControl.prepareCalls).toBe(1));
     expect(
-      screen.getByRole("button", { name: "EPUB" }).getAttribute("aria-pressed")
+      screen.getByRole("button", { name: "내보내기" }).getAttribute("aria-pressed")
     ).toBe("true");
 
     pending.resolve(true);
@@ -492,13 +492,13 @@ describe("Phase 1G App EPUB lifecycle", () => {
       ).toBe("true")
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "EPUB" }));
+    fireEvent.click(screen.getByRole("button", { name: "내보내기" }));
     await screen.findByRole("region", { name: "가짜 EPUB 내보내기" });
     epubControl.prepareImpl = async () => false;
     fireEvent.click(screen.getByRole("button", { name: "원고" }));
     await waitFor(() => expect(epubControl.prepareCalls).toBe(2));
     expect(
-      screen.getByRole("button", { name: "EPUB" }).getAttribute("aria-pressed")
+      screen.getByRole("button", { name: "내보내기" }).getAttribute("aria-pressed")
     ).toBe("true");
   });
 
@@ -519,7 +519,7 @@ describe("Phase 1G App EPUB lifecycle", () => {
     await waitFor(() => expect(epubControl.prepareCalls).toBe(2));
     expect(api.openProject).toHaveBeenCalledTimes(1);
     expect(
-      screen.getByRole("button", { name: "EPUB" }).getAttribute("aria-pressed")
+      screen.getByRole("button", { name: "내보내기" }).getAttribute("aria-pressed")
     ).toBe("true");
   });
 
@@ -543,7 +543,7 @@ describe("Phase 1G App EPUB lifecycle", () => {
           .getAllByRole("alert")
           .some((alert) =>
             alert.textContent?.includes(
-              "EPUB metadata와 진행 중인 작업을 정리하지 못했습니다."
+              "출판 metadata와 진행 중인 작업을 정리하지 못했습니다."
             )
           )
       ).toBe(true)
@@ -621,7 +621,7 @@ describe("Phase 1G App EPUB lifecycle", () => {
     );
     expect(api.applyReplacementBatch).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: "EPUB" }).getAttribute("aria-pressed")
+      screen.getByRole("button", { name: "내보내기" }).getAttribute("aria-pressed")
     ).toBe("true");
   });
 
@@ -694,7 +694,7 @@ describe("Phase 1G App EPUB lifecycle", () => {
       "복원된 출판 제목"
     ]);
     expect(
-      screen.getByRole("button", { name: "EPUB" }).getAttribute("aria-pressed")
+      screen.getByRole("button", { name: "내보내기" }).getAttribute("aria-pressed")
     ).toBe("true");
   });
 });

@@ -1,11 +1,12 @@
 # Third-Party Notices
 
-이 파일은 Phase 1G 저장소에서 직접 포함하거나 주요 runtime/build dependency로
+이 파일은 Phase 1H 저장소에서 직접 포함하거나 주요 runtime/build dependency로
 사용하는 제3자 자료를 요약한다. 각 license 원문이 우선하며, 이 요약은 license
 조건을 대체하지 않는다.
 
 ```text
 Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
+Hancom Automation: LICENSE REVIEW REQUIRED BEFORE DISTRIBUTION
 Public/paid/customer distribution: NOT AUTHORIZED
 ```
 
@@ -254,8 +255,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 `
 ```
 
 현재 unpacked package는 `THIRD_PARTY_NOTICES.md`, Typie/Nanum/Cytoscape/React Flow/JSON
-Canvas 원문, 위 네 Rust license 원문과 아래 Phase 1G EPUB direct dependency/EPUBCheck 본체
-원문을 `resources/licenses`에 복사한다. Package script는 checked-in source와 packaged
+Canvas 원문, 위 네 Rust license 원문과 아래 Phase 1G EPUB/HWPX direct dependency,
+EPUBCheck 및 .NET apphost 원문을 `resources/licenses`에 복사한다. Package script는 checked-in source와 packaged
 copy를 고정 SHA-256에 대조해 mismatch를 거부한다.
 Rust transitive dependency 전체의 자동 license report는 아직 생성하지 않으므로
 production 배포 전 `Cargo.lock` 기준 report를 계속 검토해야 한다. 이 원문 포함은 위
@@ -394,6 +395,74 @@ runtime payload에 포함하지 않는다. 따라서 Java/JAR license corpus를 
 license로 가장하지 않는다. 향후 runtime bundle을 승인하려면 Temurin GPLv2 with Classpath
 Exception 및 assembly third-party notices, EPUBCheck 전체 transitive corpus, package size와
 security-update owner를 별도 재검토해야 한다.
+
+## Phase 1H HWPX exporter
+
+`madi-export-hwpx`는 Madi가 작성한 Publication IR 기반 exporter다. Direct production
+dependency와 resolved version은 다음과 같으며, 모두 Phase 1G exporter에서 이미 사용한
+crate/version과 같다.
+
+| Direct crate | Resolved version | 역할 | Upstream license expression |
+|---|---:|---|---|
+| `quick-xml` | 0.37.5 | 생성 XML의 well-formed reopen 검증 | MIT |
+| `serde` | 1.0.229 | strict utility protocol | MIT OR Apache-2.0 |
+| `serde_json` | 1.0.151 | strict utility protocol | MIT OR Apache-2.0 |
+| `sha2` | 0.10.9 | source/file/logical package hash | MIT OR Apache-2.0 |
+| `tempfile` | 3.27.0 | same-directory temporary output | MIT OR Apache-2.0 |
+| `thiserror` | 2.0.20 | typed utility errors | MIT OR Apache-2.0 |
+| `zip` | 2.4.2 | HWPX ZIP 생성과 reopen | MIT |
+
+따라서 추가 Rust license 원문은 생기지 않는다. `QUICK-XML-MIT.txt`, `SHA2-*`,
+`TEMPFILE-*`, `THISERROR-*`, `ZIP-MIT.txt`를 HWPX exporter에도 적용하고 unpacked package에
+동일한 bytes로 포함한다.
+
+구조 조사에 사용한 Hancom `hwpx-owpml-model` repository는 Apache-2.0으로 공개되어 있다.
+다만 해당 repository clone은 ignored 조사 도구이며, 그 source/XSD와 공식 HWPX sample을
+Madi source 또는 unpacked package에 복사하지 않는다. 공식 페이지·모델을 근거로 Madi가
+독자적으로 생성한 XML과 문서만 포함한다. Apache-2.0 공개가 별도 KS 표준 문서나 공식
+sample 전체의 재배포 권한까지 자동으로 부여한다고 해석하지 않는다.
+
+## Phase 1H .NET HWP bridge와 Hancom Automation
+
+`sidecars/hwp-bridge`는 외부 NuGet package 없이 .NET BCL/COM interop만 사용하는 Madi
+소유 C# 코드다. Unpacked package에는 `win-x86`, `net10.0-windows` framework-dependent
+apphost, Madi assembly, dependency metadata와 runtime configuration만 포함한다. .NET runtime
+자체는 번들하지 않으므로 실행 PC에 compatible x86 .NET 10 runtime이 설치되어 있어야 한다.
+현재 로컬 SDK에 self-contained win-x86 runtime pack이 없어 build가 runtime pack을
+자동 다운로드하거나 package에 임의로 복사하지 않는다. Build SDK는 repository
+`global.json`에서 `10.0.301`, roll-forward disabled로 고정한다.
+
+.NET runtime/apphost source는 .NET Foundation MIT license다. Checked-in 원문과 hash:
+
+- `docs/licenses/DOTNET-RUNTIME-MIT.txt` →
+  `cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310`
+- Packaged path: `resources/licenses/DOTNET-RUNTIME-MIT.txt`
+
+향후 self-contained deployment로 바꾸려면 고정한 정확한 runtime release의 전체
+third-party notices, 보안 업데이트 owner와 architecture별 payload를 다시 검토해야 한다.
+
+Bridge는 사용자가 별도로 설치한 Hancom Office의 registered COM Automation object만
+호출한다. Hancom Office 실행 파일, DLL, `HwpObject`, 보안 승인 module, sample 또는 기타
+Hancom binary를 source/package에 포함하지 않는다. Hancom Automation/API 및 HWP 변환의
+상업적·외부 배포 조건은 해결되었다고 판단하지 않으며 상태는 다음과 같다.
+
+```text
+HANCOM AUTOMATION LICENSE REVIEW REQUIRED BEFORE DISTRIBUTION
+```
+
+## Phase 1H Windows output replacement helper
+
+`madi-atomic-output`은 Madi가 작성한 compensation/recovery-aware Windows output
+replacement helper다. Direct production dependency는 `serde` 1.0.229, `serde_json`
+1.0.151, `sha2` 0.10.9, `windows-sys` 0.61.2이며 모두 MIT OR Apache-2.0이다.
+`SHA2-MIT.txt`와 `SHA2-APACHE-2.0.txt`에 포함된 동일한 MIT/Apache-2.0 원문 corpus를
+적용한다. Helper는 Windows API를 동적으로 호출하며 Microsoft Windows binary나 SDK
+payload를 package에 복사하지 않는다.
+
+Helper가 쓰는 `ReplaceFileW`는 단일 OS replacement 호출이지만 linearizable CAS,
+visibility-gap 부재 또는 전원 손실 durability를 보장한다고 주장하지 않는다. 지속된
+PREPARED intent, identity 기반 reconcile, private rollback과 visible no-clobber recovery
+copy가 외부 데이터 손실을 막는 제품 계약이다.
 
 ## madi 자체 코드
 

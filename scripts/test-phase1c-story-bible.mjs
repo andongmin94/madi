@@ -305,7 +305,7 @@ async function run() {
       editor_schema_version: 1,
     });
     verify(created.project.metadata.revision === 0, "create-project-revision");
-    verify(created.project.metadata.schema_version === 7, "schema-version-seven");
+    verify(created.project.metadata.schema_version === 8, "schema-version-eight");
     const workId = created.work_node_id;
     const defaultSceneId = created.default_scene_node_id;
     let revision = 0;
@@ -1276,7 +1276,7 @@ async function run() {
       file_path: projectPath,
     });
     verify(reopened.metadata.revision === revision, "restart-revision");
-    verify(reopened.metadata.schema_version === 7, "restart-schema-version");
+    verify(reopened.metadata.schema_version === 8, "restart-schema-version");
     const restartEntities = await secondProcess.request("list_entities", {
       file_path: projectPath,
       sort: "NAME_ASC",

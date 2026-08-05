@@ -68,7 +68,7 @@ function assertProjectInspection(inspected, expectedRevision) {
     inspected.integrity_check !== "ok" ||
     inspected.metadata.format_name !== "madi" ||
     inspected.metadata.format_version !== 1 ||
-    inspected.metadata.schema_version !== 7 ||
+    inspected.metadata.schema_version !== 8 ||
     inspected.metadata.revision !== expectedRevision
   ) {
     throw new Error(

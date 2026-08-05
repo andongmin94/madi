@@ -1,6 +1,6 @@
 # Named snapshot logical payload 형식
 
-기준일: 2026-08-09
+기준일: 2026-08-13
 
 ```text
 Storage table: named_snapshots
@@ -18,7 +18,7 @@ projection을 재귀적으로 포함하지 않는다.
 
 ## 1. table 계약
 
-Schema 7의 `named_snapshots` row는 다음 값을 가진다.
+Current schema 8의 `named_snapshots` row는 다음 값을 가진다.
 
 | column | 의미 |
 |---|---|
@@ -137,8 +137,8 @@ Payload v5의 publication export state는 다음을 저장한다.
   publisher/description/rights, subjects, optional cover ID와 timestamps
 - `publication_assets`: 같은 project의 `COVER` 최대 하나, PNG/JPEG media type, original name,
   SHA-256, base64 bytes, byte length, width/height와 timestamps
-- `export_presets`: `EPUB`, `MADI_EXPORT_PRESET`, version 1 envelope, closed config object,
-  canonical hash, revision과 timestamps
+- `export_presets`: closed `EPUB | HWPX` kind, `MADI_EXPORT_PRESET`, version 1 envelope,
+  kind-directed closed config object, canonical hash, revision과 timestamps
 
 Metadata는 v5에서 필수다. Cover 배열은 0 또는 1개이며 metadata reference와 정확히
 일치해야 한다. Export preset은 `name COLLATE NOCASE, id` 순서로 capture한다. Asset 원본
@@ -158,7 +158,8 @@ filesystem path는 저장하지 않는다.
 - Typie runtime cache와 undo stack
 - log, API key, account/cloud 상태
 - `.bak`, temporary save 또는 SQLite container bytes
-- 생성된 `.epub`, output path, validation cache, EPUBCheck output와 export report
+- 생성된 `.epub`, `.hwpx`, `.hwp`, output path, validation cache, EPUBCheck output와 export
+  report
 - last export time, active operation ID/progress와 operation-owned temp
 
 Restore는 `workspace.v1`만 교체한다. Snapshot에 포함하지 않은 UI-state key는 그대로
@@ -182,7 +183,7 @@ replacement와 occurrence 수를 note에 기록한다.
 ### `AUTO_BEFORE_RESTORE`
 
 대상 snapshot restore transaction 안에서 core가 현재 logical state를 먼저 capture한다.
-기본 이름은 `복원 전 자동 저장 — <timestamp>`다. Current schema 7에서 생성되므로
+기본 이름은 `복원 전 자동 저장 — <timestamp>`다. Current schema 8에서 생성되므로
 v1/v2/v3/v4 target을 복원할 때도 safety snapshot 자체는 Canvas, Reader preset과
 publication export state를 포함한 v5다.
 
@@ -340,15 +341,17 @@ newer array는 빈 값으로 decode하지만, older payload가 더 최신 데이
 
 ### Payload v5
 
-- v4 전체와 publication metadata, optional COVER와 canonical EPUB export preset을 포함한다.
+- v4 전체와 publication metadata, optional COVER와 canonical EPUB/HWPX export preset을
+  포함한다.
 - Cover bytes/hash/dimension과 metadata reference를 함께 logical restore한다.
-- Generated EPUB, path, report, validation/EPUBCheck output와 last export는 포함하지 않는다.
+- Generated EPUB/HWPX/HWP, path, report, validation/EPUBCheck output와 last export는 포함하지
+  않는다.
 - `reader-lab.v1`과 export UI selection/draft/operation state는 포함하지 않는다.
 
 V1/v2 restore가 현재 Canvas를, v1/v2/v3 restore가 현재 Reader preset을, v1/v2/v3/v4
 restore가 현재 publication export state를 암묵적으로
 유지하거나 merge하지 않는 이유는 snapshot target을 정확히 재현하기 위해서다. Restore
-직전 현재 schema 7 state는 Canvas, Reader preset과 publication export state를 담은 v5
+직전 현재 schema 8 state는 Canvas, Reader preset과 publication export state를 담은 v5
 `AUTO_BEFORE_RESTORE`로 보존되므로 사용자는 safety snapshot으로 돌아갈 수 있다.
 
 ## 10. 한계
@@ -370,3 +373,5 @@ restore가 현재 publication export state를 암묵적으로
 - [`.madi` file format v1 draft](./MADI_FILE_FORMAT_V1_DRAFT.md)
 - [Reader profile format v1](./READER_PROFILE_FORMAT_V1.md)
 - [Export preset format v1](./EXPORT_PRESET_FORMAT_V1.md)
+- [HWPX export preset format v1](./HWPX_EXPORT_PRESET_FORMAT_V1.md)
+- [Phase 1H result](./PHASE_1H_RESULT.md)

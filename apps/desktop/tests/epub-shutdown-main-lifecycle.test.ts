@@ -39,6 +39,7 @@ describe("EPUB shutdown main lifecycle", () => {
     const exporterCleanup = deferred();
     const prepareEpubShutdown = vi.fn(() => serviceCleanup.promise);
     const disposeExporter = vi.fn(() => exporterCleanup.promise);
+    const initializeHwpxRecovery = vi.fn(async () => undefined);
     const services: FakeDesktopService[] = [];
     const exporters: FakeEpubExporter[] = [];
     let registeredIpcOptions: CapturedIpcOptions | undefined;
@@ -73,11 +74,18 @@ describe("EPUB shutdown main lifecycle", () => {
       }
     }
 
+    class FakeHwpxCrashRecoveryRegistry {
+      readonly initialize = initializeHwpxRecovery;
+
+      constructor(..._args: unknown[]) {}
+    }
+
     vi.stubGlobal("setImmediate", scheduleNextTurn);
     vi.doMock("electron", () => ({
       app: {
         enableSandbox: vi.fn(),
         getAppPath: vi.fn(() => "C:/madi"),
+        getPath: vi.fn(() => "C:/madi-user-data"),
         getVersion: vi.fn(() => "0.0.1"),
         isPackaged: false,
         on: vi.fn(
@@ -111,6 +119,9 @@ describe("EPUB shutdown main lifecycle", () => {
         () => "C:/madi/madi-export-epub.exe"
       )
     }));
+    vi.doMock("../src/main/hwpxCrashRecovery", () => ({
+      FileHwpxCrashRecoveryRegistry: FakeHwpxCrashRecoveryRegistry
+    }));
     vi.doMock("../src/main/ipc", () => ({
       registerMadiIpc: vi.fn((options: CapturedIpcOptions) => {
         registeredIpcOptions = options;
@@ -140,6 +151,7 @@ describe("EPUB shutdown main lifecycle", () => {
       expect(services).toHaveLength(1);
       expect(exporters).toHaveLength(1);
     });
+    expect(initializeHwpxRecovery).toHaveBeenCalledTimes(1);
 
     const windowAllClosed = appHandlers.get("window-all-closed");
     const willQuit = appHandlers.get("will-quit");

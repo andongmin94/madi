@@ -369,20 +369,50 @@ Exporter mapping은 다음 completeness 규칙을 강제한다.
 - 모든 section은 CHAPTER/SCENE content unit 중 하나에 정확히 포함된다.
 - 모든 block은 stable hashed XHTML ID로 정확히 한 번 exported된다.
 - Paragraph/Quote/Unsupported body의 Unicode scalar 수는 block별로 exact match한다.
-- Unsupported는 escaped plain-text fallback과 warning이며 silent drop이 아니다.
+- Non-empty Unsupported는 escaped plain-text fallback과 warning이며 silent drop이 아니다.
+- Empty Unsupported는 안전하게 보존할 text가 없으므로 export rejection이다.
 - Heading, scene break와 ruby는 ID set/count를 별도로 대조한다.
 - `exported + fallback` accounting과 source block set이 다르거나 rejected block이 있으면
   success가 아니다.
 
-Cover는 Publication IR body가 아니라 schema 7 `publication_assets`의 별도 validated
-asset이다. Publication IR v1에는 manuscript image block variant가 없으므로 Phase 1G는
-본문 image를 합성하거나 외부 resource에서 가져오지 않는다. 향후 authored image block을
-지원하려면 IR variant/source/asset ownership과 coverage contract를 먼저 version해야 한다.
+Cover는 Publication IR body가 아니라 current schema 8 `publication_assets`의 별도 validated
+asset이다. Publication IR v1에는 manuscript image block variant와 body image bytes가 없으므로
+Phase 1G EPUB과 Phase 1H HWPX exporter 모두 본문 image를 합성하거나 external asset에서
+가져오지 않는다. 향후 authored image block을 지원하려면 IR variant/source/asset ownership과
+coverage contract를 먼저 version해야 한다.
 
 Generated EPUB/hash/report/output path는 derived result이며 이 IR이나 named snapshot에
 삽입하지 않는다.
 
-## 16. 관련 문서
+## 16. HWPX exporter 소비 계약
+
+Phase 1H HWPX exporter도 같은 `PublicationDocument`와 별도 Madi-owned metadata/closed
+HWPX config만 받는다. Typie snapshot/type, `.madi` SQLite, editor/Reader DOM, EPUB output과
+recovery text를 직접 읽지 않는다. Request의 project/scope/revision과
+`sourcePublicationHash`는 document identity와 exact match해야 한다.
+
+Exporter는 hierarchy heading, Paragraph, Quote, ordered/unordered List, SceneBreak,
+Unsupported plain-text fallback과 supported inline mark를 한컴 official model XML 1.31 세대의
+HWPX package로 매핑한다. Source coverage 계약은 exporter 종류와 무관하다.
+
+- 모든 source block은 exported, fallback, configured omission 또는 rejected 중 하나로 정확히
+  분류한다.
+- Text와 supported inline mark는 Unicode scalar를 보존한다.
+- Non-empty Unsupported block은 escaped text와 warning으로 남기며 silent drop하지 않는다.
+- Configured omission은 closed preset의 `include* = false`와 일치하는 hierarchy heading에만
+  허용하고, empty Unsupported는 fail-closed한다.
+- Publication IR v1에는 authored manuscript image variant가 없으므로 image fallback을
+  합성하지 않는다.
+- Ruby는 현재 `기본문자(주석)` text fallback과 warning을 사용한다.
+- rejected block, source/export set mismatch, dangling reference 또는 malformed XML/ZIP이면
+  success가 아니다.
+
+HWP conversion은 IR exporter가 아니다. Optional local bridge가 성공한 generated HWPX를
+한컴 Automation으로 열어 별도 `.hwp` derived artifact로 저장하는 후처리다. Generated
+HWPX/HWP, output path, validation cache와 report는 IR이나 named snapshot에 넣지 않는다.
+이 profile은 `KS X 6101:2024` 전체 적합성을 선언하지 않는다.
+
+## 17. 관련 문서
 
 - [Phase 1F result](./PHASE_1F_RESULT.md)
 - [Reader Lab performance](./READER_LAB_PERFORMANCE.md)
@@ -394,3 +424,8 @@ Generated EPUB/hash/report/output path는 derived result이며 이 IR이나 name
 - [Phase 1G result](./PHASE_1G_RESULT.md)
 - [EPUB export architecture](./EPUB_EXPORT_ARCHITECTURE.md)
 - [ADR-0007: exporters consume Publication IR only](./decisions/ADR-0007-exporters-consume-publication-ir-only.md)
+- [Phase 1H result](./PHASE_1H_RESULT.md)
+- [HWPX export architecture](./HWPX_EXPORT_ARCHITECTURE.md)
+- [HWPX semantic mapping](./HWPX_SEMANTIC_MAPPING.md)
+- [Optional local HWP bridge](./HWP_LOCAL_BRIDGE.md)
+- [ADR-0009: HWPX exporter consumes Publication IR only](./decisions/ADR-0009-hwpx-exporter-consumes-publication-ir-only.md)

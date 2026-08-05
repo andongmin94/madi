@@ -195,7 +195,7 @@ async function run() {
       editor_engine_commit: "phase1e-integration",
       editor_schema_version: 1,
     });
-    verify(created.project.metadata.schema_version === 7, "schema-v7");
+    verify(created.project.metadata.schema_version === 8, "schema-v8");
     let revision = created.project.metadata.revision;
 
     const mutate = async (method, params) => {
@@ -439,7 +439,7 @@ async function run() {
     const reopened = await second.request("open_project", {
       file_path: projectPath,
     });
-    verify(reopened.metadata.schema_version === 7, "reopen-schema-v7");
+    verify(reopened.metadata.schema_version === 8, "reopen-schema-v8");
     verify(reopened.metadata.revision === revision, "reopen-revision");
     const afterRestart = await second.request("list_canvases", {
       file_path: projectPath,
@@ -472,7 +472,7 @@ async function run() {
       `${JSON.stringify(
         {
           phase: "1E",
-          schemaVersion: 7,
+          schemaVersion: 8,
           coreProcesses: 2,
           canvases: 4,
           nodes: totalCounts.nodes,
