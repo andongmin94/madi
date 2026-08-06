@@ -1,59 +1,70 @@
-# Phase 1I — Implementation Result
+# Phase 1I-C — Provider UI and Explicit Proposal Review Result
 
 ## Verdict
 
 ```text
-Phase 1I-A contracts and transport: TECHNICAL SPIKE PASS
-Phase 1I-B provider persistence and Electron boundary: IMPLEMENTED
-Aggregate repository verdict: WITHHELD UNTIL WINDOWS pnpm verify/PACKAGE GATES COMPLETE
-Product UI verdict: NOT YET IMPLEMENTED
-Distribution: NOT AUTHORIZED
+Implementation verdict: TECHNICAL IMPLEMENTATION COMPLETE ON main
+Aggregate Windows verdict: PENDING WORKFLOW
+Distribution boundary: PRIVATE LOCAL ONLY
+Canonical proposal apply: NOT YET AUTHORIZED
 ```
 
-## Implemented
+## Delivered
 
-- safe OpenAI-compatible provider contract
-- HTTPS remote and loopback HTTP endpoint policy
-- explicit manuscript-scope consent hash
-- bounded request/response transport with timeout, cancellation, and redirect rejection
-- sanitized provider errors without manuscript, key, or response-body leakage
-- app-level provider config store outside `.madi`
-- Electron `safeStorage` credential protection
-- revision-checked provider create/update/delete
-- primary/backup provider-store recovery
-- fixed trusted-sender IPC channels
-- narrow frozen preload API
-- app-shutdown request cancellation
+- fixed the Phase 1I-B provider-store/service compile defects before expanding the feature
+- provider CRUD UI backed by the protected app-level store
+- write-only API-key input; secrets are never returned to the renderer
+- support for HTTPS remote providers and loopback HTTP local providers
+- current live Typie document capture through the existing adapter instance
+- native composition refusal during scope capture
+- editable transmission scope and optional explicit context
+- task templates for rewrite, continuation, summary, consistency review and custom prompts
+- provider/model/host/character-count confirmation
+- required one-request consent checkbox
+- shared browser/main scope serialization and SHA-256 binding
+- cancellation and bounded error display
+- original/proposal side-by-side review
+- copy-only result handling
 
-## Deliberately not implemented
+## Safety decision
 
-- provider UI
-- prompt UI
-- streaming output UI
-- proposal diff/apply
-- automatic safety snapshot before proposal application
-- real-provider manual validation
-- local-provider discovery
-- provider usage/cost estimates
+Direct manuscript apply remains disabled. The pinned Typie adapter supports validated text-range replacement, but this UI does not yet possess a stable current-selection or block-range contract. Replacing the whole recovery text with the proposal would flatten or remove paragraph boundaries, scene breaks, ruby and inline modifiers. The next slice must add semantic source mapping and safety snapshots rather than using a plain-text shortcut.
 
-## Verification in this turn
+## Changed areas
 
-```text
-Local strict TypeScript compile: PASS
-Local provider-store/runtime exercise: PASS
-Plaintext API key in provider JSON: NOT FOUND
-Scope mutation before send: REJECTED BEFORE FETCH
-Sanitized provider error leakage tests: ADDED
-Full repository pnpm verify: PENDING WINDOWS WORKFLOW
-Electron development/package smoke with LLM UI: NOT APPLICABLE — UI NOT YET PRESENT
-```
+- `apps/desktop/src/shared/llm.ts`
+- `apps/desktop/src/main/llm/openAiCompatibleClient.ts`
+- `apps/desktop/src/main/llm/providerStore.ts`
+- `apps/desktop/src/main/llm/providerStoreFormat.ts`
+- `apps/desktop/src/main/llm/service.ts`
+- `apps/desktop/src/renderer/llm/editorAccess.ts`
+- `apps/desktop/src/renderer/components/llm/LlmAssistantOverlay.tsx`
+- `apps/desktop/src/renderer/components/llm/llmAssistant.css`
+- `apps/desktop/src/renderer/main.tsx`
+- focused renderer/main tests
 
-The local runtime exercise created an encrypted provider record, reopened and decrypted it, updated configuration while preserving the credential, invoked an injected provider boundary, deleted the provider, and verified that plaintext credentials were absent from the stored JSON.
+## Verification
 
-## Remaining gates
+Focused tests are included for:
 
-1. Complete Windows `pnpm verify` and packaged regression tests on the repository head.
-2. Implement provider settings and explicit transmission confirmation.
-3. Implement proposal review and Typie transaction application with safety snapshot.
-4. Manually validate one remote OpenAI-compatible provider and one loopback provider.
-5. Keep Typie and distribution license gates unchanged.
+- active editor attachment and plain-text read
+- refusal during IME composition
+- provider CRUD request shape
+- no secret readback
+- explicit confirmation before invocation
+- scope hash propagation
+- proposal rendering
+
+The repository workflow on `main` remains the aggregate gate. No claim is made about its result until GitHub Actions completes.
+
+## Next slice
+
+Phase 1I-D should implement:
+
+1. stable Typie selection/block source mapping
+2. proposal diff at Unicode-scalar-safe ranges
+3. reject, partial apply and full apply
+4. auto safety snapshot before multi-block apply
+5. project/document revision checks
+6. stale proposal invalidation when the editor changes
+7. real loopback and remote-provider manual validation
