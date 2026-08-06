@@ -66,7 +66,9 @@ export function parseProviderStore(source: string): StoredLlmProviderFile {
   }
   if (
     !isRecord(value) ||
-    Object.keys(value).some((key) => !["schemaVersion", "providers"].includes(key)) ||
+    Object.keys(value).some(
+      (key) => !["schemaVersion", "providers"].includes(key)
+    ) ||
     value.schemaVersion !== LLM_PROVIDER_STORE_SCHEMA_VERSION ||
     !Array.isArray(value.providers) ||
     value.providers.length > LLM_PROVIDER_STORE_MAX_COUNT
@@ -80,10 +82,12 @@ export function parseProviderStore(source: string): StoredLlmProviderFile {
   const providers = value.providers.map((entry): StoredLlmProvider => {
     if (
       !isRecord(entry) ||
-      Object.keys(entry).some((key) => !["config", "encryptedCredential"].includes(key))
+      Object.keys(entry).some(
+        (key) => !["config", "encryptedCredential"].includes(key)
+      )
     ) {
       throw new LlmProviderStoreError(
-        "STORE_CORRRUPTED",
+        "STORE_CORRUPTED",
         "An LLM provider record is invalid."
       );
     }
@@ -100,7 +104,7 @@ export function parseProviderStore(source: string): StoredLlmProviderFile {
       typeof entry.encryptedCredential !== "string"
     ) {
       throw new LlmProviderStoreError(
-        "STORE_CORRRUPTED",
+        "STORE_CORRUPTED",
         "An LLM credential record is invalid."
       );
     }
