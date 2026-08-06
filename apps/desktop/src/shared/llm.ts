@@ -135,7 +135,11 @@ function requireInteger(
   minimum: number,
   maximum: number
 ): number {
-  if (!Number.isSafeInteger(value) || (value as number) < minimum || (value as number) > maximum) {
+  if (
+    !Number.isSafeInteger(value) ||
+    (value as number) < minimum ||
+    (value as number) > maximum
+  ) {
     throw new LlmContractError(
       "INVALID_PROVIDER_CONFIG",
       `${field} is outside the allowed range.`
@@ -164,6 +168,15 @@ function requireNumber(
   return value;
 }
 
+export function serializeLlmScopeForConsent(scope: LlmInvocationScope): string {
+  return JSON.stringify([
+    scope.kind,
+    scope.sourceId,
+    scope.manuscriptText,
+    scope.contextText
+  ]);
+}
+
 export function isLoopbackLlmUrl(url: URL): boolean {
   return LOOPBACK_HOSTS.has(url.hostname.toLowerCase());
 }
@@ -184,7 +197,10 @@ export function normalizeLlmBaseUrl(source: string): string {
       "Provider URL must not include credentials, query parameters, or fragments."
     );
   }
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopbackLlmUrl(url))) {
+  if (
+    url.protocol !== "https:" &&
+    !(url.protocol === "http:" && isLoopbackLlmUrl(url))
+  ) {
     throw new LlmContractError(
       "UNSAFE_PROVIDER_URL",
       "Remote providers require HTTPS; HTTP is allowed only for loopback endpoints."
@@ -248,14 +264,26 @@ export function parseLlmProviderConfig(value: unknown): LlmProviderConfig {
   const config: LlmProviderConfig = {
     schemaVersion: MADI_LLM_PROVIDER_SCHEMA_VERSION,
     id: requireString(value.id, "id", 1, 128),
-    revision: requireInteger(value.revision, "revision", 0, Number.MAX_SAFE_INTEGER),
+    revision: requireInteger(
+      value.revision,
+      "revision",
+      0,
+      Number.MAX_SAFE_INTEGER
+    ),
     name: requireString(value.name, "name", 1, 120),
     kind: "OPENAI_COMPATIBLE",
-    baseUrl: normalizeLlmBaseUrl(requireString(value.baseUrl, "baseUrl", 1, 2_048)),
+    baseUrl: normalizeLlmBaseUrl(
+      requireString(value.baseUrl, "baseUrl", 1, 2_048)
+    ),
     model: requireString(value.model, "model", 1, 256),
     credentialId,
     requiresApiKey: value.requiresApiKey,
-    timeoutMs: requireInteger(value.timeoutMs, "timeoutMs", 1_000, MADI_LLM_MAX_TIMEOUT_MS),
+    timeoutMs: requireInteger(
+      value.timeoutMs,
+      "timeoutMs",
+      1_000,
+      MADI_LLM_MAX_TIMEOUT_MS
+    ),
     maxOutputTokens: requireInteger(
       value.maxOutputTokens,
       "maxOutputTokens",
