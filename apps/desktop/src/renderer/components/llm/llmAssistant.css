@@ -1,0 +1,424 @@
+.madi-llm-launcher {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 80;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 16px;
+  background: #1f2937;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.24);
+  cursor: pointer;
+}
+
+.madi-llm-launcher:hover {
+  transform: translateY(-1px);
+  background: #111827;
+}
+
+.madi-llm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(2px);
+}
+
+.madi-llm-dialog {
+  width: min(940px, calc(100vw - 48px));
+  height: 100%;
+  overflow: auto;
+  background: #f6f7f9;
+  color: #172033;
+  box-shadow: -18px 0 48px rgba(15, 23, 42, 0.2);
+}
+
+.madi-llm-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 14px;
+  background: rgba(246, 247, 249, 0.96);
+  border-bottom: 1px solid #dfe3e8;
+  backdrop-filter: blur(16px);
+}
+
+.madi-llm-header h2,
+.madi-llm-card h3,
+.madi-llm-provider-form h3,
+.madi-llm-provider-list h3 {
+  margin: 0;
+}
+
+.madi-llm-eyebrow {
+  margin: 0 0 4px;
+  color: #657083;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.madi-llm-icon-button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #d2d8e0;
+  border-radius: 12px;
+  background: #fff;
+  color: #334155;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.madi-llm-tabs {
+  position: sticky;
+  top: 75px;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+  padding: 10px 24px;
+  background: rgba(246, 247, 249, 0.96);
+  border-bottom: 1px solid #dfe3e8;
+  backdrop-filter: blur(16px);
+}
+
+.madi-llm-tabs button {
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.madi-llm-tabs button.is-active {
+  background: #e2e8f0;
+  color: #172033;
+}
+
+.madi-llm-content,
+.madi-llm-provider-layout {
+  padding: 20px 24px 36px;
+}
+
+.madi-llm-content {
+  display: grid;
+  gap: 16px;
+}
+
+.madi-llm-card,
+.madi-llm-provider-list,
+.madi-llm-provider-form {
+  border: 1px solid #dfe3e8;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(15, 23, 42, 0.04);
+}
+
+.madi-llm-card,
+.madi-llm-provider-form {
+  padding: 18px;
+}
+
+.madi-llm-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.madi-llm-card-heading p,
+.madi-llm-provider-form p {
+  margin: 5px 0 0;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.madi-llm-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.madi-llm-form-grid.is-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.madi-llm-field,
+.madi-llm-form-grid label,
+.madi-llm-provider-form > label,
+.madi-llm-proposal-grid label {
+  display: grid;
+  gap: 7px;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.madi-llm-field {
+  margin-top: 13px;
+}
+
+.madi-llm-dialog input,
+.madi-llm-dialog select,
+.madi-llm-dialog textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid #cfd6df;
+  border-radius: 10px;
+  background: #fff;
+  color: #172033;
+  font: inherit;
+  font-weight: 400;
+  outline: none;
+}
+
+.madi-llm-dialog input,
+.madi-llm-dialog select {
+  min-height: 40px;
+  padding: 8px 10px;
+}
+
+.madi-llm-dialog textarea {
+  padding: 10px 12px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.madi-llm-dialog input:focus,
+.madi-llm-dialog select:focus,
+.madi-llm-dialog textarea:focus {
+  border-color: #64748b;
+  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.14);
+}
+
+.madi-llm-dialog small {
+  color: #7b8495;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.madi-llm-advanced {
+  margin-top: 12px;
+  color: #526071;
+  font-size: 13px;
+}
+
+.madi-llm-advanced summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.madi-llm-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.madi-llm-summary div {
+  padding: 10px;
+  border-radius: 10px;
+  background: #f2f4f7;
+}
+
+.madi-llm-summary dt {
+  color: #7b8495;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.madi-llm-summary dd {
+  overflow: hidden;
+  margin: 4px 0 0;
+  color: #27364a;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.madi-llm-consent,
+.madi-llm-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: #344054;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.madi-llm-consent input,
+.madi-llm-check-row input {
+  width: 16px;
+  min-height: 16px;
+  margin-top: 2px;
+}
+
+.madi-llm-check-row {
+  margin-top: 14px;
+}
+
+.madi-llm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.madi-llm-primary-button,
+.madi-llm-secondary-button,
+.madi-llm-danger-button {
+  min-height: 38px;
+  padding: 8px 13px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.madi-llm-primary-button {
+  border: 1px solid #1f2937;
+  background: #1f2937;
+  color: #fff;
+}
+
+.madi-llm-secondary-button {
+  border: 1px solid #cfd6df;
+  background: #fff;
+  color: #344054;
+}
+
+.madi-llm-danger-button {
+  border: 1px solid #fecaca;
+  background: #fff5f5;
+  color: #b42318;
+}
+
+.madi-llm-primary-button:disabled,
+.madi-llm-secondary-button:disabled,
+.madi-llm-danger-button:disabled,
+.madi-llm-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.madi-llm-alert {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #eef2f6;
+  color: #405063;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.madi-llm-alert.is-error {
+  background: #fff1f1;
+  color: #b42318;
+}
+
+.madi-llm-alert.is-warning {
+  background: #fff8e7;
+  color: #8a5a00;
+}
+
+.madi-llm-proposal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.madi-llm-model-badge {
+  max-width: 260px;
+  overflow: hidden;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef2f6;
+  color: #526071;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.madi-llm-provider-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 14px;
+}
+
+.madi-llm-provider-list {
+  align-self: start;
+  padding: 14px;
+}
+
+.madi-llm-provider-item {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  margin-top: 7px;
+  padding: 11px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #334155;
+  text-align: left;
+  cursor: pointer;
+}
+
+.madi-llm-provider-item:hover,
+.madi-llm-provider-item.is-active {
+  border-color: #d4dae2;
+  background: #f2f4f7;
+}
+
+.madi-llm-provider-item span,
+.madi-llm-provider-item small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.madi-llm-provider-item span {
+  color: #667085;
+  font-size: 12px;
+}
+
+.madi-llm-provider-item small {
+  color: #7b8495;
+  font-size: 10px;
+}
+
+.madi-llm-empty {
+  color: #7b8495;
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .madi-llm-dialog {
+    width: 100vw;
+  }
+
+  .madi-llm-form-grid,
+  .madi-llm-form-grid.is-three,
+  .madi-llm-summary,
+  .madi-llm-proposal-grid,
+  .madi-llm-provider-layout {
+    grid-template-columns: 1fr;
+  }
+}
