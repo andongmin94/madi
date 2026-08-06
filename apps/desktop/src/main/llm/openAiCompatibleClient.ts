@@ -5,7 +5,8 @@ import {
   type LlmInvocationResult,
   type LlmInvocationScope,
   type LlmProviderConfig,
-  resolveOpenAiCompatibleChatUrl
+  resolveOpenAiCompatibleChatUrl,
+  serializeLlmScopeForConsent
 } from "../../shared/llm";
 
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
@@ -58,17 +59,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function stableScopePayload(scope: LlmInvocationScope): string {
-  return JSON.stringify([
-    scope.kind,
-    scope.sourceId,
-    scope.manuscriptText,
-    scope.contextText
-  ]);
-}
-
 export function createLlmScopeSha256(scope: LlmInvocationScope): string {
-  return createHash("sha256").update(stableScopePayload(scope), "utf8").digest("hex");
+  return createHash("sha256")
+    .update(serializeLlmScopeForConsent(scope), "utf8")
+    .digest("hex");
 }
 
 function validateTextLength(value: string, maximum: number, field: string): void {
@@ -136,7 +130,10 @@ function validateInvocation(
   }
 }
 
-function validateApiKey(config: LlmProviderConfig, apiKey: string | null): string | null {
+function validateApiKey(
+  config: LlmProviderConfig,
+  apiKey: string | null
+): string | null {
   const normalized = apiKey?.trim() ?? "";
   if (config.requiresApiKey && normalized.length === 0) {
     throw new LlmClientError(
@@ -144,10 +141,7 @@ function validateApiKey(config: LlmProviderConfig, apiKey: string | null): strin
       "This provider requires an API key."
     );
   }
-  if (
-    normalized.length > 4_096 ||
-    /[\r\n\u0000]/u.test(normalized)
-  ) {
+  if (normalized.length > 4_096 || /[\r\n\u0000]/u.test(normalized)) {
     throw new LlmClientError(
       "INVALID_API_KEY",
       "The API key is outside the allowed range."
@@ -158,7 +152,10 @@ function validateApiKey(config: LlmProviderConfig, apiKey: string | null): strin
 
 function buildUserContent(request: LlmInvocationRequest): string {
   const sections = [request.userInstruction.trim()];
-  if (request.scope.contextText !== null && request.scope.contextText.length > 0) {
+  if (
+    request.scope.contextText !== null &&
+    request.scope.contextText.length > 0
+  ) {
     sections.push(`[참고 컨텍스트]\n${request.scope.contextText}`);
   }
   sections.push(`[작업 대상 원고]\n${request.scope.manuscriptText}`);
@@ -171,7 +168,10 @@ function buildRequestBody(
 ): Record<string, unknown> {
   const messages: Array<Record<string, string>> = [];
   if (request.systemInstruction.trim().length > 0) {
-    messages.push({ role: "system", content: request.systemInstruction.trim() });
+    messages.push({
+      role: "system",
+      content: request.systemInstruction.trim()
+    });
   }
   messages.push({ role: "user", content: buildUserContent(request) });
   return {
@@ -231,7 +231,9 @@ async function parseProviderJson(response: Response): Promise<unknown> {
     return null;
   }
   try {
-    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    return JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+    );
   } catch {
     throw new LlmClientError(
       "INVALID_PROVIDER_RESPONSE",
@@ -277,7 +279,11 @@ function textFromContent(value: unknown): string | null {
     return null;
   }
   const parts = value.flatMap((part) => {
-    if (!isRecord(part) || part.type !== "text" || typeof part.text !== "string") {
+    if (
+      !isRecord(part) ||
+      part.type !== "text" ||
+      typeof part.text !== "string"
+    ) {
       return [];
     }
     return [part.text];
@@ -383,7 +389,9 @@ export async function invokeOpenAiCompatible(
     if (controller.signal.aborted) {
       throw new LlmClientError(
         timedOut ? "TIMEOUT" : "CANCELLED",
-        timedOut ? "The provider request timed out." : "The provider request was cancelled.",
+        timedOut
+          ? "The provider request timed out."
+          : "The provider request was cancelled.",
         { retryable: timedOut }
       );
     }
