@@ -57,7 +57,7 @@ export class FileLlmProviderStore {
     return { ...this.requireProvider(providerId).config };
   }
 
-  getCredential(providerId: string | null {
+  getCredential(providerId: string): string | null {
     const provider = this.requireProvider(providerId);
     if (!provider.config.requiresApiKey) {
       return null;
@@ -179,9 +179,7 @@ export class FileLlmProviderStore {
           "Protected credential storage is unavailable."
         );
       }
-      return encodeEncryptedCredential(
-        this.protector.encrypt(normalizedKey)
-      );
+      return encodeEncryptedCredential(this.protector.encrypt(normalizedKey));
     }
     if (current?.encryptedCredential) {
       return current.encryptedCredential;
@@ -211,9 +209,10 @@ export class FileLlmProviderStore {
   private requireInitialized(): void {
     if (!this.initialized) {
       throw new LlmProviderStoreError(
-        "STORE_UNAVAILAE",
+        "STORE_UNAVAILABLE",
         "The LLM provider store is not initialized."
       );
+    }
   }
 
   private requireProvider(providerId: string): StoredLlmProvider {
@@ -231,9 +230,9 @@ export class FileLlmProviderStore {
   private enqueueMutation<T>(task: () => Promise<T>): Promise<T> {
     const result = this.mutationQueue.then(task, task);
     this.mutationQueue = result.then(
-     () => undefined,
-    () => undefined
-   );
+      () => undefined,
+      () => undefined
+    );
     return result;
   }
 }
