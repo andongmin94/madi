@@ -1,3 +1,4 @@
+import type { LlmInvocationResult } from "../../shared/llm";
 import type {
   DeleteLlmProviderRequest,
   InvokeLlmRequest,
@@ -5,7 +6,6 @@ import type {
   LlmRuntimeStatus,
   SaveLlmProviderRequest
 } from "../../shared/llmIpc";
-import type { LlmInvocationResult } from "../../shared/llm";
 import { invokeOpenAiCompatible } from "./openAiCompatibleClient";
 import {
   FileLlmProviderStore,
@@ -47,7 +47,9 @@ export class LlmRuntimeService {
     return this.store.listProviders();
   }
 
-  async saveProvider(request: SaveLlmProviderRequest): Promise<LlmProviderSummary> {
+  async saveProvider(
+    request: SaveLlmProviderRequest
+  ): Promise<LlmProviderSummary> {
     this.requireAvailable();
     return this.store.saveProvider(
       request.provider,
@@ -108,6 +110,6 @@ export class LlmRuntimeService {
         "STORE_UNAVAILABLE",
         "The optional LLM provider store is unavailable."
       );
-  }
+    }
   }
 }
