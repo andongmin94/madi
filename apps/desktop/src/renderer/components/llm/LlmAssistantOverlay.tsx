@@ -18,7 +18,10 @@ import type {
   LlmRuntimeStatus,
   MadiLlmApi
 } from "../../../shared/llmIpc";
-import type { LlmEditorAccess } from "../../llm/editorAccess";
+import type {
+  ActiveLlmEditorState,
+  LlmEditorAccess
+} from "../../llm/editorAccess";
 import "./llmAssistant.css";
 
 interface TaskTemplate {
@@ -26,6 +29,20 @@ interface TaskTemplate {
   readonly label: string;
   readonly systemInstruction: string;
   readonly userInstruction: string;
+}
+
+interface ProposalState {
+  readonly original: string;
+  readonly sourceGeneration: number | null;
+  readonly sourceRevision: number | null;
+  readonly task: LlmTaskKind;
+  readonly result: LlmInvocationResult;
+}
+
+interface ProposalApplyUiState {
+  readonly ready: boolean;
+  readonly checking: boolean;
+  readonly message: string;
 }
 
 const TASK_TEMPLATES: readonly TaskTemplate[] = [
@@ -75,6 +92,12 @@ const EMPTY_STATUS: LlmRuntimeStatus = {
   credentialStorage: "UNAVAILABLE"
 };
 
+const INITIAL_APPLY_STATE: ProposalApplyUiState = {
+  ready: false,
+  checking: false,
+  message: "제안문을 받은 뒤 적용 가능성을 확인합니다."
+};
+
 function createDefaultProvider(id: string): LlmProviderDraft {
   return {
     id,
@@ -116,6 +139,10 @@ function providerHost(provider: LlmProviderSummary | null): string {
   } catch {
     return "잘못된 URL";
   }
+}
+
+function taskSupportsDirectApply(task: LlmTaskKind): boolean {
+  return task === "REWRITE_SELECTION" || task === "CUSTOM";
 }
 
 async function browserScopeHash(scope: LlmInvocationScope): Promise<string> {
@@ -174,17 +201,23 @@ export function LlmAssistantOverlay({
   );
   const [scopeText, setScopeText] = useState("");
   const [contextText, setContextText] = useState("");
+  const [scopeGeneration, setScopeGeneration] = useState<number | null>(null);
   const [scopeRevision, setScopeRevision] = useState<number | null>(null);
   const [scopeBusy, setScopeBusy] = useState(false);
   const [consentChecked, setConsentChecked] = useState(false);
   const [invocationBusy, setInvocationBusy] = useState(false);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [assistantError, setAssistantError] = useState("");
-  const [proposal, setProposal] = useState<{
-    readonly original: string;
-    readonly result: LlmInvocationResult;
-  } | null>(null);
+  const [proposal, setProposal] = useState<ProposalState | null>(null);
+  const [proposalApply, setProposalApply] = useState<ProposalApplyUiState>(
+    INITIAL_APPLY_STATE
+  );
+  const [proposalApplyBusy, setProposalApplyBusy] = useState(false);
+  const [proposalApplied, setProposalApplied] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
+  const [editorState, setEditorState] = useState<ActiveLlmEditorState>(() =>
+    editorAccess.getState()
+  );
 
   const selectedProvider = useMemo(
     () =>
@@ -199,11 +232,18 @@ export function LlmAssistantOverlay({
     [editingProviderId, providers]
   );
 
-  const resetConsent = useCallback(() => {
-    setConsentChecked(false);
+  const resetProposalState = useCallback(() => {
     setProposal(null);
+    setProposalApply(INITIAL_APPLY_STATE);
+    setProposalApplyBusy(false);
+    setProposalApplied(false);
     setCopyStatus("");
   }, []);
+
+  const resetConsent = useCallback(() => {
+    setConsentChecked(false);
+    resetProposalState();
+  }, [resetProposalState]);
 
   const selectProviderForEditing = useCallback((provider: LlmProviderSummary) => {
     setEditingProviderId(provider.config.id);
@@ -254,6 +294,8 @@ export function LlmAssistantOverlay({
     }
   }, [api, createNewProvider, editingProviderId, selectProviderForEditing]);
 
+  useEffect(() => editorAccess.subscribe(setEditorState), [editorAccess]);
+
   useEffect(() => {
     if (!open) {
       return;
@@ -266,13 +308,108 @@ export function LlmAssistantOverlay({
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !invocationBusy && !providerBusy) {
+      if (
+        event.key === "Escape" &&
+        !invocationBusy &&
+        !providerBusy &&
+        !proposalApplyBusy
+      ) {
         setOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [invocationBusy, open, providerBusy]);
+  }, [invocationBusy, open, proposalApplyBusy, providerBusy]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!proposal) {
+      setProposalApply(INITIAL_APPLY_STATE);
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (proposalApplied) {
+      setProposalApply({
+        ready: false,
+        checking: false,
+        message:
+          "현재 Typie 문서에 적용했습니다. 단일 transaction이므로 Ctrl+Z로 되돌릴 수 있습니다."
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (!taskSupportsDirectApply(proposal.task)) {
+      setProposalApply({
+        ready: false,
+        checking: false,
+        message:
+          "요약·일관성 검토·이어쓰기 결과는 현재 원문 대체로 자동 적용하지 않습니다."
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (
+      proposal.sourceGeneration === null ||
+      proposal.sourceRevision === null
+    ) {
+      setProposalApply({
+        ready: false,
+        checking: false,
+        message:
+          "직접 입력한 범위는 현재 Typie 문서와 연결되지 않아 자동 적용할 수 없습니다."
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setProposalApply({
+      ready: false,
+      checking: true,
+      message: "현재 Typie 문서와 제안문을 다시 대조하는 중입니다."
+    });
+    void editorAccess
+      .assessProposal({
+        expectedGeneration: proposal.sourceGeneration,
+        expectedRevision: proposal.sourceRevision,
+        originalText: proposal.original,
+        proposalText: proposal.result.text
+      })
+      .then((assessment) => {
+        if (!cancelled) {
+          setProposalApply({
+            ready: assessment.status === "READY",
+            checking: false,
+            message: assessment.message
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setProposalApply({
+            ready: false,
+            checking: false,
+            message: publicError(
+              error,
+              "제안문의 적용 가능성을 확인하지 못했습니다."
+            )
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    editorAccess,
+    editorState.generation,
+    editorState.isComposing,
+    editorState.revision,
+    proposal,
+    proposalApplied
+  ]);
 
   const updateProviderText =
     (field: "name" | "baseUrl" | "model") =>
@@ -358,6 +495,7 @@ export function LlmAssistantOverlay({
     try {
       const current = await editorAccess.readCurrentDocument();
       setScopeText(current.plainText);
+      setScopeGeneration(current.generation);
       setScopeRevision(current.revision);
       resetConsent();
     } catch (error) {
@@ -388,10 +526,13 @@ export function LlmAssistantOverlay({
       return;
     }
 
+    const sourceId =
+      scopeGeneration === null || scopeRevision === null
+        ? null
+        : `active-editor:${scopeGeneration}:${scopeRevision}`;
     const scope: LlmInvocationScope = {
       kind: "CUSTOM",
-      sourceId:
-        scopeRevision === null ? null : `active-editor-revision:${scopeRevision}`,
+      sourceId,
       manuscriptText: scopeText,
       contextText: contextText.trim().length > 0 ? contextText : null
     };
@@ -399,8 +540,7 @@ export function LlmAssistantOverlay({
     setInvocationBusy(true);
     setActiveRequestId(requestId);
     setAssistantError("");
-    setProposal(null);
-    setCopyStatus("");
+    resetProposalState();
     try {
       const scopeSha256 = await createScopeHash(scope);
       const result = await api.invoke({
@@ -418,7 +558,13 @@ export function LlmAssistantOverlay({
           }
         }
       });
-      setProposal({ original: scopeText, result });
+      setProposal({
+        original: scopeText,
+        sourceGeneration: scopeGeneration,
+        sourceRevision: scopeRevision,
+        task,
+        result
+      });
       setConsentChecked(false);
     } catch (error) {
       setAssistantError(publicError(error, "AI 제안을 받지 못했습니다."));
@@ -451,6 +597,35 @@ export function LlmAssistantOverlay({
     }
   };
 
+  const applyProposalToDocument = async () => {
+    if (
+      !proposal ||
+      proposal.sourceGeneration === null ||
+      proposal.sourceRevision === null ||
+      !proposalApply.ready
+    ) {
+      return;
+    }
+    setProposalApplyBusy(true);
+    setAssistantError("");
+    try {
+      await editorAccess.applyProposal({
+        expectedGeneration: proposal.sourceGeneration,
+        expectedRevision: proposal.sourceRevision,
+        originalText: proposal.original,
+        proposalText: proposal.result.text
+      });
+      setProposalApplied(true);
+      setCopyStatus("");
+    } catch (error) {
+      setAssistantError(
+        publicError(error, "AI 제안문을 현재 원고에 적용하지 못했습니다.")
+      );
+    } finally {
+      setProposalApplyBusy(false);
+    }
+  };
+
   return (
     <>
       <button
@@ -468,7 +643,8 @@ export function LlmAssistantOverlay({
             if (
               event.target === event.currentTarget &&
               !invocationBusy &&
-              !providerBusy
+              !providerBusy &&
+              !proposalApplyBusy
             ) {
               setOpen(false);
             }
@@ -489,7 +665,7 @@ export function LlmAssistantOverlay({
                 type="button"
                 className="madi-llm-icon-button"
                 aria-label="닫기"
-                disabled={invocationBusy || providerBusy}
+                disabled={invocationBusy || providerBusy || proposalApplyBusy}
                 onClick={() => setOpen(false)}
               >
                 ×
@@ -606,7 +782,10 @@ export function LlmAssistantOverlay({
                   <div className="madi-llm-card-heading">
                     <div>
                       <h3>2. 전송할 범위</h3>
-                      <p>현재 Typie 편집 문서를 복사해 온 뒤 필요한 부분만 남길 수 있습니다.</p>
+                      <p>
+                        현재 Typie 편집 문서를 복사한 뒤 고유한 한 문장·한 문단 범위로
+                        줄이면 제안문을 의미구조 보존 transaction으로 적용할 수 있습니다.
+                      </p>
                     </div>
                     <button
                       type="button"
@@ -625,7 +804,6 @@ export function LlmAssistantOverlay({
                       disabled={invocationBusy}
                       onChange={(event) => {
                         setScopeText(event.target.value);
-                        setScopeRevision(null);
                         resetConsent();
                       }}
                       placeholder="현재 편집 문서를 불러오거나 전송할 텍스트를 직접 입력하세요."
@@ -713,8 +891,9 @@ export function LlmAssistantOverlay({
                       <div>
                         <h3>제안 검토</h3>
                         <p>
-                          결과는 원고에 자동 적용되지 않습니다. 현재 단계에서는 복사 후
-                          직접 검토해 반영하세요.
+                          원문과 제안문을 확인하세요. 현재 단계의 자동 적용은 고유한
+                          단일 의미 범위에만 허용되며 여러 문단·장면 변경은 계속
+                          차단합니다.
                         </p>
                       </div>
                       <span className="madi-llm-model-badge">
@@ -731,6 +910,17 @@ export function LlmAssistantOverlay({
                         <textarea readOnly rows={12} value={proposal.result.text} />
                       </label>
                     </div>
+                    <p
+                      className={`madi-llm-alert ${
+                        proposalApply.ready || proposalApplied
+                          ? ""
+                          : "is-warning"
+                      }`}
+                    >
+                      {proposalApply.checking
+                        ? "적용 가능성을 확인하는 중입니다…"
+                        : proposalApply.message}
+                    </p>
                     <div className="madi-llm-actions">
                       <button
                         type="button"
@@ -742,15 +932,25 @@ export function LlmAssistantOverlay({
                       <button
                         type="button"
                         className="madi-llm-secondary-button"
-                        disabled
-                        title="Typie 의미구조를 보존하는 검토·부분 적용은 다음 구현 단계입니다."
+                        disabled={
+                          proposalApplyBusy ||
+                          proposalApplied ||
+                          !proposalApply.ready
+                        }
+                        title={proposalApply.message}
+                        onClick={() => void applyProposalToDocument()}
                       >
-                        원고에 적용 · 준비 중
+                        {proposalApplyBusy
+                          ? "원고에 적용 중…"
+                          : proposalApplied
+                            ? "원고에 적용됨"
+                            : "원고에 안전 적용"}
                       </button>
                       <button
                         type="button"
                         className="madi-llm-secondary-button"
-                        onClick={() => setProposal(null)}
+                        disabled={proposalApplyBusy}
+                        onClick={resetProposalState}
                       >
                         제안 닫기
                       </button>
