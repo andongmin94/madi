@@ -103,7 +103,7 @@ describe("LlmAssistantOverlay", () => {
     );
 
     const send = screen.getByRole("button", { name: "제안 요청" });
-    expect(send).toBeDisabled();
+    expect((send as HTMLButtonElement).disabled).toBe(true);
     expect(api.invoke).not.toHaveBeenCalled();
 
     fireEvent.click(
