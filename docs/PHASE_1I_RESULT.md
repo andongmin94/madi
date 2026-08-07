@@ -1,70 +1,127 @@
-# Phase 1I-C — Provider UI and Explicit Proposal Review Result
+# Phase 1I-D — Safe Single-Range Typie Proposal Apply Result
 
 ## Verdict
 
 ```text
 Implementation verdict: TECHNICAL IMPLEMENTATION COMPLETE ON main
+Safe single-range Typie apply: IMPLEMENTED
+Multi-block/project-wide AI apply: NOT AUTHORIZED
 Aggregate Windows verdict: PENDING WORKFLOW
+Real provider validation: MANUAL VALIDATION PENDING
 Distribution boundary: PRIVATE LOCAL ONLY
-Canonical proposal apply: NOT YET AUTHORIZED
 ```
 
 ## Delivered
 
-- fixed the Phase 1I-B provider-store/service compile defects before expanding the feature
-- provider CRUD UI backed by the protected app-level store
-- write-only API-key input; secrets are never returned to the renderer
-- support for HTTPS remote providers and loopback HTTP local providers
-- current live Typie document capture through the existing adapter instance
-- native composition refusal during scope capture
-- editable transmission scope and optional explicit context
-- task templates for rewrite, continuation, summary, consistency review and custom prompts
-- provider/model/host/character-count confirmation
-- required one-request consent checkbox
-- shared browser/main scope serialization and SHA-256 binding
-- cancellation and bounded error display
+Phase 1I-A through Phase 1I-C remain in place:
+
+- user-owned OpenAI-compatible provider transport
+- protected provider store outside `.madi`
+- Electron `safeStorage` credential encryption
+- trusted narrow IPC/preload boundary
+- explicit provider/model/host/scope confirmation
+- consent-bound SHA-256
+- provider CRUD
 - original/proposal side-by-side review
-- copy-only result handling
+- copy and request cancellation
 
-## Safety decision
+Phase 1I-D adds:
 
-Direct manuscript apply remains disabled. The pinned Typie adapter supports validated text-range replacement, but this UI does not yet possess a stable current-selection or block-range contract. Replacing the whole recovery text with the proposal would flatten or remove paragraph boundaries, scene breaks, ruby and inline modifiers. The next slice must add semantic source mapping and safety snapshots rather than using a plain-text shortcut.
+- active Typie document generation identity
+- editor revision binding
+- proposal invalidation after a document restore, owner switch or content transaction
+- Unicode-scalar-safe source offsets
+- one unique single-line source-range planner
+- ambiguity, missing-source, newline and scene-break rejection
+- immediate reread and revalidation before mutation
+- interaction locking during mutation
+- application through Madi's existing `replaceTextRanges` Typie transaction
+- result-text verification after the Typie adapter's semantic postconditions
+- one normal Typie Undo entry for `Ctrl+Z`
+- UI readiness, blocked-reason, applying and applied states
+
+## Application rules
+
+Automatic application is available only for `REWRITE_SELECTION` and `CUSTOM` proposals bound to the current live Typie document.
+
+The source range must:
+
+- still belong to the same document generation and editor revision
+- be non-empty
+- occur exactly once in current annotated recovery text
+- contain no line or paragraph separator
+- not be a scene-break fallback
+
+The proposal must:
+
+- be non-empty
+- differ from the source
+- contain no line or paragraph separator
+- not be a scene-break fallback
+
+JavaScript code-unit positions are converted to Unicode-scalar offsets before calling Typie. This avoids splitting emoji or other non-BMP characters and matches the existing semantic replacement contract.
+
+## Rollback decision
+
+A successful direct apply is one active-document Typie transaction. The existing Typie Undo path is therefore the rollback mechanism, and the UI tells the author that `Ctrl+Z` can undo it.
+
+No named safety snapshot is created for this narrow path. A future operation that touches multiple semantic blocks or documents must create an automatic safety snapshot before commit. The decision is recorded in [`ADR-0012`](decisions/ADR-0012-llm-single-range-apply-uses-typie-transaction.md).
+
+## Deliberately blocked cases
+
+- source text appears more than once
+- source text is no longer present
+- active document or revision changed after proposal creation
+- native IME composition is active
+- source or proposal contains a newline
+- source or proposal is a scene-break fallback
+- the proposal came from wholly unbound manually entered text
+- summary, consistency-review or continuation output is treated as replacement text
+- multiple blocks, scenes, entity notes or project-wide content would change
+
+These cases remain proposal-and-copy workflows rather than using a structure-flattening plain-text shortcut.
 
 ## Changed areas
 
-- `apps/desktop/src/shared/llm.ts`
-- `apps/desktop/src/main/llm/openAiCompatibleClient.ts`
-- `apps/desktop/src/main/llm/providerStore.ts`
-- `apps/desktop/src/main/llm/providerStoreFormat.ts`
-- `apps/desktop/src/main/llm/service.ts`
+- `apps/desktop/src/renderer/llm/proposalApply.ts`
 - `apps/desktop/src/renderer/llm/editorAccess.ts`
 - `apps/desktop/src/renderer/components/llm/LlmAssistantOverlay.tsx`
-- `apps/desktop/src/renderer/components/llm/llmAssistant.css`
-- `apps/desktop/src/renderer/main.tsx`
-- focused renderer/main tests
+- `apps/desktop/tests/llm-proposal-apply.test.ts`
+- `apps/desktop/tests/llm-editor-access.test.ts`
+- `apps/desktop/tests/llm-assistant-overlay.test.tsx`
+- `docs/PHASE_1I_SCOPE.md`
+- `docs/LLM_ADAPTER_ARCHITECTURE.md`
+- `docs/decisions/ADR-0012-llm-single-range-apply-uses-typie-transaction.md`
 
-## Verification
+## Focused verification added
 
-Focused tests are included for:
+- Unicode-scalar offset calculation with an emoji preceding the source range
+- stale generation and revision rejection
+- ambiguous and missing source rejection
+- multi-block and semantic scene-break rejection
+- empty and unchanged proposal rejection
+- one active Typie replacement transaction
+- interaction lock/unlock
+- native composition refusal
+- proposal application button readiness
+- stale proposal UI invalidation
+- multi-block apply UI remains disabled
+- existing provider confirmation and no-secret-readback behavior
 
-- active editor attachment and plain-text read
-- refusal during IME composition
-- provider CRUD request shape
-- no secret readback
-- explicit confirmation before invocation
-- scope hash propagation
-- proposal rendering
+## Verification limits
 
-The repository workflow on `main` remains the aggregate gate. No claim is made about its result until GitHub Actions completes.
+The repository code and focused tests are committed to `main`, but this result does not claim that the aggregate Windows `pnpm verify`, development Electron, packaged Electron or actual provider matrix has passed. Those remain authoritative external gates.
 
 ## Next slice
 
-Phase 1I-D should implement:
+Phase 1I-E should proceed only after the aggregate gate is green. Its product scope is:
 
-1. stable Typie selection/block source mapping
-2. proposal diff at Unicode-scalar-safe ranges
-3. reject, partial apply and full apply
-4. auto safety snapshot before multi-block apply
-5. project/document revision checks
-6. stale proposal invalidation when the editor changes
-7. real loopback and remote-provider manual validation
+1. stable Typie current-selection or block identity rather than unique-text matching
+2. line/block-aware proposal diff
+3. per-hunk acceptance
+4. automatic safety snapshot before any multi-block or multi-document apply
+5. proposal provenance without prompt or credential leakage
+6. actual loopback provider validation
+7. actual remote HTTPS provider validation with a disposable test key
+
+No provider response should mutate a project without a second explicit author action and all current revision checks.
