@@ -4,11 +4,10 @@
 
 ```text
 Phase 1I-A transport contracts: IMPLEMENTED
-Phase 1I-B protected provider store and Electron IPC: IMPLEMENTED ON main
-Local strict TypeScript compile: PASS
-Local provider-store/runtime exercise: PASS
-Full repository Windows verification: PENDING
-Provider UI and proposal review/apply: NOT YET IMPLEMENTED
+Phase 1I-B protected provider store and Electron IPC: IMPLEMENTED
+Phase 1I-C provider UI, explicit scope confirmation and proposal review: IMPLEMENTED ON main
+Canonical Typie apply: DEFERRED TO Phase 1I-D
+Full repository Windows verification: PENDING FOR CURRENT main
 Distribution boundary: PRIVATE LOCAL ONLY
 Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
 Windows native Korean IME: MANUAL VALIDATION PENDING
@@ -38,6 +37,7 @@ Phase 1I adds optional user-owned LLM assistance without adding a Madi server, a
 - versioned OpenAI-compatible provider configuration
 - safe endpoint normalization
 - task, scope, consent, usage, and result types
+- one shared deterministic scope serialization contract for browser and main process
 - closed `madi:llm:*` IPC channel set
 - provider CRUD and invocation contracts with no secret-bearing config field
 
@@ -67,23 +67,49 @@ Phase 1I adds optional user-owned LLM assistance without adding a Madi server, a
 - no raw `ipcRenderer`, `fetch`, filesystem, or secret storage exposed to the renderer
 - active requests are aborted on application shutdown
 
-## Verification performed in this implementation turn
+### Provider and proposal UI
 
-- strict TypeScript compilation of the split LLM store/service/transport modules
-- local runtime exercise covering create, encrypted persistence, no plaintext-at-rest, update, invoke, and delete
-- automated repository tests added for contracts, transport privacy, provider storage, preload routing, cancellation, and optional-store failure
+- global AI launcher that does not alter the existing authoring workspaces
+- provider create, edit, delete and refresh
+- remote HTTPS and loopback local-provider guidance
+- API-key field that is write-only from the renderer perspective
+- current live Typie document copied into a separate, editable transmission scope
+- explicit provider, model, host and character-count confirmation
+- consent checkbox required before invocation
+- browser/main SHA-256 agreement over the exact scope payload
+- request cancellation
+- original/proposal side-by-side review
+- proposal copy without automatic manuscript mutation
 
-The full repository `pnpm verify`, Electron package tests, and Windows workflow remain the authoritative aggregate gates and were not claimed as passed in this turn.
+The AI panel uses a tracked reference to the existing one live editor adapter. It does not create another Typie instance, does not expose Typie internals, and refuses to copy text while native composition is active.
 
-## Next Phase 1I slice
+## Phase 1I-D
 
-- provider settings UI
-- explicit send-confirmation UI showing provider, model, scope, and character count
-- optional streaming proposal display
-- proposal diff, reject, partial apply, and full apply
+The next slice is the canonical proposal-application workflow:
+
+- selection or block-level source mapping
+- semantic Typie diff
+- reject, partial apply and full apply
 - automatic safety snapshot before accepted multi-block changes
-- prompt recipes for selection, scene, chapter, Story Bible extraction, and consistency review
+- stale source/revision prevention
+- proposal provenance that does not retain API keys or hidden prompts
 - real remote-provider and loopback-provider manual validation
+
+Until that slice is complete, the UI intentionally disables direct apply and offers copy-only review. Replacing an entire Typie document with plain text would destroy paragraph, scene-break, ruby and inline semantics, so that shortcut is not accepted.
+
+## Verification status
+
+Focused tests cover:
+
+- provider URL and config contracts
+- transport privacy and response bounds
+- encrypted provider storage
+- trusted preload/IPC routing
+- current editor access and composition refusal
+- explicit confirmation before invocation
+- provider creation without secret readback
+
+The current main push triggers the Windows private verification workflow. Its final result remains authoritative; this document does not claim that a pending workflow has passed.
 
 ## Explicitly out of scope
 
@@ -94,3 +120,4 @@ The full repository `pnpm verify`, Electron package tests, and Windows workflow 
 - arbitrary headers or scripts
 - collaborative AI sessions
 - AI telemetry
+- unreviewed automatic Story Bible mutations
