@@ -1,16 +1,32 @@
-import type { LlmInvocationResult } from "../../shared/llm";
+import { performance } from "node:perf_hooks";
+
+import type {
+  LlmInvocationRequest,
+  LlmInvocationResult,
+  LlmInvocationScope
+} from "../../shared/llm";
 import type {
   DeleteLlmProviderRequest,
   InvokeLlmRequest,
   LlmProviderSummary,
+  LlmProviderTestResult,
   LlmRuntimeStatus,
-  SaveLlmProviderRequest
+  SaveLlmProviderRequest,
+  TestLlmProviderRequest
 } from "../../shared/llmIpc";
-import { invokeOpenAiCompatible } from "./openAiCompatibleClient";
+import {
+  createLlmScopeSha256,
+  invokeOpenAiCompatible
+} from "./openAiCompatibleClient";
 import {
   FileLlmProviderStore,
   LlmProviderStoreError
 } from "./providerStore";
+
+const PROVIDER_TEST_EXPECTED_TEXT = "MADI_OK";
+const PROVIDER_TEST_SYSTEM_INSTRUCTION =
+  "This is a connectivity test. Do not infer or request manuscript content. Reply with exactly MADI_OK.";
+const PROVIDER_TEST_USER_INSTRUCTION = "Reply with exactly MADI_OK.";
 
 export type LlmInvoker = typeof invokeOpenAiCompatible;
 
@@ -66,26 +82,64 @@ export class LlmRuntimeService {
     );
   }
 
+  async testProvider(
+    request: TestLlmProviderRequest
+  ): Promise<LlmProviderTestResult> {
+    this.requireAvailable();
+    const config = this.store.getProvider(request.providerId);
+    const apiKey = this.store.getCredential(config.id);
+    const scope: LlmInvocationScope = {
+      kind: "CUSTOM",
+      sourceId: "madi-provider-connectivity-test-v1",
+      manuscriptText: "",
+      contextText: null
+    };
+    const invocation: LlmInvocationRequest = {
+      requestId: request.requestId,
+      providerId: config.id,
+      expectedProviderRevision: request.expectedRevision,
+      task: "CUSTOM",
+      systemInstruction: PROVIDER_TEST_SYSTEM_INSTRUCTION,
+      userInstruction: PROVIDER_TEST_USER_INSTRUCTION,
+      scope,
+      consent: {
+        confirmedAt: new Date().toISOString(),
+        scopeSha256: createLlmScopeSha256(scope)
+      }
+    };
+    const startedAt = performance.now();
+    const result = await this.runActiveRequest(request.requestId, (signal) =>
+      this.invoker({ config, request: invocation, apiKey, signal })
+    );
+    const latencyMs = Math.max(
+      0,
+      Math.round((performance.now() - startedAt) * 100) / 100
+    );
+    return {
+      requestId: request.requestId,
+      providerId: config.id,
+      configuredModel: config.model,
+      responseModel: result.model,
+      status:
+        result.text.trim() === PROVIDER_TEST_EXPECTED_TEXT
+          ? "CONNECTED"
+          : "CONNECTED_UNEXPECTED_RESPONSE",
+      latencyMs
+    };
+  }
+
   async invoke(request: InvokeLlmRequest): Promise<LlmInvocationResult> {
     this.requireAvailable();
-    const requestId = request.invocation.requestId;
-    if (this.activeRequests.has(requestId)) {
-      throw new Error("An LLM request with this ID is already active");
-    }
     const config = this.store.getProvider(request.invocation.providerId);
     const apiKey = this.store.getCredential(config.id);
-    const controller = new AbortController();
-    this.activeRequests.set(requestId, controller);
-    try {
-      return await this.invoker({
+    return this.runActiveRequest(request.invocation.requestId, (signal) =>
+      this.invoker({
         config,
         request: request.invocation,
         apiKey,
-        signal: controller.signal
-      });
-    } finally {
-      this.activeRequests.delete(requestId);
-    }
+        signal
+      })
+    );
   }
 
   cancel(requestId: string): boolean {
@@ -102,6 +156,22 @@ export class LlmRuntimeService {
       controller.abort();
     }
     this.activeRequests.clear();
+  }
+
+  private async runActiveRequest<TResult>(
+    requestId: string,
+    run: (signal: AbortSignal) => Promise<TResult>
+  ): Promise<TResult> {
+    if (this.activeRequests.has(requestId)) {
+      throw new Error("An LLM request with this ID is already active");
+    }
+    const controller = new AbortController();
+    this.activeRequests.set(requestId, controller);
+    try {
+      return await run(controller.signal);
+    } finally {
+      this.activeRequests.delete(requestId);
+    }
   }
 
   private requireAvailable(): void {
