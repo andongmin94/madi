@@ -10,6 +10,7 @@ export const LLM_IPC_CHANNELS = Object.freeze({
   listProviders: "madi:llm:list-providers",
   saveProvider: "madi:llm:save-provider",
   deleteProvider: "madi:llm:delete-provider",
+  testProvider: "madi:llm:test-provider",
   invoke: "madi:llm:invoke",
   cancel: "madi:llm:cancel"
 });
@@ -53,6 +54,25 @@ export interface DeleteLlmProviderRequest {
   readonly expectedRevision: number;
 }
 
+export interface TestLlmProviderRequest {
+  readonly requestId: string;
+  readonly providerId: string;
+  readonly expectedRevision: number;
+}
+
+export type LlmProviderTestStatus =
+  | "CONNECTED"
+  | "CONNECTED_UNEXPECTED_RESPONSE";
+
+export interface LlmProviderTestResult {
+  readonly requestId: string;
+  readonly providerId: string;
+  readonly configuredModel: string;
+  readonly responseModel: string;
+  readonly status: LlmProviderTestStatus;
+  readonly latencyMs: number;
+}
+
 export interface InvokeLlmRequest {
   readonly invocation: LlmInvocationRequest;
 }
@@ -70,6 +90,7 @@ export interface MadiLlmApi {
   listProviders(): Promise<readonly LlmProviderSummary[]>;
   saveProvider(request: SaveLlmProviderRequest): Promise<LlmProviderSummary>;
   deleteProvider(request: DeleteLlmProviderRequest): Promise<void>;
+  testProvider(request: TestLlmProviderRequest): Promise<LlmProviderTestResult>;
   invoke(request: InvokeLlmRequest): Promise<LlmInvocationResult>;
   cancel(request: CancelLlmRequest): Promise<CancelLlmResult>;
 }
