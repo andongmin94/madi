@@ -27,13 +27,6 @@ export interface EditorChange {
   readonly isComposing: boolean;
 }
 
-/** Unicode-scalar offsets over the annotated recovery-text view. */
-export interface EditorTextSelection {
-  readonly text: string;
-  readonly start: number;
-  readonly end: number;
-}
-
 export interface EditorTextReplacement {
   readonly id: string;
   readonly start: number;
@@ -56,11 +49,6 @@ export interface MadiEditorAdapter {
   open(snapshot?: Uint8Array): Promise<void>;
   getSnapshot(): Promise<Uint8Array>;
   getPlainText(): Promise<string>;
-  /**
-   * Returns the current non-collapsed text selection as annotated recovery-text
-   * scalar offsets. `null` means there is no safely mappable text selection.
-   */
-  getTextSelection?(): EditorTextSelection | null;
   /** Moves the one live editor surface between workspace blocks. */
   relocate?(mountElement: HTMLElement): void;
   /**
