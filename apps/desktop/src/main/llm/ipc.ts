@@ -11,10 +11,10 @@ import type {
 } from "../../shared/llm";
 import {
   LLM_IPC_CHANNELS,
-  type CancelLlmRequest,
   type DeleteLlmProviderRequest,
   type InvokeLlmRequest,
-  type SaveLlmProviderRequest
+  type SaveLlmProviderRequest,
+  type TestLlmProviderRequest
 } from "../../shared/llmIpc";
 import { isTrustedIpcSender } from "../ipc";
 import type { LlmRuntimeService } from "./service";
@@ -73,6 +73,13 @@ function requireString(
   return value;
 }
 
+function requirePositiveRevision(value: unknown): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new Error("Invalid LLM provider revision");
+  }
+  return value as number;
+}
+
 function parseSaveProviderRequest(value: unknown): SaveLlmProviderRequest {
   const request = requireExact(value, [
     "provider",
@@ -123,16 +130,23 @@ function parseSaveProviderRequest(value: unknown): SaveLlmProviderRequest {
 
 function parseDeleteProviderRequest(value: unknown): DeleteLlmProviderRequest {
   const request = requireExact(value, ["providerId", "expectedRevision"]);
-  if (
-    typeof request.providerId !== "string" ||
-    request.providerId.length === 0 ||
-    request.providerId.length > 128 ||
-    !Number.isSafeInteger(request.expectedRevision) ||
-    (request.expectedRevision as number) < 1
-  ) {
-    throw new Error("Invalid LLM provider deletion request");
-  }
-  return request as unknown as DeleteLlmProviderRequest;
+  return {
+    providerId: requireString(request.providerId, "provider ID", 128),
+    expectedRevision: requirePositiveRevision(request.expectedRevision)
+  };
+}
+
+function parseTestProviderRequest(value: unknown): TestLlmProviderRequest {
+  const request = requireExact(value, [
+    "requestId",
+    "providerId",
+    "expectedRevision"
+  ]);
+  return {
+    requestId: requireString(request.requestId, "request ID", 128),
+    providerId: requireString(request.providerId, "provider ID", 128),
+    expectedRevision: requirePositiveRevision(request.expectedRevision)
+  };
 }
 
 function parseInvocationScope(value: unknown): LlmInvocationScope {
@@ -182,9 +196,7 @@ function parseInvocationRequest(value: unknown): LlmInvocationRequest {
   ]);
   if (
     typeof invocation.task !== "string" ||
-    !TASK_KINDS.has(invocation.task as LlmTaskKind) ||
-    !Number.isSafeInteger(invocation.expectedProviderRevision) ||
-    (invocation.expectedProviderRevision as number) < 1
+    !TASK_KINDS.has(invocation.task as LlmTaskKind)
   ) {
     throw new Error("Invalid LLM invocation metadata");
   }
@@ -203,7 +215,9 @@ function parseInvocationRequest(value: unknown): LlmInvocationRequest {
   return {
     requestId: requireString(invocation.requestId, "request ID", 128),
     providerId: requireString(invocation.providerId, "provider ID", 128),
-    expectedProviderRevision: invocation.expectedProviderRevision as number,
+    expectedProviderRevision: requirePositiveRevision(
+      invocation.expectedProviderRevision
+    ),
     task: invocation.task as LlmTaskKind,
     systemInstruction: requireString(
       invocation.systemInstruction,
@@ -287,6 +301,9 @@ export function registerMadiLlmIpc({
   );
   handle(LLM_IPC_CHANNELS.deleteProvider, (_event, rawRequest: unknown) =>
     service.deleteProvider(parseDeleteProviderRequest(rawRequest))
+  );
+  handle(LLM_IPC_CHANNELS.testProvider, (_event, rawRequest: unknown) =>
+    service.testProvider(parseTestProviderRequest(rawRequest))
   );
   handle(LLM_IPC_CHANNELS.invoke, (_event, rawRequest: unknown) =>
     service.invoke(parseInvokeRequest(rawRequest))
