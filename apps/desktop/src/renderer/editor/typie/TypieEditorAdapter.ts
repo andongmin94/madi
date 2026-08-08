@@ -3,7 +3,6 @@ import type {
   EditorChangeReason,
   EditorReplacementDocument,
   EditorTextReplacement,
-  EditorTextSelection,
   MadiEditorAdapter
 } from "../MadiEditorAdapter";
 
@@ -17,7 +16,6 @@ export interface TypieEnginePort {
   restoreSnapshot(snapshot: Uint8Array): Promise<void>;
   exportSnapshot(): Promise<Uint8Array>;
   exportPlainText(): Promise<string>;
-  readTextSelection?(): EditorTextSelection | null;
   relocate?(element: HTMLElement): void;
   replaceTextRanges?(
     replacements: readonly EditorTextReplacement[]
@@ -108,11 +106,6 @@ export class TypieEditorAdapter implements MadiEditorAdapter {
   public async getPlainText(): Promise<string> {
     this.requireOpen();
     return this.port.exportPlainText();
-  }
-
-  public getTextSelection(): EditorTextSelection | null {
-    this.requireOpen();
-    return this.port.readTextSelection?.() ?? null;
   }
 
   public relocate(mountElement: HTMLElement): void {
