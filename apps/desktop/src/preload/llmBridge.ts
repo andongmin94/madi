@@ -4,7 +4,8 @@ import {
   type DeleteLlmProviderRequest,
   type InvokeLlmRequest,
   type MadiLlmApi,
-  type SaveLlmProviderRequest
+  type SaveLlmProviderRequest,
+  type TestLlmProviderRequest
 } from "../shared/llmIpc";
 
 export type LlmIpcInvoke = (
@@ -14,9 +15,14 @@ export type LlmIpcInvoke = (
 
 export function createMadiLlmApi(invoke: LlmIpcInvoke): MadiLlmApi {
   return Object.freeze({
-    getStatus: () => invoke(LLM_IPC_CHANNELS.getStatus) as ReturnType<MadiLlmApi["getStatus"]>,
+    getStatus: () =>
+      invoke(LLM_IPC_CHANNELS.getStatus) as ReturnType<
+        MadiLlmApi["getStatus"]
+      >,
     listProviders: () =>
-      invoke(LLM_IPC_CHANNELS.listProviders) as ReturnType<MadiLlmApi["listProviders"]>,
+      invoke(LLM_IPC_CHANNELS.listProviders) as ReturnType<
+        MadiLlmApi["listProviders"]
+      >,
     saveProvider: (request: SaveLlmProviderRequest) =>
       invoke(LLM_IPC_CHANNELS.saveProvider, request) as ReturnType<
         MadiLlmApi["saveProvider"]
@@ -25,9 +31,17 @@ export function createMadiLlmApi(invoke: LlmIpcInvoke): MadiLlmApi {
       invoke(LLM_IPC_CHANNELS.deleteProvider, request) as ReturnType<
         MadiLlmApi["deleteProvider"]
       >,
+    testProvider: (request: TestLlmProviderRequest) =>
+      invoke(LLM_IPC_CHANNELS.testProvider, request) as ReturnType<
+        MadiLlmApi["testProvider"]
+      >,
     invoke: (request: InvokeLlmRequest) =>
-      invoke(LLM_IPC_CHANNELS.invoke, request) as ReturnType<MadiLlmApi["invoke"]>,
+      invoke(LLM_IPC_CHANNELS.invoke, request) as ReturnType<
+        MadiLlmApi["invoke"]
+      >,
     cancel: (request: CancelLlmRequest) =>
-      invoke(LLM_IPC_CHANNELS.cancel, request) as ReturnType<MadiLlmApi["cancel"]>
+      invoke(LLM_IPC_CHANNELS.cancel, request) as ReturnType<
+        MadiLlmApi["cancel"]
+      >
   });
 }
