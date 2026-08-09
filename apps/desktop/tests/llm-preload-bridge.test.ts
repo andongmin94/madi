@@ -16,7 +16,7 @@ const provider = {
 };
 
 describe("madi LLM preload bridge", () => {
-  it("exposes only the six closed LLM operations", () => {
+  it("exposes only the seven closed LLM operations", () => {
     const invoke = vi.fn(async () => undefined);
     const api = createMadiLlmApi(invoke);
 
@@ -26,12 +26,13 @@ describe("madi LLM preload bridge", () => {
       "getStatus",
       "invoke",
       "listProviders",
-      "saveProvider"
+      "saveProvider",
+      "testProvider"
     ]);
     expect(Object.isFrozen(api)).toBe(true);
   });
 
-  it("routes provider mutations through fixed channels", async () => {
+  it("routes provider mutations and diagnostics through fixed channels", async () => {
     const invoke = vi.fn(async () => ({ ok: true }));
     const api = createMadiLlmApi(invoke);
     const saveRequest = {
@@ -39,9 +40,15 @@ describe("madi LLM preload bridge", () => {
       expectedRevision: null,
       apiKey: "secret"
     };
+    const testRequest = {
+      requestId: "provider-test-1",
+      providerId: provider.id,
+      expectedRevision: 1
+    };
 
     await api.saveProvider(saveRequest);
     await api.deleteProvider({ providerId: provider.id, expectedRevision: 1 });
+    await api.testProvider(testRequest);
 
     expect(invoke).toHaveBeenNthCalledWith(
       1,
@@ -52,6 +59,11 @@ describe("madi LLM preload bridge", () => {
       2,
       LLM_IPC_CHANNELS.deleteProvider,
       { providerId: provider.id, expectedRevision: 1 }
+    );
+    expect(invoke).toHaveBeenNthCalledWith(
+      3,
+      LLM_IPC_CHANNELS.testProvider,
+      testRequest
     );
   });
 });
