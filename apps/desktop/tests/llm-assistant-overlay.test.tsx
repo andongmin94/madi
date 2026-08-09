@@ -126,6 +126,14 @@ function fakeApi(proposalText = "AI가 제안한 문장"): MadiLlmApi {
         : "NOT_REQUIRED"
     })),
     deleteProvider: vi.fn(async () => undefined),
+    testProvider: vi.fn(async (request) => ({
+      requestId: request.requestId,
+      providerId: request.providerId,
+      configuredModel: "example-model",
+      responseModel: "example-model",
+      status: "CONNECTED" as const,
+      latencyMs: 1
+    })),
     invoke: vi.fn(async (request) => ({
       requestId: request.invocation.requestId,
       providerId: request.invocation.providerId,
