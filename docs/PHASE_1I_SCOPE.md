@@ -6,7 +6,10 @@
 Phase 1I-A transport contracts: IMPLEMENTED
 Phase 1I-B protected provider store and Electron IPC: IMPLEMENTED
 Phase 1I-C provider UI, explicit scope confirmation and proposal review: IMPLEMENTED
-Phase 1I-D unique single-range Typie proposal apply: IMPLEMENTED ON main
+Phase 1I-D unique single-range Typie proposal apply: IMPLEMENTED
+Phase 1I-E manuscript-free provider connectivity diagnostics: IMPLEMENTED ON main
+Actual loopback compatible transport: AUTOMATED TEST ADDED
+Actual remote HTTPS provider: MANUAL VALIDATION PENDING
 Multi-block and project-wide AI apply: DEFERRED
 Full repository Windows verification: PENDING FOR CURRENT main
 Distribution boundary: PRIVATE LOCAL ONLY
@@ -25,12 +28,13 @@ Phase 1I adds optional user-owned LLM assistance without adding a Madi server, a
 5. API keys are not stored in `.madi`, provider config JSON, logs, evidence or error reports.
 6. Electron `safeStorage` protects credentials in the app-level provider store under `userData`.
 7. If protected storage is unavailable, remote key-based providers remain unavailable while the rest of madi continues to work.
-8. Every invocation is bound to an explicitly confirmed manuscript scope SHA-256.
+8. Every manuscript invocation is bound to an explicitly confirmed scope SHA-256.
 9. If the confirmed scope changes before transport, the main process rejects the request before any network call.
 10. Redirects are rejected.
 11. Provider output first enters a separate proposal buffer.
 12. Canonical Typie mutation requires a second explicit user action and a fresh identity/range check.
-13. Manuscript text, provider response bodies and API keys are excluded from sanitized errors.
+13. Provider connectivity diagnostics send no manuscript, note, Story Bible or Canvas content.
+14. Manuscript text, provider response bodies and API keys are excluded from sanitized errors.
 
 ## Implemented repository layers
 
@@ -39,9 +43,10 @@ Phase 1I adds optional user-owned LLM assistance without adding a Madi server, a
 - versioned OpenAI-compatible provider configuration
 - safe endpoint normalization
 - task, scope, consent, usage and result types
-- one shared deterministic scope serialization contract for browser and main process
+- deterministic scope serialization shared by browser and main process
 - closed `madi:llm:*` IPC channel set
-- provider CRUD and invocation contracts with no secret-bearing config field
+- provider CRUD, connectivity-test and invocation contracts
+- no secret-bearing provider config field
 
 ### Main-process transport
 
@@ -58,7 +63,7 @@ Phase 1I adds optional user-owned LLM assistance without adding a Madi server, a
 - provider config stored outside `.madi`
 - credentials encrypted with Electron `safeStorage`
 - revision-checked provider mutations
-- bounded JSON parser with exact schema and duplicate-ID rejection
+- bounded exact-schema JSON parser and duplicate-ID rejection
 - temporary-file write, primary/backup recovery and stale-temp cleanup
 - optional-store failure does not stop the authoring application
 
@@ -67,42 +72,57 @@ Phase 1I adds optional user-owned LLM assistance without adding a Madi server, a
 - fixed, trusted-sender IPC handlers
 - separate narrow `window.madiLlm` preload API
 - no raw `ipcRenderer`, `fetch`, filesystem or secret storage exposed to the renderer
-- active requests are aborted on application shutdown
+- active requests, including connectivity tests, are aborted on application shutdown
 
-### Provider and proposal UI
+### Provider, proposal and diagnostics UI
 
-- global AI launcher that does not alter the existing authoring workspaces
 - provider create, edit, delete and refresh
 - remote HTTPS and loopback local-provider guidance
-- API-key field that is write-only from the renderer perspective
-- current live Typie document copied into a separate, editable transmission scope
+- write-only API-key field
+- active Typie document copied into a separate transmission scope
 - explicit provider, model, host and character-count confirmation
-- consent checkbox required before invocation
-- browser/main SHA-256 agreement over the exact scope payload
+- consent checkbox required before manuscript invocation
 - request cancellation
 - original/proposal side-by-side review
 - proposal copy
 - safe direct apply for one unique single-line range in the same active Typie document
-
-The AI panel uses a tracked reference to the existing one live editor adapter. It does not create another Typie instance, expose Typie internals or read text while native composition is active.
+- separate connectivity diagnostics dialog
+- connectivity test displays target, model, credential state, latency and response model
+- connectivity request text is fixed by the main process and cannot be supplied by the renderer
 
 ## Phase 1I-D safe apply contract
 
 A proposal can be applied automatically only when all of the following are true:
 
 - the task is `REWRITE_SELECTION` or `CUSTOM`
-- the scope originated from the current live Typie document rather than being wholly unbound text
-- document generation and editor revision still match the values captured before invocation
-- the original scope is non-empty and occurs exactly once in the current annotated recovery text
+- the scope originated from the current live Typie document
+- document generation and editor revision still match the captured values
+- the original scope is non-empty and occurs exactly once in annotated recovery text
 - the proposal is non-empty and differs from the original
 - neither side contains line, paragraph or Unicode paragraph separators
 - neither side is a scene-break fallback such as `***` or `* * *`
 - the pinned adapter exposes `replaceTextRanges`
 - native composition is not active
 
-Madi rereads the active document immediately before mutation, converts UTF-16 string positions to Unicode-scalar offsets and calls the existing Typie semantic replacement transaction. The adapter independently checks expected text, result text, scene-break count and semantic document structure.
+Madi rereads the active document immediately before mutation, converts UTF-16 positions to Unicode-scalar offsets and calls the existing Typie semantic replacement transaction. The adapter independently checks expected text, resulting text, scene-break count and semantic structure.
 
 A successful single-range apply creates one Typie Undo entry, so `Ctrl+Z` is the rollback path. It does not create a named snapshot. This decision is fixed in [`ADR-0012`](decisions/ADR-0012-llm-single-range-apply-uses-typie-transaction.md).
+
+## Phase 1I-E connectivity contract
+
+Provider diagnostics use the same main-process transport as normal requests, but the scope is fixed to:
+
+```text
+kind: CUSTOM
+source ID: madi-provider-connectivity-test-v1
+manuscript text: empty
+context text: null
+expected response: MADI_OK
+```
+
+The renderer supplies only provider ID, expected provider revision and request ID. It cannot attach manuscript, context, prompt, headers or a different endpoint. The result returns status, configured/response model and latency; the provider response text is discarded.
+
+A real loopback HTTP server test exercises the complete OpenAI-compatible request path without external network access. Remote HTTPS validation remains manual because it requires a disposable user-owned credential and may incur provider cost. The decision is fixed in [`ADR-0013`](decisions/ADR-0013-provider-connectivity-tests-send-no-manuscript.md).
 
 ## Deferred broad apply
 
@@ -116,11 +136,11 @@ The following remain intentionally blocked:
 - multi-document or project-wide AI mutation
 - automatic Story Bible mutation
 
-A later broad-apply slice must add stable block/selection source mapping, partial diff acceptance and an automatic safety snapshot before any accepted operation touches multiple blocks or documents.
+A later broad-apply slice must add stable block/selection source mapping, per-hunk acceptance and an automatic safety snapshot before any accepted operation touches multiple blocks or documents.
 
 ## Verification status
 
-Focused tests now cover:
+Focused tests cover:
 
 - provider URL and config contracts
 - transport privacy and response bounds
@@ -129,11 +149,15 @@ Focused tests now cover:
 - current editor access and composition refusal
 - explicit confirmation before invocation
 - provider creation without secret readback
-- document-generation and revision invalidation
+- document generation and revision invalidation
 - Unicode-scalar replacement offsets
 - ambiguous, missing, multi-block and scene-break rejection
 - one semantic Typie replacement with interaction locking
-- proposal UI enable/disable and stale invalidation
+- provider diagnostics fixed request shape
+- rejection of extra manuscript/prompt fields at IPC
+- connectivity cancellation
+- actual loopback HTTP compatible transport
+- diagnostics UI success, cancellation and locked-credential states
 
 The current main push triggers the Windows private verification workflow. Its final result remains authoritative; this document does not claim that a pending workflow has passed.
 
@@ -147,3 +171,4 @@ The current main push triggers the Windows private verification workflow. Its fi
 - AI telemetry
 - unreviewed automatic manuscript or Story Bible mutation
 - multi-block AI apply without a safety snapshot
+- automatic provider model discovery
