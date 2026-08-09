@@ -109,6 +109,76 @@ describe("LlmRuntimeService", () => {
     );
   });
 
+  it("tests provider connectivity without sending manuscript content", async () => {
+    const invoker = vi.fn(async ({ config, apiKey, request }) => {
+      expect(apiKey).toBe("api-key");
+      expect(request.providerId).toBe(config.id);
+      expect(request.expectedProviderRevision).toBe(1);
+      expect(request.task).toBe("CUSTOM");
+      expect(request.scope).toEqual({
+        kind: "CUSTOM",
+        sourceId: "madi-provider-connectivity-test-v1",
+        manuscriptText: "",
+        contextText: null
+      });
+      expect(request.systemInstruction).toContain("MADI_OK");
+      expect(request.userInstruction).toBe("Reply with exactly MADI_OK.");
+      return {
+        requestId: request.requestId,
+        providerId: config.id,
+        model: "model-response",
+        responseId: "connectivity-response",
+        text: "MADI_OK",
+        finishReason: "stop",
+        usage: { inputTokens: 8, outputTokens: 2, totalTokens: 10 }
+      };
+    });
+    const service = await createService(invoker);
+
+    const result = await service.testProvider({
+      requestId: "provider-test-1",
+      providerId: "provider-1",
+      expectedRevision: 1
+    });
+
+    expect(result).toEqual({
+      requestId: "provider-test-1",
+      providerId: "provider-1",
+      configuredModel: "model",
+      responseModel: "model-response",
+      status: "CONNECTED",
+      latencyMs: expect.any(Number)
+    });
+    expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(JSON.stringify(result)).not.toContain("MADI_OK");
+    expect(JSON.stringify(result)).not.toContain("api-key");
+  });
+
+  it("reports a compatible endpoint whose fixed diagnostic response differs", async () => {
+    const invoker = vi.fn(async ({ config, request }) => ({
+      requestId: request.requestId,
+      providerId: config.id,
+      model: config.model,
+      responseId: null,
+      text: "The endpoint is alive, but ignored the requested marker.",
+      finishReason: "stop",
+      usage: { inputTokens: null, outputTokens: null, totalTokens: null }
+    }));
+    const service = await createService(invoker);
+
+    await expect(
+      service.testProvider({
+        requestId: "provider-test-unexpected",
+        providerId: "provider-1",
+        expectedRevision: 1
+      })
+    ).resolves.toMatchObject({
+      status: "CONNECTED_UNEXPECTED_RESPONSE",
+      configuredModel: "model",
+      responseModel: "model"
+    });
+  });
+
   it("cancels an active request without retaining it", async () => {
     const invoker = vi.fn(
       ({ signal }: Parameters<LlmInvoker>[0]) =>
@@ -126,6 +196,29 @@ describe("LlmRuntimeService", () => {
     expect(service.cancel("cancel-me")).toBe(true);
     await expect(pending).rejects.toMatchObject({ code: "CANCELLED" });
     expect(service.cancel("cancel-me")).toBe(false);
+  });
+
+  it("uses the same cancellation boundary for provider diagnostics", async () => {
+    const invoker = vi.fn(
+      ({ signal }: Parameters<LlmInvoker>[0]) =>
+        new Promise<never>((_resolve, reject) => {
+          signal?.addEventListener(
+            "abort",
+            () => reject(Object.assign(new Error("cancelled"), { code: "CANCELLED" })),
+            { once: true }
+          );
+        })
+    );
+    const service = await createService(invoker);
+    const pending = service.testProvider({
+      requestId: "cancel-provider-test",
+      providerId: "provider-1",
+      expectedRevision: 1
+    });
+
+    expect(service.cancel("cancel-provider-test")).toBe(true);
+    await expect(pending).rejects.toMatchObject({ code: "CANCELLED" });
+    expect(service.cancel("cancel-provider-test")).toBe(false);
   });
 
   it("keeps the rest of the app usable when the optional provider store cannot initialize", async () => {
