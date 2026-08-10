@@ -27,6 +27,18 @@ export interface EditorChange {
   readonly isComposing: boolean;
 }
 
+/**
+ * One non-collapsed selection mapped to annotated recovery-text Unicode-scalar
+ * offsets. `blockKey` is an opaque same-document identity; consumers must not
+ * interpret it as a Typie node shape.
+ */
+export interface EditorTextSelection {
+  readonly text: string;
+  readonly start: number;
+  readonly end: number;
+  readonly blockKey: string;
+}
+
 export interface EditorTextReplacement {
   readonly id: string;
   readonly start: number;
@@ -49,6 +61,11 @@ export interface MadiEditorAdapter {
   open(snapshot?: Uint8Array): Promise<void>;
   getSnapshot(): Promise<Uint8Array>;
   getPlainText(): Promise<string>;
+  /**
+   * Returns an exact same-block text selection, or `null` when the current
+   * selection cannot be mapped without ambiguity to annotated recovery text.
+   */
+  getTextSelection?(): EditorTextSelection | null;
   /** Moves the one live editor surface between workspace blocks. */
   relocate?(mountElement: HTMLElement): void;
   /**
