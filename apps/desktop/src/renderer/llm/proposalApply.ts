@@ -4,8 +4,10 @@ export type LlmProposalApplyStatus =
   | "READY"
   | "EDITOR_UNAVAILABLE"
   | "APPLY_UNSUPPORTED"
+  | "SELECTION_UNAVAILABLE"
   | "COMPOSITION_ACTIVE"
   | "STALE_DOCUMENT"
+  | "INVALID_SOURCE_RANGE"
   | "EMPTY_SCOPE"
   | "EMPTY_PROPOSAL"
   | "UNCHANGED"
@@ -20,12 +22,19 @@ export interface LlmProposalApplyIdentity {
   readonly revision: number;
 }
 
+export interface LlmProposalSourceRange {
+  readonly start: number;
+  readonly end: number;
+  readonly blockKey: string;
+}
+
 export interface LlmProposalApplyInput {
   readonly expected: LlmProposalApplyIdentity;
   readonly current: LlmProposalApplyIdentity;
   readonly currentText: string;
   readonly originalText: string;
   readonly proposalText: string;
+  readonly sourceRange?: LlmProposalSourceRange | null;
 }
 
 export interface LlmProposalApplyBlocked {
@@ -35,11 +44,10 @@ export interface LlmProposalApplyBlocked {
 
 export interface LlmProposalApplyReady {
   readonly status: "READY";
+  readonly sourceMode: "EXACT_SELECTION" | "UNIQUE_TEXT";
   readonly message: string;
   readonly replacement: EditorTextReplacement;
   readonly expectedDocumentText: string;
-  readonly startCodeUnit: number;
-  readonly endCodeUnit: number;
 }
 
 export type LlmProposalApplyAssessment =
@@ -82,9 +90,20 @@ function scalarOffset(source: string, codeUnitOffset: number): number {
   return Array.from(source.slice(0, codeUnitOffset)).length;
 }
 
-export function planLlmProposalApply(
+function replaceScalarRange(
+  source: string,
+  start: number,
+  end: number,
+  replacement: string
+): string {
+  const characters = Array.from(source);
+  characters.splice(start, end - start, ...Array.from(replacement));
+  return characters.join("");
+}
+
+function commonValidation(
   input: LlmProposalApplyInput
-): LlmProposalApplyAssessment {
+): LlmProposalApplyBlocked | null {
   if (
     input.expected.generation !== input.current.generation ||
     input.expected.revision !== input.current.revision
@@ -104,7 +123,7 @@ export function planLlmProposalApply(
     );
   }
   if (input.originalText === input.proposalText) {
-    return blocked("UNCHANGED", "원문과 제안문이 같습니다.");
+    return blocked("UNCHANGED", "선택한 변경 조각을 적용해도 원문과 같습니다.");
   }
   if (hasBlockBoundary(input.originalText)) {
     return blocked(
@@ -115,7 +134,7 @@ export function planLlmProposalApply(
   if (hasBlockBoundary(input.proposalText)) {
     return blocked(
       "MULTI_BLOCK_PROPOSAL",
-      "제안문에 줄바꿈이 있어 현재 Typie 문단 구조를 보존한 자동 적용을 사용할 수 없습니다."
+      "선택한 반영본에 줄바꿈이 있어 현재 Typie 문단 구조를 보존한 자동 적용을 사용할 수 없습니다."
     );
   }
   if (
@@ -126,6 +145,61 @@ export function planLlmProposalApply(
       "SEMANTIC_BOUNDARY",
       "장면 구분선으로 해석될 수 있는 범위는 자동 적용하지 않습니다."
     );
+  }
+  return null;
+}
+
+export function planLlmProposalApply(
+  input: LlmProposalApplyInput
+): LlmProposalApplyAssessment {
+  const validation = commonValidation(input);
+  if (validation) {
+    return validation;
+  }
+
+  const currentCharacters = Array.from(input.currentText);
+  if (input.sourceRange) {
+    const { start, end, blockKey } = input.sourceRange;
+    if (
+      !Number.isSafeInteger(start) ||
+      !Number.isSafeInteger(end) ||
+      start < 0 ||
+      end <= start ||
+      end > currentCharacters.length ||
+      blockKey.length === 0 ||
+      blockKey.length > 512 ||
+      /[\u0000-\u001f\u007f]/u.test(blockKey)
+    ) {
+      return blocked(
+        "INVALID_SOURCE_RANGE",
+        "선택 영역의 원본 위치 정보가 올바르지 않습니다."
+      );
+    }
+    if (currentCharacters.slice(start, end).join("") !== input.originalText) {
+      return blocked(
+        "NOT_FOUND",
+        "선택했던 원문이 현재 Typie 문서의 같은 위치에 남아 있지 않습니다."
+      );
+    }
+    return {
+      status: "READY",
+      sourceMode: "EXACT_SELECTION",
+      message:
+        "현재 Typie 선택 영역의 정확한 위치에 한 transaction으로 적용할 수 있습니다.",
+      replacement: {
+        id: `llm-selection-${input.current.generation}-${input.current.revision}`,
+        start,
+        end,
+        expectedText: input.originalText,
+        replacement: input.proposalText
+      },
+      expectedDocumentText: replaceScalarRange(
+        input.currentText,
+        start,
+        end,
+        input.proposalText
+      )
+    };
   }
 
   const first = input.currentText.indexOf(input.originalText);
@@ -138,15 +212,15 @@ export function planLlmProposalApply(
   if (input.currentText.indexOf(input.originalText, first + 1) >= 0) {
     return blocked(
       "AMBIGUOUS",
-      "같은 원문이 현재 문서에 여러 번 있어 적용 위치를 확정할 수 없습니다. 범위를 더 길게 잡으세요."
+      "같은 원문이 현재 문서에 여러 번 있습니다. 정확한 선택 영역을 불러와 다시 요청하세요."
     );
   }
 
-  const endCodeUnit = first + input.originalText.length;
   const start = scalarOffset(input.currentText, first);
   const end = start + Array.from(input.originalText).length;
   return {
     status: "READY",
+    sourceMode: "UNIQUE_TEXT",
     message:
       "현재 문서의 고유한 단일 의미 범위에 Typie transaction으로 적용할 수 있습니다.",
     replacement: {
@@ -156,11 +230,11 @@ export function planLlmProposalApply(
       expectedText: input.originalText,
       replacement: input.proposalText
     },
-    expectedDocumentText:
-      input.currentText.slice(0, first) +
-      input.proposalText +
-      input.currentText.slice(endCodeUnit),
-    startCodeUnit: first,
-    endCodeUnit
+    expectedDocumentText: replaceScalarRange(
+      input.currentText,
+      start,
+      end,
+      input.proposalText
+    )
   };
 }
