@@ -1,19 +1,21 @@
-# Phase 1I-D — Safe Single-Range Typie Proposal Apply Result
+# Phase 1I-E — Manuscript-free Provider Diagnostics Result
 
 ## Verdict
 
 ```text
 Implementation verdict: TECHNICAL IMPLEMENTATION COMPLETE ON main
 Safe single-range Typie apply: IMPLEMENTED
+Provider connectivity diagnostics: IMPLEMENTED
+Actual loopback compatible transport: AUTOMATED TEST ADDED
+Actual remote HTTPS provider: MANUAL VALIDATION PENDING
 Multi-block/project-wide AI apply: NOT AUTHORIZED
 Aggregate Windows verdict: PENDING WORKFLOW
-Real provider validation: MANUAL VALIDATION PENDING
 Distribution boundary: PRIVATE LOCAL ONLY
 ```
 
-## Delivered
+## Existing Phase 1I foundation
 
-Phase 1I-A through Phase 1I-C remain in place:
+Phase 1I-A through Phase 1I-D remain in place:
 
 - user-owned OpenAI-compatible provider transport
 - protected provider store outside `.madi`
@@ -24,104 +26,125 @@ Phase 1I-A through Phase 1I-C remain in place:
 - provider CRUD
 - original/proposal side-by-side review
 - copy and request cancellation
-
-Phase 1I-D adds:
-
-- active Typie document generation identity
-- editor revision binding
-- proposal invalidation after a document restore, owner switch or content transaction
+- safe one-range Typie proposal application
+- document generation and revision invalidation
 - Unicode-scalar-safe source offsets
-- one unique single-line source-range planner
-- ambiguity, missing-source, newline and scene-break rejection
-- immediate reread and revalidation before mutation
-- interaction locking during mutation
-- application through Madi's existing `replaceTextRanges` Typie transaction
-- result-text verification after the Typie adapter's semantic postconditions
-- one normal Typie Undo entry for `Ctrl+Z`
-- UI readiness, blocked-reason, applying and applied states
+- one normal Typie Undo entry for accepted local rewrites
 
-## Application rules
+## Delivered in Phase 1I-E
 
-Automatic application is available only for `REWRITE_SELECTION` and `CUSTOM` proposals bound to the current live Typie document.
+- new closed `madi:llm:test-provider` IPC operation
+- exact request contract containing only request ID, provider ID and expected revision
+- main-process fixed connectivity scope with empty manuscript and null context
+- fixed `MADI_OK` system/user instruction
+- stored provider and protected credential resolution
+- reuse of the existing timeout, cancellation, redirect, response-limit and sanitized-error transport boundary
+- latency measurement
+- `CONNECTED` and `CONNECTED_UNEXPECTED_RESPONSE` statuses
+- response text discarded before returning to the renderer
+- standalone provider diagnostics dialog
+- provider host, model, credential state and protected-storage display
+- test cancellation through the shared request ID boundary
+- actual loopback HTTP server transport test
 
-The source range must:
+## Privacy boundary
 
-- still belong to the same document generation and editor revision
-- be non-empty
-- occur exactly once in current annotated recovery text
-- contain no line or paragraph separator
-- not be a scene-break fallback
+The connectivity IPC request cannot contain manuscript, Story Bible, entity note, Canvas, prompt, header or endpoint fields. Exact-shape parsing rejects any additional property before service dispatch.
 
-The proposal must:
+The main process creates this fixed scope:
 
-- be non-empty
-- differ from the source
-- contain no line or paragraph separator
-- not be a scene-break fallback
+```text
+kind: CUSTOM
+sourceId: madi-provider-connectivity-test-v1
+manuscriptText: ""
+contextText: null
+```
 
-JavaScript code-unit positions are converted to Unicode-scalar offsets before calling Typie. This avoids splitting emoji or other non-BMP characters and matches the existing semantic replacement contract.
+The provider response is used only to compare the trimmed text with `MADI_OK`. The renderer receives no response body, prompt, credential or manuscript content.
 
-## Rollback decision
+This behavior is fixed in [`ADR-0013`](decisions/ADR-0013-provider-connectivity-tests-send-no-manuscript.md).
 
-A successful direct apply is one active-document Typie transaction. The existing Typie Undo path is therefore the rollback mechanism, and the UI tells the author that `Ctrl+Z` can undo it.
+## Actual loopback validation
 
-No named safety snapshot is created for this narrow path. A future operation that touches multiple semantic blocks or documents must create an automatic safety snapshot before commit. The decision is recorded in [`ADR-0012`](decisions/ADR-0012-llm-single-range-apply-uses-typie-transaction.md).
+A deterministic automated test starts a real HTTP server on `127.0.0.1`, invokes the production OpenAI-compatible transport and verifies:
 
-## Deliberately blocked cases
+- loopback HTTP is accepted
+- the request reaches `/v1/chat/completions`
+- no authorization header is sent for a keyless provider
+- JSON request/response parsing works
+- usage and finish metadata are normalized
+- the fixed response `MADI_OK` is returned
+- a manuscript sentinel is absent from the request body
+- the server is closed after the test
 
-- source text appears more than once
-- source text is no longer present
-- active document or revision changed after proposal creation
-- native IME composition is active
-- source or proposal contains a newline
-- source or proposal is a scene-break fallback
-- the proposal came from wholly unbound manually entered text
-- summary, consistency-review or continuation output is treated as replacement text
-- multiple blocks, scenes, entity notes or project-wide content would change
+This is an actual local network transport test, not a mocked `fetch` call. It does not replace manual validation against Ollama, LM Studio or another user-installed compatible runtime.
 
-These cases remain proposal-and-copy workflows rather than using a structure-flattening plain-text shortcut.
+## Diagnostics UX
 
-## Changed areas
+The new `AI✓` launcher opens a compact provider diagnostics dialog. The author can:
 
-- `apps/desktop/src/renderer/llm/proposalApply.ts`
-- `apps/desktop/src/renderer/llm/editorAccess.ts`
-- `apps/desktop/src/renderer/components/llm/LlmAssistantOverlay.tsx`
-- `apps/desktop/tests/llm-proposal-apply.test.ts`
-- `apps/desktop/tests/llm-editor-access.test.ts`
-- `apps/desktop/tests/llm-assistant-overlay.test.tsx`
-- `docs/PHASE_1I_SCOPE.md`
-- `docs/LLM_ADAPTER_ARCHITECTURE.md`
-- `docs/decisions/ADR-0012-llm-single-range-apply-uses-typie-transaction.md`
+- select a stored provider
+- see the configured host and model
+- see credential and protected-storage state
+- run a manuscript-free connectivity test
+- cancel a pending test
+- view latency and the response model
+- distinguish an exact `MADI_OK` contract response from a reachable endpoint that returned different text
+
+The test button remains disabled for missing or locked credentials.
 
 ## Focused verification added
 
-- Unicode-scalar offset calculation with an emoji preceding the source range
-- stale generation and revision rejection
-- ambiguous and missing source rejection
-- multi-block and semantic scene-break rejection
-- empty and unchanged proposal rejection
-- one active Typie replacement transaction
-- interaction lock/unlock
-- native composition refusal
-- proposal application button readiness
-- stale proposal UI invalidation
-- multi-block apply UI remains disabled
-- existing provider confirmation and no-secret-readback behavior
+- preload exposes exactly seven closed LLM operations
+- fixed test-provider channel routing
+- main IPC rejects extra manuscript and prompt fields
+- main IPC rejects invalid provider revisions
+- service resolves stored config and protected credential
+- service creates an empty manuscript scope
+- service discards diagnostic response text
+- unexpected marker status
+- shared cancellation cleanup
+- actual loopback transport
+- diagnostics UI success
+- diagnostics UI cancellation
+- diagnostics UI locked-credential state
+- existing assistant tests updated for the expanded API contract
+
+## Changed areas
+
+- `apps/desktop/src/shared/llmIpc.ts`
+- `apps/desktop/src/main/llm/service.ts`
+- `apps/desktop/src/main/llm/ipc.ts`
+- `apps/desktop/src/preload/llmBridge.ts`
+- `apps/desktop/src/renderer/components/llm/LlmProviderDiagnostics.tsx`
+- `apps/desktop/src/renderer/components/llm/llmProviderDiagnostics.css`
+- `apps/desktop/src/renderer/main.tsx`
+- `apps/desktop/tests/llm-runtime-service.test.ts`
+- `apps/desktop/tests/llm-preload-bridge.test.ts`
+- `apps/desktop/tests/llm-main-ipc.test.ts`
+- `apps/desktop/tests/llm-provider-diagnostics.test.tsx`
+- `apps/desktop/tests/llm-loopback-provider.test.ts`
+- `apps/desktop/tests/llm-assistant-overlay.test.tsx`
+- `docs/PHASE_1I_SCOPE.md`
+- `docs/LLM_ADAPTER_ARCHITECTURE.md`
+- `docs/decisions/ADR-0013-provider-connectivity-tests-send-no-manuscript.md`
 
 ## Verification limits
 
-The repository code and focused tests are committed to `main`, but this result does not claim that the aggregate Windows `pnpm verify`, development Electron, packaged Electron or actual provider matrix has passed. Those remain authoritative external gates.
+The repository code and focused tests are committed to `main`, but this result does not claim that aggregate Windows `pnpm verify`, development Electron, unpacked Electron or a real remote provider has passed. GitHub Actions remains the aggregate technical gate.
+
+The diagnostics request can incur a small provider charge. A successful response confirms only that one bounded request reached a compatible endpoint with the stored credential; it does not certify model quality, privacy policy, quota, context capacity or future uptime.
 
 ## Next slice
 
-Phase 1I-E should proceed only after the aggregate gate is green. Its product scope is:
+After the aggregate gate is green, Phase 1I-F should focus on stable source identity rather than adding more transport features:
 
-1. stable Typie current-selection or block identity rather than unique-text matching
-2. line/block-aware proposal diff
-3. per-hunk acceptance
-4. automatic safety snapshot before any multi-block or multi-document apply
-5. proposal provenance without prompt or credential leakage
-6. actual loopback provider validation
-7. actual remote HTTPS provider validation with a disposable test key
+1. stable current-selection or semantic-block mapping from the pinned Typie runtime
+2. block-aware proposal diff
+3. per-hunk review and acceptance
+4. automatic safety snapshot before multi-block or multi-document commit
+5. proposal provenance without storing hidden prompts, credentials or response bodies
+6. manual Ollama/LM Studio compatible-runtime validation
+7. manual remote HTTPS validation with a disposable user-owned credential
 
-No provider response should mutate a project without a second explicit author action and all current revision checks.
+No provider response may mutate a project without a second explicit author action and fresh identity/revision checks.
