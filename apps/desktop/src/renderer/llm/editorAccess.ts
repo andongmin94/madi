@@ -1,5 +1,6 @@
 import type {
   EditorChange,
+  EditorTextSelection,
   MadiEditorAdapter,
   MadiEditorAdapterFactory
 } from "../editor/MadiEditorAdapter";
@@ -7,13 +8,15 @@ import {
   LlmProposalApplyError,
   planLlmProposalApply,
   type LlmProposalApplyAssessment,
-  type LlmProposalApplyResult
+  type LlmProposalApplyResult,
+  type LlmProposalSourceRange
 } from "./proposalApply";
 
 export interface ActiveLlmEditorState {
   readonly generation: number;
   readonly revision: number;
   readonly isComposing: boolean;
+  readonly canReadSelection: boolean;
   readonly canApplyProposal: boolean;
 }
 
@@ -21,11 +24,16 @@ export interface ActiveLlmEditorDocument extends ActiveLlmEditorState {
   readonly plainText: string;
 }
 
+export interface ActiveLlmEditorSelection extends ActiveLlmEditorState {
+  readonly selection: EditorTextSelection;
+}
+
 export interface LlmProposalApplyRequest {
   readonly expectedGeneration: number;
   readonly expectedRevision: number;
   readonly originalText: string;
   readonly proposalText: string;
+  readonly sourceRange?: LlmProposalSourceRange | null;
 }
 
 export class LlmEditorAccess {
@@ -60,6 +68,7 @@ export class LlmEditorAccess {
       generation: this.generation,
       revision: this.revision,
       isComposing: this.isComposing,
+      canReadSelection: typeof this.adapter?.getTextSelection === "function",
       canApplyProposal: typeof this.adapter?.replaceTextRanges === "function"
     };
   }
@@ -88,6 +97,35 @@ export class LlmEditorAccess {
     return {
       ...after,
       plainText
+    };
+  }
+
+  async readCurrentSelection(): Promise<ActiveLlmEditorSelection> {
+    const adapter = this.requireAdapter();
+    this.requireCompositionFinished();
+    if (!adapter.getTextSelection) {
+      throw new Error("현재 Typie runtime은 선택 영역 매핑을 지원하지 않습니다.");
+    }
+    const before = this.getState();
+    const selection = adapter.getTextSelection();
+    const after = this.getState();
+    if (
+      before.generation !== after.generation ||
+      before.revision !== after.revision ||
+      after.isComposing
+    ) {
+      throw new Error(
+        "선택 영역을 읽는 동안 편집 문서가 바뀌었습니다. 다시 선택하세요."
+      );
+    }
+    if (!selection) {
+      throw new Error(
+        "한 문단 안의 텍스트를 정확히 선택한 뒤 다시 시도하세요. 너무 짧거나 여러 블록에 걸친 선택은 사용할 수 없습니다."
+      );
+    }
+    return {
+      ...after,
+      selection
     };
   }
 
@@ -138,7 +176,8 @@ export class LlmEditorAccess {
       },
       currentText,
       originalText: request.originalText,
-      proposalText: request.proposalText
+      proposalText: request.proposalText,
+      sourceRange: request.sourceRange
     });
   }
 
@@ -174,7 +213,8 @@ export class LlmEditorAccess {
         },
         currentText,
         originalText: request.originalText,
-        proposalText: request.proposalText
+        proposalText: request.proposalText,
+        sourceRange: request.sourceRange
       });
       if (
         before.generation !== afterRead.generation ||
@@ -196,7 +236,7 @@ export class LlmEditorAccess {
       ]);
       if (transformed.plainTextRecovery !== assessment.expectedDocumentText) {
         throw new Error(
-          "Typie 적용 결과가 검토한 제안문과 일치하지 않습니다."
+          "Typie 적용 결과가 검토한 선택 반영본과 일치하지 않습니다."
         );
       }
       const current = this.getState();
