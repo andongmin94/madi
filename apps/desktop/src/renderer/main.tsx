@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { LlmAssistantOverlay } from "./components/llm/LlmAssistantOverlay";
 import { LlmProviderDiagnostics } from "./components/llm/LlmProviderDiagnostics";
+import { LlmSelectionRewriteOverlay } from "./components/llm/LlmSelectionRewriteOverlay";
 import { productionEditorAdapter } from "./editor/typie/productionAdapter";
 import {
   createLlmTrackedEditorFactory,
@@ -29,6 +30,12 @@ createRoot(root).render(
       adapterFactory={editorFactory}
       typieCommit={productionEditorAdapter.engineCommit}
       editorSchemaVersion={productionEditorAdapter.schemaVersion}
+    />
+    <LlmSelectionRewriteOverlay
+      api={window.madiLlm}
+      editorAccess={llmEditorAccess}
+      createId={createLlmId}
+      now={currentDate}
     />
     <LlmProviderDiagnostics
       api={window.madiLlm}
