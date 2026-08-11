@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   EditorChange,
   EditorTextReplacement,
+  EditorTextSelection,
   MadiEditorAdapter,
   MadiEditorAdapterFactory
 } from "../src/renderer/editor/MadiEditorAdapter";
@@ -11,10 +12,19 @@ import {
   LlmEditorAccess
 } from "../src/renderer/llm/editorAccess";
 
-function createAdapter(initialText = "현재 편집 원고") {
+function createAdapter(
+  initialText = "현재 편집 원고",
+  initialSelection: EditorTextSelection | null = {
+    text: "현재",
+    start: 0,
+    end: 2,
+    blockKey: "node-1"
+  }
+) {
   let listener: ((change: EditorChange) => void) | null = null;
   let text = initialText;
   let revision = 0;
+  let selection = initialSelection;
   const replaceTextRanges = vi.fn(
     async (replacements: readonly EditorTextReplacement[]) => {
       const characters = Array.from(text);
@@ -50,6 +60,7 @@ function createAdapter(initialText = "현재 편집 원고") {
     open: vi.fn(async () => undefined),
     getSnapshot: vi.fn(async () => new Uint8Array([1, 2, 3])),
     getPlainText: vi.fn(async () => text),
+    getTextSelection: vi.fn(() => selection),
     replaceTextRanges,
     setInteractionEnabled: vi.fn(),
     focus: vi.fn(),
@@ -69,6 +80,9 @@ function createAdapter(initialText = "현재 편집 원고") {
     emit(change: EditorChange) {
       revision = change.revision;
       listener?.(change);
+    },
+    setSelection(nextSelection: EditorTextSelection | null) {
+      selection = nextSelection;
     },
     text() {
       return text;
@@ -108,8 +122,57 @@ describe("LlmEditorAccess", () => {
       generation: 2,
       revision: 17,
       isComposing: false,
+      canReadSelection: true,
       canApplyProposal: true
     });
+  });
+
+  it("reads the exact active selection with generation and revision", async () => {
+    const fixture = createAdapter("같은 문장 / 같은 문장", {
+      text: "같은 문장",
+      start: 8,
+      end: 13,
+      blockKey: "node-2"
+    });
+    const access = new LlmEditorAccess();
+    await createLlmTrackedEditorFactory(
+      async () => fixture.adapter,
+      access
+    )(document.createElement("div"));
+    fixture.emit({
+      revision: 4,
+      reason: "content",
+      canUndo: true,
+      canRedo: false,
+      isComposing: false
+    });
+
+    await expect(access.readCurrentSelection()).resolves.toEqual({
+      generation: 1,
+      revision: 4,
+      isComposing: false,
+      canReadSelection: true,
+      canApplyProposal: true,
+      selection: {
+        text: "같은 문장",
+        start: 8,
+        end: 13,
+        blockKey: "node-2"
+      }
+    });
+  });
+
+  it("rejects a collapsed or unmappable selection", async () => {
+    const fixture = createAdapter("현재 편집 원고", null);
+    const access = new LlmEditorAccess();
+    await createLlmTrackedEditorFactory(
+      async () => fixture.adapter,
+      access
+    )(document.createElement("div"));
+
+    await expect(access.readCurrentSelection()).rejects.toThrowError(
+      /한 문단 안의 텍스트/u
+    );
   });
 
   it("notifies subscribers when a new Typie document is restored", async () => {
@@ -134,7 +197,7 @@ describe("LlmEditorAccess", () => {
     unsubscribe();
   });
 
-  it("refuses to copy or apply while native composition is active", async () => {
+  it("refuses to copy selections or apply while native composition is active", async () => {
     const fixture = createAdapter();
     const access = new LlmEditorAccess();
     await createLlmTrackedEditorFactory(
@@ -150,6 +213,9 @@ describe("LlmEditorAccess", () => {
     });
 
     await expect(access.readCurrentDocument()).rejects.toThrowError(
+      /한글 조합이 끝난 뒤/u
+    );
+    await expect(access.readCurrentSelection()).rejects.toThrowError(
       /한글 조합이 끝난 뒤/u
     );
     await expect(
@@ -204,6 +270,44 @@ describe("LlmEditorAccess", () => {
     );
     expect(fixture.adapter.setInteractionEnabled).toHaveBeenLastCalledWith(true);
     expect(fixture.text()).toBe("앞 🙂 다듬은 문장 뒤");
+  });
+
+  it("applies an exact selected duplicate without touching the first occurrence", async () => {
+    const fixture = createAdapter("같은 문장 / 같은 문장", {
+      text: "같은 문장",
+      start: 8,
+      end: 13,
+      blockKey: "node-2"
+    });
+    const access = new LlmEditorAccess();
+    await createLlmTrackedEditorFactory(
+      async () => fixture.adapter,
+      access
+    )(document.createElement("div"));
+    fixture.emit({
+      revision: 3,
+      reason: "content",
+      canUndo: true,
+      canRedo: false,
+      isComposing: false
+    });
+
+    await access.applyProposal({
+      expectedGeneration: 1,
+      expectedRevision: 3,
+      originalText: "같은 문장",
+      proposalText: "두 번째 문장",
+      sourceRange: {
+        start: 8,
+        end: 13,
+        blockKey: "node-2"
+      }
+    });
+
+    expect(fixture.text()).toBe("같은 문장 / 두 번째 문장");
+    expect(fixture.replaceTextRanges).toHaveBeenCalledWith([
+      expect.objectContaining({ start: 8, end: 13 })
+    ]);
   });
 
   it("blocks stale and ambiguous proposals before mutation", async () => {
