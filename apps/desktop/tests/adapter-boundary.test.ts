@@ -16,6 +16,12 @@ function createPort() {
     restoreSnapshot: vi.fn(async () => undefined),
     exportSnapshot: vi.fn(async () => Uint8Array.from([9, 8, 7])),
     exportPlainText: vi.fn(async () => "복구용 본문"),
+    readTextSelection: vi.fn(() => ({
+      text: "복구용",
+      start: 0,
+      end: 3,
+      blockKey: "opaque-block"
+    })),
     setInteractionEnabled: vi.fn(),
     revealTextRange: vi.fn(),
     focus: vi.fn(),
@@ -61,6 +67,12 @@ describe("MadiEditorAdapter boundary", () => {
     const snapshot = await adapter.getSnapshot();
     expect(snapshot).toEqual(Uint8Array.from([9, 8, 7]));
     expect(await adapter.getPlainText()).toBe("복구용 본문");
+    expect(adapter.getTextSelection()).toEqual({
+      text: "복구용",
+      start: 0,
+      end: 3,
+      blockKey: "opaque-block"
+    });
   });
 
   it("delegates editing commands and normalizes transaction events", async () => {
@@ -151,6 +163,9 @@ describe("MadiEditorAdapter boundary", () => {
     );
 
     expect(() => adapter.undo()).toThrow("Typie editor is not open");
+    expect(() => adapter.getTextSelection()).toThrow(
+      "Typie editor is not open"
+    );
     await expect(adapter.getSnapshot()).rejects.toThrow(
       "Typie editor is not open"
     );
