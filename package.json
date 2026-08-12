@@ -30,7 +30,7 @@
     "dev": "pnpm run build:core && pnpm run build:epub && pnpm run build:hwpx && pnpm run build:atomic-output && pnpm run build:hwp-bridge && pnpm --filter @madi/desktop dev",
     "start": "pnpm --filter @madi/desktop start",
     "test": "pnpm run build:core && pnpm run build:epub && pnpm run build:hwpx && pnpm run build:atomic-output && pnpm run build:hwp-bridge && pnpm run typecheck && pnpm run test:typie && pnpm run test:publication && pnpm run test:epub && pnpm run test:hwpx && pnpm run test:atomic-output && pnpm run test:hwp-bridge && pnpm run test:epubcheck && pnpm run test:core && pnpm run test:desktop && pnpm run test:integration && pnpm run test:electron",
-    "test:typie": "node scripts/probe-typie.mjs",
+    "test:typie": "node scripts/probe-typie.mjs && node scripts/probe-typie-llm-selection.mjs",
     "test:publication": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 test --manifest-path crates/madi-publication/Cargo.toml",
     "test:epub": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 test --manifest-path crates/madi-export-epub/Cargo.toml",
     "test:hwpx": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 test --manifest-path crates/madi-export-hwpx/Cargo.toml",
