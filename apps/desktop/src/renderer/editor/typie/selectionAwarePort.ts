@@ -1,8 +1,14 @@
 import type { Editor } from "@madi/typie-runtime/browser";
 
-import type { EditorTextSelection } from "../MadiEditorAdapter";
+import type {
+  EditorStructuredSelection,
+  EditorTextSelection
+} from "../MadiEditorAdapter";
 import type { TypieEnginePort } from "./TypieEditorAdapter";
-import { readMappedTextSelection } from "./selectionMapping";
+import {
+  readMappedStructuredSelection,
+  readMappedTextSelection
+} from "./selectionMapping";
 
 interface BrowserTypieSelectionInternals {
   readonly editor: Editor | undefined;
@@ -26,7 +32,7 @@ function requireSelectionInternals(
 
 /**
  * Keeps the raw Typie `Editor` inside the pinned adapter directory while adding
- * Madi's engine-independent selection contract to the existing browser port.
+ * Madi's engine-independent selection contracts to the existing browser port.
  * The runtime pin and this bridge must be upgraded together.
  */
 export function bindTypieTextSelection(
@@ -39,11 +45,23 @@ export function bindTypieTextSelection(
     }
     return readMappedTextSelection(internals.editor);
   };
+  const readStructuredTextSelection = (): EditorStructuredSelection | null => {
+    if (internals.compositionActive || !internals.editor) {
+      return null;
+    }
+    return readMappedStructuredSelection(internals.editor);
+  };
   Object.defineProperty(port, "readTextSelection", {
     configurable: false,
     enumerable: false,
     writable: false,
     value: readTextSelection
+  });
+  Object.defineProperty(port, "readStructuredTextSelection", {
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: readStructuredTextSelection
   });
   return port;
 }
