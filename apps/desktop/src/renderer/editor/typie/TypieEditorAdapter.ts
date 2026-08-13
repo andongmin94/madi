@@ -2,6 +2,7 @@ import type {
   EditorChange,
   EditorChangeReason,
   EditorReplacementDocument,
+  EditorStructuredSelection,
   EditorTextReplacement,
   EditorTextSelection,
   MadiEditorAdapter
@@ -18,6 +19,7 @@ export interface TypieEnginePort {
   exportSnapshot(): Promise<Uint8Array>;
   exportPlainText(): Promise<string>;
   readTextSelection?(): EditorTextSelection | null;
+  readStructuredTextSelection?(): EditorStructuredSelection | null;
   relocate?(element: HTMLElement): void;
   replaceTextRanges?(
     replacements: readonly EditorTextReplacement[]
@@ -113,6 +115,11 @@ export class TypieEditorAdapter implements MadiEditorAdapter {
   public getTextSelection(): EditorTextSelection | null {
     this.requireOpen();
     return this.port.readTextSelection?.() ?? null;
+  }
+
+  public getStructuredTextSelection(): EditorStructuredSelection | null {
+    this.requireOpen();
+    return this.port.readStructuredTextSelection?.() ?? null;
   }
 
   public relocate(mountElement: HTMLElement): void {
