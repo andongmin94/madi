@@ -32,6 +32,7 @@ const provider = {
 interface EditorFixture {
   readonly access: LlmEditorAccess;
   readonly adapter: MadiEditorAdapter;
+  readonly selection: EditorTextSelection;
   readonly replaceTextRanges: ReturnType<typeof vi.fn>;
   emit(change: EditorChange): void;
   text(): string;
@@ -107,6 +108,7 @@ function editorFixture(
   return {
     access,
     adapter,
+    selection,
     replaceTextRanges,
     emit(change) {
       currentRevision = change.revision;
@@ -125,9 +127,16 @@ function fakeApi(proposalText: string): MadiLlmApi {
       credentialStorage: "AVAILABLE" as const
     })),
     listProviders: vi.fn(async () => [provider]),
-    saveProvider: vi.fn(),
-    deleteProvider: vi.fn(),
-    testProvider: vi.fn(),
+    saveProvider: vi.fn(async () => provider),
+    deleteProvider: vi.fn(async () => undefined),
+    testProvider: vi.fn(async (request) => ({
+      requestId: request.requestId,
+      providerId: request.providerId,
+      configuredModel: "example-model",
+      responseModel: "example-model",
+      status: "CONNECTED" as const,
+      latencyMs: 1
+    })),
     invoke: vi.fn(async (request) => ({
       requestId: request.invocation.requestId,
       providerId: request.invocation.providerId,
@@ -163,9 +172,7 @@ async function openAndRequest(
     screen.getByRole("button", { name: "AI 선택 영역 다듬기" })
   );
   await screen.findByText("테스트 제공자 · example-model");
-  await screen.findByDisplayValue(
-    (fixture.adapter.getTextSelection as ReturnType<typeof vi.fn>)().text
-  );
+  await screen.findByDisplayValue(fixture.selection.text);
   const send = screen.getByRole("button", { name: "수정 제안 요청" });
   expect((send as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(
