@@ -39,6 +39,31 @@ export interface EditorTextSelection {
   readonly blockKey: string;
 }
 
+/**
+ * One text-node segment inside a broader live selection. `nodeKey` is opaque
+ * outside the editor adapter and exists only to prevent accidental coalescing
+ * across Typie semantic ownership boundaries.
+ */
+export interface EditorStructuredSelectionSegment {
+  readonly text: string;
+  readonly start: number;
+  readonly end: number;
+  readonly nodeKey: string;
+}
+
+/**
+ * A live selection round-tripped through annotated recovery text. Structural
+ * separators are preserved exactly between text-node segments; no engine type
+ * crosses this boundary.
+ */
+export interface EditorStructuredSelection {
+  readonly text: string;
+  readonly start: number;
+  readonly end: number;
+  readonly segments: readonly EditorStructuredSelectionSegment[];
+  readonly separators: readonly string[];
+}
+
 export interface EditorTextReplacement {
   readonly id: string;
   readonly start: number;
@@ -66,6 +91,12 @@ export interface MadiEditorAdapter {
    * selection cannot be mapped without ambiguity to annotated recovery text.
    */
   getTextSelection?(): EditorTextSelection | null;
+  /**
+   * Returns a bounded exact selection split at Typie text-node ownership and
+   * structural separators. This is a review contract, not permission to mutate
+   * multiple semantic blocks.
+   */
+  getStructuredTextSelection?(): EditorStructuredSelection | null;
   /** Moves the one live editor surface between workspace blocks. */
   relocate?(mountElement: HTMLElement): void;
   /**
