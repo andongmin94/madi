@@ -4,9 +4,15 @@ import type {
   Selection
 } from "@madi/typie-runtime/browser";
 
-import type { EditorTextSelection } from "../MadiEditorAdapter";
+import type {
+  EditorStructuredSelection,
+  EditorStructuredSelectionSegment,
+  EditorTextSelection
+} from "../MadiEditorAdapter";
 
 const MAX_SELECTION_CANDIDATES = 10_000;
+const MAX_STRUCTURED_SELECTION_SCALARS = 20_000;
+const MAX_STRUCTURED_SELECTION_SEGMENTS = 64;
 
 type SelectionMappingEditor = Pick<
   Editor,
@@ -15,6 +21,15 @@ type SelectionMappingEditor = Pick<
   | "prose_text_annotated"
   | "prose_to_selection_annotated"
 >;
+
+interface ExactMappedSelection {
+  readonly source: string;
+  readonly sourceCharacters: readonly string[];
+  readonly selectedText: string;
+  readonly selection: Selection;
+  readonly start: number;
+  readonly end: number;
+}
 
 function samePosition(left: Position, right: Position): boolean {
   return left.node === right.node && left.offset === right.offset;
@@ -42,22 +57,24 @@ function scalarBoundaries(source: string): ReadonlyMap<number, number> {
   return boundaries;
 }
 
-/**
- * Maps the live Typie selection back to the exact annotated recovery-text
- * scalar range. Text equality alone is insufficient because the same sentence
- * can appear repeatedly; every candidate is remapped through Typie and compared
- * with the actual CRDT selection endpoints.
- */
-export function readMappedTextSelection(
+function isStructuralSeparator(character: string): boolean {
+  return /[\r\n\u2028\u2029]/u.test(character);
+}
+
+function isSceneBreakFallback(value: string): boolean {
+  const normalized = value.trim();
+  return normalized === "***" || normalized === "* * *";
+}
+
+function findExactMappedSelection(
   editor: SelectionMappingEditor
-): EditorTextSelection | null {
+): ExactMappedSelection | null {
   const selection = editor.selection();
   const clipboard = editor.copy_selection();
   if (
     !selection ||
     !clipboard ||
     clipboard.text.length === 0 ||
-    selection.anchor.node !== selection.head.node ||
     samePosition(selection.anchor, selection.head)
   ) {
     return null;
@@ -66,6 +83,7 @@ export function readMappedTextSelection(
   const source = editor.prose_text_annotated();
   const selectedText = clipboard.text;
   const boundaries = scalarBoundaries(source);
+  const sourceCharacters = Array.from(source);
   let nextCodeUnit = 0;
   let candidates = 0;
 
@@ -77,14 +95,21 @@ export function readMappedTextSelection(
     const endCodeUnit = startCodeUnit + selectedText.length;
     const start = boundaries.get(startCodeUnit);
     const end = boundaries.get(endCodeUnit);
-    if (start !== undefined && end !== undefined) {
+    if (
+      start !== undefined &&
+      end !== undefined &&
+      end > start &&
+      end - start <= MAX_STRUCTURED_SELECTION_SCALARS
+    ) {
       const candidate = editor.prose_to_selection_annotated(start, end);
       if (candidate && sameSelection(candidate, selection)) {
         return {
-          text: selectedText,
+          source,
+          sourceCharacters,
+          selectedText,
+          selection,
           start,
-          end,
-          blockKey: selection.anchor.node
+          end
         };
       }
     }
@@ -95,4 +120,140 @@ export function readMappedTextSelection(
     }
     nextCodeUnit = startCodeUnit + 1;
   }
+}
+
+function appendSegment(
+  segments: EditorStructuredSelectionSegment[],
+  segment: EditorStructuredSelectionSegment | null
+): void {
+  if (!segment) {
+    return;
+  }
+  if (!segment.text || isSceneBreakFallback(segment.text)) {
+    throw new Error("The selection contains a semantic scene-break boundary");
+  }
+  segments.push(segment);
+  if (segments.length > MAX_STRUCTURED_SELECTION_SEGMENTS) {
+    throw new Error("The selection contains too many semantic text segments");
+  }
+}
+
+/**
+ * Maps a bounded live Typie selection to exact annotated-recovery scalar
+ * offsets and splits it whenever text ownership or structural separators
+ * change. Every visible scalar is independently round-tripped through Typie;
+ * equal text at another document position cannot be selected accidentally.
+ */
+export function readMappedStructuredSelection(
+  editor: SelectionMappingEditor
+): EditorStructuredSelection | null {
+  const mapped = findExactMappedSelection(editor);
+  if (!mapped) {
+    return null;
+  }
+
+  const segments: EditorStructuredSelectionSegment[] = [];
+  let current: EditorStructuredSelectionSegment | null = null;
+  try {
+    for (let offset = mapped.start; offset < mapped.end; offset += 1) {
+      const character = mapped.sourceCharacters[offset];
+      if (character === undefined) {
+        return null;
+      }
+      if (isStructuralSeparator(character)) {
+        appendSegment(segments, current);
+        current = null;
+        continue;
+      }
+
+      const scalarSelection = editor.prose_to_selection_annotated(
+        offset,
+        offset + 1
+      );
+      if (
+        !scalarSelection ||
+        samePosition(scalarSelection.anchor, scalarSelection.head) ||
+        scalarSelection.anchor.node !== scalarSelection.head.node
+      ) {
+        return null;
+      }
+      const nodeKey = scalarSelection.anchor.node;
+      if (
+        current &&
+        current.nodeKey === nodeKey &&
+        current.end === offset
+      ) {
+        current = {
+          ...current,
+          text: `${current.text}${character}`,
+          end: offset + 1
+        };
+      } else {
+        appendSegment(segments, current);
+        current = {
+          text: character,
+          start: offset,
+          end: offset + 1,
+          nodeKey
+        };
+      }
+    }
+    appendSegment(segments, current);
+  } catch {
+    return null;
+  }
+
+  if (
+    segments.length === 0 ||
+    segments[0]!.start !== mapped.start ||
+    segments.at(-1)!.end !== mapped.end
+  ) {
+    return null;
+  }
+
+  const separators = segments.slice(1).map((segment, index) =>
+    mapped.sourceCharacters
+      .slice(segments[index]!.end, segment.start)
+      .join("")
+  );
+  const reconstructed = segments.reduce(
+    (value, segment, index) =>
+      `${value}${index === 0 ? "" : separators[index - 1]}${segment.text}`,
+    ""
+  );
+  if (reconstructed !== mapped.selectedText) {
+    return null;
+  }
+
+  return {
+    text: mapped.selectedText,
+    start: mapped.start,
+    end: mapped.end,
+    segments,
+    separators
+  };
+}
+
+/**
+ * Same-node selection contract used by the narrow one-transaction rewrite
+ * workflow. Broader selections must use `readMappedStructuredSelection` and
+ * remain review-only until the project safety-snapshot gate is connected.
+ */
+export function readMappedTextSelection(
+  editor: SelectionMappingEditor
+): EditorTextSelection | null {
+  const structured = readMappedStructuredSelection(editor);
+  if (structured?.segments.length !== 1) {
+    return null;
+  }
+  const segment = structured.segments[0]!;
+  if (segment.start !== structured.start || segment.end !== structured.end) {
+    return null;
+  }
+  return {
+    text: segment.text,
+    start: segment.start,
+    end: segment.end,
+    blockKey: segment.nodeKey
+  };
 }
