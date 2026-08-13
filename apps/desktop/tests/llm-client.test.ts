@@ -110,6 +110,44 @@ describe("OpenAI-compatible madi LLM client", () => {
     });
   });
 
+  it("does not send exact selection identity metadata to the provider", async () => {
+    const identitySentinel =
+      "active-editor:1:3:8:13:SECRET_TYPIE_BLOCK_IDENTITY";
+    const exactSelectionScope: LlmInvocationScope = {
+      kind: "SELECTION",
+      sourceId: identitySentinel,
+      manuscriptText: "실제로 선택한 문장",
+      contextText: null
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async (_url, init) => {
+      const rawBody = String(init?.body);
+      expect(rawBody).toContain(exactSelectionScope.manuscriptText);
+      expect(rawBody).not.toContain(identitySentinel);
+      expect(rawBody).not.toContain("SECRET_TYPIE_BLOCK_IDENTITY");
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: { role: "assistant", content: "다듬은 문장" },
+              finish_reason: "stop"
+            }
+          ]
+        }),
+        { status: 200 }
+      );
+    });
+
+    const result = await invokeOpenAiCompatible({
+      config,
+      request: requestForScope(exactSelectionScope),
+      apiKey: "api-secret",
+      fetchImpl
+    });
+
+    expect(result.text).toBe("다듬은 문장");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses a scope changed after user confirmation before any network call", async () => {
     const request = requestForScope();
     const fetchImpl = vi.fn<typeof fetch>();
@@ -151,7 +189,10 @@ describe("OpenAI-compatible madi LLM client", () => {
     }
 
     expect(thrown).toBeInstanceOf(LlmClientError);
-    const serialized = JSON.stringify(thrown, Object.getOwnPropertyNames(thrown as object));
+    const serialized = JSON.stringify(
+      thrown,
+      Object.getOwnPropertyNames(thrown as object)
+    );
     expect(serialized).not.toContain(scope.manuscriptText);
     expect(serialized).not.toContain("api-secret");
     expect(serialized).not.toContain("provider-private-message");
