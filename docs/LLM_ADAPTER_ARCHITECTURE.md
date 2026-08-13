@@ -5,11 +5,12 @@
 ```text
 Typie canonical manuscript
         │
-        ├─ user copies an explicit active-document scope
+        ├─ explicit copied document scope, or
+        └─ exact live same-node selection
         ▼
 Madi invocation scope + scope SHA-256
         │
-        ├─ user confirms provider/model/host/character count
+        ├─ user confirms provider/model/host/content
         ▼
 Trusted Electron IPC
         ▼
@@ -21,7 +22,8 @@ Main-process LLM runtime service
 Non-canonical proposal buffer
         │
         ├─ copy/reject
-        └─ explicit safe apply when Typie identity still matches
+        ├─ lexical hunk include/exclude review
+        └─ explicit safe apply after fresh Typie identity checks
                 ▼
         one Typie semantic replacement transaction
 ```
@@ -41,7 +43,7 @@ Same bounded OpenAI-compatible transport
 status + model + latency only
 ```
 
-The LLM adapter is not part of the Typie editor engine and does not change Publication IR or export behavior. It consumes only text and context explicitly copied into the AI panel. Provider output remains non-canonical until the author performs a second apply action.
+The LLM adapter is not part of the Typie editor engine and does not change Publication IR or export behavior. It consumes only text and context explicitly approved by the author. Provider output remains non-canonical until the author performs a second apply action.
 
 ## Provider configuration and credentials
 
@@ -83,18 +85,44 @@ The adapter resolves an OpenAI-compatible base URL to `/v1/chat/completions`, un
 
 ## Active editor access
 
-The AI panel does not create another Typie engine. `LlmEditorAccess` observes the existing one live Madi editor adapter.
+The AI surfaces do not create another Typie engine. `LlmEditorAccess` observes the existing one live Madi editor adapter.
 
 It tracks:
 
 - a document generation incremented whenever a Typie document is attached or restored
 - the current editor transaction revision
 - native composition state
-- whether semantic text-range replacement is available
+- text-selection mapping availability
+- semantic text-range replacement availability
 
-The generation distinguishes different scenes or entity notes even when local editor revisions match. A proposal records generation and revision before transport. Any owner switch, restore or later transaction invalidates it.
+The generation distinguishes different scenes or entity notes even when local editor revisions match. A proposal records generation and revision before transport. Any owner switch, restore or later content transaction invalidates it.
 
-Text capture is refused during native IME composition. Captured text becomes a separate editable transmission buffer; later editor changes do not silently expand it.
+Text or selection capture is refused during native IME composition. Captured content becomes a separate transmission buffer; later editor changes do not silently expand it.
+
+## Exact Typie selection mapping
+
+The Madi-owned adapter contract exposes only:
+
+```text
+selected text
+annotated-prose start scalar
+annotated-prose end scalar
+opaque same-node key
+```
+
+Raw Typie `Editor`, `Position`, `Selection` and CRDT node shapes stay inside `apps/desktop/src/renderer/editor/typie`.
+
+The mapping algorithm reads:
+
+- the live Typie selection
+- Typie clipboard text for that selection
+- full annotated recovery text
+
+It rejects collapsed selections and selections whose anchor and head belong to different Typie text nodes. It then finds every occurrence of the selected clipboard text in annotated recovery text. Each candidate code-unit boundary is converted to Unicode-scalar offsets and mapped back through `prose_to_selection_annotated`. Only the candidate whose returned CRDT endpoints equal the live selection is accepted.
+
+This endpoint round trip, not text equality alone, identifies the exact selected occurrence when identical prose appears more than once.
+
+The browser port is pinned together with Typie. `selectionAwarePort.ts` adds the engine-independent selection method inside the same adapter directory and fails closed if the pinned browser-port shape changes. No Typie type escapes into application workspaces or shared IPC contracts.
 
 ## Explicit manuscript-scope consent
 
@@ -107,9 +135,11 @@ manuscript text
 optional context text
 ```
 
-The source ID for a bound live-editor request carries generation and revision. The confirmation UI shows provider, model, destination host and character count. Only after one-request consent does the renderer calculate SHA-256 and invoke the trusted preload API.
+A copied-document source ID carries generation and revision. An exact-selection source ID additionally carries start scalar, end scalar and the opaque same-node key. The confirmation UI shows provider, model, destination host and content. Only after one-request consent does the renderer calculate SHA-256 and invoke the trusted preload API.
 
 Immediately before transport, the main process recomputes the same hash. A changed or malformed scope causes `CONSENT_MISMATCH`, and no network call occurs.
+
+The opaque selection key is consent/apply metadata. It is not included in the provider chat messages, which contain only the approved instruction, optional context and manuscript scope.
 
 ## Electron boundary
 
@@ -175,37 +205,57 @@ The service returns:
 
 The response body is discarded. Diagnostic results are not written to `.madi`, snapshots, reports or telemetry. This decision is recorded in [`ADR-0013`](decisions/ADR-0013-provider-connectivity-tests-send-no-manuscript.md).
 
-A real loopback HTTP test exercises the production URL resolution, request body, network socket, response parser and cleanup. Remote HTTPS validation remains manual because it requires a disposable user-owned key and may incur cost.
+A real loopback HTTP test exercises production URL resolution, request body, network socket, response parser and cleanup. Remote HTTPS validation remains manual because it requires a disposable user-owned key and may incur cost.
 
 ## Failure isolation
 
 The LLM subsystem is optional. Provider-store initialization errors are retained inside `LlmRuntimeService`, which reports the feature as unavailable but does not block the editor, project storage, Reader Lab, EPUB or HWPX. Active manuscript and diagnostic requests are aborted when the app quits.
 
-## Proposal review
+## Proposal buffers and lexical hunk review
 
-Provider output remains outside the canonical project until the author takes another action. The panel displays original and proposal text side by side and always permits copy or rejection.
+Provider output remains outside the canonical project until the author takes another action. The general panel displays original and proposal text side by side and always permits copy or rejection.
 
-Summary, consistency-review and continuation outputs remain review material. They are not interpreted as replacement text.
+The exact-selection panel creates a bounded lexical review model. It tokenizes whitespace, Unicode letter/number/mark runs and punctuation/symbol runs, then computes a deterministic longest-common-subsequence diff. Consecutive delete/insert operations form one hunk.
 
-## Safe single-range application
+Each hunk is selected by default. The author may reject any hunk, and `renderLlmProposalReview` renders the chosen set into one complete replacement string. No hunk is applied independently to Typie.
 
-`LlmEditorAccess` may apply a rewrite only when the proposal remains bound to the same active document generation and revision. The annotated recovery text is reread immediately before mutation.
+Diff work is bounded by token and matrix limits. A larger selection becomes one coarse hunk rather than blocking the renderer with unbounded quadratic work. Review hunks are ephemeral UI data; they are not canonical Typie nodes, `.madi` records, snapshots or provider provenance.
 
-The planner requires:
+Summary, consistency-review and continuation outputs remain review material and are not interpreted as replacement text.
 
-- one exact occurrence of the original scope
-- no line or paragraph separator in source or proposal
-- no scene-break fallback text
-- non-empty changed output
-- a replacement-capable Typie adapter
-- inactive native composition
+## Safe unique-text application
 
-The planner converts JavaScript code-unit positions to Unicode-scalar offsets and creates one Madi-owned `EditorTextReplacement` for `replaceTextRanges`.
+The Phase 1I-D fallback may apply a rewrite when its source occurs exactly once in the active document. `LlmEditorAccess` rereads annotated recovery text and verifies generation, revision, source text and structural restrictions before creating one Madi-owned `EditorTextReplacement`.
 
-The pinned Typie adapter independently verifies expected prose, replacement outcomes, resulting text, semantic scene-break count and semantic structure. It restores the original snapshot if a postcondition fails. Madi also verifies that returned full text equals the reviewed expected result, and locks editor interaction during the boundary when supported.
+JavaScript code-unit positions are converted to Unicode-scalar offsets. The pinned Typie adapter independently verifies expected prose, replacement outcomes, resulting text, semantic scene-break count and semantic structure. It restores the original snapshot if a postcondition fails. Madi also verifies returned full text and locks editor interaction during the boundary when supported.
 
 The successful operation creates one normal Typie history entry. `Ctrl+Z` is the rollback path. This decision is recorded in [`ADR-0012`](decisions/ADR-0012-llm-single-range-apply-uses-typie-transaction.md).
 
+## Safe exact-selection application
+
+An exact-selection proposal carries the captured generation, revision, scalar range and opaque same-node key. Immediately before mutation, Madi rereads the current annotated recovery text and verifies that the expected source still occupies the exact scalar range.
+
+The final accepted hunk rendering must be:
+
+- non-empty
+- different from the source
+- free of line and paragraph separators
+- free of scene-break fallback text
+- bound to the same document generation and editor revision
+- applied while native composition is inactive
+
+Madi passes one replacement for the complete exact selection to `replaceTextRanges`. The Typie adapter performs the same semantic postcondition checks as the unique-text path. A successful operation creates one Undo entry, regardless of how many lexical review hunks were accepted.
+
+Because the operation remains inside one exact Typie text node, no named safety snapshot is created. The decision is recorded in [`ADR-0014`](decisions/ADR-0014-llm-selection-hunks-remain-one-typie-node.md).
+
 ## Broad application boundary
 
-Multi-block, newline-bearing, ambiguous, stale, missing and unbound proposals remain copy-only. A future phase must add stable Typie block or selection mapping, per-hunk acceptance and an automatic safety snapshot before any accepted operation touches multiple semantic blocks or documents.
+The following remain copy-only or rejected:
+
+- cross-node or modifier-boundary selections
+- newline-bearing or multi-block proposals
+- stale, missing or unmappable selections
+- multi-document and project-wide proposals
+- automatic Story Bible mutations
+
+A future broad-apply phase must introduce stable semantic-block identity and create an automatic safety snapshot before any accepted operation touches multiple Typie blocks or documents. It must commit all selected block changes atomically or restore the project from that snapshot. The current lexical hunk model alone is not sufficient authorization for broad mutation.
