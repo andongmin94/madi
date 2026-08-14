@@ -1,9 +1,14 @@
 import type {
   EditorChange,
+  EditorStructuredSelection,
   EditorTextSelection,
   MadiEditorAdapter,
   MadiEditorAdapterFactory
 } from "../editor/MadiEditorAdapter";
+import {
+  planLlmMultiBlockProposal,
+  type LlmMultiBlockPlan
+} from "./multiBlockProposal";
 import {
   LlmProposalApplyError,
   planLlmProposalApply,
@@ -28,12 +33,24 @@ export interface ActiveLlmEditorSelection extends ActiveLlmEditorState {
   readonly selection: EditorTextSelection;
 }
 
+export interface ActiveLlmEditorStructuredSelection
+  extends ActiveLlmEditorState {
+  readonly selection: EditorStructuredSelection;
+}
+
 export interface LlmProposalApplyRequest {
   readonly expectedGeneration: number;
   readonly expectedRevision: number;
   readonly originalText: string;
   readonly proposalText: string;
   readonly sourceRange?: LlmProposalSourceRange | null;
+}
+
+export interface LlmMultiBlockAssessmentRequest {
+  readonly expectedGeneration: number;
+  readonly expectedRevision: number;
+  readonly selection: EditorStructuredSelection;
+  readonly proposalBlocks: readonly string[];
 }
 
 export class LlmEditorAccess {
@@ -129,6 +146,37 @@ export class LlmEditorAccess {
     };
   }
 
+  async readCurrentStructuredSelection(): Promise<ActiveLlmEditorStructuredSelection> {
+    const adapter = this.requireAdapter();
+    this.requireCompositionFinished();
+    if (!adapter.getStructuredTextSelection) {
+      throw new Error(
+        "현재 Typie runtime은 다중 문단 선택 영역 매핑을 지원하지 않습니다."
+      );
+    }
+    const before = this.getState();
+    const selection = adapter.getStructuredTextSelection();
+    const after = this.getState();
+    if (
+      before.generation !== after.generation ||
+      before.revision !== after.revision ||
+      after.isComposing
+    ) {
+      throw new Error(
+        "다중 문단 선택을 읽는 동안 편집 문서가 바뀌었습니다. 다시 선택하세요."
+      );
+    }
+    if (!selection || selection.segments.length < 2) {
+      throw new Error(
+        "줄바꿈으로 분리된 두 개 이상의 문단을 선택하세요. 같은 문단의 한 범위는 AI✎ 기능을 사용하면 됩니다."
+      );
+    }
+    return {
+      ...after,
+      selection
+    };
+  }
+
   async assessProposal(
     request: LlmProposalApplyRequest
   ): Promise<LlmProposalApplyAssessment> {
@@ -178,6 +226,51 @@ export class LlmEditorAccess {
       originalText: request.originalText,
       proposalText: request.proposalText,
       sourceRange: request.sourceRange
+    });
+  }
+
+  async assessMultiBlockProposal(
+    request: LlmMultiBlockAssessmentRequest
+  ): Promise<LlmMultiBlockPlan> {
+    const adapter = this.adapter;
+    if (!adapter) {
+      return {
+        status: "INVALID_SELECTION",
+        message: "편집기가 아직 준비되지 않았습니다."
+      };
+    }
+    if (this.isComposing) {
+      return {
+        status: "STALE_DOCUMENT",
+        message: "한글 조합이 끝난 뒤 다중 문단 제안을 다시 확인하세요."
+      };
+    }
+    const before = this.getState();
+    const currentText = await adapter.getPlainText();
+    const after = this.getState();
+    if (
+      before.generation !== after.generation ||
+      before.revision !== after.revision ||
+      after.isComposing
+    ) {
+      return {
+        status: "STALE_DOCUMENT",
+        message:
+          "다중 문단 적용 계획을 확인하는 동안 편집 문서가 바뀌었습니다."
+      };
+    }
+    return planLlmMultiBlockProposal({
+      expected: {
+        generation: request.expectedGeneration,
+        revision: request.expectedRevision
+      },
+      current: {
+        generation: after.generation,
+        revision: after.revision
+      },
+      currentText,
+      selection: request.selection,
+      proposalBlocks: request.proposalBlocks
     });
   }
 
