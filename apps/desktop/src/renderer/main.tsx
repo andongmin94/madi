@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { LlmAssistantOverlay } from "./components/llm/LlmAssistantOverlay";
+import { LlmMultiBlockReviewOverlay } from "./components/llm/LlmMultiBlockReviewOverlay";
 import { LlmProviderDiagnostics } from "./components/llm/LlmProviderDiagnostics";
 import { LlmSelectionRewriteOverlay } from "./components/llm/LlmSelectionRewriteOverlay";
 import { productionEditorAdapter } from "./editor/typie/productionAdapter";
@@ -30,6 +31,12 @@ createRoot(root).render(
       adapterFactory={editorFactory}
       typieCommit={productionEditorAdapter.engineCommit}
       editorSchemaVersion={productionEditorAdapter.schemaVersion}
+    />
+    <LlmMultiBlockReviewOverlay
+      api={window.madiLlm}
+      editorAccess={llmEditorAccess}
+      createId={createLlmId}
+      now={currentDate}
     />
     <LlmSelectionRewriteOverlay
       api={window.madiLlm}
