@@ -6,6 +6,7 @@ import type {
   MadiEditorAdapterFactory
 } from "../editor/MadiEditorAdapter";
 import {
+  parseLlmMultiBlockProposal,
   planLlmMultiBlockProposal,
   type LlmMultiBlockPlan
 } from "./multiBlockProposal";
@@ -170,6 +171,13 @@ export class LlmEditorAccess {
       throw new Error(
         "줄바꿈으로 분리된 두 개 이상의 문단을 선택하세요. 같은 문단의 한 범위는 AI✎ 기능을 사용하면 됩니다."
       );
+    }
+    const structuralCheck = parseLlmMultiBlockProposal(
+      selection,
+      selection.text
+    );
+    if (structuralCheck.status !== "READY") {
+      throw new Error(structuralCheck.message);
     }
     return {
       ...after,
