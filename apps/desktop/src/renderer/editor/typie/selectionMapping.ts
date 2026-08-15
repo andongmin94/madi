@@ -236,24 +236,23 @@ export function readMappedStructuredSelection(
 
 /**
  * Same-node selection contract used by the narrow one-transaction rewrite
- * workflow. Broader selections must use `readMappedStructuredSelection` and
- * remain review-only until the project safety-snapshot gate is connected.
+ * workflow. It deliberately avoids the per-scalar structured mapping pass.
  */
 export function readMappedTextSelection(
   editor: SelectionMappingEditor
 ): EditorTextSelection | null {
-  const structured = readMappedStructuredSelection(editor);
-  if (structured?.segments.length !== 1) {
-    return null;
-  }
-  const segment = structured.segments[0]!;
-  if (segment.start !== structured.start || segment.end !== structured.end) {
+  const mapped = findExactMappedSelection(editor);
+  if (
+    !mapped ||
+    mapped.selection.anchor.node !== mapped.selection.head.node ||
+    isSceneBreakFallback(mapped.selectedText)
+  ) {
     return null;
   }
   return {
-    text: segment.text,
-    start: segment.start,
-    end: segment.end,
-    blockKey: segment.nodeKey
+    text: mapped.selectedText,
+    start: mapped.start,
+    end: mapped.end,
+    blockKey: mapped.selection.anchor.node
   };
 }
