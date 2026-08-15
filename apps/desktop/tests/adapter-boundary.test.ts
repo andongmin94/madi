@@ -22,6 +22,16 @@ function createPort() {
       end: 3,
       blockKey: "opaque-block"
     })),
+    readStructuredTextSelection: vi.fn(() => ({
+      text: "첫 문단\n\n둘째 문단",
+      start: 0,
+      end: 11,
+      segments: [
+        { text: "첫 문단", start: 0, end: 4, nodeKey: "node-1" },
+        { text: "둘째 문단", start: 6, end: 11, nodeKey: "node-2" }
+      ],
+      separators: ["\n\n"]
+    })),
     setInteractionEnabled: vi.fn(),
     revealTextRange: vi.fn(),
     focus: vi.fn(),
@@ -72,6 +82,16 @@ describe("MadiEditorAdapter boundary", () => {
       start: 0,
       end: 3,
       blockKey: "opaque-block"
+    });
+    expect(adapter.getStructuredTextSelection()).toEqual({
+      text: "첫 문단\n\n둘째 문단",
+      start: 0,
+      end: 11,
+      segments: [
+        { text: "첫 문단", start: 0, end: 4, nodeKey: "node-1" },
+        { text: "둘째 문단", start: 6, end: 11, nodeKey: "node-2" }
+      ],
+      separators: ["\n\n"]
     });
   });
 
@@ -164,6 +184,9 @@ describe("MadiEditorAdapter boundary", () => {
 
     expect(() => adapter.undo()).toThrow("Typie editor is not open");
     expect(() => adapter.getTextSelection()).toThrow(
+      "Typie editor is not open"
+    );
+    expect(() => adapter.getStructuredTextSelection()).toThrow(
       "Typie editor is not open"
     );
     await expect(adapter.getSnapshot()).rejects.toThrow(
