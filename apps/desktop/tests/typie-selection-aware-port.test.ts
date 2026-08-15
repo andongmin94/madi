@@ -21,7 +21,7 @@ function basePort(): TypieEnginePort {
 }
 
 describe("bindTypieTextSelection", () => {
-  it("keeps the raw editor behind the port while exposing a Madi selection", () => {
+  it("keeps the raw editor behind the port while exposing Madi selections", () => {
     const selection = {
       anchor: { node: "node-2", offset: 0, affinity: "downstream" as const },
       head: { node: "node-2", offset: 2, affinity: "downstream" as const }
@@ -30,21 +30,34 @@ describe("bindTypieTextSelection", () => {
       selection: () => selection,
       copy_selection: () => ({ text: "반복", html: "" }),
       prose_text_annotated: () => "반복 / 반복",
-      prose_to_selection_annotated: (start: number, end: number) =>
-        start === 5 && end === 7
-          ? selection
-          : {
-              anchor: {
-                node: "node-1",
-                offset: 0,
-                affinity: "downstream" as const
-              },
-              head: {
-                node: "node-1",
-                offset: 2,
-                affinity: "downstream" as const
-              }
+      prose_to_selection_annotated: (start: number, end: number) => {
+        if (start >= 5 && end <= 7) {
+          return {
+            anchor: {
+              node: "node-2",
+              offset: start - 5,
+              affinity: "downstream" as const
+            },
+            head: {
+              node: "node-2",
+              offset: end - 5,
+              affinity: "downstream" as const
             }
+          };
+        }
+        return {
+          anchor: {
+            node: "node-1",
+            offset: 0,
+            affinity: "downstream" as const
+          },
+          head: {
+            node: "node-1",
+            offset: 2,
+            affinity: "downstream" as const
+          }
+        };
+      }
     } as unknown as Editor;
     const port = Object.assign(basePort(), {
       editor,
@@ -60,7 +73,17 @@ describe("bindTypieTextSelection", () => {
       end: 7,
       blockKey: "node-2"
     });
+    expect(bound.readStructuredTextSelection?.()).toEqual({
+      text: "반복",
+      start: 5,
+      end: 7,
+      segments: [
+        { text: "반복", start: 5, end: 7, nodeKey: "node-2" }
+      ],
+      separators: []
+    });
     expect(Object.keys(bound)).not.toContain("readTextSelection");
+    expect(Object.keys(bound)).not.toContain("readStructuredTextSelection");
   });
 
   it("returns no selection during native composition", () => {
@@ -68,8 +91,10 @@ describe("bindTypieTextSelection", () => {
       editor: {} as Editor,
       compositionActive: true
     });
+    const bound = bindTypieTextSelection(port);
 
-    expect(bindTypieTextSelection(port).readTextSelection?.()).toBeNull();
+    expect(bound.readTextSelection?.()).toBeNull();
+    expect(bound.readStructuredTextSelection?.()).toBeNull();
   });
 
   it("fails closed when the pinned browser port shape changes", () => {
