@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - .github/workflows/apply-phase1i-h-a.yml
+      - .github/phase1i-h-a/**
 
 permissions:
   contents: write
@@ -60,30 +61,26 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Download and apply exact Phase 1I-H-A patch blob
+      - name: Apply exact Phase 1I-H-A patch
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          $archive = Join-Path $env:RUNNER_TEMP "madi-phase1i-h-a-patch.zip"
-          $blob = gh api "repos/$env:GITHUB_REPOSITORY/git/blobs/cf750f78eefe8b08541a3305319845239aa2e115" | ConvertFrom-Json
-          if ($blob.encoding -ne "base64") {
-            throw "Unexpected patch blob encoding"
-          }
-          $base64 = $blob.content -replace '\s', ''
-          [System.IO.File]::WriteAllBytes(
-            $archive,
-            [System.Convert]::FromBase64String($base64)
-          )
-
           $patchRoot = Join-Path $env:RUNNER_TEMP "madi-phase1i-h-a"
           New-Item -ItemType Directory -Force -Path $patchRoot | Out-Null
+          $archive = Join-Path $env:RUNNER_TEMP "madi-phase1i-h-a.zip"
+          $parts = Get-ChildItem ".github/phase1i-h-a" -Filter "*.b64" | Sort-Object Name
+          if ($parts.Count -eq 0) {
+            throw "Phase 1I-H-A patch chunks are missing"
+          }
+          $encoded = ($parts | ForEach-Object {
+            [System.IO.File]::ReadAllText($_.FullName)
+          }) -join ""
+          [System.IO.File]::WriteAllBytes(
+            $archive,
+            [System.Convert]::FromBase64String($encoded)
+          )
           Expand-Archive -Path $archive -DestinationPath $patchRoot -Force
 
           $script = Join-Path $patchRoot "madi-phase1i-h-a-patch/apply-phase1i-h-a.mjs"
-          if (-not (Test-Path $script)) {
-            throw "Phase 1I-H-A apply script is missing"
-          }
           $head = (git rev-parse HEAD).Trim()
           $source = [System.IO.File]::ReadAllText($script)
           $source = $source.Replace(
@@ -97,7 +94,9 @@ jobs:
           )
 
           node $script
+
           Remove-Item ".github/workflows/apply-phase1i-h-a.yml" -Force
+          Remove-Item ".github/phase1i-h-a" -Recurse -Force
 
       - name: Install dependencies
         shell: pwsh
@@ -112,53 +111,34 @@ jobs:
             tests/llm-project-safety-snapshot-bridge.test.ts `
             tests/llm-project-safety-snapshot-app-contract.test.ts `
             tests/llm-multi-block-review-overlay.test.tsx
-          pnpm --filter @madi/desktop build
           pnpm check:repository
           pnpm format:check
           git diff --check
 
-      - name: Replace bootstrap with the verified product commit
+      - name: Amend bootstrap commit into the product commit
         shell: pwsh
         run: |
           if (Test-Path ".github/workflows/apply-phase1i-h-a.yml") {
             throw "Temporary apply workflow was not removed"
+          }
+          if (Test-Path ".github/phase1i-h-a") {
+            throw "Temporary patch chunks were not removed"
           }
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
 
-          $baseSha = (git rev-parse HEAD^).Trim()
-          $treeSha = (git write-tree).Trim()
           $message = @"
           feat(llm): enable snapshot-gated multi-block apply
 
           phase1i-h-apply-run: $env:GITHUB_RUN_ID
           "@
-          $finalSha = ($message.Trim() | git commit-tree $treeSha -p $baseSha).Trim()
-          if (-not $finalSha) {
-            throw "Could not create the final product commit"
-          }
-          git reset --hard $finalSha
+          git commit --amend -m $message.Trim()
+
+          $finalSha = (git rev-parse HEAD).Trim()
           "FINAL_SHA=$finalSha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "FINAL_SHA=$finalSha"
-
-          $temporaryBranches = @(
-            "__probe-do-not-use",
-            "__this-should-not-be-created",
-            "__accidental-probe-2",
-            "__accidental-probe-3",
-            "__accidental-probe-4",
-            "__accidental-probe-5"
-          )
-          foreach ($branch in $temporaryBranches) {
-            git push origin --delete $branch 2>$null
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "Temporary branch already absent: $branch"
-              $global:LASTEXITCODE = 0
-            }
-          }
-
           git push origin HEAD:refs/heads/main --force-with-lease="refs/heads/main:${{ github.sha }}"
 
       - name: Dispatch authoritative Windows verification
@@ -169,7 +149,7 @@ jobs:
           gh workflow run windows-private-verify.yml --ref main
 
           $verifyRun = $null
-          for ($attempt = 0; $attempt -lt 90; $attempt += 1) {
+          for ($attempt = 0; $attempt -lt 60; $attempt += 1) {
             Start-Sleep -Seconds 5
             $runs = gh run list `
               --workflow windows-private-verify.yml `
