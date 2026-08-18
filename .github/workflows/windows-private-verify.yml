@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - main
-      - master
 
 permissions:
   contents: read
@@ -27,9 +26,10 @@ jobs:
       MADI_VALIDATION_ROOT: ${{ github.workspace }}\.tools\phase1g-validation
 
     steps:
-      - name: Check out madi and Typie
+      - name: Check out exact madi revision and Typie
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           submodules: recursive
           fetch-depth: 0
 
@@ -96,13 +96,43 @@ jobs:
         shell: pwsh
         run: pnpm verify
 
-      - name: Confirm repository and formatting gates
+      - name: Enforce repository hygiene
         shell: pwsh
         run: |
           pnpm check:repository
           pnpm format:check
           git diff --check
-          git status --short
+
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          if ($dirty.Count -ne 0) {
+            $dirty | ForEach-Object { Write-Host $_ }
+            throw "Verification left the repository dirty"
+          }
+
+          $badSubmodules = @(git submodule status --recursive | Where-Object { $_ -match '^[+\-U]' })
+          if ($badSubmodules.Count -ne 0) {
+            $badSubmodules | ForEach-Object { Write-Host $_ }
+            throw "A submodule is missing, modified, or on the wrong revision"
+          }
+
+          $workflowNames = @(Get-ChildItem ".github/workflows" -File | Sort-Object Name | ForEach-Object Name)
+          if ($workflowNames.Count -ne 1 -or $workflowNames[0] -ne "windows-private-verify.yml") {
+            throw "Only windows-private-verify.yml may remain in .github/workflows"
+          }
+
+          $forbidden = @(
+            Get-ChildItem ".github" -Recurse -File |
+              Where-Object {
+                $_.FullName -notmatch 'windows-private-verify\.yml$' -and
+                ($_.Name -match '^(apply|reconcile|bootstrap)-' -or
+                 $_.Name -match 'phase1i.*\.(py|mjs|b64|zip)$' -or
+                 $_.FullName -match 'phase1i-[^\\/]+-patch')
+              }
+          )
+          if ($forbidden.Count -ne 0) {
+            $forbidden | ForEach-Object { Write-Host $_.FullName }
+            throw "Temporary apply or patch artifacts remain under .github"
+          }
 
       - name: Upload verification evidence
         if: always()
