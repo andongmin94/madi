@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: windows-private-verify-${{ github.ref }}
@@ -24,8 +25,21 @@ jobs:
       CI: "true"
       PNPM_HOME: ${{ github.workspace }}\.pnpm-home
       MADI_VALIDATION_ROOT: ${{ github.workspace }}\.tools\phase1g-validation
+      MADI_VERIFY_CONTEXT: madi/windows-private-verify
 
     steps:
+      - name: Publish pending commit status
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST `
+            "repos/${{ github.repository }}/statuses/${{ github.sha }}" `
+            -f state=pending `
+            -f context="$env:MADI_VERIFY_CONTEXT" `
+            -f description="Windows verification is running" `
+            -f target_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
       - name: Check out exact madi revision and Typie
         uses: actions/checkout@v4
         with:
@@ -147,3 +161,18 @@ jobs:
             docs/PHASE_1H_RESULT.md
             docs/HWPX_EXPORT_PERFORMANCE.md
             docs/HANCOM_AUTOMATION_VALIDATION.md
+
+      - name: Publish final commit status
+        if: always()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $state = if ("${{ job.status }}" -eq "success") { "success" } elseif ("${{ job.status }}" -eq "cancelled") { "error" } else { "failure" }
+          $description = if ($state -eq "success") { "Windows verification passed" } elseif ($state -eq "error") { "Windows verification was cancelled" } else { "Windows verification failed" }
+          gh api --method POST `
+            "repos/${{ github.repository }}/statuses/${{ github.sha }}" `
+            -f state="$state" `
+            -f context="$env:MADI_VERIFY_CONTEXT" `
+            -f description="$description" `
+            -f target_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
