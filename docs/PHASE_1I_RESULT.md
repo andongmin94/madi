@@ -1,186 +1,75 @@
-# Phase 1I-G — Exact Multi-block Mapping and Review Result
+# Phase 1I result — stable narrow AI boundary
 
 ## Verdict
 
 ```text
-Repository implementation: TECHNICAL IMPLEMENTATION COMPLETE ON main
-Exact structured Typie selection mapping: IMPLEMENTED
-Per-block and per-hunk review: IMPLEMENTED
-Read-only multi-replacement planning: IMPLEMENTED
-Multi-block canonical apply: NOT AUTHORIZED — SNAPSHOT GATE PENDING
-Actual loopback compatible transport: AUTOMATED TEST ADDED
-Actual remote HTTPS provider: MANUAL VALIDATION PENDING
-Aggregate Windows verdict: PENDING WORKFLOW
-Distribution boundary: PRIVATE LOCAL ONLY
+Repository implementation: COMPLETE FOR NARROW AI WORKFLOWS
+Exact same-block selection apply: IMPLEMENTED
+General proposal review: IMPLEMENTED
+Multi-block/project-wide apply: REMOVED, NOT AUTHORIZED
+Aggregate Windows verification: PENDING FOR THIS COMMIT
+Distribution: PRIVATE LOCAL ONLY
 ```
 
-## Preserved foundation
+## Delivered
 
-Phase 1I-A through Phase 1I-F remain in place:
+- user-owned OpenAI-compatible remote or loopback provider
+- remote HTTPS and loopback-only HTTP policy
+- Electron `safeStorage` credential protection outside `.madi`
+- trusted narrow preload and main-process IPC
+- exact scope serialization and consent-bound SHA-256
+- redirect rejection, timeout, cancellation, response bounds, and sanitized errors
+- provider connectivity diagnostics with a fixed no-manuscript request
+- general assistant proposal review and copy
+- exact same-block Typie selection rewrite
+- duplicate-occurrence-safe selection mapping
+- per-hunk acceptance inside the exact selection
+- one Typie semantic transaction with one Undo entry
+- generation, revision, expected-text, Unicode-scalar, scene-break, and native-composition guards
 
-- user-owned OpenAI-compatible transport
-- protected provider store outside `.madi`
-- Electron `safeStorage` credential protection
-- trusted fixed IPC/preload boundary
-- explicit one-request manuscript consent
-- provider CRUD and manuscript-free connectivity diagnostics
-- exact same-node selection mapping
-- Unicode-safe per-hunk review
-- one Typie transaction and one Undo for a narrow accepted rewrite
+## Code-quality correction
 
-## Delivered in Phase 1I-G
+An unfinished multi-block experiment was removed. It had introduced:
 
-- Madi-owned structured-selection contract
-- exact cross-node selection endpoint matching
-- bounded per-scalar text-node ownership mapping
-- opaque node identity kept behind the Madi adapter
-- exact structural separator preservation
-- rejection of collapsed, unmappable, scene-break and oversized selections
-- product gate for 2–32 paragraph-separated text segments
-- provider instruction to preserve paragraph count and blank-line separators
-- exact provider-response structure parser
-- raw review fallback when provider structure differs
-- block-by-block bounded hunk review
-- independent hunk include/exclude controls per block
-- reconstruction of one complete reviewed proposal with original separators
-- stale generation/revision and source-range revalidation
-- deterministic non-overlapping multi-replacement planning
-- separate `AI¶` workflow
-- canonical apply control kept disabled until project safety-snapshot integration
+- a fourth global AI launcher
+- structured multi-node selection mapping
+- a second proposal parser and review workflow
+- broad planning and snapshot coordinator modules with no production caller
+- a permanently disabled apply button
+- duplicate ADR numbering and stale result documents
 
-## Structured selection mapping
+The stable product now has one clear canonical mutation path: an exact same-block selection. There is no dormant compatibility path for broader mutation.
 
-The live selection is not located by choosing the first equal substring. Madi reads Typie’s current CRDT selection endpoints and clipboard text, searches annotated recovery prose, maps each candidate back through Typie and accepts only the candidate whose endpoints equal the author’s live selection.
+## Intentionally unsupported
 
-For a structured selection, each visible Unicode scalar is mapped back through Typie to its owning text node. Contiguous scalars with the same owner form one Madi segment. Newline and paragraph separators remain exact strings between those segments.
+- automatic insertion or deletion outside the exact selected range
+- changes that cross Typie semantic blocks
+- scene-break modification
+- multiple scenes or documents in one AI operation
+- automatic Story Bible or Canvas mutation
+- background manuscript upload
+- Madi-operated provider proxy or shared keys
+- unreviewed provider output becoming canonical text
 
-The exported Madi contract contains:
+## Verification contract
 
-```text
-selected text
-start/end Unicode-scalar offsets
-ordered text segments
-opaque node keys
-exact separators
+The exact cleanup commit must pass:
+
+```powershell
+pnpm verify
+pnpm package:unpacked
+pnpm check:repository
+pnpm format:check
+git diff --check
 ```
 
-No Typie `Selection`, `Position`, `Dot`, `PlainDoc` or generated FFI type crosses the adapter boundary.
+No earlier phase report or different commit can substitute for that result.
 
-Mapping limits:
+## Next stage
 
-- at most 20,000 selected Unicode scalars
-- at most 64 internal text-node segments
-- at most 10,000 equal-text candidate positions
+After the Windows gate is green:
 
-## Product paragraph gate
-
-Not every cross-node selection is a safe multi-paragraph edit. The product workflow requires:
-
-- 2–32 segments,
-- each segment to be non-empty text,
-- a line or paragraph separator between every adjacent segment,
-- separators to contain only whitespace and line-separator characters,
-- no semantic scene-break fallback,
-- exact selected-text reconstruction.
-
-A paragraph split only by bold/ruby/other inline ownership has an empty separator and is rejected. This prevents a provider response from flattening mixed inline semantics.
-
-## Provider response handling
-
-The request sends only the exact selected text after explicit consent. The system instruction requires the provider to keep the same paragraph count and exact blank-line separators.
-
-The parser accepts a response only when every original separator appears in the expected order and no unexpected line separator appears inside a block. A mismatch does not discard the response; it remains available as raw review/copy output. It cannot become an application plan.
-
-## Block and hunk review
-
-Every structurally matched provider block is compared with its corresponding source block using the existing bounded Unicode-aware proposal diff. All hunks start selected. The author may exclude any hunk independently.
-
-Madi renders the accepted hunks back into one block string, then reconstructs the full proposal using the original structural separators. Hunk metadata remains renderer review state and is not canonical project data.
-
-## Read-only multi-replacement plan
-
-After each hunk choice, `LlmEditorAccess` rereads the active Typie document. A plan is READY only when:
-
-- document generation and editor revision still match,
-- the full selected scalar range equals the original selection,
-- every segment’s current text equals its captured source,
-- proposed blocks are non-empty,
-- proposed blocks contain no line separator or scene-break fallback,
-- replacement ranges are exact and non-overlapping,
-- at least two semantic blocks actually change.
-
-The result contains the Madi-owned `EditorTextReplacement[]`, expected complete document text and changed-block count. The planner performs no mutation.
-
-## Why apply remains disabled
-
-The pinned Typie command can already commit multiple non-overlapping replacements atomically in one history entry. Product recovery requires more than engine atomicity. A broad AI change must remain recoverable after autosave, close, reopen and later edits.
-
-Phase 1I-G therefore displays structural readiness but keeps the apply control disabled. The next slice must create and expose an automatic pre-apply logical snapshot before it may call the existing Typie multi-replacement transaction.
-
-Required next-slice proof:
-
-1. flush dirty active content,
-2. create the automatic safety snapshot,
-3. revalidate every range,
-4. commit all replacements or none,
-5. preserve the original document on failure,
-6. restore the snapshot from the same workflow,
-7. persist and reopen the accepted result,
-8. keep prompt, credential and raw response out of snapshot metadata.
-
-See [`ADR-0015`](decisions/ADR-0015-multi-block-ai-review-precedes-snapshot-gated-apply.md).
-
-## Focused verification added
-
-- actual second-occurrence endpoint mapping remains intact
-- emoji/non-BMP scalar offsets remain correct
-- exact two-paragraph segmentation and separators
-- same-line inline-node split rejection
-- exact separator parser success and mismatch fallback
-- deterministic reconstructed proposal text
-- multiple non-overlapping replacement plans
-- empty-block, one-block-only and stale-plan rejection
-- structured editor access bound to generation/revision
-- explicit consent before multi-paragraph transport
-- exact selected manuscript scope in invocation
-- block-level hunk review
-- disabled canonical apply before snapshot integration
-- raw response review after provider structural drift
-
-## Changed areas
-
-- `apps/desktop/src/renderer/editor/MadiEditorAdapter.ts`
-- `apps/desktop/src/renderer/editor/typie/TypieEditorAdapter.ts`
-- `apps/desktop/src/renderer/editor/typie/selectionMapping.ts`
-- `apps/desktop/src/renderer/editor/typie/selectionAwarePort.ts`
-- `apps/desktop/src/renderer/llm/editorAccess.ts`
-- `apps/desktop/src/renderer/llm/multiBlockProposal.ts`
-- `apps/desktop/src/renderer/components/llm/LlmMultiBlockReviewOverlay.tsx`
-- `apps/desktop/src/renderer/components/llm/llmMultiBlockReview.css`
-- `apps/desktop/src/renderer/main.tsx`
-- focused adapter, selection, planner, editor-access and UI tests
-- `docs/PHASE_1I_SCOPE.md`
-- `docs/LLM_ADAPTER_ARCHITECTURE.md`
-- `docs/decisions/ADR-0015-multi-block-ai-review-precedes-snapshot-gated-apply.md`
-
-## Verification limits
-
-The code and focused tests are committed to `main`, but this document does not claim that aggregate Windows `pnpm verify`, development Electron, fresh unpacked Electron or a real remote provider passed. GitHub Actions remains the aggregate gate.
-
-The structured selection bridge is tied to the pinned Typie browser-port shape and must be reviewed with any Typie pin change. A structurally READY plan does not certify provider quality, factuality, privacy policy or cost.
-
-## Next slice
-
-Phase 1I-H should connect project recovery without broadening provider transport:
-
-1. project-level `AUTO_BEFORE_AI_APPLY` safety snapshot orchestration,
-2. current dirty Typie flush before snapshot,
-3. one all-or-nothing multi-replacement transaction,
-4. direct snapshot restore from the AI review UI,
-5. no prompt/credential/raw-response snapshot metadata,
-6. save-close-reopen verification,
-7. development and fresh-unpacked Electron smoke,
-8. manual Ollama/LM Studio validation,
-9. manual remote HTTPS validation with a disposable user-owned credential.
-
-Cross-document and project-wide AI mutation remains unauthorized.
+1. validate the development and unpacked application against one actual Ollama or LM Studio endpoint;
+2. validate one disposable remote HTTPS provider key;
+3. profile and split one domain out of `desktopService.ts` without changing behavior;
+4. run the native Korean IME manual matrix before author-facing handoff.

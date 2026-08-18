@@ -2,7 +2,7 @@
   "name": "@madi/desktop",
   "version": "0.0.1",
   "private": true,
-  "description": "madi Phase 1E Electron Plot Canvas prototype",
+  "description": "Local-first Electron authoring desktop for madi",
   "main": "dist/electron/main/index.js",
   "scripts": {
     "build": "pnpm run build:main && pnpm run build:preload && pnpm run build:renderer",

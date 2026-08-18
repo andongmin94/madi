@@ -6,16 +6,16 @@ export type EditorChangeReason =
   | "restore";
 
 /**
- * Stable madi-owned identifier used by future Publication IR conversion.
- * The Typie implementation maps this identifier to its pinned semantic node
- * without exposing that engine-specific shape to the rest of the app.
+ * Stable madi-owned identifier used by Publication IR conversion. The Typie
+ * implementation maps this identifier to its pinned semantic node without
+ * exposing an engine-specific type to the rest of the application.
  */
 export const MADI_SCENE_BREAK_SEMANTIC_ID = "madi.scene-break.v1";
 
 /**
  * Typie does not expose an authoritative canUndo/canRedo query at the pinned
- * commit. UI booleans are therefore recent-command heuristics, not a promise
- * that the complete engine history stack is available.
+ * commit. UI booleans are recent-command heuristics, not a promise that the
+ * complete engine history stack is available.
  */
 export const MADI_HISTORY_STATE_CONTRACT = "recent-command-heuristic";
 
@@ -29,39 +29,13 @@ export interface EditorChange {
 
 /**
  * One non-collapsed selection mapped to annotated recovery-text Unicode-scalar
- * offsets. `blockKey` is an opaque same-document identity; consumers must not
- * interpret it as a Typie node shape.
+ * offsets. `blockKey` is an opaque same-document identity.
  */
 export interface EditorTextSelection {
   readonly text: string;
   readonly start: number;
   readonly end: number;
   readonly blockKey: string;
-}
-
-/**
- * One text-node segment inside a broader live selection. `nodeKey` is opaque
- * outside the editor adapter and exists only to prevent accidental coalescing
- * across Typie semantic ownership boundaries.
- */
-export interface EditorStructuredSelectionSegment {
-  readonly text: string;
-  readonly start: number;
-  readonly end: number;
-  readonly nodeKey: string;
-}
-
-/**
- * A live selection round-tripped through annotated recovery text. Structural
- * separators are preserved exactly between text-node segments; no engine type
- * crosses this boundary.
- */
-export interface EditorStructuredSelection {
-  readonly text: string;
-  readonly start: number;
-  readonly end: number;
-  readonly segments: readonly EditorStructuredSelectionSegment[];
-  readonly separators: readonly string[];
 }
 
 export interface EditorTextReplacement {
@@ -91,12 +65,6 @@ export interface MadiEditorAdapter {
    * selection cannot be mapped without ambiguity to annotated recovery text.
    */
   getTextSelection?(): EditorTextSelection | null;
-  /**
-   * Returns a bounded exact selection split at Typie text-node ownership and
-   * structural separators. This is a review contract, not permission to mutate
-   * multiple semantic blocks.
-   */
-  getStructuredTextSelection?(): EditorStructuredSelection | null;
   /** Moves the one live editor surface between workspace blocks. */
   relocate?(mountElement: HTMLElement): void;
   /**
@@ -106,10 +74,7 @@ export interface MadiEditorAdapter {
   replaceTextRanges?(
     replacements: readonly EditorTextReplacement[]
   ): Promise<EditorReplacementDocument>;
-  /**
-   * Disables every user-driven editor mutation while madi temporarily uses the
-   * one live engine for a project-wide atomic operation.
-   */
+  /** Disables user-driven mutations during a guarded editor operation. */
   setInteractionEnabled?(enabled: boolean): void;
   /** Selects a range expressed in annotated recovery-text offsets. */
   revealTextRange?(

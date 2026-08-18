@@ -2,15 +2,14 @@ import type {
   EditorChange,
   EditorChangeReason,
   EditorReplacementDocument,
-  EditorStructuredSelection,
   EditorTextReplacement,
   EditorTextSelection,
   MadiEditorAdapter
 } from "../MadiEditorAdapter";
 
 /**
- * This is the only port the eventual generated Typie WASM bindings must
- * implement. It intentionally avoids exporting any Typie-specific type.
+ * This is the only port the generated Typie WASM bindings must implement. It
+ * intentionally avoids exporting any Typie-specific type.
  */
 export interface TypieEnginePort {
   mount(element: HTMLElement): Promise<void>;
@@ -19,7 +18,6 @@ export interface TypieEnginePort {
   exportSnapshot(): Promise<Uint8Array>;
   exportPlainText(): Promise<string>;
   readTextSelection?(): EditorTextSelection | null;
-  readStructuredTextSelection?(): EditorStructuredSelection | null;
   relocate?(element: HTMLElement): void;
   replaceTextRanges?(
     replacements: readonly EditorTextReplacement[]
@@ -115,11 +113,6 @@ export class TypieEditorAdapter implements MadiEditorAdapter {
   public getTextSelection(): EditorTextSelection | null {
     this.requireOpen();
     return this.port.readTextSelection?.() ?? null;
-  }
-
-  public getStructuredTextSelection(): EditorStructuredSelection | null {
-    this.requireOpen();
-    return this.port.readStructuredTextSelection?.() ?? null;
   }
 
   public relocate(mountElement: HTMLElement): void {

@@ -21,7 +21,7 @@ function basePort(): TypieEnginePort {
 }
 
 describe("bindTypieTextSelection", () => {
-  it("keeps the raw editor behind the port while exposing Madi selections", () => {
+  it("keeps the raw editor behind the port while exposing one Madi selection", () => {
     const selection = {
       anchor: { node: "node-2", offset: 0, affinity: "downstream" as const },
       head: { node: "node-2", offset: 2, affinity: "downstream" as const }
@@ -73,17 +73,7 @@ describe("bindTypieTextSelection", () => {
       end: 7,
       blockKey: "node-2"
     });
-    expect(bound.readStructuredTextSelection?.()).toEqual({
-      text: "반복",
-      start: 5,
-      end: 7,
-      segments: [
-        { text: "반복", start: 5, end: 7, nodeKey: "node-2" }
-      ],
-      separators: []
-    });
     expect(Object.keys(bound)).not.toContain("readTextSelection");
-    expect(Object.keys(bound)).not.toContain("readStructuredTextSelection");
   });
 
   it("returns no selection during native composition", () => {
@@ -94,7 +84,6 @@ describe("bindTypieTextSelection", () => {
     const bound = bindTypieTextSelection(port);
 
     expect(bound.readTextSelection?.()).toBeNull();
-    expect(bound.readStructuredTextSelection?.()).toBeNull();
   });
 
   it("fails closed when the pinned browser port shape changes", () => {

@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  readMappedStructuredSelection,
-  readMappedTextSelection
-} from "../src/renderer/editor/typie/selectionMapping";
+import { readMappedTextSelection } from "../src/renderer/editor/typie/selectionMapping";
 
 function position(node: string, offset: number) {
   return { node, offset, affinity: "downstream" as const };
@@ -64,71 +61,7 @@ describe("Typie selection mapping", () => {
     expect(result).toMatchObject({ start: 2, end: 4, text: "반복" });
   });
 
-  it("maps an exact multi-paragraph selection into opaque text-node segments", () => {
-    const currentSelection = {
-      anchor: position("node-1", 0),
-      head: position("node-2", 5)
-    };
-    const result = readMappedStructuredSelection({
-      selection: () => currentSelection,
-      copy_selection: () => ({ text: "첫 문단\n\n둘째 문단", html: "" }),
-      prose_text_annotated: () => "첫 문단\n\n둘째 문단",
-      prose_to_selection_annotated: (start, end) => {
-        if (start === 0 && end === 11) {
-          return currentSelection;
-        }
-        if (start >= 0 && end <= 4) {
-          return {
-            anchor: position("node-1", start),
-            head: position("node-1", end)
-          };
-        }
-        if (start >= 6 && end <= 11) {
-          return {
-            anchor: position("node-2", start - 6),
-            head: position("node-2", end - 6)
-          };
-        }
-        return undefined;
-      }
-    });
-
-    expect(result).toEqual({
-      text: "첫 문단\n\n둘째 문단",
-      start: 0,
-      end: 11,
-      segments: [
-        { text: "첫 문단", start: 0, end: 4, nodeKey: "node-1" },
-        { text: "둘째 문단", start: 6, end: 11, nodeKey: "node-2" }
-      ],
-      separators: ["\n\n"]
-    });
-    expect(readMappedTextSelection({
-      selection: () => currentSelection,
-      copy_selection: () => ({ text: "첫 문단\n\n둘째 문단", html: "" }),
-      prose_text_annotated: () => "첫 문단\n\n둘째 문단",
-      prose_to_selection_annotated: (start, end) => {
-        if (start === 0 && end === 11) {
-          return currentSelection;
-        }
-        if (start >= 0 && end <= 4) {
-          return {
-            anchor: position("node-1", start),
-            head: position("node-1", end)
-          };
-        }
-        if (start >= 6 && end <= 11) {
-          return {
-            anchor: position("node-2", start - 6),
-            head: position("node-2", end - 6)
-          };
-        }
-        return undefined;
-      }
-    })).toBeNull();
-  });
-
-  it("rejects collapsed and unmappable selections", () => {
+  it("rejects collapsed, cross-block, scene-break, and unmappable selections", () => {
     expect(
       readMappedTextSelection({
         selection: () => ({
@@ -142,13 +75,43 @@ describe("Typie selection mapping", () => {
     ).toBeNull();
 
     expect(
-      readMappedStructuredSelection({
+      readMappedTextSelection({
         selection: () => ({
           anchor: position("node-1", 0),
           head: position("node-2", 2)
         }),
         copy_selection: () => ({ text: "두 문단", html: "" }),
         prose_text_annotated: () => "두\n문단",
+        prose_to_selection_annotated: () => ({
+          anchor: position("node-1", 0),
+          head: position("node-2", 2)
+        })
+      })
+    ).toBeNull();
+
+    expect(
+      readMappedTextSelection({
+        selection: () => ({
+          anchor: position("node-1", 0),
+          head: position("node-1", 3)
+        }),
+        copy_selection: () => ({ text: "***", html: "" }),
+        prose_text_annotated: () => "***",
+        prose_to_selection_annotated: () => ({
+          anchor: position("node-1", 0),
+          head: position("node-1", 3)
+        })
+      })
+    ).toBeNull();
+
+    expect(
+      readMappedTextSelection({
+        selection: () => ({
+          anchor: position("node-1", 0),
+          head: position("node-1", 2)
+        }),
+        copy_selection: () => ({ text: "문장", html: "" }),
+        prose_text_annotated: () => "문장",
         prose_to_selection_annotated: () => undefined
       })
     ).toBeNull();
