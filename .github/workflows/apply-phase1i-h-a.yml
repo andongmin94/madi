@@ -1,0 +1,174 @@
+name: Finalize Phase 1I-H
+run-name: Finalize Phase 1I-H — ${{ github.sha }}
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/apply-phase1i-h-a.yml
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: phase1i-h-main-finalize
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    name: Apply, verify, squash, and dispatch Windows gate
+    runs-on: windows-latest
+    timeout-minutes: 300
+
+    steps:
+      - name: Preserve LF repository files
+        shell: pwsh
+        run: git config --global core.autocrlf false
+
+      - name: Check out current main and Typie
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Activate pinned pnpm
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          pnpm --version
+          node --version
+
+      - name: Set up pinned Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --target wasm32-unknown-unknown --target x86_64-pc-windows-msvc
+          rustup default 1.97.1
+          rustc --version
+          cargo --version
+
+      - name: Apply exact Phase 1I-H-A project bridge
+        shell: pwsh
+        run: |
+          $patchRoot = Join-Path $env:RUNNER_TEMP "madi-phase1i-h-a"
+          New-Item -ItemType Directory -Force -Path $patchRoot | Out-Null
+          Expand-Archive -Path ".github/phase1i-h-a-patch.zip" -DestinationPath $patchRoot -Force
+          $script = Get-ChildItem -Path $patchRoot -Filter "apply-phase1i-h-a.mjs" -Recurse | Select-Object -First 1
+          if (-not $script) {
+            throw "Phase 1I-H-A apply script is missing"
+          }
+          $head = (git rev-parse HEAD).Trim()
+          $source = [System.IO.File]::ReadAllText($script.FullName)
+          $source = [regex]::Replace(
+            $source,
+            'const expectedHead = "[0-9a-f]{40}";',
+            "const expectedHead = `"$head`";",
+            1
+          )
+          [System.IO.File]::WriteAllText(
+            $script.FullName,
+            $source,
+            [System.Text.UTF8Encoding]::new($false)
+          )
+          node $script.FullName
+
+      - name: Apply formal AI snapshot and recovery navigation
+        shell: pwsh
+        run: python .github/apply-phase1i-h-b.py
+
+      - name: Remove bootstrap-only files
+        shell: pwsh
+        run: |
+          Remove-Item ".github/workflows/apply-phase1i-h-a.yml" -Force
+          Remove-Item ".github/phase1i-h-a-patch.zip" -Force
+          Remove-Item ".github/apply-phase1i-h-b.py" -Force
+
+      - name: Install dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      - name: Format Rust changes
+        shell: pwsh
+        run: cargo fmt --manifest-path crates/madi-core/Cargo.toml
+
+      - name: Run focused Phase 1I-H verification
+        shell: pwsh
+        run: |
+          pnpm typecheck
+          pnpm --filter @madi/desktop exec vitest run `
+            tests/llm-multi-block-apply-coordinator.test.ts `
+            tests/llm-project-safety-snapshot-bridge.test.ts `
+            tests/llm-project-safety-snapshot-app-contract.test.ts `
+            tests/llm-multi-block-review-overlay.test.tsx `
+            tests/llm-project-snapshot-navigation-bridge.test.ts `
+            tests/phase1i-ai-snapshot-kind.test.tsx
+          cargo test --manifest-path crates/madi-core/Cargo.toml
+          pnpm --filter @madi/desktop build
+          pnpm check:repository
+          pnpm format:check
+          git diff --check
+
+      - name: Create one product commit on main
+        shell: pwsh
+        run: |
+          $baseProductSha = "b745f2eb20340167ae5b285b0aa9aef9fbb9b8f7"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git reset --soft $baseProductSha
+          git add -A
+          git commit -m "feat(llm): complete snapshot-gated multi-block recovery"
+          $finalSha = (git rev-parse HEAD).Trim()
+          "FINAL_SHA=$finalSha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "FINAL_SHA=$finalSha"
+          git push origin HEAD:refs/heads/main --force-with-lease="refs/heads/main:${{ github.sha }}"
+
+      - name: Remove accidental probe branches
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $refs = gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/heads/__" | ConvertFrom-Json
+          foreach ($ref in $refs) {
+            $shortRef = $ref.ref -replace '^refs/', ''
+            if ($shortRef -ne 'heads/main') {
+              Write-Host "Deleting $shortRef"
+              gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/$shortRef"
+            }
+          }
+
+      - name: Dispatch authoritative Windows verification
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run windows-private-verify.yml --ref main
+          $verifyRun = $null
+          for ($attempt = 0; $attempt -lt 90; $attempt += 1) {
+            Start-Sleep -Seconds 5
+            $runs = gh run list `
+              --workflow windows-private-verify.yml `
+              --branch main `
+              --event workflow_dispatch `
+              --limit 30 `
+              --json databaseId,headSha,status,conclusion,createdAt | ConvertFrom-Json
+            $verifyRun = $runs |
+              Where-Object { $_.headSha -eq $env:FINAL_SHA } |
+              Sort-Object createdAt -Descending |
+              Select-Object -First 1
+            if ($verifyRun) {
+              break
+            }
+          }
+          if (-not $verifyRun) {
+            throw "Could not locate Windows verification for $env:FINAL_SHA"
+          }
+          Write-Host "WINDOWS_VERIFY_RUN_ID=$($verifyRun.databaseId)"
+          gh run watch $verifyRun.databaseId --exit-status --interval 30
