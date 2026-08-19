@@ -104,6 +104,11 @@ describe("EPUB shutdown main lifecycle", () => {
       dialog: { showErrorBox: vi.fn() },
       ipcMain: {},
       protocol: { registerSchemesAsPrivileged: vi.fn() },
+      safeStorage: {
+        isEncryptionAvailable: vi.fn(() => false),
+        encryptString: vi.fn(() => Buffer.alloc(0)),
+        decryptString: vi.fn(() => "")
+      },
       session: { defaultSession: {} },
       shell: {}
     }));

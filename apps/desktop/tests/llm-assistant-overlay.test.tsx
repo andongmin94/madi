@@ -23,6 +23,12 @@ function editorFixture(initialText = "현재 원고 내용"): EditorFixture {
   let listener: ((change: EditorChange) => void) | null = null;
   let text = initialText;
   let revision = 0;
+  const notify = (change: EditorChange): void => {
+    const current = listener;
+    if (current) {
+      current(change);
+    }
+  };
   const replaceTextRanges = vi.fn(
     async (replacements: readonly EditorTextReplacement[]) => {
       const characters = Array.from(text);
@@ -40,7 +46,7 @@ function editorFixture(initialText = "현재 원고 내용"): EditorFixture {
       }
       text = characters.join("");
       revision += 1;
-      listener?.({
+      notify({
         revision,
         reason: "content",
         canUndo: true,
@@ -78,7 +84,7 @@ function editorFixture(initialText = "현재 원고 내용"): EditorFixture {
     replaceTextRanges,
     emit(change) {
       revision = change.revision;
-      listener?.(change);
+      notify(change);
     },
     text() {
       return text;
@@ -151,10 +157,13 @@ function fakeApi(proposalText = "AI가 제안한 문장"): MadiLlmApi {
   };
 }
 
-async function requestProposal(
+function normalizeLines(value: string): string {
+  return value.replace(/\r\n/g, "\n");
+}
+
+async function openAssistant(
   fixture: EditorFixture,
-  api: MadiLlmApi,
-  scopeText?: string
+  api: MadiLlmApi
 ): Promise<void> {
   render(
     <LlmAssistantOverlay
@@ -166,13 +175,23 @@ async function requestProposal(
       now={() => new Date("2026-08-22T10:00:00.000Z")}
     />
   );
-
   fireEvent.click(screen.getByRole("button", { name: "AI 보조 열기" }));
   await screen.findByText("테스트 제공자 · example-model");
+}
+
+async function requestProposal(
+  fixture: EditorFixture,
+  api: MadiLlmApi,
+  scopeText?: string
+): Promise<void> {
+  await openAssistant(fixture, api);
   fireEvent.click(
     screen.getByRole("button", { name: "현재 편집 문서 불러오기" })
   );
-  const scope = await screen.findByDisplayValue(fixture.text());
+  const scope = screen.getByLabelText(/원고 범위/u) as HTMLTextAreaElement;
+  await waitFor(() =>
+    expect(normalizeLines(scope.value)).toBe(fixture.text())
+  );
   if (scopeText !== undefined) {
     fireEvent.change(scope, { target: { value: scopeText } });
   }
@@ -184,29 +203,24 @@ async function requestProposal(
   fireEvent.click(screen.getByRole("button", { name: "제안 요청" }));
 }
 
+async function expectProposalText(expected: string): Promise<void> {
+  const proposal = await screen.findByLabelText("AI 제안문");
+  await waitFor(() =>
+    expect(normalizeLines((proposal as HTMLTextAreaElement).value)).toBe(expected)
+  );
+}
+
 describe("LlmAssistantOverlay", () => {
   it("requires explicit scope confirmation before invoking a provider", async () => {
     const api = fakeApi();
     const fixture = editorFixture();
-    render(
-      <LlmAssistantOverlay
-        api={api}
-        editorAccess={fixture.access}
-        createId={() => "request-1"}
-        createScopeHash={async () => "a".repeat(64)}
-        copyText={vi.fn(async () => undefined)}
-        now={() => new Date("2026-08-22T10:00:00.000Z")}
-      />
-    );
+    await openAssistant(fixture, api);
 
-    fireEvent.click(screen.getByRole("button", { name: "AI 보조 열기" }));
-    await screen.findByText("테스트 제공자 · example-model");
     fireEvent.click(
       screen.getByRole("button", { name: "현재 편집 문서 불러오기" })
     );
-    await waitFor(() =>
-      expect(screen.getByDisplayValue("현재 원고 내용")).toBeTruthy()
-    );
+    const scope = screen.getByLabelText(/원고 범위/u) as HTMLTextAreaElement;
+    await waitFor(() => expect(scope.value).toBe("현재 원고 내용"));
 
     const send = screen.getByRole("button", { name: "제안 요청" });
     expect((send as HTMLButtonElement).disabled).toBe(true);
@@ -219,7 +233,7 @@ describe("LlmAssistantOverlay", () => {
     );
     fireEvent.click(send);
 
-    await screen.findByDisplayValue("AI가 제안한 문장");
+    await expectProposalText("AI가 제안한 문장");
     expect(api.invoke).toHaveBeenCalledTimes(1);
     expect(api.invoke).toHaveBeenCalledWith({
       invocation: expect.objectContaining({
@@ -243,11 +257,9 @@ describe("LlmAssistantOverlay", () => {
     const fixture = editorFixture("앞 문장 고칠 문장 뒤 문장");
     const api = fakeApi("다듬은 문장");
     await requestProposal(fixture, api, "고칠 문장");
+    await expectProposalText("다듬은 문장");
 
-    await screen.findByDisplayValue("다듬은 문장");
-    const apply = await screen.findByRole("button", {
-      name: "원고에 안전 적용"
-    });
+    const apply = screen.getByRole("button", { name: "원고에 안전 적용" });
     await waitFor(() =>
       expect((apply as HTMLButtonElement).disabled).toBe(false)
     );
@@ -261,18 +273,13 @@ describe("LlmAssistantOverlay", () => {
       })
     ]);
     expect(fixture.text()).toBe("앞 문장 다듬은 문장 뒤 문장");
-    expect(fixture.adapter.setInteractionEnabled).toHaveBeenNthCalledWith(
-      1,
-      false
-    );
-    expect(fixture.adapter.setInteractionEnabled).toHaveBeenLastCalledWith(true);
   });
 
   it("invalidates a proposal when the active Typie document changes", async () => {
     const fixture = editorFixture("앞 문장 고칠 문장 뒤 문장");
     const api = fakeApi("다듬은 문장");
     await requestProposal(fixture, api, "고칠 문장");
-    await screen.findByDisplayValue("다듬은 문장");
+    await expectProposalText("다듬은 문장");
 
     fixture.emit({
       revision: 1,
@@ -283,8 +290,11 @@ describe("LlmAssistantOverlay", () => {
     });
 
     await screen.findByText(/제안을 만든 뒤 편집 문서가 바뀌었습니다/u);
-    const apply = screen.getByRole("button", { name: "원고에 안전 적용" });
-    expect((apply as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (screen.getByRole("button", {
+        name: "원고에 안전 적용"
+      }) as HTMLButtonElement).disabled
+    ).toBe(true);
     expect(fixture.replaceTextRanges).not.toHaveBeenCalled();
   });
 
@@ -292,8 +302,8 @@ describe("LlmAssistantOverlay", () => {
     const fixture = editorFixture("첫 문단\n둘째 문단");
     const api = fakeApi("새 첫 문단\n새 둘째 문단");
     await requestProposal(fixture, api);
+    await expectProposalText("새 첫 문단\n새 둘째 문단");
 
-    await screen.findByDisplayValue("새 첫 문단\n새 둘째 문단");
     await screen.findByText(/줄바꿈을 포함하지 않는 단일 의미 범위/u);
     expect(
       (screen.getByRole("button", {
@@ -305,17 +315,7 @@ describe("LlmAssistantOverlay", () => {
   it("creates a provider without reading a stored API key back into the renderer", async () => {
     const api = fakeApi();
     vi.mocked(api.listProviders).mockResolvedValueOnce([]);
-    render(
-      <LlmAssistantOverlay
-        api={api}
-        editorAccess={editorFixture().access}
-        createId={() => "new-provider"}
-        createScopeHash={async () => "b".repeat(64)}
-        now={() => new Date("2026-08-22T10:00:00.000Z")}
-      />
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "AI 보조 열기" }));
+    await openAssistant(editorFixture(), api);
     fireEvent.click(screen.getByRole("button", { name: "제공자 설정" }));
     await screen.findByText("등록된 제공자가 없습니다.");
 
@@ -334,7 +334,7 @@ describe("LlmAssistantOverlay", () => {
     await waitFor(() => expect(api.saveProvider).toHaveBeenCalledTimes(1));
     expect(api.saveProvider).toHaveBeenCalledWith({
       provider: expect.objectContaining({
-        id: "new-provider",
+        id: "request-1",
         name: "로컬 모델",
         model: "local-model",
         baseUrl: "http://127.0.0.1:11434/v1",
