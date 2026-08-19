@@ -11,4 +11,6 @@
 /docs/licenses/ZIP-MIT.txt text eol=lf
 /docs/licenses/EPUBCHECK-5.3.0-BSD-3-CLAUSE.txt text eol=lf
 /patches/typie/*.patch text eol=lf
+/packages/typie-runtime/BUILD_INFO.json text eol=lf
+/packages/typie-runtime/browser/*.js text eol=lf
 /packages/typie-runtime/browser/*.d.ts text eol=lf
