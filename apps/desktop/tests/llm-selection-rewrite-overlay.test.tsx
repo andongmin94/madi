@@ -47,6 +47,12 @@ function editorFixture(
   let listener: ((change: EditorChange) => void) | null = null;
   let text = initialText;
   let currentRevision = 0;
+  const notify = (change: EditorChange): void => {
+    const currentListener = listener;
+    if (currentListener) {
+      currentListener(change);
+    }
+  };
   const replaceTextRanges = vi.fn(
     async (replacements: readonly EditorTextReplacement[]) => {
       const characters = Array.from(text);
@@ -64,7 +70,7 @@ function editorFixture(
       }
       text = characters.join("");
       currentRevision += 1;
-      listener?.({
+      notify({
         revision: currentRevision,
         reason: "content",
         canUndo: true,
@@ -98,7 +104,7 @@ function editorFixture(
   };
   access.attach(adapter);
   currentRevision = revision;
-  listener?.({
+  notify({
     revision,
     reason: "content",
     canUndo: true,
@@ -112,7 +118,7 @@ function editorFixture(
     replaceTextRanges,
     emit(change) {
       currentRevision = change.revision;
-      listener?.(change);
+      notify(change);
     },
     text() {
       return text;
