@@ -40,6 +40,10 @@ jobs:
             -f description="Windows verification is running" `
             -f target_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
+      - name: Preserve LF repository files
+        shell: pwsh
+        run: git config --global core.autocrlf false
+
       - name: Check out exact madi revision and Typie
         uses: actions/checkout@v4
         with:
