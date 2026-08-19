@@ -157,8 +157,15 @@ function fakeApi(proposalText = "AI가 제안한 문장"): MadiLlmApi {
   };
 }
 
+const SCOPE_PLACEHOLDER =
+  "현재 편집 문서를 불러오거나 전송할 텍스트를 직접 입력하세요.";
+
 function normalizeLines(value: string): string {
   return value.replace(/\r\n/g, "\n");
+}
+
+function getScopeInput(): HTMLTextAreaElement {
+  return screen.getByPlaceholderText(SCOPE_PLACEHOLDER) as HTMLTextAreaElement;
 }
 
 async function openAssistant(
@@ -176,7 +183,14 @@ async function openAssistant(
     />
   );
   fireEvent.click(screen.getByRole("button", { name: "AI 보조 열기" }));
-  await screen.findByText("테스트 제공자 · example-model");
+  await screen.findByRole("dialog", { name: "madi AI 보조" });
+}
+
+async function waitForDefaultProvider(): Promise<void> {
+  const providerSelect = (await screen.findByRole("combobox", {
+    name: "제공자"
+  })) as HTMLSelectElement;
+  await waitFor(() => expect(providerSelect.value).toBe("provider-1"));
 }
 
 async function requestProposal(
@@ -185,10 +199,11 @@ async function requestProposal(
   scopeText?: string
 ): Promise<void> {
   await openAssistant(fixture, api);
+  await waitForDefaultProvider();
   fireEvent.click(
     screen.getByRole("button", { name: "현재 편집 문서 불러오기" })
   );
-  const scope = screen.getByLabelText(/원고 범위/u) as HTMLTextAreaElement;
+  const scope = getScopeInput();
   await waitFor(() =>
     expect(normalizeLines(scope.value)).toBe(fixture.text())
   );
@@ -215,11 +230,12 @@ describe("LlmAssistantOverlay", () => {
     const api = fakeApi();
     const fixture = editorFixture();
     await openAssistant(fixture, api);
+    await waitForDefaultProvider();
 
     fireEvent.click(
       screen.getByRole("button", { name: "현재 편집 문서 불러오기" })
     );
-    const scope = screen.getByLabelText(/원고 범위/u) as HTMLTextAreaElement;
+    const scope = getScopeInput();
     await waitFor(() => expect(scope.value).toBe("현재 원고 내용"));
 
     const send = screen.getByRole("button", { name: "제안 요청" });

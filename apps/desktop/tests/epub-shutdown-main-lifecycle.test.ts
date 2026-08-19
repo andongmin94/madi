@@ -102,7 +102,10 @@ describe("EPUB shutdown main lifecycle", () => {
       },
       BrowserWindow: { getAllWindows },
       dialog: { showErrorBox: vi.fn() },
-      ipcMain: {},
+      ipcMain: {
+        handle: vi.fn(),
+        removeHandler: vi.fn()
+      },
       protocol: { registerSchemesAsPrivileged: vi.fn() },
       safeStorage: {
         isEncryptionAvailable: vi.fn(() => false),
