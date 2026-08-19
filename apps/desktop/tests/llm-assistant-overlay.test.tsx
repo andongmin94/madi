@@ -122,8 +122,8 @@ function fakeApi(proposalText = "AI가 제안한 문장"): MadiLlmApi {
         ...request.provider
       },
       credentialState: request.provider.requiresApiKey
-        ? "AVAILABLE"
-        : "NOT_REQUIRED"
+        ? ("AVAILABLE" as const)
+        : ("NOT_REQUIRED" as const)
     })),
     deleteProvider: vi.fn(async () => undefined),
     testProvider: vi.fn(async (request) => ({
