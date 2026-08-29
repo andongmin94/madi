@@ -3,9 +3,6 @@ run-name: Windows private verification — ${{ github.ref_name }} @ ${{ github.s
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 permissions:
   contents: read
