@@ -73,8 +73,10 @@ jobs:
         shell: pwsh
         run: |
           $installScript = Join-Path $env:RUNNER_TEMP "dotnet-install.ps1"
+          $x86DotnetRoot = "$env:LOCALAPPDATA\Microsoft\dotnet\x86"
           Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile $installScript
-          & $installScript -Channel 10.0 -Runtime dotnet -Architecture x86 -InstallDir "$env:LOCALAPPDATA\Microsoft\dotnet\x86"
+          & $installScript -Channel 10.0 -Runtime dotnet -Architecture x86 -InstallDir $x86DotnetRoot
+          "DOTNET_ROOT_X86=$x86DotnetRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Set up pinned Rust toolchain
         shell: pwsh
