@@ -147,6 +147,7 @@ interface ActiveProcess {
   forceKillTimeout: NodeJS.Timeout | null;
   cancelled: boolean;
   closedFlag: boolean;
+  resultReceived: boolean;
   terminalError: Error | null;
   cleanupError: Error | null;
   temporaryCleanupEligible: boolean;
@@ -615,6 +616,7 @@ export class ProcessEpubExporter implements EpubExporterPort {
         forceKillTimeout: null,
         cancelled: false,
         closedFlag: false,
+        resultReceived: false,
         terminalError: null,
         cleanupError: null,
         temporaryCleanupEligible: false
@@ -674,6 +676,7 @@ export class ProcessEpubExporter implements EpubExporterPort {
             return;
           }
           result = parseUtilityResult(message, input);
+          active.resultReceived = true;
           return;
         }
         if (message.kind === "ERROR") {
@@ -731,9 +734,11 @@ export class ProcessEpubExporter implements EpubExporterPort {
       child.stderr.on("data", () => {
         // Drain only. Utility errors are typed JSON and manuscript text is never logged.
       });
-      child.stdin.on("error", () =>
-        fail(new Error("The EPUB utility input stream failed"))
-      );
+      child.stdin.on("error", () => {
+        if (!active.resultReceived && !active.closedFlag) {
+          fail(new Error("The EPUB utility input stream failed"));
+        }
+      });
       child.on("error", () => fail(new Error("The EPUB utility could not start")));
       child.on("close", async (code) => {
         try {
@@ -785,7 +790,7 @@ export class ProcessEpubExporter implements EpubExporterPort {
 
   public async cancel(operationId: string): Promise<boolean> {
     const active = this.active.get(operationId);
-    if (!active || active.closedFlag) {
+    if (!active || active.resultReceived || active.closedFlag) {
       return false;
     }
     active.cancelled = true;
@@ -805,14 +810,16 @@ export class ProcessEpubExporter implements EpubExporterPort {
     this.disposed = true;
     await Promise.allSettled(
       [...this.active.entries()].map(async ([operationId, active]) => {
-        if (!active.terminalError) {
-          active.cancelled = true;
-          this.requestTermination(
-            active,
-            new Error("The EPUB utility was disposed")
-          );
-        } else {
-          active.child.kill("SIGKILL");
+        if (!active.resultReceived) {
+          if (!active.terminalError) {
+            active.cancelled = true;
+            this.requestTermination(
+              active,
+              new Error("The EPUB utility was disposed")
+            );
+          } else {
+            active.child.kill("SIGKILL");
+          }
         }
         await this.waitForClosed(active);
         this.active.delete(operationId);

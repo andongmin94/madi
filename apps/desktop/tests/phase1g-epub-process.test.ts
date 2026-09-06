@@ -32,6 +32,8 @@ function returnChildFromSpawn(child: FakeChild): void {
 
 const OPERATION_ID = "123e4567-e89b-42d3-a456-426614174000";
 const HASH = "a".repeat(64);
+const OUTPUT_HASH = "b".repeat(64);
+const LOGICAL_HASH = "c".repeat(64);
 const temporaryDirectories: string[] = [];
 
 type FakeChild = Omit<
@@ -99,6 +101,53 @@ function input(outputPath: string): EpubExporterRunInput {
   };
 }
 
+function result(outputPath: string): Record<string, unknown> {
+  return {
+    kind: "RESULT",
+    mode: "EXPORT",
+    outputPath,
+    summary: {
+      byteLength: 128,
+      sha256: OUTPUT_HASH,
+      logicalPackageHash: LOGICAL_HASH,
+      targetProfile: "EPUB_3_3_COMPATIBILITY",
+      sourcePublicationHash: HASH,
+      validationReport: {
+        status: "PASS",
+        fatalCount: 0,
+        errorCount: 0,
+        warningCount: 0,
+        infoCount: 0,
+        messages: []
+      },
+      exportTiming: {
+        contentSplitMs: 1,
+        xhtmlGenerationMs: 1,
+        packageDocumentsMs: 1,
+        zipPackagingMs: 1,
+        internalValidationMs: 1,
+        totalMs: 5
+      },
+      statistics: {
+        fileCount: 4,
+        xhtmlCount: 1,
+        sourceSectionCount: 1,
+        exportedSectionCount: 1,
+        sourceBlockCount: 1,
+        exportedBlockCount: 1,
+        fallbackBlockCount: 0,
+        rejectedBlockCount: 0,
+        sourceCharacterCount: 12,
+        exportedCharacterCount: 12,
+        sceneBreakCount: 0,
+        rubyCount: 0,
+        headingCount: 0,
+        coverIncluded: false
+      }
+    }
+  };
+}
+
 async function makeTemporaryDirectory(): Promise<string> {
   const directory = await mkdtemp(path.join(tmpdir(), "madi-epub-process-test-"));
   temporaryDirectories.push(directory);
@@ -156,6 +205,39 @@ describe("Phase 1G EPUB child-process boundary", () => {
     expect(existsSync(temporaryPath)).toBe(false);
     await expect(exporter.cancel(OPERATION_ID)).resolves.toBe(false);
     await exporter.dispose();
+  });
+
+  it("does not cancel or dispose a completed result while the child is closing", async () => {
+    const directory = await makeTemporaryDirectory();
+    const outputPath = path.join(directory, "completed.epub");
+    const child = createChild();
+    returnChildFromSpawn(child);
+    const exporter = new ProcessEpubExporter("fixture-exporter");
+    const run = exporter.run(input(outputPath), vi.fn());
+    child.stdout.write(`${JSON.stringify(result(outputPath))}\n`);
+    await Promise.resolve();
+
+    await expect(exporter.cancel(OPERATION_ID)).resolves.toBe(false);
+    expect(child.kill).not.toHaveBeenCalled();
+
+    let disposeSettled = false;
+    const disposal = exporter.dispose().then(() => {
+      disposeSettled = true;
+    });
+    await Promise.resolve();
+    expect(disposeSettled).toBe(false);
+    expect(child.kill).not.toHaveBeenCalled();
+
+    child.emit("close", 0);
+    await expect(run).resolves.toMatchObject({
+      mode: "EXPORT",
+      outputPath,
+      summary: {
+        sha256: OUTPUT_HASH,
+        logicalPackageHash: LOGICAL_HASH
+      }
+    });
+    await expect(disposal).resolves.toBeUndefined();
   });
 
   it("rejects and preserves a pre-existing temporary-path collision", async () => {
