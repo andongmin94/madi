@@ -34,7 +34,7 @@ Before starting the next product phase:
 ## Distribution gates
 
 - Windows native Korean IME remains manual-validation pending until a person completes the checklist.
-- Typie distribution licensing remains a human decision.
+- Typie license permission is owner-confirmed and no longer blocks product development. Release scope must remain within the exact external grant terms, which are intentionally not inferred or reproduced in this repository; see `docs/TYPIE_LICENSE_STATUS.md`.
 - Hancom Automation licensing and real conversion validation remain human decisions.
 - Runtime EPUBCheck/JRE packaging remains a pre-release distribution task.
 - Do not represent private-local technical success as approval for public, paid, customer, or installer distribution.
