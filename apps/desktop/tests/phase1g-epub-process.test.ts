@@ -166,6 +166,36 @@ afterEach(async () => {
 });
 
 describe("Phase 1G EPUB child-process boundary", () => {
+  it("rejects invalid operation ids before spawning the exporter", async () => {
+    const directory = await makeTemporaryDirectory();
+    const exporter = new ProcessEpubExporter("fixture-exporter");
+
+    await expect(
+      exporter.run(
+        {
+          ...input(path.join(directory, "invalid-id.epub")),
+          operationId: "../escape"
+        },
+        vi.fn()
+      )
+    ).rejects.toThrow("operation id is invalid");
+    expect(spawnMock).not.toHaveBeenCalled();
+    await exporter.dispose();
+  });
+
+  it("returns a rejected promise when the exporter cannot be spawned", async () => {
+    const directory = await makeTemporaryDirectory();
+    spawnMock.mockImplementationOnce(() => {
+      throw new Error("fixture spawn failure");
+    });
+    const exporter = new ProcessEpubExporter("fixture-exporter");
+
+    await expect(
+      exporter.run(input(path.join(directory, "spawn-failure.epub")), vi.fn())
+    ).rejects.toThrow("could not start");
+    await exporter.dispose();
+  });
+
   it("waits for close and temporary-file cleanup before cancellation resolves", async () => {
     const directory = await makeTemporaryDirectory();
     const outputPath = path.join(directory, "output.epub");
@@ -238,6 +268,28 @@ describe("Phase 1G EPUB child-process boundary", () => {
       }
     });
     await expect(disposal).resolves.toBeUndefined();
+  });
+
+  it("rejects protocol data that arrives after a completed result", async () => {
+    const directory = await makeTemporaryDirectory();
+    const outputPath = path.join(directory, "late-data.epub");
+    const child = createChild();
+    returnChildFromSpawn(child);
+    const exporter = new ProcessEpubExporter("fixture-exporter");
+    const run = exporter.run(input(outputPath), vi.fn());
+    child.stdout.write(
+      `${JSON.stringify(result(outputPath))}\n${JSON.stringify({
+        kind: "PROGRESS",
+        stage: "COMPLETE",
+        completed: 1,
+        total: 1
+      })}\n`
+    );
+    child.emit("close", 0);
+
+    await expect(run).rejects.toThrow("data after completion");
+    expect(child.kill).toHaveBeenCalled();
+    await exporter.dispose();
   });
 
   it("rejects and preserves a pre-existing temporary-path collision", async () => {

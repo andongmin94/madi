@@ -9,7 +9,10 @@ import type {
   PublicationExportMetadata
 } from "../shared/epubExport";
 import type { PublicationDocument } from "../shared/publication";
-import { validateEpubExportProgress } from "../shared/epubExportValidation";
+import {
+  validateEpubExportProgress,
+  validateEpubOperationId
+} from "../shared/epubExportValidation";
 
 const MAX_STDOUT_BYTES = 32 * 1024 * 1024;
 const MAX_STDOUT_LINE_BYTES = 16 * 1024 * 1024;
@@ -535,11 +538,19 @@ export class ProcessEpubExporter implements EpubExporterPort {
     }
     active.terminalError ??= error;
     clearTimeout(active.timeout);
-    active.child.kill();
+    try {
+      active.child.kill();
+    } catch {
+      // The bounded close watchdog remains authoritative.
+    }
     if (active.forceKillTimeout === null) {
       active.forceKillTimeout = setTimeout(() => {
         if (!active.closedFlag) {
-          active.child.kill("SIGKILL");
+          try {
+            active.child.kill("SIGKILL");
+          } catch {
+            // The close waiter reports shutdown failure if close never arrives.
+          }
         }
       }, PROCESS_CLOSE_TIMEOUT_MS);
     }
@@ -560,7 +571,11 @@ export class ProcessEpubExporter implements EpubExporterPort {
     try {
       await wait(PROCESS_CLOSE_TIMEOUT_MS);
     } catch {
-      active.child.kill("SIGKILL");
+      try {
+        active.child.kill("SIGKILL");
+      } catch {
+        // The second bounded wait remains authoritative.
+      }
       await wait(PROCESS_FORCE_CLOSE_TIMEOUT_MS);
     }
     if (active.cleanupError) {
@@ -574,6 +589,13 @@ export class ProcessEpubExporter implements EpubExporterPort {
   ): Promise<EpubUtilityResult> {
     if (this.disposed) {
       return Promise.reject(new Error("The EPUB utility is not available"));
+    }
+    try {
+      if (validateEpubOperationId(input.operationId) !== input.operationId) {
+        throw new Error("Non-canonical operation id");
+      }
+    } catch {
+      return Promise.reject(new Error("The EPUB operation id is invalid"));
     }
     if (this.active.has(input.operationId)) {
       return Promise.reject(new Error("The EPUB operation is already running"));
@@ -590,11 +612,16 @@ export class ProcessEpubExporter implements EpubExporterPort {
         new Error("The EPUB utility temporary path is already occupied")
       );
     }
-    const child = spawn(this.binaryPath, [], {
-      shell: false,
-      windowsHide: true,
-      stdio: ["pipe", "pipe", "pipe"]
-    });
+    let child: ChildProcessWithoutNullStreams;
+    try {
+      child = spawn(this.binaryPath, [], {
+        shell: false,
+        windowsHide: true,
+        stdio: ["pipe", "pipe", "pipe"]
+      });
+    } catch {
+      return Promise.reject(new Error("The EPUB utility could not start"));
+    }
     return new Promise<EpubUtilityResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
         const active = this.active.get(input.operationId);
@@ -644,6 +671,10 @@ export class ProcessEpubExporter implements EpubExporterPort {
           fail(new Error("The EPUB utility returned malformed JSON"));
           return;
         }
+        if (active.resultReceived) {
+          fail(new Error("The EPUB utility returned data after completion"));
+          return;
+        }
         if (message.kind === "PROGRESS") {
           exactKeys(
             message,
@@ -671,10 +702,6 @@ export class ProcessEpubExporter implements EpubExporterPort {
           return;
         }
         if (message.kind === "RESULT") {
-          if (result) {
-            fail(new Error("The EPUB utility returned duplicate results"));
-            return;
-          }
           result = parseUtilityResult(message, input);
           active.resultReceived = true;
           return;
@@ -818,7 +845,11 @@ export class ProcessEpubExporter implements EpubExporterPort {
               new Error("The EPUB utility was disposed")
             );
           } else {
-            active.child.kill("SIGKILL");
+            try {
+              active.child.kill("SIGKILL");
+            } catch {
+              // The close waiter reports shutdown failure if needed.
+            }
           }
         }
         await this.waitForClosed(active);
