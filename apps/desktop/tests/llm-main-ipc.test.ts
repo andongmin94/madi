@@ -113,4 +113,38 @@ describe("madi LLM provider diagnostics IPC", () => {
     expect(testProvider).not.toHaveBeenCalled();
     ipc.dispose();
   });
+
+  it("uses Unicode scalar limits for invocation text before service dispatch", async () => {
+    const invoke = vi.fn(async () => ({ ok: true }));
+    const ipc = harness({ invoke } as unknown as LlmRuntimeService);
+    const handler = ipc.handlers.get(LLM_IPC_CHANNELS.invoke);
+    if (!handler) {
+      throw new Error("missing LLM invocation IPC handler");
+    }
+    const instruction = "😀".repeat(16_001);
+    const request = {
+      invocation: {
+        requestId: "request-1",
+        providerId: "provider-1",
+        expectedProviderRevision: 2,
+        task: "REWRITE_SELECTION",
+        systemInstruction: instruction,
+        userInstruction: "",
+        scope: {
+          kind: "SELECTION",
+          sourceId: "scene-1",
+          manuscriptText: "원고",
+          contextText: null
+        },
+        consent: {
+          confirmedAt: "2026-09-07T00:00:00.000Z",
+          scopeSha256: "a".repeat(64)
+        }
+      }
+    };
+
+    await expect(handler(ipc.event, request)).resolves.toEqual({ ok: true });
+    expect(invoke).toHaveBeenCalledWith(request);
+    ipc.dispose();
+  });
 });

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import {
+  exceedsUnicodeScalarLimit,
   type LlmInvocationRequest,
   type LlmInvocationResult,
   type LlmInvocationScope,
@@ -63,19 +64,6 @@ export function createLlmScopeSha256(scope: LlmInvocationScope): string {
   return createHash("sha256")
     .update(serializeLlmScopeForConsent(scope), "utf8")
     .digest("hex");
-}
-
-function exceedsUnicodeScalarLimit(value: string, maximum: number): boolean {
-  let count = 0;
-  for (let index = 0; index < value.length; ) {
-    const codePoint = value.codePointAt(index);
-    index += codePoint !== undefined && codePoint > 0xffff ? 2 : 1;
-    count += 1;
-    if (count > maximum) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function validateTextLength(value: string, maximum: number, field: string): void {

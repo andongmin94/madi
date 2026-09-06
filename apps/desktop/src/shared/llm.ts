@@ -177,6 +177,22 @@ export function serializeLlmScopeForConsent(scope: LlmInvocationScope): string {
   ]);
 }
 
+export function exceedsUnicodeScalarLimit(
+  value: string,
+  maximum: number
+): boolean {
+  let count = 0;
+  for (let index = 0; index < value.length; ) {
+    const codePoint = value.codePointAt(index);
+    index += codePoint !== undefined && codePoint > 0xffff ? 2 : 1;
+    count += 1;
+    if (count > maximum) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function isLoopbackLlmUrl(url: URL): boolean {
   return LOOPBACK_HOSTS.has(url.hostname.toLowerCase());
 }

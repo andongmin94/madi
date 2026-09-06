@@ -4,10 +4,11 @@ import type {
   IpcMainInvokeEvent
 } from "electron";
 
-import type {
-  LlmInvocationRequest,
-  LlmInvocationScope,
-  LlmTaskKind
+import {
+  exceedsUnicodeScalarLimit,
+  type LlmInvocationRequest,
+  type LlmInvocationScope,
+  type LlmTaskKind
 } from "../../shared/llm";
 import {
   LLM_IPC_CHANNELS,
@@ -65,7 +66,7 @@ function requireString(
   if (
     typeof value !== "string" ||
     (!allowEmpty && value.trim().length === 0) ||
-    value.length > maximumLength ||
+    exceedsUnicodeScalarLimit(value, maximumLength) ||
     /\u0000/u.test(value)
   ) {
     throw new Error(`Invalid LLM ${field}`);
