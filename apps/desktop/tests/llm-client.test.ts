@@ -110,6 +110,36 @@ describe("OpenAI-compatible madi LLM client", () => {
     });
   });
 
+  it("counts Unicode scalars instead of UTF-16 code units for request limits", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: { role: "assistant", content: "범위 확인" },
+              finish_reason: "stop"
+            }
+          ]
+        }),
+        { status: 200 }
+      )
+    );
+    const request: LlmInvocationRequest = {
+      ...requestForScope(),
+      systemInstruction: "😀".repeat(16_001)
+    };
+
+    const result = await invokeOpenAiCompatible({
+      config,
+      request,
+      apiKey: "api-secret",
+      fetchImpl
+    });
+
+    expect(result.text).toBe("범위 확인");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("does not send exact selection identity metadata to the provider", async () => {
     const identitySentinel =
       "active-editor:1:3:8:13:SECRET_TYPIE_BLOCK_IDENTITY";
