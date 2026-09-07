@@ -92,6 +92,12 @@ export function parseProviderStore(source: string): StoredLlmProviderFile {
       );
     }
     const config = parseLlmProviderConfig(entry.config);
+    if (config.revision < 1) {
+      throw new LlmProviderStoreError(
+        "STORE_CORRUPTED",
+        "An LLM provider revision is invalid."
+      );
+    }
     if (ids.has(config.id)) {
       throw new LlmProviderStoreError(
         "STORE_CORRUPTED",
