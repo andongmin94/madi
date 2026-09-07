@@ -178,6 +178,14 @@ function recoveryArtifact(value: unknown): AtomicOutputRecoveryArtifact {
   };
 }
 
+function decodeUtf8(value: Buffer): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(value);
+  } catch {
+    throw new Error("The atomic output utility returned invalid UTF-8");
+  }
+}
+
 export class ProcessAtomicOutput implements AtomicOutputPort {
   public constructor(private readonly binaryPath: string) {}
 
@@ -417,9 +425,14 @@ export class ProcessAtomicOutput implements AtomicOutputPort {
           return;
         }
         try {
-          resolve(record(JSON.parse(Buffer.concat(chunks).toString("utf8"))));
-        } catch {
-          reject(new Error("The atomic output utility returned invalid JSON"));
+          resolve(record(JSON.parse(decodeUtf8(Buffer.concat(chunks)))));
+        } catch (error) {
+          reject(
+            error instanceof Error &&
+              error.message === "The atomic output utility returned invalid UTF-8"
+              ? error
+              : new Error("The atomic output utility returned invalid JSON")
+          );
         }
       });
       try {
