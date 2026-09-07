@@ -48,6 +48,28 @@ exact live same-block selection
 
 Multi-block or multi-document AI mutation is not retained as dormant code. It can be reconsidered only from a complete vertical slice that owns durable project recovery from the start.
 
+## 2026-09-07 transport hardening follow-up
+
+After the original audit, the main-process transport boundaries were tightened without changing canonical manuscript, Publication IR, or export format contracts.
+
+- LLM request limits now use the same Unicode-scalar counting rule at the shared contract, main IPC, and provider-client boundaries.
+- The EPUB exporter validates operation identity before spawning, normalizes synchronous spawn failures, rejects protocol data after a terminal result, and does not let cancel/dispose overturn an already completed result.
+- The local HWP bridge likewise preserves a valid completed conversion or reopen result while its owned child process is still closing.
+- The atomic-output helper no longer reports a failed request as settled before its owned process closes. It uses a bounded graceful-stop → `SIGKILL` sequence and reports an explicit hard shutdown failure if the process still does not stop.
+- The JSON-RPC core no longer spawns a replacement `madi-core` while a failed or timed-out previous core process is still alive. New work is held behind a bounded restart barrier, and a process that refuses to stop fails closed instead of permitting overlapping core access to a `.madi` file.
+
+Verification status for this follow-up is deliberately separate from implementation status:
+
+```text
+Repository changes: COMMITTED
+Static diff review: COMPLETE
+Full Windows pnpm verify: NOT RUN IN THIS ENVIRONMENT
+Fresh packaged/runtime gates: NOT RUN IN THIS ENVIRONMENT
+Technical/release GO change from these edits: NONE
+```
+
+The transport changes reduce overlapping-process and post-completion race risk, but they do not substitute for the required exact-commit Windows verification gate below.
+
 ## Remaining hotspots
 
 These are real maintainability risks, but they are not safe to split in the same cleanup commit:
