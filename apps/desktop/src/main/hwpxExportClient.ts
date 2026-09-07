@@ -166,6 +166,7 @@ interface ActiveProcess {
   cancelled: boolean;
   terminalError: Error | null;
   cleanupError: Error | null;
+  temporaryCleanupEligible: boolean;
 }
 
 export function resolveHwpxExporterBinary({
@@ -747,15 +748,10 @@ export class ProcessHwpxExporter implements HwpxExporterPort {
         resultReceived: false,
         cancelled: false,
         terminalError: null,
-        cleanupError: null
+        cleanupError: null,
+        temporaryCleanupEligible: false
       };
       this.active.set(input.operationId, active);
-      if (temporaryPath) {
-        // The canonical UUID path was absent before this owned child started.
-        // Register it before writing stdin so a kill between tempfile creation
-        // and the first WRITE_OUTPUT message cannot leave an untracked file.
-        this.ownedTemporaryPaths.add(temporaryPath);
-      }
       let stdout = Buffer.alloc(0);
       let totalStdoutBytes = 0;
       let result: HwpxUtilityResult | null = null;
@@ -787,6 +783,12 @@ export class ProcessHwpxExporter implements HwpxExporterPort {
             const total = integer(message.total, "progress total", 1_000_000);
             if (total < 1 || completed > total || total > 1_000_000) {
               throw new Error("The HWPX utility returned invalid progress");
+            }
+            if (message.stage === "WRITE_OUTPUT") {
+              active.temporaryCleanupEligible = true;
+              if (temporaryPath) {
+                this.ownedTemporaryPaths.add(temporaryPath);
+              }
             }
             onProgress(
               validateHwpxExportProgress({
@@ -883,7 +885,7 @@ export class ProcessHwpxExporter implements HwpxExporterPort {
             clearTimeout(active.forceKillTimeout);
             active.forceKillTimeout = null;
           }
-          if (temporaryPath) {
+          if (temporaryPath && active.temporaryCleanupEligible) {
             try {
               await removeOperationTemporaryFile(temporaryPath);
               this.ownedTemporaryPaths.delete(temporaryPath);
