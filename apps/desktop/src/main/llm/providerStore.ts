@@ -181,11 +181,11 @@ export class FileLlmProviderStore {
     if (!config.requiresApiKey) {
       return null;
     }
-    const normalizedKey = apiKey?.trim() ?? "";
-    if (normalizedKey.length > 0) {
+    const suppliedKey = apiKey ?? "";
+    if (suppliedKey.trim().length > 0) {
       if (
-        normalizedKey.length > 4_096 ||
-        /[\r\n\u0000]/u.test(normalizedKey)
+        suppliedKey.length > 4_096 ||
+        /[\r\n\u0000]/u.test(suppliedKey)
       ) {
         throw new LlmProviderStoreError(
           "INVALID_CREDENTIAL",
@@ -198,7 +198,7 @@ export class FileLlmProviderStore {
           "Protected credential storage is unavailable."
         );
       }
-      return encodeEncryptedCredential(this.protector.encrypt(normalizedKey));
+      return encodeEncryptedCredential(this.protector.encrypt(suppliedKey));
     }
     if (current?.encryptedCredential) {
       return current.encryptedCredential;
