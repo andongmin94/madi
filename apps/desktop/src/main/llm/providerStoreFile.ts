@@ -21,6 +21,17 @@ import {
   type StoredLlmProvider
 } from "./providerStoreTypes";
 
+async function ensureStoreDirectory(directoryPath: string): Promise<void> {
+  await mkdir(directoryPath, { recursive: true, mode: 0o700 });
+  const details = await lstat(directoryPath);
+  if (!details.isDirectory() || details.isSymbolicLink()) {
+    throw new LlmProviderStoreError(
+      "STORE_UNAVAILABLE",
+      "The LLM provider store directory is not a regular directory."
+    );
+  }
+}
+
 async function fileExists(filePath: string): Promise<boolean> {
   try {
     const details = await lstat(filePath);
@@ -116,7 +127,7 @@ export class LlmProviderFileRepository {
   }
 
   async load(): Promise<readonly StoredLlmProvider[]> {
-    await mkdir(this.directoryPath, { recursive: true });
+    await ensureStoreDirectory(this.directoryPath);
     const [storeExists, backupExists] = await Promise.all([
       fileExists(this.storePath),
       fileExists(this.backupPath)
@@ -156,7 +167,7 @@ export class LlmProviderFileRepository {
         "The LLM provider store exceeds the safe limit."
       );
     }
-    await mkdir(this.directoryPath, { recursive: true });
+    await ensureStoreDirectory(this.directoryPath);
     const temporaryPath = path.join(
       this.directoryPath,
       `.providers-${randomUUID()}.tmp`
