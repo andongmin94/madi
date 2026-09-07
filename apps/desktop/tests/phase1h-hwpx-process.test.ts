@@ -453,7 +453,7 @@ describe("Phase 1H HWPX child-process boundary", () => {
     await exporter.dispose();
   });
 
-  it("cleans an owned temporary file even when the child exits before progress", async () => {
+  it("preserves an unclaimed temporary path when the child exits before WRITE_OUTPUT", async () => {
     const directory = await makeTemporaryDirectory();
     const outputPath = path.join(directory, "output.hwpx");
     const temporaryPath = path.join(
@@ -461,7 +461,7 @@ describe("Phase 1H HWPX child-process boundary", () => {
       `.madi-hwpx-${OPERATION_ID}.tmp`
     );
     const child = createChild((_source, current) => {
-      void writeFile(temporaryPath, "partial owned output", "utf8").then(() =>
+      void writeFile(temporaryPath, "unclaimed output", "utf8").then(() =>
         current.emit("close", null)
       );
     });
@@ -471,8 +471,39 @@ describe("Phase 1H HWPX child-process boundary", () => {
     await expect(exporter.run(input(outputPath), vi.fn())).rejects.toThrow(
       "did not complete"
     );
+    expect(existsSync(temporaryPath)).toBe(true);
+    await expect(exporter.dispose()).resolves.toBeUndefined();
+    expect(existsSync(temporaryPath)).toBe(true);
+  });
+
+  it("cleans a temporary file after WRITE_OUTPUT claims ownership", async () => {
+    const directory = await makeTemporaryDirectory();
+    const outputPath = path.join(directory, "output.hwpx");
+    const temporaryPath = path.join(
+      directory,
+      `.madi-hwpx-${OPERATION_ID}.tmp`
+    );
+    const child = createChild((_source, current) => {
+      void writeFile(temporaryPath, "owned output", "utf8").then(() => {
+        current.stdout.write(
+          `${JSON.stringify({
+            kind: "PROGRESS",
+            stage: "WRITE_OUTPUT",
+            completed: 1,
+            total: 1
+          })}\n`
+        );
+        current.emit("close", null);
+      });
+    });
+    returnChild(child);
+    const exporter = new ProcessHwpxExporter("fixture-hwpx-exporter");
+
+    await expect(exporter.run(input(outputPath), vi.fn())).rejects.toThrow(
+      "did not complete"
+    );
     expect(existsSync(temporaryPath)).toBe(false);
-    await exporter.dispose();
+    await expect(exporter.dispose()).resolves.toBeUndefined();
   });
 
   it("retains a failed temporary cleanup in the disposal backlog", async () => {
@@ -483,7 +514,17 @@ describe("Phase 1H HWPX child-process boundary", () => {
       `.madi-hwpx-${OPERATION_ID}.tmp`
     );
     const child = createChild((_source, current) => {
-      void mkdir(temporaryPath).then(() => current.emit("close", null));
+      void mkdir(temporaryPath).then(() => {
+        current.stdout.write(
+          `${JSON.stringify({
+            kind: "PROGRESS",
+            stage: "WRITE_OUTPUT",
+            completed: 1,
+            total: 1
+          })}\n`
+        );
+        current.emit("close", null);
+      });
     });
     returnChild(child);
     const exporter = new ProcessHwpxExporter("fixture-hwpx-exporter");
@@ -621,7 +662,7 @@ describe("Phase 1H HWPX child-process boundary", () => {
     await runRejection;
   });
 
-  it("does not clean a temporary path while its child is still live", async () => {
+  it("does not clean an owned temporary path while its child is still live", async () => {
     vi.useFakeTimers();
     const directory = await makeTemporaryDirectory();
     const outputPath = path.join(directory, "output.hwpx");
@@ -629,8 +670,16 @@ describe("Phase 1H HWPX child-process boundary", () => {
       directory,
       `.madi-hwpx-${OPERATION_ID}.tmp`
     );
-    const child = createChild(() => {
+    const child = createChild((_source, current) => {
       writeFileSync(temporaryPath, "live child output", "utf8");
+      current.stdout.write(
+        `${JSON.stringify({
+          kind: "PROGRESS",
+          stage: "WRITE_OUTPUT",
+          completed: 1,
+          total: 1
+        })}\n`
+      );
     });
     returnChild(child);
     const exporter = new ProcessHwpxExporter("fixture-hwpx-exporter");
