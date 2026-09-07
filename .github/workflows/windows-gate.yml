@@ -1,0 +1,76 @@
+name: Windows full gate
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: madi-windows-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Pinned Windows verification and unpacked package
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out exact revision and Typie
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Set up pinned Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+          rustup target add --toolchain 1.97.1 wasm32-unknown-unknown x86_64-pc-windows-msvc
+          rustc +1.97.1 --version
+          cargo +1.97.1 --version
+
+      - name: Activate pinned pnpm
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          node --version
+          pnpm --version
+          dotnet --version
+
+      - name: Install pinned workspace
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      - name: Run full pinned verification
+        shell: pwsh
+        run: pnpm verify
+
+      - name: Build fresh unpacked package
+        shell: pwsh
+        run: pnpm package:unpacked
+
+      - name: Recheck repository contracts
+        shell: pwsh
+        run: |
+          pnpm check:repository
+          pnpm format:check
+          git diff --check
+          git submodule status --recursive
+          git status --short
