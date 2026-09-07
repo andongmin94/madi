@@ -90,6 +90,28 @@ describe("FileLlmProviderStore", () => {
     expect(serialized).toContain("encryptedCredential");
   });
 
+  it("preserves an opaque credential byte-for-byte instead of trimming it", async () => {
+    const directory = await createDirectory();
+    const store = new FileLlmProviderStore(directory, new TestProtector());
+    await store.initialize();
+    const credential = "  private-api-key  ";
+
+    await store.saveProvider(remoteDraft, null, credential);
+
+    expect(store.getCredential(remoteDraft.id)).toBe(credential);
+  });
+
+  it("rejects line breaks in a supplied credential instead of normalizing them away", async () => {
+    const directory = await createDirectory();
+    const store = new FileLlmProviderStore(directory, new TestProtector());
+    await store.initialize();
+
+    await expect(
+      store.saveProvider(remoteDraft, null, "private-api-key\n")
+    ).rejects.toMatchObject({ code: "INVALID_CREDENTIAL" });
+    expect(store.listProviders()).toEqual([]);
+  });
+
   it("refuses mutation before initialization without overwriting stored providers", async () => {
     const directory = await createDirectory();
     const initialized = new FileLlmProviderStore(
