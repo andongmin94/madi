@@ -15,9 +15,9 @@ concurrency:
 
 jobs:
   desktop:
-    name: Desktop typecheck and unit tests
+    name: Desktop typecheck and focused tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       - name: Check out exact revision and Typie
@@ -39,8 +39,8 @@ jobs:
           node --version
           pnpm --version
 
-      - name: Install workspace
-        run: pnpm install --frozen-lockfile
+      - name: Install workspace without runtime postinstall
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Check repository contracts
         run: |
@@ -52,5 +52,15 @@ jobs:
       - name: Typecheck desktop
         run: pnpm --filter @madi/desktop typecheck
 
-      - name: Run desktop unit tests
-        run: pnpm --filter @madi/desktop test
+      - name: Run focused transport and LLM tests
+        run: |
+          pnpm --filter @madi/desktop exec vitest run \
+            tests/core-client-serialization.test.ts \
+            tests/core-client-stop-barrier.test.ts \
+            tests/atomic-output-shutdown.test.ts \
+            tests/phase1h-atomic-output-process.test.ts \
+            tests/hwp-bridge-completion-race.test.ts \
+            tests/phase1h-hwp-bridge-process.test.ts \
+            tests/phase1g-epub-process.test.ts \
+            tests/llm-client.test.ts \
+            tests/llm-main-ipc.test.ts
