@@ -66,6 +66,7 @@ jobs:
             tests/phase1g-epub-process.test.ts \
             tests/llm-provider-store.test.ts \
             tests/llm-provider-store-utf8.test.ts \
+            tests/llm-provider-store-path-integrity.test.ts \
             tests/llm-runtime-service.test.ts \
             tests/llm-runtime-dispose.test.ts \
             tests/llm-client.test.ts \
