@@ -60,6 +60,7 @@ jobs:
             tests/core-client-stop-barrier.test.ts \
             tests/atomic-output-shutdown.test.ts \
             tests/atomic-output-utf8.test.ts \
+            tests/atomic-output-journal-utf8.test.ts \
             tests/phase1h-atomic-output-process.test.ts \
             tests/hwp-bridge-completion-race.test.ts \
             tests/phase1h-hwp-bridge-process.test.ts \
