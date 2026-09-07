@@ -87,6 +87,7 @@ describe("LLM provider identity canonicalization", () => {
     );
 
     expect(updated.config.id).toBe("provider-1");
+    expect(updated.config.credentialId).toBe("provider:provider-1");
     expect(updated.config.revision).toBe(2);
     expect(updated.config.name).toBe("Updated provider");
     expect(store.getCredential("provider-1")).toBe("original-key");
