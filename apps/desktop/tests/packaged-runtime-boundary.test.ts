@@ -1,5 +1,10 @@
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("electron", () => ({
+  BrowserWindow: class BrowserWindow {}
+}));
+
 import { resolveCoreBinary } from "../src/main/coreClient";
 import { resolveEpubExporterBinary } from "../src/main/epubExportClient";
 import { resolveHwpBridgeBinary } from "../src/main/hwpBridgeClient";
