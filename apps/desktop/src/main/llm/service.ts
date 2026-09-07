@@ -3,7 +3,8 @@ import { performance } from "node:perf_hooks";
 import type {
   LlmInvocationRequest,
   LlmInvocationResult,
-  LlmInvocationScope
+  LlmInvocationScope,
+  LlmProviderConfig
 } from "../../shared/llm";
 import type {
   DeleteLlmProviderRequest,
@@ -29,6 +30,18 @@ const PROVIDER_TEST_SYSTEM_INSTRUCTION =
 const PROVIDER_TEST_USER_INSTRUCTION = "Reply with exactly MADI_OK.";
 
 export type LlmInvoker = typeof invokeOpenAiCompatible;
+
+function requireProviderRevision(
+  config: LlmProviderConfig,
+  expectedRevision: number
+): void {
+  if (config.revision !== expectedRevision) {
+    throw new LlmProviderStoreError(
+      "REVISION_MISMATCH",
+      "The provider changed before the operation could start."
+    );
+  }
+}
 
 export class LlmRuntimeService {
   private readonly activeRequests = new Map<string, AbortController>();
@@ -99,6 +112,7 @@ export class LlmRuntimeService {
   ): Promise<LlmProviderTestResult> {
     this.requireAvailable();
     const config = this.store.getProvider(request.providerId);
+    requireProviderRevision(config, request.expectedRevision);
     const apiKey = this.store.getCredential(config.id);
     const scope: LlmInvocationScope = {
       kind: "CUSTOM",
@@ -143,6 +157,7 @@ export class LlmRuntimeService {
   async invoke(request: InvokeLlmRequest): Promise<LlmInvocationResult> {
     this.requireAvailable();
     const config = this.store.getProvider(request.invocation.providerId);
+    requireProviderRevision(config, request.invocation.expectedProviderRevision);
     const apiKey = this.store.getCredential(config.id);
     return this.runActiveRequest(request.invocation.requestId, (signal) =>
       this.invoker({
