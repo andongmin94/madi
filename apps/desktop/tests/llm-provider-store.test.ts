@@ -90,6 +90,49 @@ describe("FileLlmProviderStore", () => {
     expect(serialized).toContain("encryptedCredential");
   });
 
+  it("refuses mutation before initialization without overwriting stored providers", async () => {
+    const directory = await createDirectory();
+    const initialized = new FileLlmProviderStore(
+      directory,
+      new TestProtector()
+    );
+    await initialized.initialize();
+    await initialized.saveProvider(remoteDraft, null, "preserved-key");
+    const providerPath = path.join(directory, "providers.json");
+    const before = await readFile(providerPath, "utf8");
+
+    const unopened = new FileLlmProviderStore(directory, new TestProtector());
+    await expect(
+      unopened.saveProvider(
+        {
+          ...remoteDraft,
+          id: "uninitialized-provider",
+          name: "Must not overwrite"
+        },
+        null,
+        "new-key"
+      )
+    ).rejects.toMatchObject({ code: "STORE_UNAVAILABLE" });
+
+    await expect(readFile(providerPath, "utf8")).resolves.toBe(before);
+    const reopened = new FileLlmProviderStore(directory, new TestProtector());
+    await reopened.initialize();
+    expect(reopened.listProviders()).toHaveLength(1);
+    expect(reopened.getCredential(remoteDraft.id)).toBe("preserved-key");
+  });
+
+  it("shares one in-flight initialization and remains idempotent after success", async () => {
+    const directory = await createDirectory();
+    const store = new FileLlmProviderStore(directory, new TestProtector());
+
+    const first = store.initialize();
+    const second = store.initialize();
+    await Promise.all([first, second]);
+    await store.initialize();
+
+    expect(store.listProviders()).toEqual([]);
+  });
+
   it("preserves a credential during a revision-checked config update", async () => {
     const directory = await createDirectory();
     const store = new FileLlmProviderStore(directory, new TestProtector());

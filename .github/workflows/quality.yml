@@ -63,5 +63,6 @@ jobs:
             tests/hwp-bridge-completion-race.test.ts \
             tests/phase1h-hwp-bridge-process.test.ts \
             tests/phase1g-epub-process.test.ts \
+            tests/llm-provider-store.test.ts \
             tests/llm-client.test.ts \
             tests/llm-main-ipc.test.ts

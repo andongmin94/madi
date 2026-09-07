@@ -25,6 +25,7 @@ export class FileLlmProviderStore {
   private readonly repository: LlmProviderFileRepository;
   private providers = new Map<string, StoredLlmProvider>();
   private initialized = false;
+  private initialization: Promise<void> | null = null;
   private mutationQueue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -39,11 +40,27 @@ export class FileLlmProviderStore {
   }
 
   async initialize(): Promise<void> {
-    const providers = await this.repository.load();
-    this.providers = new Map(
-      providers.map((provider) => [provider.config.id, provider])
-    );
-    this.initialized = true;
+    if (this.initialized) {
+      return;
+    }
+    if (this.initialization) {
+      return this.initialization;
+    }
+
+    const initialization = this.repository.load().then((providers) => {
+      this.providers = new Map(
+        providers.map((provider) => [provider.config.id, provider])
+      );
+      this.initialized = true;
+    });
+    this.initialization = initialization;
+    try {
+      await initialization;
+    } finally {
+      if (this.initialization === initialization) {
+        this.initialization = null;
+      }
+    }
   }
 
   listProviders(): readonly LlmProviderSummary[] {
@@ -99,6 +116,7 @@ export class FileLlmProviderStore {
     expectedRevision: number | null,
     apiKey: string | null
   ): Promise<LlmProviderSummary> {
+    this.requireInitialized();
     return this.enqueueMutation(async () => {
       const current = this.providers.get(draft.id);
       if (expectedRevision === null) {
