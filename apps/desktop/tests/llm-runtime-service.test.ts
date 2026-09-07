@@ -86,6 +86,21 @@ afterEach(async () => {
 });
 
 describe("LlmRuntimeService", () => {
+  it("reports the provider store unavailable until initialization succeeds", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "madi-llm-service-"));
+    directories.push(directory);
+    const store = new FileLlmProviderStore(directory, new TestProtector());
+    const service = new LlmRuntimeService(store, vi.fn());
+
+    expect(service.getStatus().providerStore).toBe("UNAVAILABLE");
+    expect(() => service.listProviders()).toThrowError(/unavailable/u);
+
+    await service.initialize();
+
+    expect(service.getStatus().providerStore).toBe("AVAILABLE");
+    expect(service.listProviders()).toEqual([]);
+  });
+
   it("resolves config and protected credential before invoking the provider", async () => {
     const invoker = vi.fn(async ({ config, apiKey, request }) => ({
       requestId: request.requestId,
