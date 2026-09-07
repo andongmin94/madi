@@ -110,6 +110,20 @@ describe("OpenAI-compatible madi LLM client", () => {
     });
   });
 
+  it("rejects surrounding API key whitespace before any network call", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+
+    await expect(
+      invokeOpenAiCompatible({
+        config,
+        request: requestForScope(),
+        apiKey: " api-secret ",
+        fetchImpl
+      })
+    ).rejects.toMatchObject({ code: "INVALID_API_KEY" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("counts Unicode scalars instead of UTF-16 code units for request limits", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       new Response(
