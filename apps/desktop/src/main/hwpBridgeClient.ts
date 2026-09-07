@@ -10,6 +10,7 @@ const REOPEN_TIMEOUT_MS = 120_000;
 const PROCESS_TIMEOUT_GRACE_MS = 2_000;
 const PROCESS_CLOSE_TIMEOUT_MS = 15_000;
 const PROCESS_FORCE_CLOSE_TIMEOUT_MS = 5_000;
+const STRICT_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 
 type BridgeCommand = "probe" | "convert" | "reopen-verify";
 
@@ -478,7 +479,7 @@ export class ProcessHwpBridge implements HwpBridgePort {
         }
         try {
           const message = record(
-            JSON.parse(line.toString("utf8")) as unknown,
+            JSON.parse(STRICT_UTF8_DECODER.decode(line)) as unknown,
             "HWP bridge message"
           );
           if (message.command === "cancel") {
