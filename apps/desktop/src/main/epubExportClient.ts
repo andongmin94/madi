@@ -666,7 +666,9 @@ export class ProcessEpubExporter implements EpubExporterPort {
         }
         let message: Record<string, unknown>;
         try {
-          message = asObject(JSON.parse(line.toString("utf8")) as unknown);
+          message = asObject(
+            JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(line)) as unknown
+          );
         } catch {
           fail(new Error("The EPUB utility returned malformed JSON"));
           return;
