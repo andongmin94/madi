@@ -118,7 +118,8 @@ export class FileLlmProviderStore {
   ): Promise<LlmProviderSummary> {
     this.requireInitialized();
     return this.enqueueMutation(async () => {
-      const current = this.providers.get(draft.id);
+      const canonicalId = draftToProviderConfig(draft, 1).id;
+      const current = this.providers.get(canonicalId);
       if (expectedRevision === null) {
         if (current) {
           throw new LlmProviderStoreError(
