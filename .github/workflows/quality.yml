@@ -64,6 +64,7 @@ jobs:
             tests/phase1h-atomic-output-process.test.ts \
             tests/hwp-bridge-completion-race.test.ts \
             tests/phase1h-hwp-bridge-process.test.ts \
+            tests/hwp-bridge-promise-contract.test.ts \
             tests/hwpx-crash-recovery-utf8.test.ts \
             tests/phase1g-epub-process.test.ts \
             tests/epub-export-utf8.test.ts \
