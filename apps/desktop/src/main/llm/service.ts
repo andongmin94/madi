@@ -32,6 +32,7 @@ export type LlmInvoker = typeof invokeOpenAiCompatible;
 
 export class LlmRuntimeService {
   private readonly activeRequests = new Map<string, AbortController>();
+  private initialized = false;
   private initializationError: Error | null = null;
 
   constructor(
@@ -42,8 +43,10 @@ export class LlmRuntimeService {
   async initialize(): Promise<void> {
     try {
       await this.store.initialize();
+      this.initialized = true;
       this.initializationError = null;
     } catch (error) {
+      this.initialized = false;
       this.initializationError =
         error instanceof Error ? error : new Error("LLM provider store failed");
     }
@@ -51,7 +54,10 @@ export class LlmRuntimeService {
 
   getStatus(): LlmRuntimeStatus {
     return {
-      providerStore: this.initializationError === null ? "AVAILABLE" : "UNAVAILABLE",
+      providerStore:
+        this.initialized && this.initializationError === null
+          ? "AVAILABLE"
+          : "UNAVAILABLE",
       credentialStorage: this.store.isCredentialStorageAvailable()
         ? "AVAILABLE"
         : "UNAVAILABLE"
@@ -175,7 +181,7 @@ export class LlmRuntimeService {
   }
 
   private requireAvailable(): void {
-    if (this.initializationError !== null) {
+    if (!this.initialized || this.initializationError !== null) {
       throw new LlmProviderStoreError(
         "STORE_UNAVAILABLE",
         "The optional LLM provider store is unavailable."
