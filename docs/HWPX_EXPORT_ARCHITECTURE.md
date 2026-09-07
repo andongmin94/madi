@@ -1,6 +1,6 @@
 # HWPX Export Architecture
 
-기준일: 2026-08-13
+기준일: 2026-09-07
 
 ## 1. 소유권 경계
 
@@ -41,6 +41,13 @@ Compiler는 다음 순서로 동작한다.
 않는다. Utility progress stage는 Publication IR, style table, section XML, package documents,
 ZIP, validation, write, complete다.
 
+EXPORT mode의 operation temp는 destination과 같은 directory의
+`.madi-hwpx-<operationId>.tmp`다. Utility는 `TempfileBuilder`의 `rand_bytes(0)`으로 이
+정확한 이름을 create-new로 먼저 확보한다. 이미 점유된 이름은 overwrite하지 않고
+`HwpxError::Output`으로 실패한다. `WRITE_OUTPUT` progress는 이 exclusive create가 성공한
+뒤에만 emit한다. 따라서 `WRITE_OUTPUT`은 Electron parent가 해당 temp를 cleanup 가능한
+utility-owned path로 인정할 수 있는 최초의 ownership evidence다.
+
 ## 3. Process contract
 
 Stdin은 한 줄의 UTF-8 JSON이며 unknown field를 거부한다. Request는 operation/mode,
@@ -51,6 +58,13 @@ JSONL뿐이다. Stderr는 diagnostic transport로 신뢰하지 않는다.
 Main client는 stdout line/total byte, enum, path, integer, hash, validation count와 terminal
 identity를 다시 검증한다. Child timeout/cancel/dispose는 process close와 owned temporary
 cleanup이 끝난 뒤 settle한다.
+
+Parent의 spawn 전 `exists` 검사는 빠른 collision rejection일 뿐 ownership claim이 아니다.
+Spawn 뒤 다른 process가 같은 deterministic temp 이름을 만들 수 있으므로 parent는
+`WRITE_OUTPUT`을 관측하기 전에는 그 path를 foreign/unclaimed로 취급하고 삭제하지 않는다.
+`WRITE_OUTPUT`을 관측한 operation만 해당 temp를 `ownedTemporaryPaths`에 등록하며, 그 뒤
+cancel/error/close/dispose에서만 cleanup할 수 있다. 이 규칙은 EPUB exporter의 create-new
+ownership boundary와 동일하다.
 
 ## 4. Electron trust boundary
 
