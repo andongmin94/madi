@@ -238,6 +238,30 @@ describe("JsonRpcCoreClient sequential transport", () => {
     client.dispose();
   });
 
+  it("rejects malformed UTF-8 before JSON-RPC parsing", async () => {
+    const child = new FakeCoreProcess();
+    const client = new JsonRpcCoreClient("madi-core", {
+      spawnProcess: () => child.asChildProcess()
+    });
+    const active = client.request("load_ui_state", { key: "reader" });
+    const request = child.requests[0];
+    if (!request) {
+      throw new Error("Missing captured core request");
+    }
+    child.stdout.write(
+      Buffer.concat([
+        Buffer.from(`{"jsonrpc":"2.0","id":${request.id},"result":"`, "utf8"),
+        Buffer.from([0x80]),
+        Buffer.from(`"}\n`, "utf8")
+      ])
+    );
+
+    await expect(active).rejects.toThrow("invalid UTF-8");
+    expect(child.kill).toHaveBeenCalledOnce();
+    child.emit("close", 1, null);
+    client.dispose();
+  });
+
   it("rejects both the active request and queued work when disposed", async () => {
     const child = new FakeCoreProcess();
     const client = new JsonRpcCoreClient("madi-core", {
