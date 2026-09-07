@@ -111,22 +111,38 @@ async function fontDirectoryNames(
 }
 
 export class WindowsFontInstallationDetector implements FontInstallationPort {
-  private readonly cache = new Map<string, Promise<boolean | null>>();
+  private readonly inFlight = new Map<string, Promise<boolean | null>>();
+
+  public constructor(
+    private readonly platform: NodeJS.Platform = process.platform
+  ) {}
 
   public isInstalled(fontFamily: string): Promise<boolean | null> {
     const normalized = normalizedFontName(fontFamily);
     if (normalized.length < 1 || normalized.length > 128) {
       return Promise.resolve(null);
     }
-    if (process.platform !== "win32") {
+    if (this.platform !== "win32") {
       return Promise.resolve(null);
     }
-    const cached = this.cache.get(normalized);
-    if (cached) {
-      return cached;
+    const existing = this.inFlight.get(normalized);
+    if (existing) {
+      return existing;
     }
     const check = this.inspect(normalized);
-    this.cache.set(normalized, check);
+    this.inFlight.set(normalized, check);
+    void check.then(
+      () => {
+        if (this.inFlight.get(normalized) === check) {
+          this.inFlight.delete(normalized);
+        }
+      },
+      () => {
+        if (this.inFlight.get(normalized) === check) {
+          this.inFlight.delete(normalized);
+        }
+      }
+    );
     return check;
   }
 
