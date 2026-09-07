@@ -78,6 +78,7 @@ jobs:
             tests/font-installation-refresh.test.ts \
             tests/project-session-registry.test.ts \
             tests/window-close.test.ts \
+            tests/llm-contracts.test.ts \
             tests/llm-provider-store.test.ts \
             tests/llm-provider-store-utf8.test.ts \
             tests/llm-provider-store-path-integrity.test.ts \
