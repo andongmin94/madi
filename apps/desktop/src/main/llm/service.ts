@@ -34,6 +34,7 @@ export class LlmRuntimeService {
   private readonly activeRequests = new Map<string, AbortController>();
   private initialized = false;
   private initializationError: Error | null = null;
+  private disposed = false;
 
   constructor(
     private readonly store: FileLlmProviderStore,
@@ -41,6 +42,11 @@ export class LlmRuntimeService {
   ) {}
 
   async initialize(): Promise<void> {
+    if (this.disposed) {
+      this.initialized = false;
+      this.initializationError = new Error("LLM runtime was disposed");
+      return;
+    }
     try {
       await this.store.initialize();
       this.initialized = true;
@@ -55,7 +61,7 @@ export class LlmRuntimeService {
   getStatus(): LlmRuntimeStatus {
     return {
       providerStore:
-        this.initialized && this.initializationError === null
+        !this.disposed && this.initialized && this.initializationError === null
           ? "AVAILABLE"
           : "UNAVAILABLE",
       credentialStorage: this.store.isCredentialStorageAvailable()
@@ -158,6 +164,11 @@ export class LlmRuntimeService {
   }
 
   dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.initialized = false;
     for (const controller of this.activeRequests.values()) {
       controller.abort();
     }
@@ -181,7 +192,11 @@ export class LlmRuntimeService {
   }
 
   private requireAvailable(): void {
-    if (!this.initialized || this.initializationError !== null) {
+    if (
+      this.disposed ||
+      !this.initialized ||
+      this.initializationError !== null
+    ) {
       throw new LlmProviderStoreError(
         "STORE_UNAVAILABLE",
         "The optional LLM provider store is unavailable."
