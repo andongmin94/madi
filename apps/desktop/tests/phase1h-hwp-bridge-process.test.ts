@@ -56,8 +56,8 @@ function createChild(
       _encoding?: BufferEncoding,
       callback?: (error?: Error | null) => void
     ) => {
-    onInput(source, child, callback);
-    return true;
+      onInput(source, child, callback);
+      return true;
     }
   );
   return child;
@@ -131,6 +131,38 @@ describe("Phase 1H local HWP bridge process boundary", () => {
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"]
     });
+    await bridge.dispose();
+  });
+
+  it("rejects malformed UTF-8 before bridge response parsing", async () => {
+    const child = createChild((source, current) => {
+      const request = JSON.parse(source) as Record<string, unknown>;
+      current.stdout.write(
+        Buffer.concat([
+          Buffer.from(
+            `${JSON.stringify({
+              requestId: request.requestId,
+              command: "probe",
+              status: "SUCCESS",
+              available: true,
+              availabilityCode: "AVAILABLE",
+              hancomVersion: "Hancom "
+            }).slice(0, -2)}`,
+            "utf8"
+          ),
+          Buffer.from([0x80]),
+          Buffer.from(`"}\n`, "utf8")
+        ])
+      );
+      queueMicrotask(() => current.emit("close", 0));
+    });
+    returnChild(child);
+    const bridge = new ProcessHwpBridge("fixture-hwp-bridge.exe");
+
+    await expect(bridge.probe()).rejects.toMatchObject({
+      code: "INVALID_RESPONSE"
+    });
+    expect(child.kill).toHaveBeenCalledTimes(1);
     await bridge.dispose();
   });
 
