@@ -82,6 +82,7 @@ interface ActiveBridgeProcess {
   forceKillTimeout: NodeJS.Timeout | null;
   closedFlag: boolean;
   cancellationRequested: boolean;
+  terminalReceived: boolean;
   terminalError: Error | null;
 }
 
@@ -394,7 +395,11 @@ export class ProcessHwpBridge implements HwpBridgePort {
     try {
       await bounded(PROCESS_CLOSE_TIMEOUT_MS);
     } catch {
-      active.child.kill("SIGKILL");
+      try {
+        active.child.kill("SIGKILL");
+      } catch {
+        // The second bounded wait remains authoritative.
+      }
       await bounded(PROCESS_FORCE_CLOSE_TIMEOUT_MS);
     }
   }
@@ -455,13 +460,13 @@ export class ProcessHwpBridge implements HwpBridgePort {
         forceKillTimeout: null,
         closedFlag: false,
         cancellationRequested: false,
+        terminalReceived: false,
         terminalError: null
       };
       this.active.set(operationId, active);
       let stdout = Buffer.alloc(0);
       let stdoutBytes = 0;
       let result: T | null = null;
-      let terminalReceived = false;
       const fail = (error: Error): void => this.terminate(active, error);
       const parseLine = (line: Buffer): void => {
         if (line.byteLength === 0 || active.closedFlag || active.terminalError) {
@@ -493,12 +498,12 @@ export class ProcessHwpBridge implements HwpBridgePort {
             active.resolveCancelAcknowledged(true);
             return;
           }
-          if (terminalReceived) {
+          if (active.terminalReceived) {
             throw new Error("Duplicate HWP bridge terminal response");
           }
-          terminalReceived = true;
           try {
             result = parse(message);
+            active.terminalReceived = true;
           } catch (error) {
             if (
               error instanceof HwpBridgeOperationError ||
@@ -536,7 +541,7 @@ export class ProcessHwpBridge implements HwpBridgePort {
         }
       });
       child.stdin.on("error", () => {
-        if (!terminalReceived) {
+        if (!active.terminalReceived) {
           fail(new HwpBridgeOperationError("INPUT_STREAM_FAILED"));
         }
       });
@@ -556,7 +561,7 @@ export class ProcessHwpBridge implements HwpBridgePort {
             active.terminalError ??
             (active.cancellationRequested
               ? new HwpBridgeCancelledError()
-              : code !== 0 || !terminalReceived || result === null
+              : code !== 0 || !active.terminalReceived || result === null
                 ? new HwpBridgeOperationError("PROCESS_EXIT")
                 : null);
           if (terminal) {
@@ -583,7 +588,7 @@ export class ProcessHwpBridge implements HwpBridgePort {
               !error ||
               active.closedFlag ||
               this.active.get(operationId) !== active ||
-              terminalReceived
+              active.terminalReceived
             ) {
               return;
             }
@@ -594,7 +599,7 @@ export class ProcessHwpBridge implements HwpBridgePort {
         if (
           !active.closedFlag &&
           this.active.get(operationId) === active &&
-          !terminalReceived
+          !active.terminalReceived
         ) {
           fail(new HwpBridgeOperationError("INPUT_WRITE_FAILED"));
         }
@@ -672,7 +677,12 @@ export class ProcessHwpBridge implements HwpBridgePort {
   public async cancel(operationIdValue: string): Promise<boolean> {
     const operationId = requestId(operationIdValue);
     const active = this.active.get(operationId);
-    if (!active || active.closedFlag || active.command === "probe") {
+    if (
+      !active ||
+      active.closedFlag ||
+      active.terminalReceived ||
+      active.command === "probe"
+    ) {
       return false;
     }
     if (active.cancellationRequested) {
@@ -741,10 +751,12 @@ export class ProcessHwpBridge implements HwpBridgePort {
     this.disposed = true;
     const results = await Promise.allSettled(
       [...this.active.values()].map(async (active) => {
-        this.terminate(
-          active,
-          new HwpBridgeOperationError("BRIDGE_DISPOSED")
-        );
+        if (!active.terminalReceived) {
+          this.terminate(
+            active,
+            new HwpBridgeOperationError("BRIDGE_DISPOSED")
+          );
+        }
         await this.waitForClosed(active);
       })
     );
