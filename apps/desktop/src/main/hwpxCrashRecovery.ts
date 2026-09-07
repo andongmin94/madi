@@ -273,7 +273,13 @@ async function readBoundedRegularFile(filePath: string): Promise<string | null> 
     ) {
       return null;
     }
-    return bytes.subarray(0, byteLength).toString("utf8");
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(
+        bytes.subarray(0, byteLength)
+      );
+    } catch {
+      return null;
+    }
   } finally {
     await handle.close();
   }
