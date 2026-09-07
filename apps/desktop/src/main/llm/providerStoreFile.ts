@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import {
   mkdir,
   open,
-  readFile,
   readdir,
   rename,
   rm,
@@ -35,14 +34,43 @@ async function fileExists(filePath: string): Promise<boolean> {
 }
 
 async function readBounded(filePath: string): Promise<string> {
-  const details = await stat(filePath);
-  if (!details.isFile() || details.size > LLM_PROVIDER_STORE_MAX_BYTES) {
-    throw new LlmProviderStoreError(
-      "STORE_CORRUPTED",
-      "The LLM provider store exceeds the safe limit."
-    );
+  const handle = await open(filePath, "r");
+  try {
+    const before = await handle.stat();
+    if (!before.isFile() || before.size > LLM_PROVIDER_STORE_MAX_BYTES) {
+      throw new LlmProviderStoreError(
+        "STORE_CORRUPTED",
+        "The LLM provider store exceeds the safe limit."
+      );
+    }
+    const bytes = Buffer.alloc(before.size);
+    let offset = 0;
+    while (offset < bytes.byteLength) {
+      const { bytesRead } = await handle.read(
+        bytes,
+        offset,
+        bytes.byteLength - offset,
+        offset
+      );
+      if (bytesRead === 0) {
+        throw new LlmProviderStoreError(
+          "STORE_CORRUPTED",
+          "The LLM provider store changed while it was read."
+        );
+      }
+      offset += bytesRead;
+    }
+    const after = await handle.stat();
+    if (!after.isFile() || after.size !== before.size) {
+      throw new LlmProviderStoreError(
+        "STORE_CORRUPTED",
+        "The LLM provider store changed while it was read."
+      );
+    }
+    return bytes.toString("utf8");
+  } finally {
+    await handle.close();
   }
-  return readFile(filePath, "utf8");
 }
 
 export class LlmProviderFileRepository {
