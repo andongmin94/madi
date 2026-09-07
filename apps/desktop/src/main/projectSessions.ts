@@ -44,6 +44,7 @@ export class ProjectSessionRegistry {
     if (input.workNodeId !== undefined) {
       record.workNodeId = input.workNodeId;
     }
+    this.records.clear();
     this.records.set(sessionId, record);
     return this.toPublic(record);
   }
