@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -41,6 +41,24 @@ describe("LLM provider store path integrity", () => {
 
     await expect(store.initialize()).rejects.toMatchObject({
       code: "STORE_CORRUPTED"
+    });
+  });
+
+  it("does not follow a redirected provider-store directory", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "madi-llm-directory-"));
+    directories.push(root);
+    const target = path.join(root, "outside-store");
+    const redirected = path.join(root, "llm-providers-v1");
+    await mkdir(target);
+    await symlink(
+      target,
+      redirected,
+      process.platform === "win32" ? "junction" : "dir"
+    );
+    const store = new FileLlmProviderStore(redirected, new TestProtector());
+
+    await expect(store.initialize()).rejects.toMatchObject({
+      code: "STORE_UNAVAILABLE"
     });
   });
 });
