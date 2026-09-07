@@ -251,7 +251,13 @@ async function readBounded(filePath: string): Promise<string | null> {
     ) {
       throw new Error("The atomic output journal changed while reading");
     }
-    return bytes.subarray(0, length).toString("utf8");
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(
+        bytes.subarray(0, length)
+      );
+    } catch {
+      throw new Error("The atomic output journal contains invalid UTF-8");
+    }
   } finally {
     await handle.close();
   }
