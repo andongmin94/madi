@@ -42,14 +42,23 @@ describe("LlmRuntimeService disposal", () => {
     const service = new LlmRuntimeService(store, invoker);
 
     await service.initialize();
-    expect(service.getStatus().providerStore).toBe("AVAILABLE");
+    expect(service.getStatus()).toEqual({
+      providerStore: "AVAILABLE",
+      credentialStorage: "AVAILABLE"
+    });
 
     service.dispose();
 
-    expect(service.getStatus().providerStore).toBe("UNAVAILABLE");
+    expect(service.getStatus()).toEqual({
+      providerStore: "UNAVAILABLE",
+      credentialStorage: "UNAVAILABLE"
+    });
     expect(() => service.listProviders()).toThrowError(/unavailable/u);
     await service.initialize();
-    expect(service.getStatus().providerStore).toBe("UNAVAILABLE");
+    expect(service.getStatus()).toEqual({
+      providerStore: "UNAVAILABLE",
+      credentialStorage: "UNAVAILABLE"
+    });
     expect(() => service.listProviders()).toThrowError(/unavailable/u);
     expect(invoker).not.toHaveBeenCalled();
   });
