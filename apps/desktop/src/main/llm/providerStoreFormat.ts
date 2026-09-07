@@ -98,6 +98,15 @@ export function parseProviderStore(source: string): StoredLlmProviderFile {
         "An LLM provider revision is invalid."
       );
     }
+    const expectedCredentialId = config.requiresApiKey
+      ? `provider:${config.id}`
+      : null;
+    if (config.credentialId !== expectedCredentialId) {
+      throw new LlmProviderStoreError(
+        "STORE_CORRUPTED",
+        "An LLM provider credential reference is invalid."
+      );
+    }
     if (ids.has(config.id)) {
       throw new LlmProviderStoreError(
         "STORE_CORRUPTED",
