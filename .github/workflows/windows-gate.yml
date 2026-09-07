@@ -37,6 +37,30 @@ jobs:
         with:
           dotnet-version: 10.0.400
 
+      - name: Install pinned x86 .NET runtime
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP "dotnet-x86"
+          $scriptPath = Join-Path $env:RUNNER_TEMP "dotnet-install-x86.ps1"
+          $scriptUrl = "https://raw.githubusercontent.com/dotnet/install-scripts/47940ac9fc30a2f2dd19167165d0bb0774625f67/src/dotnet-install.ps1"
+          Invoke-WebRequest -UseBasicParsing $scriptUrl -OutFile $scriptPath
+          & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+            -Version 10.0.11 `
+            -Runtime dotnet `
+            -Architecture x86 `
+            -InstallDir $installDir `
+            -NoPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "x86 .NET runtime installation failed with exit code $LASTEXITCODE"
+          }
+          $hostFxr = Join-Path $installDir "host\fxr\10.0.11\hostfxr.dll"
+          if (-not (Test-Path -LiteralPath $hostFxr -PathType Leaf)) {
+            throw "Pinned x86 hostfxr was not installed"
+          }
+          $env:DOTNET_ROOT_X86 = $installDir
+          "DOTNET_ROOT_X86=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          & (Join-Path $installDir "dotnet.exe") --info
+
       - name: Set up pinned Rust toolchain
         shell: pwsh
         run: |
