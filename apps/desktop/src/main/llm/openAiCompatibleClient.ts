@@ -142,7 +142,11 @@ function validateApiKey(
       "This provider requires an API key."
     );
   }
-  if (supplied.length > 4_096 || /[\r\n\u0000]/u.test(supplied)) {
+  if (
+    supplied !== supplied.trim() ||
+    supplied.length > 4_096 ||
+    /[\r\n\u0000]/u.test(supplied)
+  ) {
     throw new LlmClientError(
       "INVALID_API_KEY",
       "The API key is outside the allowed range."
