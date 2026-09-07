@@ -619,7 +619,7 @@ export class ProcessHwpBridge implements HwpBridgePort {
     );
   }
 
-  public convert(
+  public async convert(
     operationIdValue: string,
     inputHwpxValue: string,
     outputHwpValue: string
@@ -651,7 +651,7 @@ export class ProcessHwpBridge implements HwpBridgePort {
     );
   }
 
-  public reopen(
+  public async reopen(
     operationIdValue: string,
     inputHwpValue: string
   ): Promise<HwpBridgeReopenResult> {
