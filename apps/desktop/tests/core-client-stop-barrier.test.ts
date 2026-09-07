@@ -10,7 +10,9 @@ type WriteCallback = (error?: Error | null) => void;
 class FakeCoreProcess extends EventEmitter {
   public readonly stdout = new PassThrough();
   public readonly stderr = new PassThrough();
-  public readonly kill = vi.fn(() => true);
+  public readonly kill = vi.fn(
+    (_signal?: NodeJS.Signals | number) => true
+  );
   public readonly unref = vi.fn();
   public readonly requests: Array<{ id: number; method: string }> = [];
   public readonly stdin = {
