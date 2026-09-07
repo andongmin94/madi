@@ -218,6 +218,35 @@ export function installSafeWindowClose(
     closeAfterRendererFailure();
   };
 
+  const requestCloseReadiness = () => {
+    if (
+      authorized ||
+      closeScheduled ||
+      !closeIntentActive ||
+      requestPending ||
+      window.isDestroyed()
+    ) {
+      return;
+    }
+    if (window.webContents.isDestroyed()) {
+      closeAfterRendererFailure();
+      return;
+    }
+    requestPending = true;
+    responseTimeout = setTimeout(() => {
+      responseTimeout = undefined;
+      requestPending = false;
+      requestCloseReadiness();
+    }, responseTimeoutMs);
+    try {
+      window.webContents.send(IPC_EVENTS.closeRequested);
+    } catch {
+      if (window.webContents.isDestroyed()) {
+        closeAfterRendererFailure();
+      }
+    }
+  };
+
   const onClose = (event: Event) => {
     if (authorized) {
       return;
@@ -232,21 +261,7 @@ export function installSafeWindowClose(
       return;
     }
     closeIntentActive = true;
-    if (!requestPending && !closeScheduled) {
-      requestPending = true;
-      responseTimeout = setTimeout(() => {
-        responseTimeout = undefined;
-        requestPending = false;
-      }, responseTimeoutMs);
-      try {
-        window.webContents.send(IPC_EVENTS.closeRequested);
-      } catch {
-        resetPendingRequest();
-        if (window.webContents.isDestroyed()) {
-          closeAfterRendererFailure();
-        }
-      }
-    }
+    requestCloseReadiness();
   };
   window.on("close", onClose);
   window.webContents.on("render-process-gone", onRendererGone);
