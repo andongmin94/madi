@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import {
+  lstat,
   mkdir,
   open,
   readdir,
   rename,
-  rm,
-  stat
+  rm
 } from "node:fs/promises";
 import path from "node:path";
 
@@ -23,8 +23,14 @@ import {
 
 async function fileExists(filePath: string): Promise<boolean> {
   try {
-    const details = await stat(filePath);
-    return details.isFile();
+    const details = await lstat(filePath);
+    if (!details.isFile()) {
+      throw new LlmProviderStoreError(
+        "STORE_CORRUPTED",
+        "The LLM provider store path is not a regular file."
+      );
+    }
+    return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return false;
@@ -34,13 +40,25 @@ async function fileExists(filePath: string): Promise<boolean> {
 }
 
 async function readBounded(filePath: string): Promise<string> {
+  const pathDetails = await lstat(filePath);
+  if (!pathDetails.isFile()) {
+    throw new LlmProviderStoreError(
+      "STORE_CORRUPTED",
+      "The LLM provider store path is not a regular file."
+    );
+  }
   const handle = await open(filePath, "r");
   try {
     const before = await handle.stat();
-    if (!before.isFile() || before.size > LLM_PROVIDER_STORE_MAX_BYTES) {
+    if (
+      !before.isFile() ||
+      before.dev !== pathDetails.dev ||
+      before.ino !== pathDetails.ino ||
+      before.size > LLM_PROVIDER_STORE_MAX_BYTES
+    ) {
       throw new LlmProviderStoreError(
         "STORE_CORRUPTED",
-        "The LLM provider store exceeds the safe limit."
+        "The LLM provider store exceeds the safe limit or changed before it was read."
       );
     }
     const bytes = Buffer.alloc(before.size);
@@ -61,7 +79,12 @@ async function readBounded(filePath: string): Promise<string> {
       offset += bytesRead;
     }
     const after = await handle.stat();
-    if (!after.isFile() || after.size !== before.size) {
+    if (
+      !after.isFile() ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.size !== before.size
+    ) {
       throw new LlmProviderStoreError(
         "STORE_CORRUPTED",
         "The LLM provider store changed while it was read."
