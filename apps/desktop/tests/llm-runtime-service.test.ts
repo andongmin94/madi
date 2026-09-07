@@ -124,6 +124,22 @@ describe("LlmRuntimeService", () => {
     );
   });
 
+  it("rejects a stale invocation revision before calling the provider", async () => {
+    const invoker = vi.fn<LlmInvoker>();
+    const service = await createService(invoker);
+    const request = invocation("stale-invocation");
+
+    await expect(
+      service.invoke({
+        invocation: {
+          ...request.invocation,
+          expectedProviderRevision: 2
+        }
+      })
+    ).rejects.toMatchObject({ code: "REVISION_MISMATCH" });
+    expect(invoker).not.toHaveBeenCalled();
+  });
+
   it("tests provider connectivity without sending manuscript content", async () => {
     const invoker = vi.fn(async ({ config, apiKey, request }) => {
       expect(apiKey).toBe("api-key");
@@ -167,6 +183,20 @@ describe("LlmRuntimeService", () => {
     expect(result.latencyMs).toBeGreaterThanOrEqual(0);
     expect(JSON.stringify(result)).not.toContain("MADI_OK");
     expect(JSON.stringify(result)).not.toContain("api-key");
+  });
+
+  it("rejects a stale diagnostic revision before calling the provider", async () => {
+    const invoker = vi.fn<LlmInvoker>();
+    const service = await createService(invoker);
+
+    await expect(
+      service.testProvider({
+        requestId: "stale-provider-test",
+        providerId: "provider-1",
+        expectedRevision: 2
+      })
+    ).rejects.toMatchObject({ code: "REVISION_MISMATCH" });
+    expect(invoker).not.toHaveBeenCalled();
   });
 
   it("reports a compatible endpoint whose fixed diagnostic response differs", async () => {
