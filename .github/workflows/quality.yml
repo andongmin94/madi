@@ -67,6 +67,8 @@ jobs:
             tests/hwpx-crash-recovery-utf8.test.ts \
             tests/phase1g-epub-process.test.ts \
             tests/epub-export-utf8.test.ts \
+            tests/phase1h-hwpx-process.test.ts \
+            tests/hwpx-export-utf8.test.ts \
             tests/font-installation-refresh.test.ts \
             tests/llm-provider-store.test.ts \
             tests/llm-provider-store-utf8.test.ts \
