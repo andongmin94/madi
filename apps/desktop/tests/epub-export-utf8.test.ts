@@ -15,6 +15,7 @@ import { readerPublication } from "./reader-lab-fixtures";
 const spawnMock = vi.hoisted(() => vi.fn());
 
 vi.mock("node:child_process", () => ({
+  default: { spawn: spawnMock },
   spawn: spawnMock
 }));
 
