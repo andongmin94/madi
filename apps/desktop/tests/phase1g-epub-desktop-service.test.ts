@@ -261,12 +261,6 @@ function createHarness(transform: UtilityTransform = (result) => result) {
     title: "테스트 작품",
     revision: 5
   });
-  const otherSession = sessions.add({
-    filePath: "C:\\drafts\\other.madi",
-    projectId: "project-2",
-    title: "다른 작품",
-    revision: 5
-  });
   const showSaveDialog = vi.fn<DialogPort["showSaveDialog"]>(async () => ({
     canceled: true
   }));
@@ -300,7 +294,6 @@ function createHarness(transform: UtilityTransform = (result) => result) {
     dialog,
     document,
     exporter,
-    otherSession,
     request,
     run,
     session,
@@ -774,25 +767,32 @@ describe("Phase 1G DesktopService EPUB trust boundary", () => {
     ).toBe(false);
 
     await expect(
-      harness.service.saveEpubExportReport({
-        sessionId: harness.otherSession.sessionId,
-        operationId: OPERATION_1,
-        format: "JSON"
-      })
-    ).rejects.toThrow("report is unavailable");
-    await expect(
-      harness.service.revealEpubExport({
-        sessionId: harness.otherSession.sessionId,
-        operationId: OPERATION_1
-      })
-    ).resolves.toBe(false);
-    await expect(
       harness.service.revealEpubExport({
         sessionId: harness.session.sessionId,
         operationId: OPERATION_1
       })
     ).resolves.toBe(true);
     expect(harness.shell.showItemInFolder).toHaveBeenCalledWith(destination);
+
+    const otherSession = harness.sessions.add({
+      filePath: "C:\\drafts\\other.madi",
+      projectId: "project-2",
+      title: "다른 작품",
+      revision: 5
+    });
+    await expect(
+      harness.service.saveEpubExportReport({
+        sessionId: otherSession.sessionId,
+        operationId: OPERATION_1,
+        format: "JSON"
+      })
+    ).rejects.toThrow("report is unavailable");
+    await expect(
+      harness.service.revealEpubExport({
+        sessionId: otherSession.sessionId,
+        operationId: OPERATION_1
+      })
+    ).resolves.toBe(false);
   });
 
   it("resolves only typed user cancellation as a structured export outcome", async () => {
