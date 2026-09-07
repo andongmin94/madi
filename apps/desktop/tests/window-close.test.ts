@@ -71,6 +71,29 @@ describe("safe window close", () => {
     safeClose.dispose();
   });
 
+  it("automatically retries an unanswered close request while the intent remains active", () => {
+    vi.useFakeTimers();
+    const window = new FakeBrowserWindow();
+    const safeClose = installSafeWindowClose(asBrowserWindow(window), 25);
+
+    window.emitClose();
+    expect(window.webContents.send).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(25);
+    expect(window.webContents.send).toHaveBeenCalledTimes(2);
+    expect(window.webContents.send).toHaveBeenLastCalledWith(
+      IPC_EVENTS.closeRequested
+    );
+
+    vi.advanceTimersByTime(25);
+    expect(window.webContents.send).toHaveBeenCalledTimes(3);
+
+    expect(safeClose.complete(false)).toBe(true);
+    vi.advanceTimersByTime(25);
+    expect(window.webContents.send).toHaveBeenCalledTimes(3);
+    safeClose.dispose();
+  });
+
   it("returns the approval IPC before destroying the renderer window", () => {
     vi.useFakeTimers();
     const window = new FakeBrowserWindow();
