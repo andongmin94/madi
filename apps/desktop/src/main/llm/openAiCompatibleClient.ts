@@ -135,20 +135,20 @@ function validateApiKey(
   config: LlmProviderConfig,
   apiKey: string | null
 ): string | null {
-  const normalized = apiKey?.trim() ?? "";
-  if (config.requiresApiKey && normalized.length === 0) {
+  const supplied = apiKey ?? "";
+  if (config.requiresApiKey && supplied.trim().length === 0) {
     throw new LlmClientError(
       "MISSING_API_KEY",
       "This provider requires an API key."
     );
   }
-  if (normalized.length > 4_096 || /[\r\n\u0000]/u.test(normalized)) {
+  if (supplied.length > 4_096 || /[\r\n\u0000]/u.test(supplied)) {
     throw new LlmClientError(
       "INVALID_API_KEY",
       "The API key is outside the allowed range."
     );
   }
-  return normalized.length === 0 ? null : normalized;
+  return supplied.length === 0 ? null : supplied;
 }
 
 function buildUserContent(request: LlmInvocationRequest): string {
