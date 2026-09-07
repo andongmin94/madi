@@ -59,6 +59,8 @@ jobs:
             tests/app-protocol.test.ts \
             tests/runtime-process-network-boundary.test.ts \
             tests/packaged-runtime-boundary.test.ts \
+            tests/preload-api.test.ts \
+            tests/llm-preload-bridge.test.ts \
             tests/core-client-serialization.test.ts \
             tests/core-client-stop-barrier.test.ts \
             tests/atomic-output-shutdown.test.ts \
