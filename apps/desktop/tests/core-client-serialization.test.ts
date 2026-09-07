@@ -263,7 +263,7 @@ describe("JsonRpcCoreClient sequential transport", () => {
     ).rejects.toThrow("The local core is not available");
   });
 
-  it("fails the queue and replaces a timed-out sidecar before later work", async () => {
+  it("waits for a timed-out sidecar to close before spawning replacement work", async () => {
     vi.useFakeTimers();
     const firstChild = new FakeCoreProcess();
     const secondChild = new FakeCoreProcess();
@@ -298,14 +298,21 @@ describe("JsonRpcCoreClient sequential transport", () => {
     expect(firstChild.kill).toHaveBeenCalledOnce();
 
     const recovered = client.request("load_ui_state", { key: "reader" });
+    expect(spawnProcess).toHaveBeenCalledTimes(1);
+    expect(secondChild.requests).toEqual([]);
+
+    firstChild.stdout.emit("data", Buffer.from("stale invalid JSON\n"));
+    firstChild.emit("error", new Error("stale process error"));
+    firstChild.emit("exit", 1, null);
+    expect(spawnProcess).toHaveBeenCalledTimes(1);
+
+    firstChild.emit("close", 1, null);
+
     expect(spawnProcess).toHaveBeenCalledTimes(2);
     expect(secondChild.requests.map(({ method }) => method)).toEqual([
       "load_ui_state"
     ]);
 
-    firstChild.stdout.emit("data", Buffer.from("stale invalid JSON\n"));
-    firstChild.emit("error", new Error("stale process error"));
-    firstChild.emit("exit", 1, null);
     secondChild.respond(0, { state: "reader" });
     await expect(recovered).resolves.toEqual({ state: "reader" });
     client.dispose();

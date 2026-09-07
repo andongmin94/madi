@@ -140,6 +140,8 @@ export interface ResolveCoreBinaryOptions {
 const MAX_RPC_LINE_BYTES = 128 * 1024 * 1024;
 const RPC_TIMEOUT_MS = 30_000;
 const PUBLICATION_RPC_TIMEOUT_MS = 5 * 60_000;
+const CORE_STOP_TIMEOUT_MS = 15_000;
+const CORE_FORCE_STOP_TIMEOUT_MS = 5_000;
 const PUBLICATION_RPC_METHODS = new Set<CoreMethod>([
   "compile_publication",
   "get_publication_stats",
@@ -195,6 +197,10 @@ export function resolveCoreBinary({
 
 export class JsonRpcCoreClient implements CoreClient {
   private child: ChildProcessWithoutNullStreams | undefined;
+  private stoppingChild: ChildProcessWithoutNullStreams | undefined;
+  private stopEscalationTimeout: NodeJS.Timeout | undefined;
+  private stopFailureTimeout: NodeJS.Timeout | undefined;
+  private stopFailure: Error | undefined;
   private nextId = 1;
   private stdoutBuffer = Buffer.alloc(0);
   private readonly queue: QueuedRequest[] = [];
@@ -216,6 +222,9 @@ export class JsonRpcCoreClient implements CoreClient {
     }
     if (this.disposed) {
       return Promise.reject(new Error("The local core is not available"));
+    }
+    if (this.stopFailure) {
+      return Promise.reject(this.stopFailure);
     }
 
     const id = this.nextId++;
@@ -251,6 +260,9 @@ export class JsonRpcCoreClient implements CoreClient {
   private ensureChild(): ChildProcessWithoutNullStreams {
     if (this.child) {
       return this.child;
+    }
+    if (this.stoppingChild) {
+      throw new Error("The previous local core is still stopping");
     }
 
     const child = (this.options.spawnProcess ?? spawnCoreProcess)(
@@ -295,6 +307,8 @@ export class JsonRpcCoreClient implements CoreClient {
       this.disposed ||
       this.activeRequest ||
       this.dispatching ||
+      this.stoppingChild ||
+      this.stopFailure ||
       this.queue.length === 0
     ) {
       return;
@@ -457,20 +471,96 @@ export class JsonRpcCoreClient implements CoreClient {
     this.stopChild(child);
   }
 
+  private clearStopTimeouts(): void {
+    if (this.stopEscalationTimeout) {
+      clearTimeout(this.stopEscalationTimeout);
+      this.stopEscalationTimeout = undefined;
+    }
+    if (this.stopFailureTimeout) {
+      clearTimeout(this.stopFailureTimeout);
+      this.stopFailureTimeout = undefined;
+    }
+  }
+
   private stopChild(
     child: ChildProcessWithoutNullStreams | undefined
   ): void {
     if (!child) {
       return;
     }
+    if (this.stoppingChild === child) {
+      return;
+    }
     if (this.child === child) {
       this.child = undefined;
       this.stdoutBuffer = Buffer.alloc(0);
     }
-    child.stdin.destroy();
-    child.stdout.destroy();
-    child.stderr.destroy();
-    child.kill();
-    child.unref();
+    this.stoppingChild = child;
+    this.stopFailure = undefined;
+    this.clearStopTimeouts();
+
+    const completeStop = (): void => {
+      if (this.stoppingChild !== child) {
+        return;
+      }
+      this.clearStopTimeouts();
+      this.stoppingChild = undefined;
+      this.stopFailure = undefined;
+      if (!this.disposed) {
+        this.dispatchNext();
+      }
+    };
+    child.once("close", completeStop);
+
+    try {
+      child.stdin.destroy();
+    } catch {
+      // The close barrier below remains authoritative.
+    }
+    try {
+      child.stdout.destroy();
+    } catch {
+      // The close barrier below remains authoritative.
+    }
+    try {
+      child.stderr.destroy();
+    } catch {
+      // The close barrier below remains authoritative.
+    }
+    try {
+      child.kill();
+    } catch {
+      // Force termination is still attempted after the close grace period.
+    }
+    try {
+      child.unref();
+    } catch {
+      // The process close event still owns restart permission.
+    }
+
+    if (this.disposed || this.stoppingChild !== child) {
+      return;
+    }
+
+    this.stopEscalationTimeout = setTimeout(() => {
+      if (this.stoppingChild !== child) {
+        return;
+      }
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // The final close bound below remains authoritative.
+      }
+      if (this.stoppingChild !== child) {
+        return;
+      }
+      this.stopFailureTimeout = setTimeout(() => {
+        if (this.stoppingChild !== child) {
+          return;
+        }
+        this.stopFailure = new Error("The previous local core did not stop");
+        this.rejectQueued(this.stopFailure);
+      }, CORE_FORCE_STOP_TIMEOUT_MS);
+    }, CORE_STOP_TIMEOUT_MS);
   }
 }
