@@ -6,6 +6,7 @@ import path from "node:path";
 
 const PROCESS_TIMEOUT_MS = 60_000;
 const TERMINATION_TIMEOUT_MS = 5_000;
+const FORCE_TERMINATION_TIMEOUT_MS = 5_000;
 const MAX_RESPONSE_BYTES = 16 * 1024;
 const HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const VOLUME_PATTERN = /^[0-9a-f]{16}$/u;
@@ -291,37 +292,76 @@ export class ProcessAtomicOutput implements AtomicOutputPort {
       let responseTooLarge = false;
       let settled = false;
       let pendingFailure: Error | null = null;
-      let terminationTimeout: ReturnType<typeof setTimeout> | null = null;
+      let gracefulTerminationTimeout: ReturnType<typeof setTimeout> | null = null;
+      let forceTerminationTimeout: ReturnType<typeof setTimeout> | null = null;
+      let requestTimeout: ReturnType<typeof setTimeout> | null = null;
+
+      const clearLifecycleTimeouts = (): void => {
+        if (requestTimeout) {
+          clearTimeout(requestTimeout);
+          requestTimeout = null;
+        }
+        if (gracefulTerminationTimeout) {
+          clearTimeout(gracefulTerminationTimeout);
+          gracefulTerminationTimeout = null;
+        }
+        if (forceTerminationTimeout) {
+          clearTimeout(forceTerminationTimeout);
+          forceTerminationTimeout = null;
+        }
+      };
+
       const settleFailure = (error: Error): void => {
         if (settled) {
           return;
         }
         settled = true;
-        clearTimeout(timeout);
-        if (terminationTimeout) {
-          clearTimeout(terminationTimeout);
-        }
+        clearLifecycleTimeouts();
         reject(error);
       };
+
+      const forceTerminate = (): void => {
+        if (settled) {
+          return;
+        }
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // The final close bound below remains authoritative.
+        }
+        forceTerminationTimeout = setTimeout(() => {
+          settleFailure(new Error("The atomic output utility did not stop"));
+        }, FORCE_TERMINATION_TIMEOUT_MS);
+      };
+
       const terminate = (error: Error): void => {
         if (settled || pendingFailure) {
           return;
         }
         pendingFailure = error;
+        if (requestTimeout) {
+          clearTimeout(requestTimeout);
+          requestTimeout = null;
+        }
         try {
           child.kill();
         } catch {
-          settleFailure(error);
-          return;
+          // Force termination is still attempted after the grace interval.
         }
-        terminationTimeout = setTimeout(() => {
-          settleFailure(error);
-        }, TERMINATION_TIMEOUT_MS);
+        gracefulTerminationTimeout = setTimeout(
+          forceTerminate,
+          TERMINATION_TIMEOUT_MS
+        );
       };
-      const timeout = setTimeout(() => {
+
+      requestTimeout = setTimeout(() => {
         terminate(new Error("The atomic output utility timed out"));
       }, PROCESS_TIMEOUT_MS);
+
       child.stdout.on("data", (chunk: Buffer) => {
+        if (settled || pendingFailure) {
+          return;
+        }
         byteLength += chunk.byteLength;
         if (byteLength > MAX_RESPONSE_BYTES) {
           responseTooLarge = true;
@@ -331,10 +371,16 @@ export class ProcessAtomicOutput implements AtomicOutputPort {
         chunks.push(chunk);
       });
       child.stderr.on("data", (chunk: Buffer) => {
+        if (settled || pendingFailure) {
+          return;
+        }
         stderrByteLength += chunk.byteLength;
         terminate(new Error("The atomic output utility returned an invalid response"));
       });
       child.stdin.on("error", (error) => {
+        if (settled || pendingFailure) {
+          return;
+        }
         terminate(
           new Error("The atomic output utility rejected its request", {
             cause: error
@@ -342,7 +388,10 @@ export class ProcessAtomicOutput implements AtomicOutputPort {
         );
       });
       child.on("error", (error) => {
-        settleFailure(
+        if (settled || pendingFailure) {
+          return;
+        }
+        terminate(
           new Error("The atomic output utility could not start", { cause: error })
         );
       });
@@ -350,10 +399,7 @@ export class ProcessAtomicOutput implements AtomicOutputPort {
         if (settled) {
           return;
         }
-        clearTimeout(timeout);
-        if (terminationTimeout) {
-          clearTimeout(terminationTimeout);
-        }
+        clearLifecycleTimeouts();
         if (pendingFailure) {
           settleFailure(pendingFailure);
           return;
@@ -379,7 +425,7 @@ export class ProcessAtomicOutput implements AtomicOutputPort {
       try {
         const request = JSON.stringify(input);
         child.stdin.write(request, "utf8", (error) => {
-          if (error) {
+          if (error && !settled && !pendingFailure) {
             terminate(
               new Error("The atomic output utility rejected its request", {
                 cause: error
