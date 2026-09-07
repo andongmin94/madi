@@ -77,9 +77,10 @@ export class LlmRuntimeService {
         !this.disposed && this.initialized && this.initializationError === null
           ? "AVAILABLE"
           : "UNAVAILABLE",
-      credentialStorage: this.store.isCredentialStorageAvailable()
-        ? "AVAILABLE"
-        : "UNAVAILABLE"
+      credentialStorage:
+        !this.disposed && this.store.isCredentialStorageAvailable()
+          ? "AVAILABLE"
+          : "UNAVAILABLE"
     };
   }
 
