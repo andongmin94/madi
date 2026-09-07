@@ -138,15 +138,16 @@ export function draftToProviderConfig(
   draft: LlmProviderDraft,
   revision: number
 ): LlmProviderConfig {
+  const canonicalId = draft.id.trim();
   return parseLlmProviderConfig({
     schemaVersion: 1,
-    id: draft.id,
+    id: canonicalId,
     revision,
     name: draft.name,
     kind: draft.kind,
     baseUrl: draft.baseUrl,
     model: draft.model,
-    credentialId: draft.requiresApiKey ? `provider:${draft.id}` : null,
+    credentialId: draft.requiresApiKey ? `provider:${canonicalId}` : null,
     requiresApiKey: draft.requiresApiKey,
     timeoutMs: draft.timeoutMs,
     maxOutputTokens: draft.maxOutputTokens,
