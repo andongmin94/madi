@@ -254,7 +254,23 @@ export class JsonRpcCoreClient implements CoreClient {
     }
     this.disposed = true;
     this.rejectAll(new Error("The local core was stopped"));
+
+    const stoppingChild = this.stoppingChild;
+    this.clearStopTimeouts();
     this.stopChild(this.child);
+
+    if (stoppingChild && this.stoppingChild === stoppingChild) {
+      try {
+        stoppingChild.kill();
+      } catch {
+        // The process is already detached from restart ownership.
+      }
+      try {
+        stoppingChild.unref();
+      } catch {
+        // App shutdown must not retain a restart watchdog for this child.
+      }
+    }
   }
 
   private ensureChild(): ChildProcessWithoutNullStreams {

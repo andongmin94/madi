@@ -113,4 +113,33 @@ describe("core sidecar restart barrier", () => {
     await expect(recovered).resolves.toEqual({ state: "reader" });
     client.dispose();
   });
+
+  it("clears restart watchdogs when disposed while a failed core is still stopping", async () => {
+    vi.useFakeTimers();
+    const child = new FakeCoreProcess();
+    const client = new JsonRpcCoreClient("madi-core", {
+      spawnProcess: () => child.asChildProcess(),
+      requestTimeoutMs: () => 25
+    });
+
+    const timedOut = client.request("save_scene", { sceneId: "scene-1" });
+    const timedOutRejection = expect(timedOut).rejects.toThrow(
+      "Core command save_scene timed out"
+    );
+    await vi.advanceTimersByTimeAsync(25);
+    await timedOutRejection;
+
+    expect(child.kill).toHaveBeenCalledTimes(1);
+    client.dispose();
+    expect(child.kill).toHaveBeenCalledTimes(2);
+    expect(child.unref).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(
+      child.kill.mock.calls.some(([signal]) => signal === "SIGKILL")
+    ).toBe(false);
+    await expect(
+      client.request("load_ui_state", { key: "after-dispose" })
+    ).rejects.toThrow("The local core is not available");
+  });
 });
