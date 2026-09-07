@@ -1,0 +1,56 @@
+name: Cross-platform quality
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: madi-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: Desktop typecheck and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out exact revision and Typie
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Activate pinned pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+          node --version
+          pnpm --version
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Check repository contracts
+        run: |
+          pnpm run check:toolchain
+          pnpm run check:repository
+          pnpm run format:check
+          git diff --check
+
+      - name: Typecheck desktop
+        run: pnpm --filter @madi/desktop typecheck
+
+      - name: Run desktop unit tests
+        run: pnpm --filter @madi/desktop test
