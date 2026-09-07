@@ -770,7 +770,10 @@ export class ProcessHwpxExporter implements HwpxExporterPort {
           return;
         }
         try {
-          const message = object(JSON.parse(line.toString("utf8")) as unknown, "message");
+          const message = object(
+            JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(line)) as unknown,
+            "message"
+          );
           if (message.kind === "PROGRESS") {
             if (terminalReceived) {
               throw new Error("The HWPX utility returned data after completion");
