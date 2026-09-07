@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("electron", () => ({
+  BrowserWindow: class BrowserWindow {}
+}));
+
 import { installRuntimeProcessNetworkBoundary } from "../src/main/window";
 
 describe("runtime process network boundary", () => {
