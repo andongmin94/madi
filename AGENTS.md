@@ -20,16 +20,17 @@
 
 ## Current phase gate
 
-The current codebase contains Phase 1H HWPX export and an optional local HWP bridge, but the final Phase 1H actual verdict remains withheld until development and fresh-unpacked Windows workflows pass the approved offline/network-boundary rerun.
+The current codebase contains the Phase 1H HWPX/HWP export boundary and the Phase 1I narrow user-owned LLM workflows. Phase 1I implementation does not supersede the unresolved Phase 1H runtime evidence: the final Phase 1H actual verdict remains withheld until development and fresh-unpacked Windows workflows pass the approved offline/network-boundary rerun. Transport-hardening commits made after the original audits likewise remain implementation-only until the exact commit passes the required Windows gate.
 
-Before starting the next product phase:
+Before starting a broader product phase or a large structural refactor:
 
-1. Run the full pinned Windows verification path.
+1. Run the full pinned Windows verification path on the exact base commit.
 2. Preserve exact source/block/character coverage.
-3. Require zero external runtime requests.
+3. Require zero external runtime requests except an explicitly invoked user-owned LLM provider request.
 4. Verify fresh-unpacked Electron HWPX export, ZIP/XML reopen, deterministic hashes, cleanup, and no-clobber recovery.
 5. Keep local HWP conversion disabled unless the Hancom security module and real conversion/reopen workflow are manually approved.
-6. Update `docs/PHASE_1H_RESULT.md` only from actual evidence. Never convert `WITHHELD` to `GO` from static inspection.
+6. Keep Phase 1I AI mutation narrow: exact same-block selection only. Do not reintroduce dormant multi-block/project-wide mutation without a complete durable recovery vertical slice.
+7. Update phase result documents only from actual evidence. Never convert `WITHHELD` or `PENDING` to `GO` from static inspection.
 
 ## Distribution gates
 
