@@ -67,7 +67,14 @@ async function readBounded(filePath: string): Promise<string> {
         "The LLM provider store changed while it was read."
       );
     }
-    return bytes.toString("utf8");
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      throw new LlmProviderStoreError(
+        "STORE_CORRUPTED",
+        "The LLM provider store contains invalid UTF-8."
+      );
+    }
   } finally {
     await handle.close();
   }
