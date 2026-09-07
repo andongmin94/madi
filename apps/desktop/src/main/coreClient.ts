@@ -142,6 +142,7 @@ const RPC_TIMEOUT_MS = 30_000;
 const PUBLICATION_RPC_TIMEOUT_MS = 5 * 60_000;
 const CORE_STOP_TIMEOUT_MS = 15_000;
 const CORE_FORCE_STOP_TIMEOUT_MS = 5_000;
+const STRICT_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 const PUBLICATION_RPC_METHODS = new Set<CoreMethod>([
   "compile_publication",
   "get_publication_stats",
@@ -404,8 +405,18 @@ export class JsonRpcCoreClient implements CoreClient {
 
     let newlineIndex = this.stdoutBuffer.indexOf(0x0a);
     while (newlineIndex >= 0) {
-      const line = this.stdoutBuffer.subarray(0, newlineIndex).toString("utf8");
+      const lineBytes = this.stdoutBuffer.subarray(0, newlineIndex);
       this.stdoutBuffer = this.stdoutBuffer.subarray(newlineIndex + 1);
+      let line: string;
+      try {
+        line = STRICT_UTF8_DECODER.decode(lineBytes);
+      } catch {
+        this.failTransport(
+          new Error("The local core returned invalid UTF-8"),
+          this.child
+        );
+        return;
+      }
       if (line.trim()) {
         this.consumeLine(line);
       }
