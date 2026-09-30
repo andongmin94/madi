@@ -316,3 +316,14 @@ Owned inactive-desktop host는 source clean before/after·exit 1·active job 0·
 교체했다. 기존 Markdown unit에도 같은 세 identity의 literal 줄 검사를 추가했다.
 수정 worktree의 service 20테스트, smoke Node 구문 검사, format·diff 검사는 통과했다.
 제품 formatter·다른 gate 조건은 그대로이며 후속 actual은 아직 완료되지 않았다.
+
+`55d1d45ea4e8430b7b0182fd16a9c4f715b945ed`에서 frozen install·Desktop build와 후속
+development H actual이 **PASS**했다. 일반 원고의 preset·snapshot·여섯 scope/split export·
+overwrite·Markdown report·no-clobber와 정상 종료, 장편 취소·5회 export·정상 종료를 완료했다.
+장편 exporter 최대 시간은 772 ms이며 전체 UI 대기·Publication IR 시간과 구분한다.
+이 실행의 owned inactive-desktop host는 source clean before/after·exit 0,
+UOI_IO=false 2,115회·입력 Default 관측·active job 0·desktop 제거를 기록했다.
+실행 시간은 host 기준 1,084.884초다. 상세 JSON·고정 harness source·hash는 ignored
+`.tools/verification/phase1h-development-55d1d45-run1/`에 보존했다.
+이는 해당 development 실행의 성공이며 최종 full verification·fresh-unpacked H actual은
+아직 대기 중이다. 그 실행들이 완료되기 전까지 최종 Phase 1H 판정은 **WITHHELD**다.

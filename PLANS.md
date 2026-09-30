@@ -2,7 +2,7 @@
 
 갱신일: 2026-09-30
 작업 위치: `main`. 실제 검증 대상은 각 실행에 기록된 exact source SHA를 따른다.
-현재 작업: HWPX 실제 검증을 완료하고 같은 후보의 전체 Windows 검증을 종료한다.
+현재 작업: development HWPX 실제 검증을 마쳤으며 같은 최종 후보의 전체 Windows·fresh package 검증을 종료한다.
 
 이 문서는 현재 목표, 작업 순서와 완료 조건을 관리하는 유일한 실행 계획이다.
 목표는 기존 제품 범위를 완성하고 동일 후보의 Windows 실제 검증을 종료하는 것이다.
@@ -42,9 +42,9 @@ PID와 생성 시각으로 마디 프로세스의 종료를 증명한다.
 | 고정 원본 | Typie exact pin 복구 및 repository hash 검증 경로 유지 |
 | 종료 저장 경합 | 기존 코드의 추가 저장 1회 재현 후 수정. 관련 4파일·28테스트와 typecheck PASS |
 | G development actual | `80225d3` **PASS**. 일반 180,000자·장편 675,000자 5회 exact coverage, ZIP reopen·결정성, 종료 진단·잔여 프로세스 0 |
-| H development actual | `76f7daf` **FAIL**: 일반 내보내기의 `phase1h-markdown-contract`. HWPX 6회·JSON report 6회·Markdown 1회 저장, VALID·alert 0. 이전 `80225d3`·`451e085`의 preflight 실패도 보존 |
+| H development actual | `55d1d45` **PASS**: 일반 원고와 장편 5회, preset·snapshot·ZIP/XML reopen·결정성·취소·no-clobber·정상 종료. 과거 `80225d3`·`451e085` preflight와 `76f7daf` Markdown 실패는 결과 문서에 보존 |
 | HWPX 상태 조회 경합 | `7c87e83`: 부모 callback 변경 시 불필요한 재조회를 재현 후 기존 EPUB 방식으로 수정. 관련 14테스트·typecheck PASS. 후속 actual 실패의 오류 표시를 확인 |
-| 저장 HWPX 프리셋 해시 | `451e085` native 재현 후 `bf357ca`에서 중복 JS 재해시만 제거. 정상 수락 2건 RED→GREEN·잘못된 hash/config 거부, 관련 34테스트·typecheck PASS. `76f7daf` actual은 일반 내보내기·Markdown 검사까지 진행; H 전체 판정 보류 |
+| 저장 HWPX 프리셋 해시 | `451e085` native 재현 후 `bf357ca`에서 중복 JS 재해시만 제거. 정상 수락 2건 RED→GREEN·잘못된 hash/config 거부, 관련 34테스트·typecheck PASS. `55d1d45` development 전체 PASS; fresh package·최종 aggregate 대기 |
 | 과거 `pnpm verify` 전체 | `31adb1d` run2 **FAIL**, 약 48.72분 후 G orphan 검사에서 종료. 선행 Desktop 666테스트·native·integration·build·basic/D/E/F 통과, H와 package 미도달 |
 | 수정 후 최종 Windows gate | **PENDING**. 같은 exact source SHA의 full verify·fresh-unpacked actual·필수 명령이 필요 |
 | 현재 후보 unpacked package | **PENDING / NOT REACHED**. 기존 package 성공은 `102f810`의 결과이며 현재 후보에 이전하지 않음 |
@@ -64,7 +64,7 @@ Native 재현은 실제 전체 H gate나 수정 후 성공의 근거로 확대�
 `76f7daf`의 후속 실패는 제품이 출력하는 scope·node ID·revision을 함께 검사하지 못한
 Markdown harness 기대값 불일치다. 전체 줄의 exact 검사로 정정하며 다른 gate 조건은 유지한다.
 `66e9c2d`에서 scope·node ID·revision 전체 줄 검사를 반영했다. 관련 service 20테스트,
-smoke 구문·format·diff 검사 PASS이며 후속 actual은 대기 중이다.
+smoke 구문·format·diff 검사 PASS이며 `55d1d45` 후속 development actual은 통과했다.
 spellcheck window preference는 constructor 단위 증거로 구분하고, 실제 session 상태와 network 관측은 runtime evidence로 판정한다.
 
 고정 도구는 Node `26.3.1`, pnpm `11.9.0`, Rust `1.97.1`, .NET SDK `10.0.400`을 사용한다.
