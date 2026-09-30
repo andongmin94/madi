@@ -74,6 +74,45 @@ Technical/release GO change from these edits: NONE
 
 The transport changes reduce overlapping-process and post-completion race risk, but they do not substitute for the required exact-commit Windows verification gate in [AGENTS.md](../AGENTS.md).
 
+## 2026-09-30 current-contract and session correction
+
+The current execution plan is [PLANS.md](../PLANS.md). The product source candidate for this
+follow-up is `472d0fc6b46f3735dd2a8c198aa5e5ab1103ff9f`; the earlier audit outcomes are not
+transferred to this candidate.
+
+Commit `37802a0` removes the remaining general-assistant application handler and unique-text
+range inference. General proposals are review/copy only; every canonical AI edit requires exact
+same-block coordinates. Focused tests passed in 4 files / 28 tests, including duplicate occurrences,
+Unicode scalar coordinates, stale input, and native-IME guards. The built-in actual WASM probes
+also passed. The IR document now describes list content as unsupported text fallback, matching
+the current types without expanding the format.
+
+Commit `472d0fc` fixes a reproduced project-open failure: opening incompatible B retired A's
+main-process session before the renderer could install B, leaving A visible but unable to save.
+The registry now owns one current session and one candidate. An owned completion IPC accepts
+the candidate only after successful editor installation; cancel or failure discards the candidate.
+The controller retains the prior editor owner, restores a touched editor after failure, cancels stale
+scene/entity switches, and fails closed if candidate rejection or editor restoration fails. Each open
+operation releases only its own editor lock. Focused tests passed in 7 files / 90 tests, including
+existing-session save/Undo, cancellation, concurrent preflush, and scene/entity recovery.
+
+On this Windows machine, repository-local pinned tools passed final-candidate TypeScript checks,
+the Desktop build, the included actual Typie WASM probes, HWP bridge mock/probe contracts
+(17/17), formatting (287 files), and the complete Desktop Vitest set (103 files / 661 tests).
+The two built native atomic-output process E2E tests are included; no test file is excluded in
+this final run. The earlier pre-installation partial run is recorded separately in the plan.
+An independent final static review found no new actionable issue in session completion callers,
+AI mutation entry points, or CI pins/summary references.
+
+Full `pnpm verify` and `pnpm check:repository` failed at the uninitialized pinned Typie checkout.
+`pnpm package:unpacked` failed at its missing `editor-codec` manifest. No unpacked build or
+Electron actual was produced. With user-authorized administrator confirmation, the signed
+Build Tools installer completed (exit `3010`, no automatic restart); both required C++/Windows SDK
+components are registered complete. The native atomic-output debug/release builds and nine actual
+Windows file replacement/recovery/no-clobber tests subsequently passed without restarting.
+The complete Desktop test set then passed with the native E2E file included. Runtime actual,
+native Korean IME, actual user-owned providers, and Phase 1H `WITHHELD` remain pending.
+
 ## Remaining hotspots
 
 These are real maintainability risks, but they are not safe to split in the same cleanup commit:

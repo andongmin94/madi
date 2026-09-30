@@ -69,6 +69,30 @@ git diff --check
 
 No earlier phase report or different commit can substitute for that result.
 
+## 2026-09-30 exact-selection correction
+
+The correction recorded in `37802a0` removes the general assistant's direct-application UI,
+assessment, and handler. General proposals remain review/copy only. The planner and editor access
+now require `sourceRange`; missing/null coordinates are rejected even for unique source text.
+The obsolete unique-text search, mode discriminator, and ambiguity branch were removed.
+
+Actual focused checks used the repository-local Node `26.3.1` and pnpm `11.9.0`:
+
+- assistant, planner, editor-access, and existing selection-overlay tests: 4 files / 28 tests,
+  exit `0`, with at most two workers;
+- renderer and Electron TypeScript checks: exit `0`;
+- built-in Typie WASM selection/semantic transaction probes: exit `0`, including duplicate
+  occurrence mapping and one Undo entry;
+- changed-file whitespace check: exit `0`.
+
+These focused worktree checks do not establish aggregate acceptance of a final candidate.
+The pinned Typie source could not be initialized from its configured URL. MSVC and Windows SDK
+installation subsequently completed, and the native atomic-output build and nine Windows tests
+passed on source candidate `472d0fc`. Its full Desktop Vitest set also passed (103 files / 661 tests,
+including the two native atomic-output E2E tests, no exclusions). `pnpm verify`, package,
+development/fresh-unpacked actual, native IME, and actual user-owned provider evidence remain
+unresolved in [PLANS.md](../PLANS.md).
+
 ## Next stage
 
 The current execution order and completion conditions are maintained in [PLANS.md](../PLANS.md).

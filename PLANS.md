@@ -2,6 +2,7 @@
 
 갱신일: 2026-09-30
 인수 분석 기준 커밋: `246b58dda40f83787a8971fd72ecb8cb3f7ddffd`
+현재 제품 검증 후보: `472d0fc6b46f3735dd2a8c198aa5e5ab1103ff9f`
 
 이 문서는 madi의 현재 목표, 진척, 작업 순서와 완료 조건을 관리하는 유일한 실행 계획이다.
 지금 목표는 기존 제품 범위를 유지하면서 현재 구현의 Windows 검증 기준점을 확보하는 것이다.
@@ -47,46 +48,96 @@ madi는 한국어 장편소설 작가가 기획, 집필, 설정 관리, 읽기 �
 
 | 영역 | 구현 상태 | 검증 상태와 근거 |
 | --- | --- | --- |
-| 집필·저장·복구 | 구현 확인 | [Phase 1A](docs/PHASE_1A_RESULT.md)·[1B](docs/PHASE_1B_RESULT.md)에 과거 실행 기록 있음 |
+| 집필·저장·복구 | `472d0fc`에서 실패한 열기의 기존 세션 보존 수정 | 집중 90테스트 통과. [Phase 1A](docs/PHASE_1A_RESULT.md)·[1B](docs/PHASE_1B_RESULT.md)의 과거 실행 기록과 구분 |
 | Story Bible | 구현 확인 | [Phase 1C](docs/PHASE_1C_RESULT.md)에 과거 실행 기록 있음 |
 | World Graph·Plot Canvas | 구현 확인 | [Phase 1D](docs/PHASE_1D_RESULT.md)·[1E](docs/PHASE_1E_RESULT.md)에 과거 실행 기록과 조건 있음 |
 | Publication IR·Reader Lab | 구현 확인 | [Phase 1F](docs/PHASE_1F_RESULT.md)에 과거 실행 기록 있음. [1G](docs/PHASE_1G_RESULT.md)에 Reader 반응시간 조건 해소 기록 있음 |
 | EPUB | 구현 확인 | [Phase 1G](docs/PHASE_1G_RESULT.md)의 과거 development·fresh-unpacked 결과 있음. Runtime EPUBCheck/JRE는 배포 전 과제 |
 | HWPX | 구현 확인 | [Phase 1H](docs/PHASE_1H_RESULT.md) 최종 판정 `WITHHELD` 유지 |
 | HWP | bridge 코드 있음, 제품 변환 경로 비활성 | security module·실제 변환·reopen 수동 검증 대기 |
-| 좁은 AI 보조 | 구현 확인, 범위 불일치 검토 필요 | [Phase 1I](docs/PHASE_1I_RESULT.md)의 현재 커밋 Windows 통합 검증 `PENDING` 유지 |
+| 좁은 AI 보조 | `37802a0`에서 exact selection 계약 정정 | [Phase 1I](docs/PHASE_1I_RESULT.md)의 집중 28테스트 통과. 현재 후보 Windows 통합 검증 `PENDING` 유지 |
 | Transport·Windows CI 보강 | 후속 커밋 구현 있음 | exact commit Windows 통과 근거 미확보. [품질 감사](docs/CODE_QUALITY_AUDIT.md)와 [Windows workflow](.github/workflows/windows-gate.yml) 참조 |
 
 ### 이번 인수에서 확인한 검증 상태
 
-2026-09-30 작업 셸에서 아래 필수 경로를 시도했다. 제품 소스 변경은 없었고, 본 테스트와
-패키징에는 도달하지 못했다. 이후 계획 문서 변경도 제품 검증 완료 근거로 취급하지 않는다.
+초기 작업 셸의 Node `26.3.0`·pnpm `11.19.0` 불일치로 필수 명령은 설치 준비에서 실패했다.
+이후 시스템 PATH를 바꾸지 않고 ignored `.tools/`에 고정 도구를 준비했다. Node `26.3.1`,
+pnpm `11.9.0`, Rust `1.97.1`과 두 target, .NET SDK `10.0.400`, x86 runtime `10.0.11`을
+실제 버전 출력으로 확인했다. Node·.NET과 EPUBCheck/JRE ZIP은 공식 배포 해시와 대조했다.
+로컬 명령은 `.tools/run-pinned.ps1`로 고정 도구를 사용하며 Rust 병렬 빌드는 2개로 제한한다.
 
-| 실행 | 결과 |
+제품 수정 전 `dd4e66a7c31536d38fa7142a74827190e7129886`의 제품 소스에서 아래를 실행했다.
+동시에 준비한 CI workflow 변경은 제품 실행 근거로 취급하지 않는다.
+
+| 실행 | 실제 결과 |
 | --- | --- |
-| `pnpm install --frozen-lockfile` | Node 버전 검사에서 exit 1 |
-| `pnpm verify`, `pnpm package:unpacked` | 설치 준비 중 같은 검사에서 exit 1, 본 검증·빌드 미실행 |
-| `pnpm check:repository`, `pnpm format:check` | 같은 설치 준비 검사에서 exit 1 |
-| `node scripts/check-repository.mjs` | Typie submodule 미초기화로 exit 1 |
-| `node scripts/check-format.mjs` | 기본 텍스트·JSON 검사 exit 0. 정식 pnpm gate를 대신하지 않음 |
-| `git diff --check` | exit 0. 제품 동작 검증을 대신하지 않음 |
+| `pnpm install --frozen-lockfile` | exit 0, Node·pnpm pin과 Electron binary 준비 확인 |
+| `pnpm verify`, `pnpm check:repository` | Typie 원본 미초기화 검사에서 exit 1. 원본 URL은 Git과 연결된 GitHub 앱에서 404 |
+| `pnpm package:unpacked` | `editor-codec` 원본 manifest 부재로 exit 1. 패키지 생성 미완료 |
+| `pnpm build:atomic-output` | MSVC `link.exe` 부재로 exit 1 |
+| `pnpm test:typie` | exit 0. 실제 포함된 WASM에서 exact selection·semantic replacement·Undo/Redo 확인 |
+| Desktop Vitest, `--maxWorkers 2` | 102파일·642테스트 exit 0. native atomic-output E2E 1파일은 binary 부재로 명시적으로 제외 |
+| `pnpm format:check` | exit 0, source·JSON 287파일. 전체 제품 gate를 대신하지 않음 |
+| `pnpm build:hwp-bridge`, `pnpm build:hwp-bridge:release` | exit 0 |
+| `pnpm test:hwp-bridge` | exit 0, 17/17. mock 계약 및 실제 sidecar probe; 실제 한컴 변환 아님 |
+| `git diff --check` | exit 0 |
 
-작업 셸은 Node `26.3.0`, pnpm `11.19.0`이며 요구값은 `26.3.1`, `11.9.0`이다.
-.NET은 작업 셸 PATH에서 찾지 못했고, Typie submodule은 미초기화 상태였다.
-Rust·C++·Windows SDK와 validator ZIP의 실제 준비 여부는 다음 작업에서 확인한다.
+부분 성공을 전체 Windows baseline의 성공으로 옮기지 않는다. 후속 제품 수정의 검증은 아래
+진행 기록과 해당 결과 문서에 별도로 남기며, full gate는 계속 보류한다.
+
+### 현재 후보의 실제 검증
+
+`472d0fc`의 제품 소스에서 고정 도구로 실행한 결과다. 계획·결과 문서 갱신은 제품 소스를
+바꾸지 않으며, 아래 결과의 대상 SHA를 새 문서 커밋으로 옮기지 않는다.
+
+| 실행 | 실제 결과 |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | exit 0, pnpm `11.9.0` |
+| `pnpm typecheck`, Desktop build | 모두 exit 0 |
+| Desktop Vitest, `--maxWorkers 2` | 설치 후 전체 103파일·661테스트 exit 0, 제외 없음. 실제 native atomic-output process E2E 2테스트 포함 |
+| `pnpm build:atomic-output`, `pnpm build:atomic-output:release`, `pnpm test:atomic-output` | 설치 후 모두 exit 0. 실제 Windows 파일 교체·복구·no-clobber 9/9 |
+| `pnpm test:typie` | exit 0, 포함된 실제 WASM selection·semantic transaction·Undo/Redo 확인 |
+| `pnpm test:hwp-bridge` | exit 0, 17/17. mock 계약과 registry-only sidecar probe; 실제 HWP 변환 없음 |
+| `pnpm format:check` | exit 0, 287파일 |
+| `pnpm verify`, `pnpm check:repository` | Typie 원본 미초기화로 exit 1. Node·pnpm exact pin 검사 통과 |
+| `pnpm package:unpacked` | Typie `editor-codec` manifest 부재로 exit 1. unpacked build 없음 |
+| `git diff --check` | exit 0 |
+
+사용자가 관리자 확인창을 허용하여 Microsoft 서명을 확인한 공식 Build Tools를 백그라운드
+설치했다. C++ compiler와 Windows SDK `26100`을 갖춘 Build Tools `17.14.37710.0`의 완료
+등록을 확인했다. installer exit `3010`은 재부팅 필요 상태이며 자동 재시작은 하지 않았다.
+현재 세션에서 native atomic-output debug/release build와 9테스트가 통과했고, 앞서 제외한
+native process E2E를 포함한 전체 Desktop Vitest도 통과했다. 재부팅 필요 코드가 해소된
+것으로 추정하지 않으며, 전체 제품 gate와 Electron actual 통과를 뜻하지 않는다.
+같은 후보의 설치 전 부분 실행은 102파일·659테스트였고, 최종 실행에서 제외를 해소했다.
+
+Typie의 고정 commit은 비어 있는 submodule, 기존 로컬 Git 객체와 캐시에서도 확보하지
+못했다. 공식 repository·commit·raw·codeload 접근 모두 404였으며 대체 remote 기록도 없다.
+삭제·비공개 여부는 단정하지 않는다. 접근 가능한 원본 URL/권한 또는 정확한 commit 객체가
+포함된 기존 checkout·Git bundle 경로가 필요하다. 이 입력 없이는 core·publication·exporter
+원본 빌드, full verify와 unpacked package를 진행할 수 없다.
+
+### 사용자 컴퓨터 실행 조건
+
+사용자 작업을 방해하지 않는 백그라운드 명령만 실행한다. 현재 Electron harness는
+`ready-to-show`에서 실제 창을 표시하므로 로컬 GUI actual은 실행하지 않았다. 제공된
+데스크톱 제어 API에는 가상 데스크톱 2로 창을 보내는 기능이 없다. 화면이 필요한 검증은
+별도 Windows runner·세션 또는 사용자 작업과 분리된 실제 실행 환경을 확보한 뒤 진행한다.
+native IME 수동 판정과 실제 제공자 전송 동의는 이 조건과 별개로 유지한다.
 
 ## 다음 작업과 완료 조건
 
-현재 다음 작업은 **1번 검증 환경 준비**다. 새 기능이나 구조 리팩터링을 동시에 시작하지
-않는다. 단계 안에서 발견한 실패는 그 단계의 범위에서 재현·수정하고 다시 검증한다.
+현재 다음 작업은 **고정 Typie 원본 접근 확보**다. 새 기능이나 큰 구조
+리팩터링은 시작하지 않는다. 현재 범위의 좁은 계약 정정과 재현된 저장 안전성 오류는
+부분 baseline을 기준으로 수정하되, 그 수정의 최종 Windows 판정도 보류한다.
 
 | 순서 | 작업 | 상태 | 완료 조건 |
 | --- | --- | --- | --- |
-| 1 | 고정 Windows 검증 환경 준비 | 다음 작업 | 아래 toolchain, clean Typie checkout, validator ZIP 준비를 확인하고 frozen install이 exit 0 |
-| 2 | Windows CI 준비 경로 보완 | 대기 | 새 runner에서 hash를 검증한 EPUBCheck/JRE를 준비하고 필수 검증 경로를 실행할 수 있음. 원고·키·private path 없는 결과를 exact commit과 연결해 보존 |
-| 3 | 변경 전 Windows 기준점 확보 | 1·2 이후 | 기준 commit의 필수 명령과 development·fresh-unpacked actual 통과. 아래 coverage·network·cleanup 조건의 실행 근거 기록 |
-| 4 | 현행 범위와 구현 대조 | 정적 검토 항목 있음 | AI·IR의 아래 불일치를 현행 계약에 맞게 해소하고 영향 범위 검증. 다른 분석 후보는 재현 결과로 처리 여부 결정 |
-| 5 | 최종 후보 Windows 검증 종료 | 4 이후 | 변경했다면 새 commit의 필수 전체 경로와 actual을 다시 통과. 변경이 없으면 3번의 동일 commit 근거 사용. 최종 후보 SHA·build·결과 일치 확인 |
+| 1 | 고정 Windows 검증 환경 준비 | toolchain·MSVC·SDK·ZIP 준비 완료, 원본 대기 | 아래 toolchain, clean Typie checkout, validator ZIP 준비를 확인하고 frozen install이 exit 0 |
+| 2 | Windows CI 준비 경로 보완 | `a0c1366` 구현, runner 실행 대기 | 새 runner에서 hash를 검증한 EPUBCheck/JRE를 준비하고 필수 검증 경로를 실행할 수 있음. 원고·키·private path 없는 결과를 exact commit과 연결해 보존 |
+| 3 | 변경 전 Windows 기준점 확보 | 부분 검증, full gate 보류 | 기준 commit의 필수 명령과 development·fresh-unpacked actual 통과. 아래 coverage·network·cleanup 조건의 실행 근거 기록 |
+| 4 | 현행 범위와 구현 대조 | `37802a0`, `472d0fc` 수정 완료 | AI·IR 계약 정정 및 재현된 실패한 열기 수정. 집중 검증과 최종 읽기 전용 점검 완료; 전체 Windows 판정은 5에서 수행 |
+| 5 | 최종 후보 Windows 검증 종료 | 부분 검증, 원본·GUI 환경 대기 | 변경했다면 새 commit의 필수 전체 경로와 actual을 다시 통과. 변경이 없으면 3번의 동일 commit 근거 사용. 최종 후보 SHA·build·결과 일치 확인 |
 | 6 | 실제 사용 조건 확인 | 환경·사용자 입력 대기 | 사람이 동일 후보 build의 native IME checklist를 수행하고, 사용자가 지정한 AI endpoint를 명시적 전송 동의 아래 development·unpacked에서 검증 |
 | 7 | 다음 개발 작업 선정 | 미정 | 검증 결과와 사용자 제품 목표를 기준으로 작업 하나의 범위·완료 조건을 정의 |
 
@@ -128,13 +179,13 @@ git diff --check
 
 ## 현행 계약과 대조할 항목
 
-이 표는 분석 근거이며, 새 기능 목록이나 완료된 오류 재현 기록이 아니다.
+이 표는 현행 계약과의 대조 및 처리 결과다. 새 기능 목록으로 사용하지 않는다.
 
 | 항목 | 확인한 차이 | 처리 기준 |
 | --- | --- | --- |
-| AI 수정 범위 | [일반 보조](apps/desktop/src/renderer/components/llm/LlmAssistantOverlay.tsx)가 선택 좌표 없이 [고유 문자열 적용](apps/desktop/src/renderer/llm/proposalApply.ts)을 호출 | AGENTS.md의 exact same-block selection 계약으로 대조. 제안 검토·복사 기능 유지 |
-| IR의 목록 지원 설명 | [IR 타입](apps/desktop/src/shared/publication.ts)에는 List variant가 없지만 [IR 문서](docs/PUBLICATION_IR_V1.md)에 목록 의미 매핑 설명이 있음 | 현행 지원 범위를 문서와 일치시킴. IR 확장은 별도 제품 결정 |
-| 실패한 프로젝트 열기 | main의 기존 session 삭제가 renderer snapshot 호환성 검사보다 앞섬 | 기존 작품을 연 상태에서 실패를 재현하고 저장·세션 불일치 여부 확인 후 수정 범위 결정 |
+| AI 수정 범위 | `37802a0`에서 [일반 보조](apps/desktop/src/renderer/components/llm/LlmAssistantOverlay.tsx)의 직접 적용과 [고유 문자열 검색 경로](apps/desktop/src/renderer/llm/proposalApply.ts)를 삭제 | exact range 필수화와 검토·복사 무변이 회귀 통과. 최종 전체 gate 대기 |
+| IR의 목록 지원 설명 | `37802a0`에서 [IR 문서](docs/PUBLICATION_IR_V1.md)의 List 의미 매핑 주장을 Unsupported text fallback으로 정정 | 현행 [IR 타입](apps/desktop/src/shared/publication.ts)과 일치. IR 확장 없음 |
+| 실패한 프로젝트 열기 | 실제 DesktopService·registry·controller 테스트에서 B 열기 실패 뒤 A 저장 불가를 재현 | `472d0fc`에서 현재 세션·후보 분리, 편집기 설치 성공 뒤 이전 세션 폐기. 취소·설치 실패·복원 실패·동시 열기·SCENE/ENTITY owner 회귀 포함 집중 7파일·90테스트 통과 |
 | 저장·검색 비용 | 전체 DB 백업과 검색 페이지별 범위 순회가 있음 | 실제 장편의 측정이나 재현 없이 최적화 작업으로 자동 승격하지 않음 |
 
 ## 사람과 배포의 별도 조건

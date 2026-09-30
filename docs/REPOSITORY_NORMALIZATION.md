@@ -31,13 +31,18 @@ The focused Vitest set covers the local-core restart barrier, atomic-output shut
 This cross-platform gate is deliberately smaller than the Windows product-verification contract. A green `quality.yml` result means the repository/static contracts, desktop TypeScript typecheck, and the listed focused tests passed on that GitHub-hosted Linux runner. It does **not** prove Windows native IME behavior, Electron runtime or packaged behavior, HWPX/HWP actuals, Hancom Automation, runtime EPUBCheck packaging, or the full root `pnpm verify` path.
 
 `windows-gate.yml` provisions pinned Node/pnpm, Rust, .NET SDK, and the x86 .NET runtime on Windows,
-then invokes the full verification and unpacked-package path. Its presence is implementation, not a
-recorded PASS. Provisioning of the required EPUBCheck/JRE archives and preservation of execution
-evidence remain tracked in [PLANS.md](../PLANS.md).
+then invokes the full verification and unpacked-package path. Commit `a0c1366` adds official
+EPUBCheck/JRE archive preparation with the existing size/hash pins and an always-written summary
+that identifies the source SHA and actual step outcomes. It also installs pnpm `11.9.0` explicitly,
+because Node 26 does not bundle Corepack. These changes have passed local script syntax and pin
+consistency checks; neither workflow has been run from this local session. Runner execution remains
+pending in [PLANS.md](../PLANS.md).
 
 The former `windows-private-verify.yml` workflow was intentionally removed. Do not recreate a self-modifying or repository-writing workflow merely to obtain a green status. Full Windows verification remains an exact-commit product gate and must be run in a Windows environment with the pinned toolchain and required local validation dependencies.
 
-Self-modifying workflows, patch archives, bootstrap scripts, reconciliation scripts, and force-push automation are prohibited from the product tree.
+Self-modifying workflows, patch archives, repository-writing bootstrap/reconciliation automation,
+and force-push automation are prohibited from the product tree. The tracked Typie preparation
+script is a local dependency setup path, not permission for repository-history automation.
 
 ## Local/full verification commands
 
