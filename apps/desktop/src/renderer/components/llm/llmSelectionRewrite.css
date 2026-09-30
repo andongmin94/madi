@@ -1,23 +1,17 @@
 .madi-llm-selection-launcher {
-  position: fixed;
-  right: 138px;
-  bottom: 22px;
-  z-index: 80;
   width: 54px;
-  height: 48px;
+  height: 22px;
   border: 1px solid #c7d2fe;
-  border-radius: 16px;
+  border-radius: 4px;
   background: #eef2ff;
   color: #3730a3;
   font: inherit;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 800;
-  box-shadow: 0 12px 34px rgba(49, 46, 129, 0.16);
   cursor: pointer;
 }
 
 .madi-llm-selection-launcher:hover {
-  transform: translateY(-1px);
   background: #e0e7ff;
 }
 
@@ -344,11 +338,6 @@
 }
 
 @media (max-width: 760px) {
-  .madi-llm-selection-launcher {
-    right: 22px;
-    bottom: 80px;
-  }
-
   .madi-llm-selection-backdrop {
     padding: 0;
   }

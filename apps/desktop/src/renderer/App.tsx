@@ -134,6 +134,7 @@ export interface AppProps {
   readonly adapterFactory: MadiEditorAdapterFactory;
   readonly typieCommit: string;
   readonly editorSchemaVersion: number;
+  readonly aiTools?: ReactNode;
 }
 
 type EnginePhase = "loading" | "ready" | "error";
@@ -476,7 +477,8 @@ export function App({
   api,
   adapterFactory,
   typieCommit,
-  editorSchemaVersion
+  editorSchemaVersion,
+  aiTools
 }: AppProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [controller, setController] =
@@ -3996,6 +3998,7 @@ export function App({
         <span>
           {isComposing ? "IME composing" : "IME idle"} · local only
         </span>
+        {aiTools && <div className="statusbar__actions">{aiTools}</div>}
       </footer>
     </main>
   );

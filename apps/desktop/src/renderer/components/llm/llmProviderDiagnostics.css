@@ -1,23 +1,17 @@
 .madi-llm-diagnostics-launcher {
-  position: fixed;
-  right: 80px;
-  bottom: 22px;
-  z-index: 80;
   width: 48px;
-  height: 48px;
+  height: 22px;
   border: 1px solid #cbd5e1;
-  border-radius: 16px;
+  border-radius: 4px;
   background: #ffffff;
   color: #1f2937;
   font: inherit;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 800;
-  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.18);
   cursor: pointer;
 }
 
 .madi-llm-diagnostics-launcher:hover {
-  transform: translateY(-1px);
   background: #f8fafc;
 }
 

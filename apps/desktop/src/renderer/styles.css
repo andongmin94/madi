@@ -919,9 +919,14 @@ button:disabled {
   justify-content: space-between;
   padding: 0 12px;
   color: #d4d0c6;
-  font-family: ui-monospace, monospace;
-  font-size: 9px;
   background: #343630;
+}
+
+.statusbar__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
 }
 
 .single-scene-workspace[hidden] {
@@ -1288,7 +1293,9 @@ button:disabled {
   gap: 16px;
 }
 
-.statusbar span {
+.statusbar > span {
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

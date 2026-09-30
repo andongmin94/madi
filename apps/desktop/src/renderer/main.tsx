@@ -24,28 +24,30 @@ const createLlmId = () => crypto.randomUUID();
 const currentDate = () => new Date();
 
 createRoot(root).render(
-  <>
-    <App
-      api={window.madi}
-      adapterFactory={editorFactory}
-      typieCommit={productionEditorAdapter.engineCommit}
-      editorSchemaVersion={productionEditorAdapter.schemaVersion}
-    />
-    <LlmSelectionRewriteOverlay
-      api={window.madiLlm}
-      editorAccess={llmEditorAccess}
-      createId={createLlmId}
-      now={currentDate}
-    />
-    <LlmProviderDiagnostics
-      api={window.madiLlm}
-      createId={createLlmId}
-    />
-    <LlmAssistantOverlay
-      api={window.madiLlm}
-      editorAccess={llmEditorAccess}
-      createId={createLlmId}
-      now={currentDate}
-    />
-  </>
+  <App
+    api={window.madi}
+    adapterFactory={editorFactory}
+    typieCommit={productionEditorAdapter.engineCommit}
+    editorSchemaVersion={productionEditorAdapter.schemaVersion}
+    aiTools={
+      <>
+        <LlmSelectionRewriteOverlay
+          api={window.madiLlm}
+          editorAccess={llmEditorAccess}
+          createId={createLlmId}
+          now={currentDate}
+        />
+        <LlmProviderDiagnostics
+          api={window.madiLlm}
+          createId={createLlmId}
+        />
+        <LlmAssistantOverlay
+          api={window.madiLlm}
+          editorAccess={llmEditorAccess}
+          createId={createLlmId}
+          now={currentDate}
+        />
+      </>
+    }
+  />
 );
