@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import type { MadiDesktopApi, ProjectSession } from "../src/shared/contracts";
 import {
   TypieEditorAdapter,
   type TypieEnginePort,
   type TypieTransactionEvent
 } from "../src/renderer/editor/typie/TypieEditorAdapter";
+import { DocumentSessionController } from "../src/renderer/workspace/DocumentSessionController";
 
 function createPort() {
   let transactionListener:
@@ -45,6 +47,123 @@ function createPort() {
 }
 
 describe("MadiEditorAdapter boundary", () => {
+  it("creates the first controller project while the unopened adapter remains locked", async () => {
+    const { port } = createPort();
+    const adapter = new TypieEditorAdapter(port, document.createElement("div"));
+    let interactionEnabled = true;
+    vi.mocked(port.setInteractionEnabled).mockImplementation((enabled) => {
+      interactionEnabled = enabled;
+    });
+    vi.mocked(port.mount).mockImplementation(async () => {
+      expect(interactionEnabled).toBe(false);
+    });
+    let finishInstall!: () => void;
+    const installation = new Promise<void>((resolve) => {
+      finishInstall = resolve;
+    });
+    vi.mocked(port.createEmptyDocument).mockImplementation(async () => {
+      expect(interactionEnabled).toBe(false);
+      await installation;
+      expect(interactionEnabled).toBe(false);
+    });
+    const session: ProjectSession = {
+      sessionId: "d98be040-afbb-4510-b875-a8cbbe7b10a5",
+      fileName: "fixture.madi",
+      projectId: "project-1",
+      workNodeId: "work-1",
+      sceneId: "scene-1",
+      documentId: "document-1",
+      title: "fixture",
+      revision: 0
+    };
+    const api: Partial<MadiDesktopApi> = {
+      createProject: vi.fn(async () => session),
+      completeProjectOpen: vi.fn(async () => {
+        expect(interactionEnabled).toBe(false);
+      })
+    };
+    const controller = new DocumentSessionController(
+      api as MadiDesktopApi,
+      adapter,
+      "fixed-commit",
+      1
+    );
+
+    const creating = controller.createProject();
+    await vi.waitFor(() =>
+      expect(port.createEmptyDocument).toHaveBeenCalledTimes(1)
+    );
+    expect(port.setInteractionEnabled).toHaveBeenCalledExactlyOnceWith(false);
+    expect(controller.getState()).toMatchObject({
+      session: null,
+      savePhase: "restoring"
+    });
+    expect(api.completeProjectOpen).not.toHaveBeenCalled();
+    expect(() => adapter.undo()).toThrow("Typie editor is not open");
+    await expect(adapter.getSnapshot()).rejects.toThrow(
+      "Typie editor is not open"
+    );
+
+    finishInstall();
+    await creating;
+
+    expect(api.createProject).toHaveBeenCalledTimes(1);
+    expect(api.completeProjectOpen).toHaveBeenCalledExactlyOnceWith({
+      sessionId: session.sessionId,
+      accepted: true
+    });
+    expect(controller.getState()).toMatchObject({
+      session,
+      activeSceneId: "scene-1",
+      savePhase: "dirty",
+      errorMessage: ""
+    });
+    expect(vi.mocked(port.setInteractionEnabled).mock.calls).toEqual([
+      [false],
+      [true]
+    ]);
+    expect(port.focus).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
+
+  it("keeps an existing document locked throughout snapshot replacement until explicit unlock", async () => {
+    const { port } = createPort();
+    const adapter = new TypieEditorAdapter(port, document.createElement("div"));
+    await adapter.open();
+    let interactionEnabled = true;
+    vi.mocked(port.setInteractionEnabled).mockImplementation((enabled) => {
+      interactionEnabled = enabled;
+    });
+    let finishRestore!: () => void;
+    const restoration = new Promise<void>((resolve) => {
+      finishRestore = resolve;
+    });
+    vi.mocked(port.restoreSnapshot).mockImplementation(async () => {
+      expect(interactionEnabled).toBe(false);
+      await restoration;
+      expect(interactionEnabled).toBe(false);
+    });
+
+    adapter.setInteractionEnabled(false);
+    const replacing = adapter.open(Uint8Array.from([1, 2, 3]));
+    await vi.waitFor(() =>
+      expect(port.restoreSnapshot).toHaveBeenCalledTimes(1)
+    );
+    expect(interactionEnabled).toBe(false);
+    finishRestore();
+    await replacing;
+    expect(interactionEnabled).toBe(false);
+    expect(port.setInteractionEnabled).toHaveBeenCalledExactlyOnceWith(false);
+
+    adapter.setInteractionEnabled(true);
+    expect(interactionEnabled).toBe(true);
+    expect(vi.mocked(port.setInteractionEnabled).mock.calls).toEqual([
+      [false],
+      [true]
+    ]);
+    expect(port.mount).toHaveBeenCalledTimes(1);
+  });
+
   it("mounts once and moves snapshots through copies", async () => {
     const { port } = createPort();
     const mount = document.createElement("div");
@@ -155,7 +274,7 @@ describe("MadiEditorAdapter boundary", () => {
     });
   });
 
-  it("cannot be used before a document is opened", async () => {
+  it("rejects document commands before a document is opened", async () => {
     const { port } = createPort();
     const adapter = new TypieEditorAdapter(
       port,

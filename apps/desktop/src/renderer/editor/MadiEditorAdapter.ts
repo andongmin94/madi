@@ -74,7 +74,10 @@ export interface MadiEditorAdapter {
   replaceTextRanges?(
     replacements: readonly EditorTextReplacement[]
   ): Promise<EditorReplacementDocument>;
-  /** Disables user-driven mutations during a guarded editor operation. */
+  /**
+   * Disables user-driven mutations during a guarded editor operation. May be
+   * called before the first open; newly mounted surfaces must retain this state.
+   */
   setInteractionEnabled?(enabled: boolean): void;
   /** Selects a range expressed in annotated recovery-text offsets. */
   revealTextRange?(

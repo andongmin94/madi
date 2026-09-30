@@ -136,7 +136,6 @@ export class TypieEditorAdapter implements MadiEditorAdapter {
   }
 
   public setInteractionEnabled(enabled: boolean): void {
-    this.requireOpen();
     this.port.setInteractionEnabled(enabled);
   }
 

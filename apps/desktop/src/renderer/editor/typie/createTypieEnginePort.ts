@@ -217,10 +217,13 @@ class BrowserTypieEnginePort implements TypieEnginePort {
 
     const surface = document.createElement("div");
     surface.className = "typie-runtime";
-    surface.dataset.interactionEnabled = "true";
-    surface.setAttribute("aria-busy", "false");
+    surface.inert = !this.interactionEnabled;
+    surface.dataset.interactionEnabled = String(this.interactionEnabled);
+    surface.setAttribute("aria-busy", this.interactionEnabled ? "false" : "true");
     const input = document.createElement("textarea");
     input.className = "typie-runtime__ime-input";
+    input.disabled = !this.interactionEnabled;
+    input.setAttribute("aria-disabled", this.interactionEnabled ? "false" : "true");
     input.setAttribute("aria-label", "Typie 문서 입력");
     input.setAttribute("autocapitalize", "off");
     input.setAttribute("autocomplete", "off");
