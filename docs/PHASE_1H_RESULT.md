@@ -2,26 +2,27 @@
 
 기준일: 2026-08-13  
 후속 갱신일: 2026-10-01
-문서 상태: baseline static record and source51 actual follow-up; final aggregate pending
+문서 상태: baseline/source51 history preserved; exact source660 full development/fresh actual PASS
 
-이 문서는 아래 기준일의 구현·실행 근거를 보존한다. 현행 목표와 작업 순서는
-[PLANS.md](../PLANS.md)를 따른다. 후속 Phase 1I 구현이나 계획 정리는 이 문서의
-`WITHHELD`를 해소하는 실행 근거가 아니다.
+이 문서는 아래 기준일의 구현·실행 근거와 revision별 후속 actual을 보존한다. 현행 목표와
+작업 순서는 [PLANS.md](../PLANS.md)를 따른다. 현재 판정은 section28의 exact source660
+development/fresh 실제 검증에 근거하며 과거 `WITHHELD`와 source51 실패는 해당 시점의 기록으로 남긴다.
 
 ## 1. Phase 1H 최종 판정
 
 ```text
-Phase 1H verdict: WITHHELD
-HWPX source51 actual: DEVELOPMENT PASS / STANDALONE FRESH-UNPACKED PASS
-Final Windows aggregate: source51 FAIL; new candidate PENDING
+Phase 1H verdict: TECHNICAL GO — HWPX / PRIVATE LOCAL ONLY
+Actual tested source: 660814c7745a5231038aba902fd7113022778238
+HWPX source660 actual: DEVELOPMENT PASS / FRESH-UNPACKED PASS
+Full pinned Windows aggregate source660: PASS / exit0 / 5333.110s
 HWP Automation: MANUAL VALIDATION PENDING
-Development boundary: PRIVATE LOCAL ONLY
+Public/paid/customer/installer distribution: NOT APPROVED
 ```
 
-Repository implementation과 일부 focused/static/package boundary 검증은 존재하지만 이
-기준일에는 일반·675,000자 actual과 development/fresh-unpacked Electron을 완료하지 않았다.
-후속 source51의 개별 actual 성공과 full 실패는 section27에 기록한다. 최종 필수 명령은
-[PLANS.md](../PLANS.md)의 6개이며, 새 후보의 전체 성공 전 `TECHNICAL GO — HWPX`를 선언하지 않는다.
+기준일에는 일반·675,000자 development/fresh actual이 미완료였다. Source51의 개별 actual
+성공과 full 실패는 section27, 이를 잇는 source660의 전체 실제 성공은 section28에 기록한다.
+필수 6개 명령의 실행 범위와 package join을 구분하며 HWPX private-local 기술 성공을
+수동 Hancom 검증이나 배포 승인으로 해석하지 않는다. 최종 문서 commit과 실제 검증 source660도 구분한다.
 
 ## 2. Runtime EPUBCheck 재분류 결과
 
@@ -441,4 +442,78 @@ Receipt는 중첩 `package:unpacked` 성공이며 별도 실행 시간을 만들
 freshness 추정false이고 전체 Electron runtime/license 목록이나 actual gate를 대체하지 않는다.
 `36cbf72e51667e06f0124651396f448d5a3d73db`는 D World Graph의 viewport 경합을 좁게 수정했다.
 작업 중 회귀 RED→GREEN2·관련21테스트·typecheck는 통과했지만 수정 후 actual/full은 미실행이다.
-Source51의 개별 development/fresh H 성공은 보존하되 full 실패와 새 후보 검증 대기로 최종 **WITHHELD**를 유지한다.
+이 section27 기록 시점에는 source51의 개별 development/fresh H 성공에도 full 실패와 새 후보
+검증 대기로 최종 **WITHHELD**였다. 현재 판정은 다음 section28의 새 actual을 따른다.
+
+## 28. 2026-10-01 exact source660 full Windows actual 완료
+
+실제 검증 source는 `660814c7745a5231038aba902fd7113022778238`이다. Node26.3.1/pnpm11.9.0,
+pinned Windows 경로와 명령 process에만 `CARGO_INCREMENTAL=0`을 적용했다. Build environment·
+source hashes·38개 원본 source copies·각 evidence의 byte-exact archive를 보존했다.
+`full-verify-660814c-run1`은 UTC2026-09-30 18:40:41.7297632→20:09:34.8733957,
+5333.110초, PASS/exit0/timeoutfalse/source clean before·after로 종료했다. Development와 fresh의
+basic/D/E/F/G/H가 같은 full에서 통과했다. 이전 source51 full 실패를 성공으로 다시 분류하지 않는다.
+
+| 필수 명령 | Source660 실행 근거 |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | 별도 owned frozen-install host PASS/exit0,1.507초 |
+| `pnpm verify` | 같은 full host PASS/exit0,5333.110초 |
+| `pnpm package:unpacked` | full의 중첩 pretest:package에서 PASS; 별도 elapsed를 만들지 않음 |
+| `pnpm check:repository` | 원래 순차 verify chain과 parent exit0; 독립 exit/time 기록 아님 |
+| `pnpm format:check` | 원래 순차 verify chain과 parent exit0; 독립 exit/time 기록 아님 |
+| `git diff --check` | source660 clean에서 root 실제 실행 PASS; 관측 시각과 정확한 명령 시작·끝을 구분 |
+
+`required-six-command-join-v2.json` SHA는
+`8db9a79f2adbe3af7276bc0006a5c3c80bad4a64991807d97159d48f46e5409f`다.
+같은 full의 Windows unpacked stdout receipt SHA는
+`0d387571a8883a49333e21537f719be793b94e67c2b0b24a8a86696f9978abfa`, source join은
+`5c22daf65da23c07abe71422ba164da0ac0f3f3956ce95e977124331683f1582`다.
+Selected inventory SHA `61400280b6d56f09307a545b1a0035d124a020d0a07f1de28e00924c8383e51c`
+의101files/233245115bytes(madi.exe/app package.json/dist91/bin8)와 source/build/log를 연결했다.
+Sidecar4+bridge4의 copied SHA/bytes가 모두 일치했다. Inventory와 archive helpers는 acceptance=false/
+freshness inferred=false이며, actual fresh 실행이나 전체 Electron runtime/license 목록을 대신하지 않는다.
+
+| H actual archive | SHA-256 |
+| --- | --- |
+| Development | `116da2ad688c0b3730a3050e8bd1c0715b3b3616d578cbd561c7bf3f3121810e` |
+| Fresh-unpacked | `0316e71a2a6b710daf76c858bdd968c4e3a0759e346fc9d599406433b5cab920` |
+
+두 JSON은 ignored `full-verify-660814c-run1/`의 `development-phase1h-evidence.json`과
+`packaged-phase1h-evidence.json`이다. 원본 mtime은 각각19:46:01.8302467Z/20:09:34.3270108Z로
+full 시작·종료 안이며 현재/보관 source38개 hash, terminal metadata/log/exit/environment를 join했다.
+Metadata SHA `427310cc1acc78b914b46a242d92ce63d4d7cb5e8dad582eaf91f973992ddc42`,
+command-log SHA `ed4e626544e713f0329c5c65e74f4acc9b0340cf326c46749b30e60207639080`도 보존했다.
+
+Normal6 scope/split에서 source block은 WORK323=263 exported+60fallback,
+VOLUME162=132+30, CHAPTER18=15+3, SCENE8=7+1이며 configured omission/rejected0다.
+Source/exported characters180000/90000/9000/3000 일치, VALID fatal/error0·warnings61/31/4/2를 보존한다.
+Long5는 매회450 source/exported sections·10 package sections,
+2411=1961 exported+450fallback+0omission+0rejected,675000 characters 일치,
+VALID fatal/error0·warning451·ZIP/XML reopen·source paragraph sequence·rich semantics를 확인했다.
+Output31867bytes와 section27에 기재한 output/logical/Publication IR/ONE_OFF preset 네 hash를
+새 dev/fresh 각5회에서 직접 비교해 모두 같음을 확인했다. Source51의 판정을 이전한 것이 아니다.
+첫 custom scene의 configured omission1과 ruby fallback 경고도 그대로 남겼다.
+
+Preset CRUD·snapshotv5·safety snapshot·새 process reopen·one-time contact isolation,
+confirmed overwrite 결정성·no-clobber concurrent destination 보존·PREPARING cancel의 output/
+late success/progress 부재가 양쪽 actual에서 통과했다. Fresh renderer canary requests0,
+core/exporter/bridge/atomic overrides absent, packaged path pinning/사용된 bundled binary 경로 일치였다.
+Renderer HTTP/WS와 owned instance TCP nonloopback·peer/listener 위반·classification/identity race/
+parser reject0, process identity rejected rows0, session spellchecker enabled=false/languages0였다.
+세 lifecycle의 product close→quit/quit→native exit/wrapper unexpected diagnostics0,
+wrapper 전 native alive0, PID+Win32 birth와 ChildProcess close receipts의 exact captured exit/
+descendants0, artifact/temp/recovery/claim/symlink0을 확인했다. Receipt와 birth counts는 별개 증거다.
+
+Host는 job2628/cleanup active0/no owned-job or unassigned forced termination,
+Default input10401/inactive UOI_IO false all, job empty·process/thread/job handles·desktop 제거를 기록했다.
+Development exporter median/max763/772ms와 fresh78/79ms 및 IR/wall 차이는
+[성능 문서의 source660 actual](HWPX_EXPORT_PERFORMANCE.md#8-exact-source660-developmentfresh-actual)을 따른다.
+Fresh normal5초/long15초 exporter total 기준을 실제 적용해 모두 통과했다.
+
+Hancom REGISTERED_UNVERIFIED/HWPdisabled/security modulefalse/COM-HWP attemptfalse/reopenNOT_RUN은 유지한다.
+Native Korean IME·Hancom licensing/security/conversion/reopen·runtime EPUBCheck/JRE packaging은 수동 또는
+출시 전 PENDING이다. G의 EPUBCheck actual receipt `packaged=false`도 distribution packaging 증거로 쓰지 않는다.
+Typie permission은 owner-confirmed이며 출시 범위는 외부 grant의 exact terms를 따른다.
+Public/paid/customer/installer 배포는 승인하지 않는다. Phase1I의 exact660 dev/fresh actual은 별도 I 결과 문서를 따른다.
+이 후속은 actual source660을 기록하는 문서 동기화다. 이후 docs-only HEAD의 정적 검사와 runtime-tested
+source660을 구분하고 문서 commit에 새 runtime PASS를 자동 부여하지 않는다.

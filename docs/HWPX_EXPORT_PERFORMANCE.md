@@ -4,8 +4,9 @@
 후속 갱신일: 2026-10-01
 
 ```text
-Phase 1H performance verdict: WITHHELD
-Reason: source51 development/standalone fresh actual passed; full Windows run2 failed at fresh D
+Phase 1H performance verdict: TECHNICAL GO — HWPX / PRIVATE LOCAL ONLY
+Actual tested source: 660814c7745a5231038aba902fd7113022778238
+Reason: exact source660 full Windows development/fresh H passed
 ```
 
 이 문서는 측정 계약과 실제 evidence를 분리한다. Unit test 시간, compile log, 구조적 package
@@ -76,12 +77,13 @@ Desktop wall, optional Hancom conversion과 reopen은 환경 의존 관측값이
 별도다. HWP 변환을 측정할 때 한컴 version, security module, output bytes/hash와 reopen을
 같이 기록한다.
 
-## 6. Current evidence
+## 6. Source51 historical evidence
 
 기준일에는 release executable·resource 배치·bridge capability probe만 확인했고 actual은 미측정이었다.
 후속 source `51c1e6cdc10107d76e30103fbe1d6f4d035218e3`의 development와 standalone fresh H는
 correctness·coverage·결정성·network·정상 종료를 통과했다. 아래 수치는 그 actual의 관측값이다.
-Full run2는 fresh D에서 실패했으므로 최종 aggregate performance verdict는 `WITHHELD`로 유지한다.
+이 source51 기록 시점에는 full run2가 fresh D에서 실패해 aggregate performance verdict가
+`WITHHELD`였다. 현재 판정은 section8의 새 source660 actual에 근거한다.
 
 | Environment | General | Long-form | Status |
 |---|---|---|---|
@@ -128,3 +130,52 @@ artifact/recovery cleanup0을 확인했다. Hancom 실제 conversion/reopen은 �
 median/max, output byte/file/logical hash, package/coverage statistics, validation counts,
 cancel/no-clobber/cleanup, external request count와 unexpected diagnostic를 포함한다. 원고 본문과
 private absolute path는 포함하지 않는다.
+
+## 8. Exact source660 development/fresh actual
+
+실제 source `660814c7745a5231038aba902fd7113022778238`의 full Windows path는
+5333.110초/PASS/exit0/source clean before·after로 종료했고 development와 fresh H가 같은 run에서
+correctness·coverage·ZIP/XML reopen·결정성·network·정상 종료를 통과했다.
+Node26.3.1/pnpm11.9.0과 command-process-only `CARGO_INCREMENTAL=0`을 기록했다.
+필수6명령/package stdout receipt/inventory/source join과 역사 보존은
+[H 결과 section28](PHASE_1H_RESULT.md#28-2026-10-01-exact-source660-full-windows-actual-완료)을 따른다.
+
+장편은 양쪽 각5회450 sections/2411blocks(1961 exported+450fallback)/675000 characters,
+omission/rejected0/VALID fatal/error0/warnings451/ZIP/XML reopen을 보존했다.
+Output31867bytes와 output/logical/Publication IR/ONE_OFF preset 네 hash는 새 actual의 각5회와
+development/fresh 사이 모두 같다. 일반6행은 별도 scope/split 입력이며 반복 median으로 합치지 않는다.
+
+| 장편 n5 metric, ms | Development samples; median/max | Fresh samples; median/max |
+| --- | --- | --- |
+| Exporter total | 771,752,772,752,763;763/772 | 75,78,78,79,76;78/79 |
+| Runtime Publication IR | 59915.09,59799.18,59679.51,60026.29,59914.55;59914.55/60026.29 | 2617.28,2609.43,2598.86,2623.94,2616.42;2616.42/2623.94 |
+| Click→output read/reopen wall | 61775.46,61564.64,61422.70,61812.26,61672.42;61672.42/61812.26 | 3605.66,3565.67,3610.04,3597.39,3566.53;3597.39/3610.04 |
+| Maximum renderer frame gap | median/max53.40/63.93 | median/max33.40/52.86 |
+| Maximum heartbeat gap | median/max63.60/65.00 | median/max63.70/65.50 |
+
+| 일반 scope/split | Development wall/IR/exporter ms | Fresh wall/IR/exporter ms |
+| --- | --- | --- |
+| WORK/SINGLE | 29712.39/28856.40/167 | 1840.60/1139.09/20 |
+| WORK/SINGLE_OVERWRITE | 29835.16/28911.66/166 | 1893.39/1060.37/20 |
+| VOLUME/SINGLE | 15387.78/14678.31/100 | 1401.84/541.43/15 |
+| CHAPTER/SINGLE | 2152.75/1476.27/35 | 1370.04/65.41/8 |
+| SCENE/SINGLE | 1400.90/508.79/30 | 1524.97/29.38/9 |
+| WORK/VOLUME | 29530.97/28723.21/170 | 1759.19/1050.98/21 |
+
+일반 5초/장편 15초 exporter total 기준은 fresh의 모든 run에서 실제 적용·통과했다.
+Development hardTargetApplied=false와 별도 wall observation을 유지한다. Fresh wall도 모두 목표 수치
+이내였지만 기준을 exporter에서 wall로 바꾸지 않는다. H의 IR은 runtime report stage이며 G의 사전
+fixture compileWork 수치와 다르다. 별도 warm-up 완료나 cancel latency 측정은 기록하지 않았다.
+Memory는5회 point 관측 max workingSet/private bytes로 development646180864/446443520,
+fresh679079936/479866880이며 peak/leak 증명은 아니다.
+
+Renderer HTTP/WS와 full-owned instance TCP 위반·classification/identity/parser 오류0,
+product/native-before-wrapper/wrapper 세 진단 구간0, native alive0/exact captured exit/artifact+recovery cleanup0을
+확인했다. Hancom HWP conversion/reopen은 미실행이고 수동 승인 PENDING이다. Native Korean IME,
+runtime EPUBCheck/JRE distribution packaging 및 public/paid/customer/installer 배포 승인도 이 판정에 포함하지 않는다.
+
+원본 JSON은 ignored `full-verify-660814c-run1/development-phase1h-evidence.json`과
+`packaged-phase1h-evidence.json`에 byte-exact로 보존했다. 각각 SHA는
+`116da2ad688c0b3730a3050e8bd1c0715b3b3616d578cbd561c7bf3f3121810e`,
+`0316e71a2a6b710daf76c858bdd968c4e3a0759e346fc9d599406433b5cab920`다.
+문서 동기화 이후 docs-only HEAD와 실제 runtime-tested source660을 구분한다.
