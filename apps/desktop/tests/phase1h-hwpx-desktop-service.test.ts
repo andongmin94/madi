@@ -50,6 +50,22 @@ const GENERATED_HWP = Buffer.from("content-free HWP fixture", "utf8");
 const CONFIG = BUILT_IN_HWPX_PRESETS[0]!.config;
 const temporaryDirectories: string[] = [];
 
+// Exact bytes and hashes from native madi-core create/list/reopen on 451e085.
+const CORE_CANONICAL_PRESETS = [
+  {
+    label: "default",
+    canonicalJson: '{"chapterTitleStyle":{"alignment":"LEFT","bold":true,"fontFamilyToken":"함초롬바탕","fontSizePt":15.0,"pageBreakBefore":true,"spacingAfter":12.0,"spacingBefore":18.0},"customPageHeight":null,"customPageWidth":null,"firstLineIndent":10.0,"fontFamilyToken":"함초롬바탕","fontSizePt":10.5,"footerMargin":15.0,"footerText":"","formatVersion":1,"gutter":0.0,"headerMargin":15.0,"headerText":"","includeChapterTitles":true,"includeFooter":false,"includeHeader":false,"includePageNumber":true,"includeSceneTitles":false,"includeTitlePage":true,"includeVolumeTitles":true,"includeWorkTitle":true,"lineSpacingMode":"PERCENT","lineSpacingValue":180.0,"marginBottom":25.0,"marginLeft":25.0,"marginRight":25.0,"marginTop":25.0,"orientation":"PORTRAIT","pageNumberPosition":"BOTTOM_CENTER","pageNumberStart":1,"pageSizeToken":"A4","paragraphSpacingAfter":0.0,"paragraphSpacingBefore":0.0,"sceneBreakToken":"ORNAMENT","sceneTitleStyle":{"alignment":"LEFT","bold":true,"fontFamilyToken":"함초롬바탕","fontSizePt":12.0,"pageBreakBefore":false,"spacingAfter":8.0,"spacingBefore":12.0},"sectionSplitMode":"SINGLE","textAlign":"JUSTIFY","volumeTitleStyle":{"alignment":"CENTER","bold":true,"fontFamilyToken":"함초롬바탕","fontSizePt":18.0,"pageBreakBefore":true,"spacingAfter":16.0,"spacingBefore":20.0},"workTitleStyle":{"alignment":"CENTER","bold":true,"fontFamilyToken":"함초롬바탕","fontSizePt":22.0,"pageBreakBefore":false,"spacingAfter":24.0,"spacingBefore":0.0}}',
+    contentHash: "826810390023a4a81e0ffb6fdc8a4ed593028e91109e9ae5afcb7a83f6955c55",
+    jsHash: "db3fd19980e96fd69b73c5c27ec3490549aa35836133bbc4ab95f57099989426"
+  },
+  {
+    label: "custom fractional",
+    canonicalJson: '{"chapterTitleStyle":{"alignment":"LEFT","bold":true,"fontFamilyToken":"함초롬바탕","fontSizePt":15.0,"pageBreakBefore":true,"spacingAfter":12.0,"spacingBefore":18.0},"customPageHeight":null,"customPageWidth":null,"firstLineIndent":10.0,"fontFamilyToken":"함초롬바탕","fontSizePt":11.5,"footerMargin":15.0,"footerText":"","formatVersion":1,"gutter":0.0,"headerMargin":15.0,"headerText":"","includeChapterTitles":true,"includeFooter":false,"includeHeader":false,"includePageNumber":true,"includeSceneTitles":false,"includeTitlePage":true,"includeVolumeTitles":true,"includeWorkTitle":true,"lineSpacingMode":"PERCENT","lineSpacingValue":187.5,"marginBottom":25.0,"marginLeft":25.0,"marginRight":25.0,"marginTop":25.0,"orientation":"PORTRAIT","pageNumberPosition":"BOTTOM_CENTER","pageNumberStart":1,"pageSizeToken":"A4","paragraphSpacingAfter":0.0,"paragraphSpacingBefore":0.0,"sceneBreakToken":"ORNAMENT","sceneTitleStyle":{"alignment":"LEFT","bold":true,"fontFamilyToken":"함초롬바탕","fontSizePt":12.0,"pageBreakBefore":false,"spacingAfter":8.0,"spacingBefore":12.0},"sectionSplitMode":"SINGLE","textAlign":"JUSTIFY","volumeTitleStyle":{"alignment":"CENTER","bold":true,"fontFamilyToken":"함초롬바탕","fontSizePt":18.0,"pageBreakBefore":true,"spacingAfter":16.0,"spacingBefore":20.0},"workTitleStyle":{"alignment":"CENTER","bold":true,"fontFamilyToken":"함초롬바탕","fontSizePt":22.0,"pageBreakBefore":false,"spacingAfter":24.0,"spacingBefore":0.0}}',
+    contentHash: "a6a6e9cb66e883e23fc7c76c95a2da3a832d79d9cfbcae40cdad42ec70441f47",
+    jsHash: "47e965abacc99a58e154178e4a9f5a66fd114c5171a71e7384ca17d89e818770"
+  }
+] as const;
+
 const METADATA: PublicationExportMetadata = {
   projectId: "project-1",
   publicationTitle: "테스트 작품",
@@ -103,7 +119,8 @@ function persistedMetadata(): Record<string, unknown> {
 function persistedHwpxPreset(
   id = "custom-hwpx",
   config: HwpxExportPresetConfig = CONFIG,
-  revision = 2
+  revision = 2,
+  contentHash: string = CORE_CANONICAL_PRESETS[0].contentHash
 ): Record<string, unknown> {
   return {
     id,
@@ -113,7 +130,7 @@ function persistedHwpxPreset(
     preset_format: "MADI_EXPORT_PRESET",
     preset_version: 1,
     preset_json: config,
-    content_hash: sha256(canonical(config)),
+    content_hash: contentHash,
     revision,
     created_at: NOW,
     updated_at: NOW
@@ -208,6 +225,7 @@ function utilityResult(
 function createHarness(options: {
   readonly bridge?: HwpBridgePort;
   readonly fontInstallation?: FontInstallationPort;
+  readonly preset?: Record<string, unknown>;
 } = {}) {
   const document = readerPublication({ revision: 5 });
   const request = vi.fn(
@@ -216,7 +234,7 @@ function createHarness(options: {
       params: Readonly<Record<string, unknown>>
     ): Promise<unknown> => {
       if (method === "get_publication_export_state") {
-        return exportState();
+        return options.preset ? exportState([options.preset]) : exportState();
       }
       if (method === "compile_publication") {
         return {
@@ -377,6 +395,66 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
       expected_revision: 5
     });
   });
+
+  it.each(CORE_CANONICAL_PRESETS)(
+    "accepts the native core-canonical $label preset and forwards its exact hash",
+    async ({ canonicalJson, contentHash, jsHash }) => {
+      const config = JSON.parse(canonicalJson) as HwpxExportPresetConfig;
+      expect(sha256(canonicalJson)).toBe(contentHash);
+      expect(sha256(canonical(config))).toBe(jsHash);
+      expect(jsHash).not.toBe(contentHash);
+      const harness = createHarness({
+        preset: persistedHwpxPreset("custom-hwpx", config, 2, contentHash)
+      });
+      const {
+        outputSelectionId: _outputSelectionId,
+        outputType: _outputType,
+        ...validationRequest
+      } = runRequest(harness.session.sessionId, OPERATION_1, "unused", {
+        presetId: "custom-hwpx",
+        presetContentHash: contentHash,
+        config
+      });
+
+      const result = await harness.service.validateHwpxExport(validationRequest);
+      expect(result.report.validation.status).toBe("VALID");
+      expect(harness.run).toHaveBeenCalledTimes(1);
+      expect(harness.run.mock.calls[0]![0]).toMatchObject({
+        mode: "VALIDATE_ONLY",
+        presetId: "custom-hwpx",
+        presetContentHash: contentHash,
+        config
+      });
+    }
+  );
+
+  it.each(["hash", "config"] as const)(
+    "rejects a stale custom preset %s before compilation or utility startup",
+    async (mismatch) => {
+      const oracle = CORE_CANONICAL_PRESETS[1];
+      const config = JSON.parse(oracle.canonicalJson) as HwpxExportPresetConfig;
+      const harness = createHarness({
+        preset: persistedHwpxPreset("custom-hwpx", config, 2, oracle.contentHash)
+      });
+      const {
+        outputSelectionId: _outputSelectionId,
+        outputType: _outputType,
+        ...validationRequest
+      } = runRequest(harness.session.sessionId, OPERATION_1, "unused", {
+        presetId: "custom-hwpx",
+        presetContentHash: mismatch === "hash" ? oracle.jsHash : oracle.contentHash,
+        config: mismatch === "config" ? { ...config, marginTop: config.marginTop + 1 } : config
+      });
+
+      await expect(
+        harness.service.validateHwpxExport(validationRequest)
+      ).rejects.toThrow("The selected HWPX export preset is stale");
+      expect(harness.request.mock.calls.map(([method]) => method)).toEqual([
+        "get_publication_export_state"
+      ]);
+      expect(harness.run).not.toHaveBeenCalled();
+    }
+  );
 
   it("derives the built-in hash, verifies IR coverage, and commits staged bytes", async () => {
     const harness = createHarness();

@@ -7193,9 +7193,8 @@ export class DesktopService {
       if (!stored) {
         throw new Error("The selected HWPX export preset is unavailable");
       }
-      const computedHash = canonicalJsonSha256(stored.config);
+      // Core validates the preset hash using its own canonical numeric encoding.
       if (
-        stored.contentHash !== computedHash ||
         suppliedPresetHash !== stored.contentHash ||
         canonicalCanvasJson(suppliedConfig) !== canonicalCanvasJson(stored.config)
       ) {
