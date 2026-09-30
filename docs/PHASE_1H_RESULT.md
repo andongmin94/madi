@@ -299,3 +299,20 @@ Core가 검증한 fresh hash와 renderer hash의 일치, config 동등성, revis
 수정 후 통과했다. 잘못된 supplied hash·config 거부 2건도 통과했다.
 수정 worktree의 H service·workspace·export tab 3파일 34테스트, Desktop typecheck,
 format 287파일·diff 검사가 실제 통과했다. 이 focused 결과는 새 actual 판정을 대신하지 않는다.
+
+같은 제품 변경과 기록을 포함한 `76f7dafd9326b419e5df0a1b1231fd770e634bde`에서
+frozen install·Desktop build는 통과했다. 후속 H development는
+`phase1h-markdown-contract`에서 **FAIL**했다. 실패 context는 VALID·alert 0,
+HWPX save 6회·JSON report save 6회·Markdown save 1회·renderer diagnostic 0건이다.
+제품 Markdown은 `scope (nodeId)/revision`을 표시하지만 harness는 중간 node ID를
+생략한 `scope/` 부분 문자열을 찾았다. 문서 계약의 세 identity를 한 줄에서 정확히
+검사하도록 정정하며 제품 formatter와 기존 coverage·network·privacy·timeout·cleanup
+조건은 유지한다. 장편·일반 no-clobber·최종 종료·fresh package는 이 실행에서 미도달했다.
+Owned inactive-desktop host는 source clean before/after·exit 1·active job 0·desktop 제거를
+기록했다. 실패 evidence는 ignored `.tools/verification/phase1h-development-76f7daf-run1/`에
+보존했다. 전체 H actual 판정은 계속 **WITHHELD**다.
+
+`66e9c2d`는 잘못된 두 부분 조건을 scope·node ID·revision 전체 줄의 exact 검사로
+교체했다. 기존 Markdown unit에도 같은 세 identity의 literal 줄 검사를 추가했다.
+수정 worktree의 service 20테스트, smoke Node 구문 검사, format·diff 검사는 통과했다.
+제품 formatter·다른 gate 조건은 그대로이며 후속 actual은 아직 완료되지 않았다.
