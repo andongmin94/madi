@@ -16,6 +16,8 @@ interface ProjectSessionRecord {
 
 export class ProjectSessionRegistry {
   private readonly records = new Map<string, ProjectSessionRecord>();
+  private currentSessionId: string | null = null;
+  private candidateSessionId: string | null = null;
 
   public add(input: {
     readonly filePath: string;
@@ -26,6 +28,9 @@ export class ProjectSessionRegistry {
     readonly title: string;
     readonly revision: number;
   }): ProjectSession {
+    if (this.candidateSessionId) {
+      throw new Error("Another project open is awaiting completion");
+    }
     const sessionId = randomUUID();
     const record: ProjectSessionRecord = {
       sessionId,
@@ -44,9 +49,24 @@ export class ProjectSessionRegistry {
     if (input.workNodeId !== undefined) {
       record.workNodeId = input.workNodeId;
     }
-    this.records.clear();
     this.records.set(sessionId, record);
+    this.candidateSessionId = sessionId;
     return this.toPublic(record);
+  }
+
+  public completeProjectOpen(sessionId: string, accepted: boolean): void {
+    if (sessionId !== this.candidateSessionId) {
+      throw new Error("The project open is no longer pending");
+    }
+    if (accepted) {
+      if (this.currentSessionId) {
+        this.records.delete(this.currentSessionId);
+      }
+      this.currentSessionId = sessionId;
+    } else {
+      this.records.delete(sessionId);
+    }
+    this.candidateSessionId = null;
   }
 
   public require(sessionId: string): ProjectSessionRecord {

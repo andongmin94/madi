@@ -6,6 +6,7 @@ import type {
 
 export type Phase1cApi = Pick<
   MadiDesktopApi,
+  | "completeProjectOpen"
   | "listEntities"
   | "searchEntities"
   | "createEntity"
@@ -98,6 +99,7 @@ function unused(): never {
 
 export function phase1cApiStubs(): Phase1cApi {
   return {
+    completeProjectOpen: vi.fn(async () => undefined),
     listEntities: vi.fn(async () => ({ entities: [], revision: 0 })),
     searchEntities: vi.fn(async (request) => ({
       query: request.query,

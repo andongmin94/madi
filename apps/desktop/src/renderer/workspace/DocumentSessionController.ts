@@ -196,147 +196,183 @@ export class DocumentSessionController {
   public async createProject(
     compositionGuard: CompositionGuard = false
   ): Promise<void> {
-    if (!(await this.flushPendingChanges(compositionGuard))) {
-      return;
-    }
-    const previous = this.state;
-    this.patch({ savePhase: "restoring", errorMessage: "" });
-    try {
-      const session = await this.api.createProject({
-        title: this.state.title || "새 작품",
-        suggestedFileName: "드래곤을죽이다.madi",
-        editorEngine: "typie",
-        editorEngineCommit: this.editorEngineCommit,
-        editorSchemaVersion: this.editorSchemaVersion
-      });
-      if (!session) {
-        this.setState(previous);
-        return;
-      }
-
-      await this.withSuppressedChanges(() => this.editor.open());
-      this.sessionToken += 1;
-      this.changeGeneration += 1;
-      this.lastSavedContentSignature = null;
-      this.patch({
-        session,
-        activeSceneId: session.sceneId ?? null,
-        activeEntityId: null,
-        activeOwnerKind: session.sceneId ? "SCENE" : null,
-        activeOwnerId: session.sceneId ?? null,
-        title: session.title,
-        revision: session.revision,
-        savePhase: "dirty",
-        snapshotBytes: 0,
-        snapshotFingerprint: "—",
-        recoveryCharacters: 0,
-        canUndo: false,
-        canRedo: false,
-        isComposing: false,
-        lastSavedAt: "",
-        errorMessage: ""
-      });
-      this.editor.focus();
-    } catch (error) {
-      this.patch({ savePhase: "error", errorMessage: publicError(error) });
-    }
+    await this.replaceProject(true, compositionGuard);
   }
 
   public async openProject(
     compositionGuard: CompositionGuard = false
   ): Promise<void> {
+    await this.replaceProject(false, compositionGuard);
+  }
+
+  private async replaceProject(
+    create: boolean,
+    compositionGuard: CompositionGuard
+  ): Promise<void> {
+    if (
+      this.exclusiveEditorOperation ||
+      this.fatalEditorLock ||
+      this.state.savePhase === "restoring"
+    ) {
+      this.patch({
+        errorMessage: "현재 프로젝트 작업이 끝난 뒤 다시 여세요."
+      });
+      return;
+    }
     if (!(await this.flushPendingChanges(compositionGuard))) {
       return;
     }
-    const previous = this.state;
-    this.patch({ savePhase: "restoring", errorMessage: "" });
+    const stateAfterSave = this.getState();
+    if (
+      this.exclusiveEditorOperation ||
+      this.fatalEditorLock ||
+      stateAfterSave.savePhase === "restoring"
+    ) {
+      this.patch({
+        errorMessage: "현재 프로젝트 작업이 끝난 뒤 다시 여세요."
+      });
+      return;
+    }
+    const previous = stateAfterSave;
+    const previousGeneration = this.changeGeneration;
+    const previousSignature = this.lastSavedContentSignature;
+    let originalSnapshot: Uint8Array | undefined;
+    let candidate: ProjectSession | null = null;
+    let editorTouched = false;
+    let acquiredEditorLock = false;
+    let opened = false;
     try {
-      const session = await this.api.openProject();
-      if (!session) {
+      this.beginExclusiveEditorOperation();
+      acquiredEditorLock = true;
+      this.latestSceneSwitch += 1;
+      this.patch({ savePhase: "restoring", errorMessage: "" });
+      if (previous.activeOwnerId || previous.session?.documentId) {
+        originalSnapshot = await this.editor.getSnapshot();
+      }
+      candidate = create
+        ? await this.api.createProject({
+            title: previous.title || "새 작품",
+            suggestedFileName: "드래곤을죽이다.madi",
+            editorEngine: "typie",
+            editorEngineCommit: this.editorEngineCommit,
+            editorSchemaVersion: this.editorSchemaVersion
+          })
+        : await this.api.openProject();
+      if (!candidate) {
         this.setState(previous);
         return;
       }
-      if (!session.sceneId && !session.documentId) {
-        await this.withSuppressedChanges(() => this.editor.open());
-        this.sessionToken += 1;
-        this.changeGeneration = 0;
-        this.lastSavedContentSignature = null;
-        this.patch({
-          session,
-          activeSceneId: null,
-          activeEntityId: null,
-          activeOwnerKind: null,
-          activeOwnerId: null,
-          title: session.title,
-          revision: session.revision,
-          savePhase: "saved",
-          snapshotBytes: 0,
-          snapshotFingerprint: "—",
-          recoveryCharacters: 0,
-          canUndo: false,
-          canRedo: false,
-          isComposing: false,
-          lastSavedAt: "",
-          errorMessage: ""
-        });
-        return;
+      const session = candidate;
+      const document =
+        create || (!session.sceneId && !session.documentId)
+          ? null
+          : session.sceneId
+            ? await this.api.loadSceneDocument({
+                sessionId: session.sessionId,
+                sceneId: session.sceneId
+              })
+            : await this.api.loadDocument({
+                sessionId: session.sessionId,
+                ...(session.documentId ? { documentId: session.documentId } : {})
+              });
+      if (document) {
+        assertSnapshotCompatibility(
+          document,
+          this.editorEngineCommit,
+          this.editorSchemaVersion
+        );
       }
-      const document = session.sceneId
-        ? await this.api.loadSceneDocument({
-            sessionId: session.sessionId,
-            sceneId: session.sceneId
-          })
-        : await this.api.loadDocument({
-            sessionId: session.sessionId,
-            ...(session.documentId ? { documentId: session.documentId } : {})
-          });
-      assertSnapshotCompatibility(
-        document,
-        this.editorEngineCommit,
-        this.editorSchemaVersion
-      );
-      const isInitialPlaceholder = document.snapshot.byteLength === 0;
+      const isInitialPlaceholder = document?.snapshot.byteLength === 0;
+      editorTouched = true;
       await this.withSuppressedChanges(() =>
         this.editor.open(
-          isInitialPlaceholder ? undefined : document.snapshot
+          !document || isInitialPlaceholder ? undefined : document.snapshot
         )
       );
+      this.assertExclusiveEditorOperationClean();
+      await this.api.completeProjectOpen({
+        sessionId: session.sessionId,
+        accepted: true
+      });
       this.sessionToken += 1;
-      this.changeGeneration = 0;
-      this.lastSavedContentSignature = isInitialPlaceholder
-        ? null
-        : contentSignature(document.snapshot, document.plainTextRecovery);
-      const restoredSession: ProjectSession = {
-        ...session,
-        documentId: document.id,
-        title: document.title,
-        revision: document.revision
-      };
+      this.changeGeneration = create ? previousGeneration + 1 : 0;
+      this.lastSavedContentSignature =
+        document && !isInitialPlaceholder
+          ? contentSignature(document.snapshot, document.plainTextRecovery)
+          : null;
       this.patch({
-        session: restoredSession,
+        session: document
+          ? {
+              ...session,
+              documentId: document.id,
+              title: document.title,
+              revision: document.revision
+            }
+          : session,
         activeSceneId: session.sceneId ?? null,
         activeEntityId: null,
         activeOwnerKind: session.sceneId ? "SCENE" : null,
         activeOwnerId: session.sceneId ?? null,
-        title: document.title,
-        revision: document.revision,
-        // create_project intentionally writes a zero-byte placeholder before
-        // Typie has produced its first graph. Reopening that file creates a
-        // real empty Typie document and marks it dirty so the next save
-        // replaces the placeholder.
-        savePhase: isInitialPlaceholder ? "dirty" : "saved",
-        snapshotBytes: document.snapshot.byteLength,
-        snapshotFingerprint: snapshotFingerprint(document.snapshot),
-        recoveryCharacters: document.plainTextRecovery.length,
+        title: document?.title ?? session.title,
+        revision: document?.revision ?? session.revision,
+        savePhase: create || isInitialPlaceholder ? "dirty" : "saved",
+        snapshotBytes: document?.snapshot.byteLength ?? 0,
+        snapshotFingerprint: document
+          ? snapshotFingerprint(document.snapshot)
+          : "—",
+        recoveryCharacters: document?.plainTextRecovery.length ?? 0,
         canUndo: false,
         canRedo: false,
         isComposing: false,
-        lastSavedAt: document.updatedAt,
+        lastSavedAt: document?.updatedAt ?? "",
         errorMessage: ""
       });
-      this.editor.focus();
+      opened = true;
     } catch (error) {
-      this.patch({ savePhase: "error", errorMessage: publicError(error) });
+      if (!acquiredEditorLock) {
+        this.patch({ errorMessage: publicError(error) });
+        return;
+      }
+      let message = publicError(error);
+      let recoveryFailed = false;
+      if (candidate) {
+        try {
+          await this.api.completeProjectOpen({
+            sessionId: candidate.sessionId,
+            accepted: false
+          });
+        } catch {
+          recoveryFailed = true;
+          message += " 프로젝트 세션을 복구하지 못했습니다. 앱을 닫고 다시 여세요.";
+        }
+      }
+      if (editorTouched) {
+        try {
+          await this.withSuppressedChanges(() =>
+            this.editor.open(originalSnapshot)
+          );
+        } catch {
+          recoveryFailed = true;
+          message += " 이전 편집기를 복구하지 못했습니다. 앱을 닫고 다시 여세요.";
+        }
+      }
+      this.changeGeneration = previousGeneration;
+      this.lastSavedContentSignature = previousSignature;
+      this.fatalEditorLock = recoveryFailed;
+      this.setState({
+        ...previous,
+        savePhase: recoveryFailed ? "restoring" : "error",
+        canUndo: editorTouched ? false : previous.canUndo,
+        canRedo: editorTouched ? false : previous.canRedo,
+        errorMessage: message
+      });
+    } finally {
+      if (acquiredEditorLock && !this.fatalEditorLock) {
+        this.endExclusiveEditorOperation();
+      }
+    }
+    if (opened) {
+      this.editor.focus();
     }
   }
 

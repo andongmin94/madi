@@ -4,6 +4,7 @@ import {
   type ApplyReplacementBatchResult,
   IPC_EVENTS,
   type CompleteCloseRequest,
+  type CompleteProjectOpenRequest,
   type CompilePublicationRequest,
   type CompilePublicationResult,
   type CanvasMutationResult,
@@ -251,6 +252,12 @@ export function createMadiDesktopApi(
         IPC_CHANNELS.openProject,
         request
       )) as ProjectSession | null;
+    },
+
+    async completeProjectOpen(
+      request: CompleteProjectOpenRequest
+    ): Promise<void> {
+      await invoke(IPC_CHANNELS.completeProjectOpen, request);
     },
 
     async saveDocument(

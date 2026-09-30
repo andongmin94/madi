@@ -9,6 +9,7 @@ import {
   IPC_CHANNELS,
   type ApplyReplacementBatchRequest,
   type CompleteCloseRequest,
+  type CompleteProjectOpenRequest,
   type CompilePublicationRequest,
   type CreateCanvasRequest,
   type CreateReaderPresetRequest,
@@ -224,6 +225,19 @@ export function registerMadiIpc({
       authorize(event);
       return service.openProject(
         requireObject(rawRequest) as unknown as OpenProjectRequest
+      );
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.completeProjectOpen,
+    async (event, rawRequest: unknown) => {
+      authorize(event);
+      return service.completeProjectOpen(
+        requireExactRequest(rawRequest, [
+          "sessionId",
+          "accepted"
+        ]) as unknown as CompleteProjectOpenRequest
       );
     }
   );

@@ -141,7 +141,8 @@ describe("Phase 1B preload and IPC capabilities", () => {
       senderFrame: frame
     } as unknown as IpcMainInvokeEvent;
     const searchProject = vi.fn(async () => ({ hits: [] }));
-    const service = { searchProject } as unknown as DesktopService;
+    const completeProjectOpen = vi.fn(async () => undefined);
+    const service = { searchProject, completeProjectOpen } as unknown as DesktopService;
 
     const dispose = registerMadiIpc({
       ipcMain,
@@ -169,6 +170,23 @@ describe("Phase 1B preload and IPC capabilities", () => {
     expect(searchProject).toHaveBeenCalledWith(request);
     await expect(handler(event, null)).rejects.toThrow("Invalid request");
     await expect(handler(event, [])).rejects.toThrow("Invalid request");
+
+    const completeOpen = handlers.get(IPC_CHANNELS.completeProjectOpen);
+    if (!completeOpen) {
+      throw new Error("project-open completion handler was not registered");
+    }
+    const decision = { sessionId: "session-id", accepted: true };
+    await completeOpen(event, decision);
+    expect(completeProjectOpen).toHaveBeenCalledWith(decision);
+    await expect(completeOpen(event, {
+      ...decision,
+      manuscriptText: "unexpected field"
+    })).rejects.toThrow("Invalid request shape");
+    await expect(completeOpen({
+      ...event,
+      senderFrame: { url: "https://example.invalid/" }
+    } as unknown as IpcMainInvokeEvent, decision)).rejects.toThrow("Rejected IPC sender");
+    expect(completeProjectOpen).toHaveBeenCalledTimes(1);
 
     dispose();
     expect(handlers.size).toBe(0);

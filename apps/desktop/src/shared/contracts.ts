@@ -68,6 +68,7 @@ export * from "./hwpxBuiltins";
 export const IPC_CHANNELS = {
   createProject: "madi:create-project",
   openProject: "madi:open-project",
+  completeProjectOpen: "madi:complete-project-open",
   saveDocument: "madi:save-document",
   loadDocument: "madi:load-document",
   recoverPlainText: "madi:recover-plain-text",
@@ -1364,6 +1365,11 @@ export interface OpenProjectRequest {
   readonly documentId?: string;
 }
 
+export interface CompleteProjectOpenRequest {
+  readonly sessionId: string;
+  readonly accepted: boolean;
+}
+
 export interface SaveDocumentRequest {
   readonly sessionId: string;
   readonly documentId?: string;
@@ -1425,6 +1431,7 @@ export interface MadiDesktopApi {
   openProject(
     request?: OpenProjectRequest
   ): Promise<ProjectSession | null>;
+  completeProjectOpen(request: CompleteProjectOpenRequest): Promise<void>;
   saveDocument(request: SaveDocumentRequest): Promise<SaveDocumentResult>;
   loadDocument(request: LoadDocumentRequest): Promise<LoadedDocument>;
   recoverPlainText(

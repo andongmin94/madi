@@ -774,12 +774,14 @@ describe("Phase 1G DesktopService EPUB trust boundary", () => {
     ).resolves.toBe(true);
     expect(harness.shell.showItemInFolder).toHaveBeenCalledWith(destination);
 
+    harness.sessions.completeProjectOpen(harness.session.sessionId, true);
     const otherSession = harness.sessions.add({
       filePath: "C:\\drafts\\other.madi",
       projectId: "project-2",
       title: "다른 작품",
       revision: 5
     });
+    harness.sessions.completeProjectOpen(otherSession.sessionId, true);
     await expect(
       harness.service.saveEpubExportReport({
         sessionId: otherSession.sessionId,

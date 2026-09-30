@@ -99,6 +99,7 @@ describe("preload capability API", () => {
         "onEpubExportProgress",
         "onHwpxExportProgress",
         "openProject",
+        "completeProjectOpen",
         "recoverPlainText",
         "promoteEntityMention",
         "pickCanvasImport",
@@ -266,6 +267,7 @@ describe("preload capability API", () => {
       editorSchemaVersion: 0
     });
     await api.openProject();
+    await api.completeProjectOpen({ sessionId: "session", accepted: true });
     await api.saveDocument({
       sessionId: "session",
       documentId: "document-id",
@@ -345,6 +347,7 @@ describe("preload capability API", () => {
     expect(calls).toEqual([
       IPC_CHANNELS.createProject,
       IPC_CHANNELS.openProject,
+      IPC_CHANNELS.completeProjectOpen,
       IPC_CHANNELS.saveDocument,
       IPC_CHANNELS.loadDocument,
       IPC_CHANNELS.recoverPlainText,

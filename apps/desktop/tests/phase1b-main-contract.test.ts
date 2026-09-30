@@ -133,6 +133,24 @@ function createHarness(
 }
 
 describe("Phase 1B DesktopService RPC contract", () => {
+  it("validates project-open decisions before committing or rejecting a candidate", async () => {
+    const { service, session, sessions, request } = createHarness(() => {
+      throw new Error("project-open completion must not call the core");
+    });
+    await expect(service.completeProjectOpen({
+      sessionId: session.sessionId,
+      accepted: "true" as unknown as boolean
+    })).rejects.toThrow("Invalid project open decision");
+    expect(sessions.require(session.sessionId).projectId).toBe("project-1");
+    await service.completeProjectOpen({ sessionId: session.sessionId, accepted: true });
+    await expect(service.completeProjectOpen({
+      sessionId: session.sessionId,
+      accepted: false
+    })).rejects.toThrow("The project open is no longer pending");
+    expect(sessions.require(session.sessionId).projectId).toBe("project-1");
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("decodes scene snapshot base64 into fresh Uint8Array values", async () => {
     const { request, service, session } = createHarness((method) => {
       if (method !== "load_scene") {

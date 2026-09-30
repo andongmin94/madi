@@ -571,6 +571,109 @@ describe("Phase 1A scene session safety", () => {
     expect(api.loadSceneDocument).not.toHaveBeenCalled();
   });
 
+  it("restores an entity-note snapshot after a project replacement fails with no manuscript scenes", async () => {
+    const sceneLessSession: ProjectSession = {
+      sessionId: session.sessionId,
+      fileName: session.fileName,
+      projectId: session.projectId,
+      workNodeId: session.workNodeId,
+      title: session.title,
+      revision: 7
+    };
+    const api = createApi({
+      openProject: vi.fn(async () => sceneLessSession),
+      loadEntityNote: vi.fn(async ({ ownerId }) => loadedEntityNote(ownerId, 7)),
+      saveEntityNote: vi.fn(async (request) => ({
+        ownerKind: "ENTITY" as const,
+        ownerId: request.ownerId,
+        documentId: request.documentId,
+        generation: request.generation,
+        saveSequence: request.saveSequence,
+        revision: 8,
+        updatedAt: "2026-09-30T00:00:00.000Z"
+      }))
+    });
+    const editor = new SceneEditor();
+    const controller = new DocumentSessionController(api, editor, "fixed-commit", 1);
+    await controller.openProject();
+    expect(await controller.selectEntityNote("entity-a")).toBe(true);
+    const original = Uint8Array.from([7, 7]);
+    editor.snapshot = original;
+    editor.plainText = "entity-a 상세 노트";
+    vi.mocked(api.openProject).mockResolvedValue({
+      ...session,
+      sessionId: "be85d445-e373-48f7-a6c6-cac70aaceb81",
+      sceneId: "scene-b",
+      documentId: "document-b"
+    });
+    const open = vi.spyOn(editor, "open");
+    open.mockImplementationOnce(async () => {
+      editor.snapshot = Uint8Array.from([9, 9]);
+      editor.plainText = "다른 작품 본문";
+      throw new Error("replacement editor installation failed");
+    }).mockImplementationOnce(async (snapshot) => {
+      editor.snapshot = Uint8Array.from(snapshot!);
+      editor.plainText = "entity-a 상세 노트";
+    });
+
+    await controller.openProject();
+    expect(open.mock.calls[1]![0]).toEqual(original);
+    expect(controller.getState()).toMatchObject({
+      activeOwnerKind: "ENTITY",
+      activeOwnerId: "entity-a",
+      activeEntityId: "entity-a",
+      activeSceneId: null
+    });
+    editor.snapshot = Uint8Array.from([7, 7, 1]);
+    editor.plainText = "entity-a 상세 노트 수정";
+    editor.emitContentChange();
+    expect(await controller.save()).toBe(true);
+    expect(api.saveEntityNote).toHaveBeenLastCalledWith(expect.objectContaining({
+      sessionId: sceneLessSession.sessionId,
+      ownerId: "entity-a",
+      snapshot: Uint8Array.from([7, 7, 1])
+    }));
+    expect(api.saveSceneDocument).not.toHaveBeenCalled();
+  });
+
+  it.each(["SCENE", "ENTITY"] as const)(
+    "cancels a queued %s switch when a project open acquires the editor after the same save",
+    async (ownerKind) => {
+      const api = createApi();
+      const editor = new SceneEditor();
+      const controller = new DocumentSessionController(api, editor, "fixed-commit", 1);
+      await controller.openProject();
+      const pendingSave = deferred<SaveSceneDocumentResult>();
+      vi.mocked(api.saveSceneDocument).mockReturnValueOnce(pendingSave.promise);
+      const pendingOpen = deferred<ProjectSession | null>();
+      vi.mocked(api.openProject).mockReturnValueOnce(pendingOpen.promise);
+      editor.emitContentChange();
+      const opening = controller.openProject();
+      const switching = ownerKind === "SCENE"
+        ? controller.selectScene("scene-b")
+        : controller.selectEntityNote("entity-b");
+      await vi.waitFor(() => expect(api.saveSceneDocument).toHaveBeenCalledTimes(1));
+      const saved = vi.mocked(api.saveSceneDocument).mock.calls[0]![0];
+      pendingSave.resolve({
+        sceneId: saved.sceneId,
+        documentId: saved.documentId,
+        generation: saved.generation,
+        saveSequence: saved.saveSequence,
+        revision: 3,
+        updatedAt: "2026-09-30T00:00:00.000Z"
+      });
+      await vi.waitFor(() => expect(api.openProject).toHaveBeenCalledTimes(2));
+      expect(await switching).toBe(false);
+      expect(api.loadSceneDocument).toHaveBeenCalledTimes(1);
+      expect(api.loadEntityNote).not.toHaveBeenCalled();
+      expect(editor.interactionStates.at(-1)).toBe(false);
+      expect(controller.getState().activeSceneId).toBe("scene-a");
+      pendingOpen.resolve(null);
+      await opening;
+      expect(editor.interactionStates.at(-1)).toBe(true);
+    }
+  );
+
   it("locks user interaction and refuses Ctrl+S while semantic replacement borrows the live editor", async () => {
     const pendingTarget = deferred<LoadedSceneDocument>();
     const api = createApi({
@@ -609,6 +712,7 @@ describe("Phase 1A scene session safety", () => {
     );
     await controller.openProject();
 
+    editor.interactionStates.length = 0;
     const replacement = controller.applySemanticReplacementBatch(
       [
         {
@@ -668,6 +772,7 @@ describe("Phase 1A scene session safety", () => {
     );
     await controller.openProject();
 
+    editor.interactionStates.length = 0;
     const replacement = controller.applySemanticReplacementBatch(
       [
         {
@@ -744,6 +849,7 @@ describe("Phase 1A scene session safety", () => {
     );
     await controller.openProject();
 
+    editor.interactionStates.length = 0;
     const result = await controller.applySemanticReplacementBatch(
       [
         {
@@ -788,6 +894,7 @@ describe("Phase 1A scene session safety", () => {
     );
     await controller.openProject();
 
+    editor.interactionStates.length = 0;
     const operation = controller.runExclusiveEditorOperation(async () => {
       await releaseRestore.promise;
       await controller.reloadSceneFromStorage("scene-a", 2);

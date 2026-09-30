@@ -25,6 +25,7 @@ import type {
   CanvasSummary,
   CompilePublicationRequest,
   CompilePublicationResult,
+  CompleteProjectOpenRequest,
   CreateCanvasRequest,
   CreateReaderPresetRequest,
   CreateNamedSnapshotRequest,
@@ -4434,6 +4435,16 @@ export class DesktopService {
     }
     sessionInput.title = tree.project.title;
     return this.sessions.add(sessionInput);
+  }
+
+  public async completeProjectOpen(
+    input: CompleteProjectOpenRequest
+  ): Promise<void> {
+    const sessionId = validateSessionId(input?.sessionId);
+    if (typeof input.accepted !== "boolean") {
+      throw new Error("Invalid project open decision");
+    }
+    this.sessions.completeProjectOpen(sessionId, input.accepted);
   }
 
   public async saveDocument(
