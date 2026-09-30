@@ -104,6 +104,33 @@ LF attribute for the existing hash-pinned .NET license. These results do not sup
 or development/fresh-unpacked Electron evidence. The Phase 1I Windows integration verdict
 remains `PENDING`; current command-to-commit results are recorded in [PLANS.md](../PLANS.md).
 
+## 2026-09-30 actual loopback development follow-up
+
+On source `451e0855634417e6d0007d3cef064ab89df5f19b`, the explicitly authorized local
+provider workflow returned `PASS_LOOPBACK_ACTUAL_WITH_DIAGNOSTIC_WARNING` in development.
+The provider returned an actual response, but the fixed diagnostic response did not equal
+`MADI_OK` exactly. That warning remains recorded; response text is omitted.
+
+The workflow verified consent before requests, general proposal copy with canonical content
+unchanged, no mutation before selection acceptance, exact same-block application, one exact
+Undo and Redo, saved-scene equality, and exact reopen without another provider request.
+Provider and request settings remained outside canonical content. No credential was supplied
+or stored. The temporary provider used two CPU threads and was terminated after the run.
+
+Clipboard API interception verified copying; the OS clipboard, remote HTTPS provider,
+actual credential encryption, and native Korean IME were not validated. Approved loopback
+main fetches were 3, with 0 after reopen; unapproved main fetches and renderer HTTP/WebSocket
+requests were 0. These observations do not constitute a full owned-process TCP audit.
+
+Evidence is preserved under ignored `.tools/verification/llm-development-451e085-run1/`.
+The owned inactive-desktop host recorded source clean before/after, child exit 0, no screen
+switch, and zero active job processes at cleanup. Both app windows closed and their processes
+exited; the evidence records Playwright `closed=false`, rather than claiming that field passed.
+Owned temporary app data was removed.
+
+This result is limited to that development source. Fresh-unpacked provider validation and
+aggregate Windows verification of the final candidate remain **PENDING**.
+
 ## Next stage
 
 The current execution order and completion conditions are maintained in [PLANS.md](../PLANS.md).

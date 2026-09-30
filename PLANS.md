@@ -2,7 +2,7 @@
 
 갱신일: 2026-09-30
 작업 위치: `main`. 실제 검증 대상은 각 실행에 기록된 exact source SHA를 따른다.
-현재 작업: 종료 저장 경합과 HWPX 반복 상태 조회를 수정하고 Windows 최종 검증을 완료한다.
+현재 작업: HWPX 저장 프리셋의 해시 검증 오류를 정정하고 같은 후보의 Windows 최종 검증을 완료한다.
 
 이 문서는 현재 목표, 작업 순서와 완료 조건을 관리하는 유일한 실행 계획이다.
 목표는 기존 제품 범위를 완성하고 동일 후보의 Windows 실제 검증을 종료하는 것이다.
@@ -42,20 +42,25 @@ PID와 생성 시각으로 마디 프로세스의 종료를 증명한다.
 | 고정 원본 | Typie exact pin 복구 및 repository hash 검증 경로 유지 |
 | 종료 저장 경합 | 기존 코드의 추가 저장 1회 재현 후 수정. 관련 4파일·28테스트와 typecheck PASS |
 | G development actual | `80225d3` **PASS**. 일반 180,000자·장편 675,000자 5회 exact coverage, ZIP reopen·결정성, 종료 진단·잔여 프로세스 0 |
-| H development actual | `80225d3` **FAIL**: 일반 원고 재실행의 `phase1h-validation-complete`. 첫 preset·snapshot·scene export·close만 통과; 전체 성공 아님 |
-| HWPX 상태 조회 경합 | `7c87e83`: 부모 callback 변경 시 불필요한 재조회를 재현 후 기존 EPUB 방식으로 수정. 관련 14테스트·typecheck PASS; 새 actual은 **PENDING** |
+| H development actual | `80225d3`와 `451e085` **FAIL**: 일반 원고 재실행의 `phase1h-validation-complete`. 첫 preset·snapshot·scene export·close만 통과; 전체 성공 아님. `451e085`에서는 오류 alert가 보존됨 |
+| HWPX 상태 조회 경합 | `7c87e83`: 부모 callback 변경 시 불필요한 재조회를 재현 후 기존 EPUB 방식으로 수정. 관련 14테스트·typecheck PASS. 후속 actual 실패의 오류 표시를 확인 |
+| 저장 HWPX 프리셋 해시 | `451e085` native 재현: 기본·소수점 설정 모두 Core와 JS 재해시 불일치. `bf357ca`에서 중복 JS 재해시만 제거. 정상 수락 2건 RED→GREEN·잘못된 hash/config 거부, 관련 34테스트·typecheck PASS; actual 재검증 **PENDING** |
 | 과거 `pnpm verify` 전체 | `31adb1d` run2 **FAIL**, 약 48.72분 후 G orphan 검사에서 종료. 선행 Desktop 666테스트·native·integration·build·basic/D/E/F 통과, H와 package 미도달 |
 | 수정 후 최종 Windows gate | **PENDING**. 같은 exact source SHA의 full verify·fresh-unpacked actual·필수 명령이 필요 |
 | 현재 후보 unpacked package | **PENDING / NOT REACHED**. 기존 package 성공은 `102f810`의 결과이며 현재 후보에 이전하지 않음 |
-| 사용자 소유 AI 실제 검증 | `ce0da61` development의 제한된 관측·warning만 있음. 사용자가 로컬 제공자 준비·연결을 승인했으며 model을 준비함. 새 development·fresh-unpacked 최종 검증 **PENDING** |
-| Phase 1H / Phase 1I | H actual **WITHHELD**, I aggregate/provider **PENDING** 유지 |
+| 사용자 소유 AI 실제 검증 | `451e085` development loopback **PASS_WITH_DIAGNOSTIC_WARNING**. 실제 selection apply·Undo·Redo·save·reopen, general-copy 무변이 확인. 고정 `MADI_OK` exact 응답은 false. 같은 최종 후보의 development·fresh-unpacked 검증 **PENDING** |
+| Phase 1H / Phase 1I | H actual **WITHHELD**, I aggregate·fresh-unpacked provider **PENDING**. 제한된 loopback development 성공과 warning은 별도 기록 |
 
 run1은 Desktop 663 PASS·3 FAIL로 종료했다. 두 timeout과 COSE 5초 초과를 실제 실패로 보존한다.
 run2의 Desktop 666 PASS와 development basic·D·E·F PASS는 전체 `verify` 성공을 뜻하지 않는다.
 G의 product quit lifecycle 관측과 모든 export 완료는 orphan 종료 proof나 G 전체 성공을 대신하지 않는다.
 기존 G orphan timeout의 PID 재사용 인과와 종료 진단 7건의 직접 원인은 미확정이다.
 새 G actual 성공은 해당 커밋의 증거이며 과거 실패를 지우지 않는다.
-HWPX 반복 조회 수정은 재현한 제품 결함을 해소하지만 actual validation 실패의 직접 인과는 아직 확정하지 않는다.
+HWPX 반복 조회 수정은 오류 표시를 보존했다. 별도 narrow 진단은 custom preset stale 오류의
+고정 throw 위치에 매칭했으며 acceptance는 false다. 후속 native 재현은 같은 설정의
+Core `f64` JSON 표기와 JS 숫자 재직렬화의 hash 차이를 확인했다.
+저장 형식과 Core hash 검증을 유지하고 main의 중복 JS 재해시만 정정한다.
+Native 재현은 실제 전체 H gate나 수정 후 성공의 근거로 확대하지 않는다.
 spellcheck window preference는 constructor 단위 증거로 구분하고, 실제 session 상태와 network 관측은 runtime evidence로 판정한다.
 
 고정 도구는 Node `26.3.1`, pnpm `11.9.0`, Rust `1.97.1`, .NET SDK `10.0.400`을 사용한다.

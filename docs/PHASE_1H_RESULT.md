@@ -266,3 +266,36 @@ Phase 1I 구현이 존재하지만 Phase 1H actual 판정은 계속 보류한다
 다음 실행 작업, 필수 command와 HWP 별도 조건은 [PLANS.md](../PLANS.md)에서 관리한다.
 새 실행 근거가 확보되면 해당 commit·환경·hash·결과를 이 문서와 성능 문서에 기록한다.
 계획 목록 정리는 실행 성공이나 최종 판정 변경을 뜻하지 않는다.
+
+## 24. 2026-09-30 development 실패와 프리셋 재현
+
+`80225d3`와 `451e085`의 H development 실행은 첫 preset·snapshot·scene export·close를
+통과한 뒤 `normal-export-reopen`의 `phase1h-validation-complete`에서 **FAIL**했다.
+`7c87e83`의 부모 callback 재조회 수정 뒤 `451e085`에서는 IDLE·validation NONE·alert 1을
+관측했다. HWPX save 0회, renderer diagnostic 0건이었다. 이는 전체 H 성공이 아니다.
+
+같은 source의 narrow input 진단은 **DIAGNOSTIC_ONLY / acceptance=false**이며,
+첫 custom preset preflight의 오류를 main의 고정 stale throw 위치에 매칭했다.
+후속 실제 native probe는 기본·소수점 설정 모두에서 Core hash와 JS 재해시의 차이를
+확인했다. Core의 `f64` 숫자 표기에는 `.0`이 있지만 JS 재직렬화에는 없다.
+create·list·get·새 core process reopen에서 설정과 Core hash는 안정적이었으며,
+합성 복제의 저장 hash만 변조했을 때 Core가 canonical hash 오류 `-32010`으로 거부했다.
+저장 형식의 해시는 Core canonical bytes를 기준으로 유지해야 한다.
+
+Probe source는 `451e0855634417e6d0007d3cef064ab89df5f19b`이며, 사용한 기존 Debug core의
+SHA-256은 `91b738092c02cf8e772f39648f586910a08114ea9f16d3689e23d238ebbba9a3`이다.
+합성 fixture·Core canonical golden bytes·receipt는 ignored
+`.tools/verification/hwpx-preset-hash-probe-runs/2372763f-ee06-43e9-9dd6-bf305dc46f7d/`에
+보존했다. Native child 3개는 정상 종료했고 임시 영역을 제거했다. Probe acceptance는
+false이며 전체 Windows gate, H 성능·network 또는 수정 후 성공으로 확대하지 않는다.
+
+G development의 `80225d3` **PASS**는 독립 EPUB 근거다. 같은 최종 후보의 full verification과
+development/fresh-unpacked H actual이 끝나기 전까지 Phase 1H actual은 **WITHHELD**다.
+
+`bf357ca`는 저장 custom preset에서 main의 중복 JS 재해시 비교만 제거한다.
+Core가 검증한 fresh hash와 renderer hash의 일치, config 동등성, revision·ownership·exporter
+반환 hash 검사는 유지한다. Built-in·one-off와 `.madi` 형식은 바꾸지 않았다.
+실제 Core canonical golden bytes를 쓴 정상 수락 2건은 수정 전 stale 오류로 실패한 뒤
+수정 후 통과했다. 잘못된 supplied hash·config 거부 2건도 통과했다.
+수정 worktree의 H service·workspace·export tab 3파일 34테스트, Desktop typecheck,
+format 287파일·diff 검사가 실제 통과했다. 이 focused 결과는 새 actual 판정을 대신하지 않는다.
