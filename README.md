@@ -506,6 +506,7 @@ dialog capability이며 renderer에 generic filesystem/path API를 제공하지 
 ## 고정된 Typie 기준
 
 - Repository: `https://github.com/penxle/typie`
+- Source retrieval: `https://github.com/lens0021/typie.git` — 같은 고정 Git commit의 보관본
 - Commit: `fbe5c4bf860d1717a66e66bea2374a2e39f0dd26`
 - Local source: `vendor/typie`
 - Runtime metadata: `packages/typie-runtime/BUILD_INFO.json`

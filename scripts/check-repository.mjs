@@ -259,7 +259,7 @@ const submoduleConfig = await readFile(
 );
 if (
   !submoduleConfig.includes("path = vendor/typie") ||
-  !submoduleConfig.includes("url = https://github.com/penxle/typie.git")
+  !submoduleConfig.includes("url = https://github.com/lens0021/typie.git")
 ) {
   throw new Error(".gitmodules does not identify the pinned Typie source");
 }

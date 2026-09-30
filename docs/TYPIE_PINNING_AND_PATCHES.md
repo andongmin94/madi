@@ -7,7 +7,8 @@
 build는 임의의 Typie branch나 최신 release를 조회하지 않고, 아래 commit에서 만든
 저장소 내 runtime 산출물을 사용한다.
 
-- Repository: `https://github.com/penxle/typie`
+- Original upstream: `https://github.com/penxle/typie`
+- Source retrieval: `https://github.com/lens0021/typie.git`
 - Exact commit:
   `fbe5c4bf860d1717a66e66bea2374a2e39f0dd26`
 - 의도한 source 연결 방식: Git submodule
@@ -19,6 +20,26 @@ build는 임의의 Typie branch나 최신 release를 조회하지 않고, 아래
 
 40자 commit 전체가 고정값이다. tag, branch, abbreviated commit 또는 `latest`는
 고정값을 대체하지 않는다.
+
+## 2026-09-30 원본 보관본 복구
+
+원본 upstream은 현재 접근할 수 없지만 `lens0021/typie`에서 같은 Git commit을 확보했다.
+`.gitmodules`와 bootstrap의 다운로드 URL을 이 보관본으로 교체했다. `BUILD_INFO.json`의
+upstream 출처, 기존 copyright/license, gitlink, 원고의 engine commit, runtime·patch hash는
+그대로 유지한다. 다른 버전으로 교체하거나 codec을 재구현하지 않는다.
+
+실제 Git fetch와 submodule checkout에서 다음을 확인했다.
+
+- commit: `fbe5c4bf860d1717a66e66bea2374a2e39f0dd26`
+- tree: `961dd937e8cc64514afab75c54501195394caeef`
+- 전체 Git 객체 검사 `git fsck --strict`: exit `0`.
+- `vendor/typie`의 고정 checkout: clean, shallow 아님.
+- `editor-codec`, `editor-crdt`, `editor-model`, `editor-state` 원본 manifest와 소스 존재.
+- `pnpm check:repository`: exit `0`, 기존 runtime·patch hash 9개 일치 및 patch 적용 검사 통과.
+
+아래 Phase 0.5 기록은 해당 당시 상태다. 복구 성공은 전체 Windows 제품 검증이나
+development/fresh-unpacked actual의 성공으로 이전하지 않는다. 현재 작업은
+[PLANS.md](../PLANS.md)에서 관리한다.
 
 ## 2026-08-01 Phase 0.5 작업트리의 실제 상태
 

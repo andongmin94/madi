@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $typiePath = Join-Path $repositoryRoot "vendor\typie"
-$typieRepository = "https://github.com/penxle/typie.git"
+$typieRepository = "https://github.com/lens0021/typie.git"
 $typieCommit = "fbe5c4bf860d1717a66e66bea2374a2e39f0dd26"
 
 if (Test-Path -LiteralPath (Join-Path $typiePath ".git")) {
