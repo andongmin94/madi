@@ -104,14 +104,56 @@ this final run. The earlier pre-installation partial run is recorded separately 
 An independent final static review found no new actionable issue in session completion callers,
 AI mutation entry points, or CI pins/summary references.
 
-Full `pnpm verify` and `pnpm check:repository` failed at the uninitialized pinned Typie checkout.
+On `472d0fc`, full `pnpm verify` and `pnpm check:repository` failed at the uninitialized pinned Typie checkout.
 `pnpm package:unpacked` failed at its missing `editor-codec` manifest. No unpacked build or
-Electron actual was produced. With user-authorized administrator confirmation, the signed
+Electron actual was produced at that point. With user-authorized administrator confirmation, the signed
 Build Tools installer completed (exit `3010`, no automatic restart); both required C++/Windows SDK
 components are registered complete. The native atomic-output debug/release builds and nine actual
 Windows file replacement/recovery/no-clobber tests subsequently passed without restarting.
 The complete Desktop test set then passed with the native E2E file included. Runtime actual,
 native Korean IME, actual user-owned providers, and Phase 1H `WITHHELD` remain pending.
+
+## 2026-09-30 exact source recovery and CLI follow-up
+
+Commit `5cd2b3c3faf697b000b3ea31d74dada091f945f5` restores the existing Typie pin from
+the public preserved repository `lens0021/typie`. The Git commit and tree match exactly; the
+original provenance, license, engine identity, runtime bytes, and patch hashes are unchanged.
+The earlier missing-source failures above remain historical results. Repository checking now
+passes, and an independent offline bundle restore plus CI-style shallow recursive checkout
+both recover the same source. See [Typie pinning](TYPIE_PINNING_AND_PATCHES.md).
+
+On that commit, frozen install, repository checks, TypeScript checks, all native Debug builds,
+the Desktop build, and the full Desktop test set (103 files / 661 tests) passed. Core,
+Publication IR, EPUB, and HWPX passed 59, 14, 18, and 19 tests respectively. Actual shipped
+WASM probes, the four bundle-boundary tests, and build-test-only EPUBCheck also passed.
+
+The first integration run exposed a stale endurance expectation of seven migrations while
+the current schema already defines eight. Commit `27054e8ffef5344c1cdea78bdc65f98000f2ba35`
+corrects only that expectation and retains exact count/order assertions. The entire integration
+path then passed, including 20 storage/recovery rounds. On this commit, exact toolchain checks,
+nine native atomic-output tests, and 17 HWP bridge mock/registry-only contracts also passed.
+HWP automation was not activated.
+
+Unpacked release packaging passed on `102f81081409ce05f6fe97a2a29289d841de86f7`. Earlier
+attempts failed at a Windows HWPX linker file-lock error (`LNK1105`, error `1224`) and then
+at a .NET MIT license hash mismatch caused by CRLF conversion. `102f810` adds the omitted
+`text eol=lf` attribute; the original license text and pinned hash remain unchanged. All eight
+native binary copies match their release sources by length and SHA-256, and pinned license
+checks passed. The executable is `output/madi-win32-x64/madi.exe`; privacy-safe packaging
+evidence is retained in `.tools/verification/package-source-recovered.json`.
+
+The existing Graph, Canvas, and Reader fixture commands also passed. Reader WORK/VOLUME/
+CHAPTER/SCENE metadata and first-body source ranges passed for 180,000-character and
+675,000-character synthetic manuscripts, with deterministic WORK hashes across five runs.
+Debug-core WORK compile medians were 32.56 and 88.02 seconds under BelowNormal priority
+while release builds ran concurrently. This is fixture preparation evidence, not packaged
+Reader performance or complete export coverage evidence.
+
+No aggregate `pnpm verify` or development/fresh-unpacked Electron
+actual has run after source recovery: the existing harness shows windows, and an environment
+separated from the user's current desktop is unavailable. Network-boundary runtime evidence,
+native IME, actual user-owned providers, and Phase 1H `WITHHELD` remain pending. Command-to-
+commit mappings and the next gate are maintained in [PLANS.md](../PLANS.md).
 
 ## Remaining hotspots
 

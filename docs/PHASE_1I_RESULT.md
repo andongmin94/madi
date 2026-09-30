@@ -86,12 +86,23 @@ Actual focused checks used the repository-local Node `26.3.1` and pnpm `11.9.0`:
 - changed-file whitespace check: exit `0`.
 
 These focused worktree checks do not establish aggregate acceptance of a final candidate.
-The pinned Typie source could not be initialized from its configured URL. MSVC and Windows SDK
+At that point, the pinned Typie source could not be initialized from its configured URL. MSVC and Windows SDK
 installation subsequently completed, and the native atomic-output build and nine Windows tests
 passed on source candidate `472d0fc`. Its full Desktop Vitest set also passed (103 files / 661 tests,
-including the two native atomic-output E2E tests, no exclusions). `pnpm verify`, package,
-development/fresh-unpacked actual, native IME, and actual user-owned provider evidence remain
-unresolved in [PLANS.md](../PLANS.md).
+including the two native atomic-output E2E tests, no exclusions). At that point, `pnpm verify`,
+packaging, development/fresh-unpacked actual, native IME, and actual user-owned provider
+evidence were unresolved. The current status is maintained in [PLANS.md](../PLANS.md).
+
+## 2026-09-30 source recovery follow-up
+
+Commit `5cd2b3c` recovers the exact pinned Typie source from a preserved repository and removes
+the missing-source build blocker. The full Desktop test set (103 files / 661 tests), native
+Debug builds, TypeScript checks, and core/publication/exporter tests passed on that commit.
+After the schema-8 endurance expectation correction in `27054e8`, the full CLI integration
+path also passed. Windows unpacked packaging passed on `102f810`, which adds the missing
+LF attribute for the existing hash-pinned .NET license. These results do not supply actual provider, native IME, runtime network,
+or development/fresh-unpacked Electron evidence. The Phase 1I Windows integration verdict
+remains `PENDING`; current command-to-commit results are recorded in [PLANS.md](../PLANS.md).
 
 ## Next stage
 

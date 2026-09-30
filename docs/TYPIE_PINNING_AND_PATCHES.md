@@ -24,7 +24,7 @@ build는 임의의 Typie branch나 최신 release를 조회하지 않고, 아래
 ## 2026-09-30 원본 보관본 복구
 
 원본 upstream은 현재 접근할 수 없지만 `lens0021/typie`에서 같은 Git commit을 확보했다.
-`.gitmodules`와 bootstrap의 다운로드 URL을 이 보관본으로 교체했다. `BUILD_INFO.json`의
+`5cd2b3c`에서 `.gitmodules`와 bootstrap의 다운로드 URL을 이 보관본으로 교체했다. `BUILD_INFO.json`의
 upstream 출처, 기존 copyright/license, gitlink, 원고의 engine commit, runtime·patch hash는
 그대로 유지한다. 다른 버전으로 교체하거나 codec을 재구현하지 않는다.
 
@@ -36,6 +36,17 @@ upstream 출처, 기존 copyright/license, gitlink, 원고의 engine commit, run
 - `vendor/typie`의 고정 checkout: clean, shallow 아님.
 - `editor-codec`, `editor-crdt`, `editor-model`, `editor-state` 원본 manifest와 소스 존재.
 - `pnpm check:repository`: exit `0`, 기존 runtime·patch hash 9개 일치 및 patch 적용 검사 통과.
+
+전체 history를 담은 오프라인 Git bundle을 ignored
+`.tools/typie-recovery/typie-fbe5c4bf-source.bundle`에 보존했다. 크기는 `55,352,699` bytes,
+SHA-256은 `8f52a5340d07b5c11903609ee546844724bdf32681d31714da9c432c8c37b083`다.
+독립 clone·고정 checkout·`git fsck --full`이 exit 0이며 같은 tree와 clean 상태를 확인했다.
+source tracked files는 4,215개다. `.tools/typie-recovery/RECOVERY.json`과
+`PROOF_RESULTS.json`에 개인정보 없는 복구·검증 정보를 보존한다.
+
+`5cd2b3c`의 별도 root clone에서 CI와 같은 depth 1 recursive submodule update도 exit 0이다. root와
+Typie checkout이 clean이며 동일한 pin/tree를 받았다. 이는 Git checkout 경로의 로컬 재현이며
+실제 GitHub Actions 실행이나 제품 검증 PASS를 뜻하지 않는다.
 
 아래 Phase 0.5 기록은 해당 당시 상태다. 복구 성공은 전체 Windows 제품 검증이나
 development/fresh-unpacked actual의 성공으로 이전하지 않는다. 현재 작업은

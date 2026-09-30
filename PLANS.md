@@ -2,7 +2,8 @@
 
 갱신일: 2026-09-30
 인수 분석 기준 커밋: `246b58dda40f83787a8971fd72ecb8cb3f7ddffd`
-현재 제품 검증 후보: `472d0fc6b46f3735dd2a8c198aa5e5ab1103ff9f`
+현재 검증 후보·unpacked build: `102f81081409ce05f6fe97a2a29289d841de86f7`
+원본 복구 후 빌드·단위 검증 기록: `5cd2b3c3faf697b000b3ea31d74dada091f945f5`
 
 이 문서는 madi의 현재 목표, 진척, 작업 순서와 완료 조건을 관리하는 유일한 실행 계획이다.
 지금 목표는 기존 제품 범위를 유지하면서 현재 구현의 Windows 검증 기준점을 확보하는 것이다.
@@ -85,7 +86,7 @@ pnpm `11.9.0`, Rust `1.97.1`과 두 target, .NET SDK `10.0.400`, x86 runtime `10
 부분 성공을 전체 Windows baseline의 성공으로 옮기지 않는다. 후속 제품 수정의 검증은 아래
 진행 기록과 해당 결과 문서에 별도로 남기며, full gate는 계속 보류한다.
 
-### 현재 후보의 실제 검증
+### 원본 복구 전 기록
 
 `472d0fc`의 제품 소스에서 고정 도구로 실행한 결과다. 계획·결과 문서 갱신은 제품 소스를
 바꾸지 않으며, 아래 결과의 대상 SHA를 새 문서 커밋으로 옮기지 않는다.
@@ -111,11 +112,48 @@ native process E2E를 포함한 전체 Desktop Vitest도 통과했다. 재부팅
 것으로 추정하지 않으며, 전체 제품 gate와 Electron actual 통과를 뜻하지 않는다.
 같은 후보의 설치 전 부분 실행은 102파일·659테스트였고, 최종 실행에서 제외를 해소했다.
 
-Typie의 고정 commit은 비어 있는 submodule, 기존 로컬 Git 객체와 캐시에서도 확보하지
-못했다. 공식 repository·commit·raw·codeload 접근 모두 404였으며 대체 remote 기록도 없다.
-삭제·비공개 여부는 단정하지 않는다. 접근 가능한 원본 URL/권한 또는 정확한 commit 객체가
-포함된 기존 checkout·Git bundle 경로가 필요하다. 이 입력 없이는 core·publication·exporter
-원본 빌드, full verify와 unpacked package를 진행할 수 없다.
+위 검증 당시 Typie 원본 upstream은 404였고, 로컬 submodule·Git 객체·캐시에서 원본을
+확보하지 못했다. 이후 사용자는 원래 빌드 컴퓨터·서버에 접속할 수 없음을 확인했다.
+공개 보관본 `lens0021/typie`에서 **동일한 고정 commit**을 찾아 실제 Git fetch와 clean
+submodule checkout을 완료했다. tree는 `961dd937e8cc64514afab75c54501195394caeef`이며
+`pnpm check:repository`가 기존 hash 9개와 patch 적용 검사를 포함해 exit 0이다.
+다운로드 URL만 교체하고 원본 출처·license·engine commit·runtime hash는 유지했다.
+복구 근거는 [Typie 고정 문서](docs/TYPIE_PINNING_AND_PATCHES.md)에 기록한다.
+전체 Typie Git history를 담은 ignored 오프라인 bundle도 보존했으며, 독립 복원·fsck와
+CI 방식의 shallow submodule checkout에서 동일 pin/tree를 확인했다. 원래 빌드 환경이나
+외부 보관본에 다시 접속하지 않아도 이 로컬 bundle에서 원본을 복원할 수 있다.
+
+### 복구 후 실제 검증
+
+`5cd2b3c`에서 원본 retrieval URL을 복구한 뒤 아래 명령을 실제 실행했다. runtime과 제품
+소스는 기존 후보와 동일하다. `27054e8`은 endurance 검사의 오래된 migration 개수 7을
+현행 schema 8의 정확한 개수·순서 검사로 수정한 테스트 변경이며, 통합 경로를 다시 실행했다.
+결과의 대상 commit은 명령별로 구분하고 전체 Windows gate PASS로 합치지 않는다.
+
+| 실행 | 대상 commit | 실제 결과 |
+| --- | --- | --- |
+| `pnpm install --frozen-lockfile`, `pnpm check:repository` | `5cd2b3c` | 모두 exit 0. clean Typie 고정 commit, runtime·patch hash 9개와 patch 적용 검사 통과 |
+| `pnpm typecheck`, `pnpm build` | `5cd2b3c` | 모두 exit 0. core·EPUB·HWPX·atomic-output·HWP bridge와 Desktop build 완료 |
+| Desktop Vitest, `--maxWorkers 2` | `5cd2b3c` | exit 0, 103파일·661테스트, 제외 없음 |
+| `pnpm test:core`, `pnpm test:publication`, `pnpm test:epub`, `pnpm test:hwpx` | `5cd2b3c` | 모두 exit 0. 각각 59·14·18·19테스트 |
+| `pnpm test:typie`, `pnpm test:bundle` | `5cd2b3c` | 모두 exit 0. 실제 WASM selection·semantic transaction·Undo 검증과 bundle 경계 4테스트 |
+| `pnpm test:epubcheck` | `5cd2b3c` | exit 0. 고정 validator의 build-test-only 검증. Electron actual이나 runtime validator 패키징 근거 아님 |
+| `pnpm test:integration` | `27054e8` | exit 0. 1A·1B·1C·1E, 원고 roundtrip, 20회 endurance, scene break, 독립 텍스트 recovery |
+| `pnpm check:toolchain`, `pnpm test:atomic-output`, `pnpm test:hwp-bridge` | `27054e8` | 모두 exit 0. exact Node·pnpm, 실제 Windows 파일 교체·복구 9/9, mock·registry-only bridge 17/17 |
+| `pnpm fixture:phase1d-scale`, `pnpm fixture:phase1e-scale`, `pnpm fixture:phase1f-reader` | `27054e8`에서 시작 | 모두 exit 0. Graph·Canvas 자료와 일반 180,000자/323 blocks·장편 675,000자/2,411 blocks 생성. WORK·VOLUME·CHAPTER·SCENE 범위·source range 및 WORK 5회 hash 일치 |
+| `pnpm package:unpacked` | `102f810` | exit 0. `output/madi-win32-x64/madi.exe` 생성, native binary 복사본 8개의 크기·SHA-256 일치 및 license pin 검사 통과 |
+| `pnpm install --frozen-lockfile`, `pnpm check:repository`, `pnpm format:check`, `git diff --check` | `102f810` | 모두 exit 0. 최종 packaging 후보의 frozen dependency·hash·287파일 source format·변경 whitespace 재확인 |
+| `pnpm verify`, `pnpm test:electron`, `pnpm test:package` | 복구 후 후보 | 미실행. 창을 띄우는 actual 환경 대기; 이전 실패를 성공으로 변경하지 않음 |
+
+패키징의 첫 두 실행은 HWPX release link의 파일 잠금 오류 LNK1105/1224로 실패했다.
+동시 빌드를 1개로 제한한 재실행에서 build는 완료했고, 이어진 license 검사에서 Windows
+CRLF 변환으로 .NET MIT 원문의 해시가 달라진 문제를 확인했다. `102f810`은 기존 고정
+해시를 유지하면서 해당 license의 `text eol=lf` 선언만 추가했다. 재패키징은 exit 0이며,
+개인정보 없는 binary hash·명령·commit 정보는 `.tools/verification/package-source-recovered.json`에 보존한다.
+
+fixture의 WORK compile 중앙값은 일반 32.56초·장편 88.02초였다. Debug core, 낮은 실행
+우선순위, Release build 병행 조건의 관측값이며 packaged Reader 성능 판정으로 옮기지 않는다.
+전체 source·block·character export coverage와 Electron actual은 아직 별도 검증 대상이다.
 
 ### 사용자 컴퓨터 실행 조건
 
@@ -127,17 +165,17 @@ native IME 수동 판정과 실제 제공자 전송 동의는 이 조건과 별�
 
 ## 다음 작업과 완료 조건
 
-현재 다음 작업은 **고정 Typie 원본 접근 확보**다. 새 기능이나 큰 구조
+현재 다음 작업은 **사용자 작업과 분리된 Windows 환경에서 exact commit actual을 실행하는 것**이다. 새 기능이나 큰 구조
 리팩터링은 시작하지 않는다. 현재 범위의 좁은 계약 정정과 재현된 저장 안전성 오류는
 부분 baseline을 기준으로 수정하되, 그 수정의 최종 Windows 판정도 보류한다.
 
 | 순서 | 작업 | 상태 | 완료 조건 |
 | --- | --- | --- | --- |
-| 1 | 고정 Windows 검증 환경 준비 | toolchain·MSVC·SDK·ZIP 준비 완료, 원본 대기 | 아래 toolchain, clean Typie checkout, validator ZIP 준비를 확인하고 frozen install이 exit 0 |
+| 1 | 고정 Windows 검증 환경 준비 | 완료, 원본 동일 commit 복구 | 아래 toolchain, clean Typie checkout, validator ZIP 준비를 확인하고 frozen install이 exit 0 |
 | 2 | Windows CI 준비 경로 보완 | `a0c1366` 구현, runner 실행 대기 | 새 runner에서 hash를 검증한 EPUBCheck/JRE를 준비하고 필수 검증 경로를 실행할 수 있음. 원고·키·private path 없는 결과를 exact commit과 연결해 보존 |
 | 3 | 변경 전 Windows 기준점 확보 | 부분 검증, full gate 보류 | 기준 commit의 필수 명령과 development·fresh-unpacked actual 통과. 아래 coverage·network·cleanup 조건의 실행 근거 기록 |
 | 4 | 현행 범위와 구현 대조 | `37802a0`, `472d0fc` 수정 완료 | AI·IR 계약 정정 및 재현된 실패한 열기 수정. 집중 검증과 최종 읽기 전용 점검 완료; 전체 Windows 판정은 5에서 수행 |
-| 5 | 최종 후보 Windows 검증 종료 | 부분 검증, 원본·GUI 환경 대기 | 변경했다면 새 commit의 필수 전체 경로와 actual을 다시 통과. 변경이 없으면 3번의 동일 commit 근거 사용. 최종 후보 SHA·build·결과 일치 확인 |
+| 5 | 최종 후보 Windows 검증 종료 | 원본·CLI 단위/통합·unpacked 준비 완료, GUI 환경 대기 | 변경했다면 새 commit의 필수 전체 경로와 actual을 다시 통과. 변경이 없으면 3번의 동일 commit 근거 사용. 최종 후보 SHA·build·결과 일치 확인 |
 | 6 | 실제 사용 조건 확인 | 환경·사용자 입력 대기 | 사람이 동일 후보 build의 native IME checklist를 수행하고, 사용자가 지정한 AI endpoint를 명시적 전송 동의 아래 development·unpacked에서 검증 |
 | 7 | 다음 개발 작업 선정 | 미정 | 검증 결과와 사용자 제품 목표를 기준으로 작업 하나의 범위·완료 조건을 정의 |
 
