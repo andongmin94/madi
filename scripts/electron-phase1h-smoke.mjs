@@ -2388,7 +2388,7 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
     await page.context().setOffline(true);
     await page.reload({ waitUntil: "load" });
     await page.locator(".engine-pill--ready").waitFor({ timeout: 30_000 });
-    const appRuntime = await application.evaluate(({ app }) => {
+    const appRuntime = await application.evaluate(({ app, BrowserWindow, session }) => {
       const disabledFeatures = app.commandLine
         .getSwitchValue("disable-features")
         .split(",")
@@ -2397,6 +2397,11 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
         isPackaged: app.isPackaged,
         appNameLength: app.getName().length,
         disableGpuSwitchObserved: app.commandLine.hasSwitch("disable-gpu"),
+        spellCheckerEnabled: session.defaultSession.isSpellCheckerEnabled(),
+        spellCheckerLanguageCount: session.defaultSession.getSpellCheckerLanguages().length,
+        windowSpellcheckDisabled: BrowserWindow.getAllWindows().every(
+          (window) => window.webContents.getLastWebPreferences().spellcheck === false,
+        ),
         backgroundNetworkingDisabled: app.commandLine.hasSwitch(
           "disable-background-networking",
         ),
@@ -2776,6 +2781,12 @@ function assertSecurity(evidence) {
     },
   );
   verify(evidence.runtime.isPackaged === packaged, "phase1h-runtime-package-mode");
+  verify(
+    evidence.runtime.spellCheckerEnabled === false &&
+      evidence.runtime.spellCheckerLanguageCount === 0 &&
+      evidence.runtime.windowSpellcheckDisabled === true,
+    "phase1h-runtime-spellcheck-network-disabled",
+  );
   verify(
     evidence.runtime.disableGpuSwitchObserved === isolatedDesktop,
     "phase1h-runtime-isolated-desktop-rendering",

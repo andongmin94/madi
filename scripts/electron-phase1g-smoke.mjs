@@ -2464,10 +2464,15 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
     await page.context().setOffline(true);
     await page.reload({ waitUntil: "load" });
     await page.locator(".engine-pill--ready").waitFor({ timeout: 30_000 });
-    const appRuntime = await application.evaluate(({ app }) => ({
+    const appRuntime = await application.evaluate(({ app, BrowserWindow, session }) => ({
       isPackaged: app.isPackaged,
       appNameLength: app.getName().length,
       disableGpuSwitchObserved: app.commandLine.hasSwitch("disable-gpu"),
+      spellCheckerEnabled: session.defaultSession.isSpellCheckerEnabled(),
+      spellCheckerLanguageCount: session.defaultSession.getSpellCheckerLanguages().length,
+      windowSpellcheckDisabled: BrowserWindow.getAllWindows().every(
+        (window) => window.webContents.getLastWebPreferences().spellcheck === false,
+      ),
     }));
     const runtime = {
       ...appRuntime,
@@ -2812,6 +2817,12 @@ function assertSecurity(evidence) {
     },
   );
   verify(evidence.runtime.isPackaged === packaged, "phase1g-runtime-package-mode");
+  verify(
+    evidence.runtime.spellCheckerEnabled === false &&
+      evidence.runtime.spellCheckerLanguageCount === 0 &&
+      evidence.runtime.windowSpellcheckDisabled === true,
+    "phase1g-runtime-spellcheck-network-disabled",
+  );
   verify(
     evidence.runtime.disableGpuSwitchObserved === isolatedDesktop,
     "phase1g-runtime-isolated-desktop-rendering",

@@ -14,7 +14,8 @@ export const SECURE_WEB_PREFERENCES = Object.freeze({
   contextIsolation: true,
   sandbox: true,
   webSecurity: true,
-  allowRunningInsecureContent: false
+  allowRunningInsecureContent: false,
+  spellcheck: false
 }) satisfies Readonly<WebPreferences>;
 
 export interface WindowTarget {
@@ -129,6 +130,7 @@ export function installRuntimeNetworkGuard(
   electronSession: Session,
   target: WindowTarget
 ): void {
+  electronSession.setSpellCheckerLanguages([]);
   electronSession.setPermissionRequestHandler(
     (_webContents, _permission, callback) => callback(false)
   );
