@@ -29,6 +29,7 @@ import type {
   SearchHit,
   SearchProjectRequest,
   SearchProjectResult,
+  SaveUiStateRequest,
   TagRecord,
   TextStatisticsResult,
   WorldGraphReadModel,
@@ -566,6 +567,9 @@ export function App({
   const [compositionEventActive, setCompositionEventActive] =
     useState<boolean | null>(null);
   const closeAttemptRef = useRef<Promise<void> | null>(null);
+  const closePendingRef = useRef(false);
+  const [closePending, setClosePending] = useState(false);
+  const pendingUiSavesRef = useRef(new Set<Promise<void>>());
   const entityMountRef = useRef<HTMLDivElement>(null);
   const lastManuscriptSceneIdRef = useRef<string | null>(null);
   const storyReloadTokenRef = useRef(0);
@@ -1073,11 +1077,26 @@ export function App({
     setWorldGraphUiState(normalized);
   }, []);
 
+  const saveUiState = useCallback(
+    async (request: SaveUiStateRequest): Promise<void> => {
+      const pending = api.saveUiState(request);
+      pendingUiSavesRef.current.add(pending);
+      try {
+        await pending;
+      } finally {
+        pendingUiSavesRef.current.delete(pending);
+      }
+    },
+    [api]
+  );
+
   const saveWorldGraphUiState = useCallback(
     async (sessionId: string, state: WorldGraphUiState): Promise<void> => {
       const generation = ++worldGraphPersistenceGenerationRef.current;
+      const pending = api.saveWorldGraphUiState({ sessionId, state });
+      pendingUiSavesRef.current.add(pending);
       try {
-        await api.saveWorldGraphUiState({ sessionId, state });
+        await pending;
       } catch (error) {
         if (
           generation === worldGraphPersistenceGenerationRef.current &&
@@ -1088,6 +1107,8 @@ export function App({
           );
         }
         throw error;
+      } finally {
+        pendingUiSavesRef.current.delete(pending);
       }
       if (
         generation === worldGraphPersistenceGenerationRef.current &&
@@ -1134,14 +1155,28 @@ export function App({
   );
 
   useEffect(() => {
-    if (!worldGraphStateReady || !workspace.session) {
+    if (
+      closePending ||
+      closePendingRef.current ||
+      !worldGraphStateReady ||
+      !workspace.session
+    ) {
       return;
     }
     const timer = window.setTimeout(() => {
+      if (closePendingRef.current) {
+        return;
+      }
       void persistWorldGraphUiState().catch(() => undefined);
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [persistWorldGraphUiState, worldGraphStateReady, worldGraphUiState, workspace.session]);
+  }, [
+    closePending,
+    persistWorldGraphUiState,
+    worldGraphStateReady,
+    worldGraphUiState,
+    workspace.session
+  ]);
 
   const loadWorldGraphEntityDetail = useCallback(
     async (entityId: string): Promise<EntityGraphDetail> => {
@@ -1471,14 +1506,21 @@ export function App({
 
   useEffect(() => {
     return api.onCloseRequested(() => {
-      if (!closeAttemptRef.current) {
+      if (!closeAttemptRef.current && !closePendingRef.current) {
         const current = lifecycleContextRef.current;
         const graphStateAtClose = worldGraphUiStateRef.current;
         const root = document.documentElement;
         const restoreInteraction = () => {
+          closePendingRef.current = false;
+          setClosePending(false);
           root.inert = false;
           delete root.dataset.closePending;
         };
+        closePendingRef.current = true;
+        setClosePending(true);
+        const pendingUiSavesAtClose = Promise.allSettled([
+          ...pendingUiSavesRef.current
+        ]);
         root.inert = true;
         root.dataset.closePending = "true";
         closeAttemptRef.current = Promise.resolve()
@@ -1505,6 +1547,14 @@ export function App({
           )
           .then(async (documentReady) => {
             let readyToClose = documentReady;
+            const pendingUiSaveResults = await pendingUiSavesAtClose;
+            const failedUiSave = pendingUiSaveResults.find(
+              (result) => result.status === "rejected"
+            );
+            if (failedUiSave) {
+              readyToClose = false;
+              setTreeError(publicError(failedUiSave.reason, "UI 상태 저장 실패"));
+            }
             if (readyToClose && current.appMode === "PLOT_CANVAS") {
               try {
                 await plotCanvasModeRef.current?.flush();
@@ -1542,7 +1592,7 @@ export function App({
               current.projectTree
             ) {
               try {
-                await api.saveUiState({
+                await saveUiState({
                   sessionId: current.session.sessionId,
                   state: {
                     selectedNodeId: current.selectedNodeId,
@@ -1627,10 +1677,12 @@ export function App({
           });
       }
     });
-  }, [api, saveWorldGraphUiState]);
+  }, [api, saveUiState, saveWorldGraphUiState]);
 
   useEffect(() => {
     if (
+      closePending ||
+      closePendingRef.current ||
       !controller ||
       enginePhase !== "ready" ||
       !workspace.session ||
@@ -1640,19 +1692,30 @@ export function App({
       return;
     }
     const timer = window.setTimeout(() => {
+      if (closePendingRef.current) {
+        return;
+      }
       void controller.save(() => compositionActiveRef.current);
     }, AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [controller, enginePhase, isComposing, workspace]);
+  }, [closePending, controller, enginePhase, isComposing, workspace]);
 
   useEffect(() => {
     const session = workspace.session;
-    if (!session || !projectTree || !uiStateReady) {
+    if (
+      closePending ||
+      closePendingRef.current ||
+      !session ||
+      !projectTree ||
+      !uiStateReady
+    ) {
       return;
     }
     const timer = window.setTimeout(() => {
-      void api
-        .saveUiState({
+      if (closePendingRef.current) {
+        return;
+      }
+      void saveUiState({
           sessionId: session.sessionId,
           state: {
             selectedNodeId,
@@ -1668,11 +1731,12 @@ export function App({
     }, 300);
     return () => window.clearTimeout(timer);
   }, [
-    api,
     binderWidth,
+    closePending,
     collapsedNodeIds,
     projectTree,
     selectedNodeId,
+    saveUiState,
     uiStateReady,
     workspace.session
   ]);
@@ -1728,7 +1792,7 @@ export function App({
     if (!session || !projectTree || !uiStateReady) {
       return;
     }
-    await api.saveUiState({
+    await saveUiState({
       sessionId: session.sessionId,
       state: {
         selectedNodeId,
