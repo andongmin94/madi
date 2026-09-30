@@ -2135,7 +2135,7 @@ async function readFailureContext() {
       ).length,
       alertCount: body.querySelectorAll('[role="alert"]').length,
       snapshotPanelCount: body.querySelectorAll(
-        '[role="complementary"][aria-label="Named snapshot"]',
+        'aside[aria-label="Named snapshot"]',
       ).length,
       snapshotItemCount: body.querySelectorAll("[data-snapshot-id]").length,
       alertDialogCount: body.querySelectorAll('[role="alertdialog"]').length,
@@ -2441,6 +2441,9 @@ async function runNormalScenario({ fixture, projectPath, userDataPath }) {
     const presetCrud = await exercisePresetCrud(firstRun, 2);
     reportStage("normal-snapshot-create");
     const snapshot = await createReaderSnapshot(firstRun);
+    reportStage("normal-snapshot-created-reader-ready");
+    await waitForReaderReady(firstRun);
+    reportStage("normal-post-snapshot-preset-edit");
     await choosePreset(firstRun, 2, presetCrud.customPresetId);
     await setNumberControl(
       firstRun,
