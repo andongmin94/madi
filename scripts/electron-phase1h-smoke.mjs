@@ -5195,8 +5195,9 @@ async function saveMarkdownReport(run, reportPath, expectedReport) {
   verify(
     markdown.startsWith("# madi HWPX export report") &&
       markdown.includes("- Package profile: HANCOM_OFFICIAL_MODEL_1_31") &&
-      markdown.includes(`- Source scope/revision: ${expectedReport.sourceScope}/`) &&
-      markdown.includes(expectedReport.sourceScopeNodeId) &&
+      markdown.split(/\r?\n/u).includes(
+        `- Source scope/revision: ${expectedReport.sourceScope} (${expectedReport.sourceScopeNodeId})/${expectedReport.sourceProjectRevision}`,
+      ) &&
       markdown.includes("- Physical HWPX sections:") &&
       markdown.includes("- Blocks (exported/fallback/configured omission/rejected/source):") &&
       markdown.includes("- Hancom reopen/HWP converted: NOT_RUN/false"),

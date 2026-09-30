@@ -667,6 +667,7 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
     );
     expect(jsonReport).toContain('"formatVersion": 1');
     expect(markdownReport).toContain("# madi HWPX export report");
+    expect(markdownReport.split(/\r?\n/u)).toContain("- Source scope/revision: SCENE (scene-1)/5");
     expect(markdownReport).toContain("- Publication IR compile: 1 ms");
     expect(markdownReport).toContain("- HWPX semantic mapping: 1 ms");
     expect(markdownReport).toContain("- HWPX exporter: 8 ms");
