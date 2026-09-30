@@ -60,41 +60,161 @@ jobs:
           $env:DOTNET_ROOT_X86 = $installDir
           "DOTNET_ROOT_X86=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           & (Join-Path $installDir "dotnet.exe") --info
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned x86 .NET runtime probe failed"
+          }
 
       - name: Set up pinned Rust toolchain
         shell: pwsh
         run: |
           rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned Rust toolchain installation failed"
+          }
           rustup target add --toolchain 1.97.1 wasm32-unknown-unknown x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned Rust target installation failed"
+          }
           rustc +1.97.1 --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned Rust compiler probe failed"
+          }
           cargo +1.97.1 --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned Cargo probe failed"
+          }
 
       - name: Activate pinned pnpm
         shell: pwsh
         run: |
-          corepack enable
-          corepack prepare pnpm@11.9.0 --activate
+          npm install --global pnpm@11.9.0
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned pnpm installation failed"
+          }
           node --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Node.js version probe failed"
+          }
           pnpm --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned pnpm version probe failed"
+          }
           dotnet --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Pinned .NET SDK version probe failed"
+          }
 
       - name: Install pinned workspace
         shell: pwsh
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare pinned EPUBCheck and JRE archives
+        id: validation_tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $validationRoot = Join-Path $env:GITHUB_WORKSPACE ".tools\phase1g-validation"
+          New-Item -ItemType Directory -Path $validationRoot -Force | Out-Null
+          $tools = @(
+            @{
+              Name = "epubcheck-5.3.0.zip"
+              Url = "https://github.com/w3c/epubcheck/releases/download/v5.3.0/epubcheck-5.3.0.zip"
+              Bytes = 33071108
+              Sha256 = "6c07e68584b2e2ce2f89fe06e1246dfead3eb36b46b340e7d93524f29dcff6c5"
+            },
+            @{
+              Name = "temurin-jre-21.0.11+10.zip"
+              Url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jre_x64_windows_hotspot_21.0.11_10.zip"
+              Bytes = 49005708
+              Sha256 = "be26677aaa20b39a62edcaab4c8857a8b76673b0f45abc0b6143b142b62717e4"
+            }
+          )
+          foreach ($tool in $tools) {
+            $destinationPath = Join-Path $validationRoot $tool.Name
+            $temporaryPath = Join-Path $validationRoot "$($tool.Name).$([Guid]::NewGuid().ToString('N')).download"
+            try {
+              Invoke-WebRequest -Uri $tool.Url -OutFile $temporaryPath -TimeoutSec 180
+              if ((Get-Item -LiteralPath $temporaryPath).Length -ne $tool.Bytes) {
+                throw "$($tool.Name) size does not match the pin"
+              }
+              if ((Get-FileHash -LiteralPath $temporaryPath -Algorithm SHA256).Hash -ne $tool.Sha256) {
+                throw "$($tool.Name) SHA-256 does not match the pin"
+              }
+              Move-Item -LiteralPath $temporaryPath -Destination $destinationPath -Force
+              Write-Output "$($tool.Name): size and SHA-256 verified"
+            } finally {
+              if (Test-Path -LiteralPath $temporaryPath) {
+                Remove-Item -LiteralPath $temporaryPath -Force
+              }
+            }
+          }
+
       - name: Run full pinned verification
+        id: full_verification
         shell: pwsh
         run: pnpm verify
 
       - name: Build fresh unpacked package
+        id: unpacked_package
         shell: pwsh
         run: pnpm package:unpacked
 
       - name: Recheck repository contracts
+        id: repository_recheck
         shell: pwsh
         run: |
           pnpm check:repository
+          if ($LASTEXITCODE -ne 0) {
+            throw "Repository contract check failed"
+          }
           pnpm format:check
+          if ($LASTEXITCODE -ne 0) {
+            throw "Format check failed"
+          }
           git diff --check
+          if ($LASTEXITCODE -ne 0) {
+            throw "Diff whitespace check failed"
+          }
           git submodule status --recursive
+          if ($LASTEXITCODE -ne 0) {
+            throw "Submodule status check failed"
+          }
           git status --short
+          if ($LASTEXITCODE -ne 0) {
+            throw "Git status check failed"
+          }
+
+      - name: Record exact-revision gate outcomes
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          $summary = @'
+          ## Windows gate execution record
+
+          Source SHA: `${{ github.sha }}`
+          Runner OS: `${{ runner.os }}`
+
+          ### Expected toolchain pins
+
+          These are required versions, not observed runtime versions. Refer to the setup logs for actual version probes.
+
+          | Tool | Expected version |
+          | --- | --- |
+          | Node.js | 26.3.1 |
+          | pnpm | 11.9.0 |
+          | Rust | 1.97.1 |
+          | .NET SDK | 10.0.400 |
+          | x86 .NET runtime | 10.0.11 |
+
+          ### Step outcomes
+
+          | Step | GitHub Actions outcome |
+          | --- | --- |
+          | Prepare pinned validation archives | ${{ steps.validation_tools.outcome }} |
+          | Full pinned verification | ${{ steps.full_verification.outcome }} |
+          | Fresh unpacked package | ${{ steps.unpacked_package.outcome }} |
+          | Repository contract recheck | ${{ steps.repository_recheck.outcome }} |
+
+          These outcomes record workflow execution only. Manual IME, Hancom conversion, and distribution approval require separate evidence.
+          '@
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary -Encoding utf8
