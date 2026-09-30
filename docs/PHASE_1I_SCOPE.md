@@ -39,9 +39,8 @@ The mutation contract follows [AGENTS.md](../AGENTS.md): exact same-block select
 - proposal review and copy
 - canonical application through the exact-selection workflow
 
-The current general-assistant implementation also contains a unique-text application route without
-exact selection coordinates. That static discrepancy is recorded in [PLANS.md](../PLANS.md);
-it is not an expansion of the approved mutation contract.
+The general assistant is review/copy only. Canonical mutation requires the exact-selection workflow;
+there is no unique-text search fallback without selection coordinates.
 
 ### Exact selection rewrite
 

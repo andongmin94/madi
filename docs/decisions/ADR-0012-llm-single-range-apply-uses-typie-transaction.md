@@ -4,6 +4,12 @@
 
 Accepted for private-local Phase 1I-D development.
 
+The one-transaction boundary remains accepted. The original unique-text matching and deferred
+selection/hunk rules below are historical and superseded by
+[ADR-0014](ADR-0014-llm-selection-hunks-remain-one-typie-node.md) and
+[the current Phase 1I scope](../PHASE_1I_SCOPE.md). Canonical application now requires exact
+same-block selection coordinates; there is no unique-text search fallback.
+
 ## Context
 
 Phase 1I-C returned provider output as a non-canonical proposal. Applying that proposal by replacing an entire plain-text recovery copy would destroy or flatten Typie paragraph boundaries, scene breaks, ruby and inline modifiers. At the same time, the pinned Typie runtime already exposes Madi's validated `replaceTextRanges` boundary, backed by `replace_many_from_prose_annotated`, and verifies semantic structure after a replacement.

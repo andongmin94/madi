@@ -9,7 +9,8 @@ import type {
 } from "../src/renderer/editor/MadiEditorAdapter";
 import {
   createLlmTrackedEditorFactory,
-  LlmEditorAccess
+  LlmEditorAccess,
+  type LlmProposalApplyRequest
 } from "../src/renderer/llm/editorAccess";
 
 function createAdapter(
@@ -223,13 +224,14 @@ describe("LlmEditorAccess", () => {
         expectedGeneration: 1,
         expectedRevision: 18,
         originalText: "현재",
-        proposalText: "지금"
+        proposalText: "지금",
+        sourceRange: { start: 0, end: 2, blockKey: "node-1" }
       })
     ).rejects.toThrowError(/한글 조합이 끝난 뒤/u);
     expect(fixture.adapter.getPlainText).not.toHaveBeenCalled();
   });
 
-  it("applies one unique single-line proposal through a Typie transaction", async () => {
+  it("applies one exact selection proposal through a Typie transaction", async () => {
     const fixture = createAdapter("앞 🙂 고칠 문장 뒤");
     const access = new LlmEditorAccess();
     await createLlmTrackedEditorFactory(
@@ -248,7 +250,8 @@ describe("LlmEditorAccess", () => {
       expectedGeneration: 1,
       expectedRevision: 5,
       originalText: "고칠 문장",
-      proposalText: "다듬은 문장"
+      proposalText: "다듬은 문장",
+      sourceRange: { start: 4, end: 9, blockKey: "node-1" }
     });
 
     expect(result).toEqual({
@@ -310,7 +313,7 @@ describe("LlmEditorAccess", () => {
     ]);
   });
 
-  it("blocks stale and ambiguous proposals before mutation", async () => {
+  it("blocks stale and mismatched exact selection proposals before mutation", async () => {
     const fixture = createAdapter("반복 문장 / 반복 문장");
     const access = new LlmEditorAccess();
     await createLlmTrackedEditorFactory(
@@ -330,7 +333,8 @@ describe("LlmEditorAccess", () => {
         expectedGeneration: 1,
         expectedRevision: 2,
         originalText: "반복 문장",
-        proposalText: "새 문장"
+        proposalText: "새 문장",
+        sourceRange: { start: 0, end: 5, blockKey: "node-1" }
       })
     ).rejects.toMatchObject({ code: "STALE_DOCUMENT" });
     await expect(
@@ -338,9 +342,35 @@ describe("LlmEditorAccess", () => {
         expectedGeneration: 1,
         expectedRevision: 3,
         originalText: "반복 문장",
-        proposalText: "새 문장"
+        proposalText: "새 문장",
+        sourceRange: { start: 1, end: 6, blockKey: "node-1" }
       })
-    ).rejects.toMatchObject({ code: "AMBIGUOUS" });
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(fixture.replaceTextRanges).not.toHaveBeenCalled();
   });
+
+  it.each([undefined, null])(
+    "rejects absent selection data before mutation even for unique text: %s",
+    async (sourceRange) => {
+      const fixture = createAdapter("고칠 문장");
+      const access = new LlmEditorAccess();
+      access.attach(fixture.adapter);
+      const request = {
+        expectedGeneration: 1,
+        expectedRevision: 0,
+        originalText: "고칠 문장",
+        proposalText: "다듬은 문장",
+        sourceRange
+      } as unknown as LlmProposalApplyRequest;
+
+      await expect(access.assessProposal(request)).resolves.toMatchObject({
+        status: "INVALID_SOURCE_RANGE"
+      });
+      await expect(access.applyProposal(request)).rejects.toMatchObject({
+        code: "INVALID_SOURCE_RANGE"
+      });
+      expect(fixture.replaceTextRanges).not.toHaveBeenCalled();
+      expect(fixture.text()).toBe("고칠 문장");
+    }
+  );
 });

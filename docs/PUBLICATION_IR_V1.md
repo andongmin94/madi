@@ -391,7 +391,7 @@ HWPX config만 받는다. Typie snapshot/type, `.madi` SQLite, editor/Reader DOM
 recovery text를 직접 읽지 않는다. Request의 project/scope/revision과
 `sourcePublicationHash`는 document identity와 exact match해야 한다.
 
-Exporter는 hierarchy heading, Paragraph, Quote, ordered/unordered List, SceneBreak,
+Exporter는 hierarchy heading, Paragraph, Quote, SceneBreak,
 Unsupported plain-text fallback과 supported inline mark를 한컴 official model XML 1.31 세대의
 HWPX package로 매핑한다. Source coverage 계약은 exporter 종류와 무관하다.
 
@@ -399,6 +399,8 @@ HWPX package로 매핑한다. Source coverage 계약은 exporter 종류와 무�
   분류한다.
 - Text와 supported inline mark는 Unicode scalar를 보존한다.
 - Non-empty Unsupported block은 escaped text와 warning으로 남기며 silent drop하지 않는다.
+- Ordered/unordered list는 IR v1의 의미 block이 아니며 Unsupported plain-text fallback으로
+  처리한다. 목록 구조를 보존한다고 주장하지 않는다.
 - Configured omission은 closed preset의 `include* = false`와 일치하는 hierarchy heading에만
   허용하고, empty Unsupported는 fail-closed한다.
 - Publication IR v1에는 authored manuscript image variant가 없으므로 image fallback을

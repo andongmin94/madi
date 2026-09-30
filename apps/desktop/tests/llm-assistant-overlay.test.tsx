@@ -4,10 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import { LlmAssistantOverlay } from "../src/renderer/components/llm/LlmAssistantOverlay";
 import type {
   EditorChange,
-  EditorTextReplacement,
   MadiEditorAdapter
 } from "../src/renderer/editor/MadiEditorAdapter";
 import { LlmEditorAccess } from "../src/renderer/llm/editorAccess";
+import type { LlmTaskKind } from "../src/shared/llm";
 import type { MadiLlmApi } from "../src/shared/llmIpc";
 
 interface EditorFixture {
@@ -21,45 +21,16 @@ interface EditorFixture {
 function editorFixture(initialText = "현재 원고 내용"): EditorFixture {
   const access = new LlmEditorAccess();
   let listener: ((change: EditorChange) => void) | null = null;
-  let text = initialText;
-  let revision = 0;
+  const text = initialText;
   const notify = (change: EditorChange): void => {
     const current = listener;
     if (current) {
       current(change);
     }
   };
-  const replaceTextRanges = vi.fn(
-    async (replacements: readonly EditorTextReplacement[]) => {
-      const characters = Array.from(text);
-      for (const replacement of [...replacements].sort(
-        (left, right) => right.start - left.start
-      )) {
-        expect(
-          characters.slice(replacement.start, replacement.end).join("")
-        ).toBe(replacement.expectedText);
-        characters.splice(
-          replacement.start,
-          replacement.end - replacement.start,
-          ...Array.from(replacement.replacement)
-        );
-      }
-      text = characters.join("");
-      revision += 1;
-      notify({
-        revision,
-        reason: "content",
-        canUndo: true,
-        canRedo: false,
-        isComposing: false
-      });
-      return {
-        snapshot: new Uint8Array([4, 5, 6]),
-        plainTextRecovery: text,
-        semanticSceneBreakCount: 0
-      };
-    }
-  );
+  const replaceTextRanges = vi.fn(async () => {
+    throw new Error("General assistant must not mutate the manuscript");
+  });
   const adapter: MadiEditorAdapter = {
     open: vi.fn(async () => undefined),
     getSnapshot: vi.fn(async () => new Uint8Array()),
@@ -83,7 +54,6 @@ function editorFixture(initialText = "현재 원고 내용"): EditorFixture {
     adapter,
     replaceTextRanges,
     emit(change) {
-      revision = change.revision;
       notify(change);
     },
     text() {
@@ -170,7 +140,8 @@ function getScopeInput(): HTMLTextAreaElement {
 
 async function openAssistant(
   fixture: EditorFixture,
-  api: MadiLlmApi
+  api: MadiLlmApi,
+  copyText: (value: string) => Promise<void> = vi.fn(async () => undefined)
 ): Promise<void> {
   render(
     <LlmAssistantOverlay
@@ -178,7 +149,7 @@ async function openAssistant(
       editorAccess={fixture.access}
       createId={() => "request-1"}
       createScopeHash={async () => "a".repeat(64)}
-      copyText={vi.fn(async () => undefined)}
+      copyText={copyText}
       now={() => new Date("2026-08-22T10:00:00.000Z")}
     />
   );
@@ -196,10 +167,15 @@ async function waitForDefaultProvider(): Promise<void> {
 async function requestProposal(
   fixture: EditorFixture,
   api: MadiLlmApi,
-  scopeText?: string
+  scopeText?: string,
+  copyText?: (value: string) => Promise<void>,
+  task: LlmTaskKind = "REWRITE_SELECTION"
 ): Promise<void> {
-  await openAssistant(fixture, api);
+  await openAssistant(fixture, api, copyText);
   await waitForDefaultProvider();
+  fireEvent.change(screen.getByRole("combobox", { name: "작업" }), {
+    target: { value: task }
+  });
   fireEvent.click(
     screen.getByRole("button", { name: "현재 편집 문서 불러오기" })
   );
@@ -269,29 +245,25 @@ describe("LlmAssistantOverlay", () => {
     });
   });
 
-  it("applies a unique single-line rewrite through the active Typie adapter", async () => {
-    const fixture = editorFixture("앞 문장 고칠 문장 뒤 문장");
-    const api = fakeApi("다듬은 문장");
-    await requestProposal(fixture, api, "고칠 문장");
-    await expectProposalText("다듬은 문장");
+  it.each(["REWRITE_SELECTION", "CUSTOM"] as const)(
+    "reviews and copies a unique single-line proposal without mutation: %s",
+    async (task) => {
+      const fixture = editorFixture("앞 문장 고칠 문장 뒤 문장");
+      const api = fakeApi("다듬은 문장");
+      const copyText = vi.fn(async () => undefined);
+      await requestProposal(fixture, api, "고칠 문장", copyText, task);
+      await expectProposalText("다듬은 문장");
 
-    const apply = screen.getByRole("button", { name: "원고에 안전 적용" });
-    await waitFor(() =>
-      expect((apply as HTMLButtonElement).disabled).toBe(false)
-    );
-    fireEvent.click(apply);
+      expect(screen.queryByRole("button", { name: /원고에.*적용/u })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "제안문 복사" }));
+      await screen.findByText("제안문을 클립보드에 복사했습니다.");
+      expect(copyText).toHaveBeenCalledWith("다듬은 문장");
+      expect(fixture.replaceTextRanges).not.toHaveBeenCalled();
+      expect(fixture.text()).toBe("앞 문장 고칠 문장 뒤 문장");
+    }
+  );
 
-    await screen.findByText(/현재 Typie 문서에 적용했습니다/u);
-    expect(fixture.replaceTextRanges).toHaveBeenCalledWith([
-      expect.objectContaining({
-        expectedText: "고칠 문장",
-        replacement: "다듬은 문장"
-      })
-    ]);
-    expect(fixture.text()).toBe("앞 문장 다듬은 문장 뒤 문장");
-  });
-
-  it("invalidates a proposal when the active Typie document changes", async () => {
+  it("keeps a reviewed proposal copyable after the active Typie document changes", async () => {
     const fixture = editorFixture("앞 문장 고칠 문장 뒤 문장");
     const api = fakeApi("다듬은 문장");
     await requestProposal(fixture, api, "고칠 문장");
@@ -305,27 +277,24 @@ describe("LlmAssistantOverlay", () => {
       isComposing: false
     });
 
-    await screen.findByText(/제안을 만든 뒤 편집 문서가 바뀌었습니다/u);
-    expect(
-      (screen.getByRole("button", {
-        name: "원고에 안전 적용"
-      }) as HTMLButtonElement).disabled
-    ).toBe(true);
+    await expectProposalText("다듬은 문장");
+    expect(screen.queryByRole("button", { name: /원고에.*적용/u })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "제안문 복사" }));
+    await screen.findByText("제안문을 클립보드에 복사했습니다.");
     expect(fixture.replaceTextRanges).not.toHaveBeenCalled();
   });
 
-  it("keeps multi-block proposal application disabled", async () => {
+  it("keeps multi-block proposals reviewable and copyable without mutation", async () => {
     const fixture = editorFixture("첫 문단\n둘째 문단");
     const api = fakeApi("새 첫 문단\n새 둘째 문단");
     await requestProposal(fixture, api);
     await expectProposalText("새 첫 문단\n새 둘째 문단");
 
-    await screen.findByText(/줄바꿈을 포함하지 않는 단일 의미 범위/u);
-    expect(
-      (screen.getByRole("button", {
-        name: "원고에 안전 적용"
-      }) as HTMLButtonElement).disabled
-    ).toBe(true);
+    expect(screen.queryByRole("button", { name: /원고에.*적용/u })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "제안문 복사" }));
+    await screen.findByText("제안문을 클립보드에 복사했습니다.");
+    expect(fixture.replaceTextRanges).not.toHaveBeenCalled();
+    expect(fixture.text()).toBe("첫 문단\n둘째 문단");
   });
 
   it("creates a provider without reading a stored API key back into the renderer", async () => {

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { planLlmProposalApply } from "../src/renderer/llm/proposalApply";
+import {
+  planLlmProposalApply,
+  type LlmProposalSourceRange
+} from "../src/renderer/llm/proposalApply";
 
 const identity = { generation: 7, revision: 12 } as const;
 
@@ -11,21 +14,21 @@ function plan(overrides: Partial<Parameters<typeof planLlmProposalApply>[0]> = {
     currentText: "앞 문장 🙂 고칠 문장 뒤 문장",
     originalText: "고칠 문장",
     proposalText: "다듬은 문장",
+    sourceRange: { start: 7, end: 12, blockKey: "node-1" },
     ...overrides
   });
 }
 
 describe("planLlmProposalApply", () => {
-  it("returns Unicode-scalar offsets for one unique text replacement", () => {
+  it("preserves Unicode-scalar offsets for an exact selection replacement", () => {
     const result = plan();
 
     expect(result.status).toBe("READY");
     if (result.status !== "READY") {
       throw new Error(result.message);
     }
-    expect(result.sourceMode).toBe("UNIQUE_TEXT");
     expect(result.replacement).toEqual({
-      id: "llm-proposal-7-12",
+      id: "llm-selection-7-12",
       start: 7,
       end: 12,
       expectedText: "고칠 문장",
@@ -52,7 +55,6 @@ describe("planLlmProposalApply", () => {
     if (result.status !== "READY") {
       throw new Error(result.message);
     }
-    expect(result.sourceMode).toBe("EXACT_SELECTION");
     expect(result.replacement).toMatchObject({
       start: 8,
       end: 13,
@@ -71,17 +73,14 @@ describe("planLlmProposalApply", () => {
     ).toMatchObject({ status: "STALE_DOCUMENT" });
   });
 
-  it("blocks ambiguous and missing source ranges without exact selection data", () => {
-    expect(
-      plan({
-        currentText: "같은 문장 / 같은 문장",
-        originalText: "같은 문장"
-      })
-    ).toMatchObject({ status: "AMBIGUOUS" });
-    expect(plan({ originalText: "없는 문장" })).toMatchObject({
-      status: "NOT_FOUND"
-    });
-  });
+  it.each([undefined, null])(
+    "blocks absent exact selection data even when source text is unique: %s",
+    (sourceRange) => {
+      expect(
+        plan({ sourceRange: sourceRange as unknown as LlmProposalSourceRange })
+      ).toMatchObject({ status: "INVALID_SOURCE_RANGE" });
+    }
+  );
 
   it("rejects stale or malformed exact selection data", () => {
     expect(

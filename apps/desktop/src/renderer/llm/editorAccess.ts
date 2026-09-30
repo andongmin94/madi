@@ -33,7 +33,7 @@ export interface LlmProposalApplyRequest {
   readonly expectedRevision: number;
   readonly originalText: string;
   readonly proposalText: string;
-  readonly sourceRange?: LlmProposalSourceRange | null;
+  readonly sourceRange: LlmProposalSourceRange;
 }
 
 export class LlmEditorAccess {

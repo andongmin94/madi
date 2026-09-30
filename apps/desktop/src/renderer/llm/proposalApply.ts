@@ -14,8 +14,7 @@ export type LlmProposalApplyStatus =
   | "MULTI_BLOCK_SCOPE"
   | "MULTI_BLOCK_PROPOSAL"
   | "SEMANTIC_BOUNDARY"
-  | "NOT_FOUND"
-  | "AMBIGUOUS";
+  | "NOT_FOUND";
 
 export interface LlmProposalApplyIdentity {
   readonly generation: number;
@@ -34,7 +33,7 @@ export interface LlmProposalApplyInput {
   readonly currentText: string;
   readonly originalText: string;
   readonly proposalText: string;
-  readonly sourceRange?: LlmProposalSourceRange | null;
+  readonly sourceRange: LlmProposalSourceRange;
 }
 
 export interface LlmProposalApplyBlocked {
@@ -44,7 +43,6 @@ export interface LlmProposalApplyBlocked {
 
 export interface LlmProposalApplyReady {
   readonly status: "READY";
-  readonly sourceMode: "EXACT_SELECTION" | "UNIQUE_TEXT";
   readonly message: string;
   readonly replacement: EditorTextReplacement;
   readonly expectedDocumentText: string;
@@ -84,10 +82,6 @@ function hasBlockBoundary(value: string): boolean {
 function isSceneBreakFallback(value: string): boolean {
   const normalized = value.trim();
   return normalized === "***" || normalized === "* * *";
-}
-
-function scalarOffset(source: string, codeUnitOffset: number): number {
-  return Array.from(source.slice(0, codeUnitOffset)).length;
 }
 
 function replaceScalarRange(
@@ -158,73 +152,41 @@ export function planLlmProposalApply(
   }
 
   const currentCharacters = Array.from(input.currentText);
-  if (input.sourceRange) {
-    const { start, end, blockKey } = input.sourceRange;
-    if (
-      !Number.isSafeInteger(start) ||
-      !Number.isSafeInteger(end) ||
-      start < 0 ||
-      end <= start ||
-      end > currentCharacters.length ||
-      blockKey.length === 0 ||
-      blockKey.length > 512 ||
-      /[\u0000-\u001f\u007f]/u.test(blockKey)
-    ) {
-      return blocked(
-        "INVALID_SOURCE_RANGE",
-        "선택 영역의 원본 위치 정보가 올바르지 않습니다."
-      );
-    }
-    if (currentCharacters.slice(start, end).join("") !== input.originalText) {
-      return blocked(
-        "NOT_FOUND",
-        "선택했던 원문이 현재 Typie 문서의 같은 위치에 남아 있지 않습니다."
-      );
-    }
-    return {
-      status: "READY",
-      sourceMode: "EXACT_SELECTION",
-      message:
-        "현재 Typie 선택 영역의 정확한 위치에 한 transaction으로 적용할 수 있습니다.",
-      replacement: {
-        id: `llm-selection-${input.current.generation}-${input.current.revision}`,
-        start,
-        end,
-        expectedText: input.originalText,
-        replacement: input.proposalText
-      },
-      expectedDocumentText: replaceScalarRange(
-        input.currentText,
-        start,
-        end,
-        input.proposalText
-      )
-    };
+  if (!input.sourceRange) {
+    return blocked(
+      "INVALID_SOURCE_RANGE",
+      "선택 영역의 원본 위치 정보가 올바르지 않습니다."
+    );
   }
-
-  const first = input.currentText.indexOf(input.originalText);
-  if (first < 0) {
+  const { start, end, blockKey } = input.sourceRange;
+  if (
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(end) ||
+    start < 0 ||
+    end <= start ||
+    end > currentCharacters.length ||
+    typeof blockKey !== "string" ||
+    blockKey.length === 0 ||
+    blockKey.length > 512 ||
+    /[\u0000-\u001f\u007f]/u.test(blockKey)
+  ) {
+    return blocked(
+      "INVALID_SOURCE_RANGE",
+      "선택 영역의 원본 위치 정보가 올바르지 않습니다."
+    );
+  }
+  if (currentCharacters.slice(start, end).join("") !== input.originalText) {
     return blocked(
       "NOT_FOUND",
-      "현재 편집 문서에서 전송한 원문 범위를 찾지 못했습니다."
+      "선택했던 원문이 현재 Typie 문서의 같은 위치에 남아 있지 않습니다."
     );
   }
-  if (input.currentText.indexOf(input.originalText, first + 1) >= 0) {
-    return blocked(
-      "AMBIGUOUS",
-      "같은 원문이 현재 문서에 여러 번 있습니다. 정확한 선택 영역을 불러와 다시 요청하세요."
-    );
-  }
-
-  const start = scalarOffset(input.currentText, first);
-  const end = start + Array.from(input.originalText).length;
   return {
     status: "READY",
-    sourceMode: "UNIQUE_TEXT",
     message:
-      "현재 문서의 고유한 단일 의미 범위에 Typie transaction으로 적용할 수 있습니다.",
+      "현재 Typie 선택 영역의 정확한 위치에 한 transaction으로 적용할 수 있습니다.",
     replacement: {
-      id: `llm-proposal-${input.current.generation}-${input.current.revision}`,
+      id: `llm-selection-${input.current.generation}-${input.current.revision}`,
       start,
       end,
       expectedText: input.originalText,

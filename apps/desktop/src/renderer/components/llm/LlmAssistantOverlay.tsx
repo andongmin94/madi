@@ -18,10 +18,7 @@ import type {
   LlmRuntimeStatus,
   MadiLlmApi
 } from "../../../shared/llmIpc";
-import type {
-  ActiveLlmEditorState,
-  LlmEditorAccess
-} from "../../llm/editorAccess";
+import type { LlmEditorAccess } from "../../llm/editorAccess";
 import "./llmAssistant.css";
 
 interface TaskTemplate {
@@ -33,16 +30,7 @@ interface TaskTemplate {
 
 interface ProposalState {
   readonly original: string;
-  readonly sourceGeneration: number | null;
-  readonly sourceRevision: number | null;
-  readonly task: LlmTaskKind;
   readonly result: LlmInvocationResult;
-}
-
-interface ProposalApplyUiState {
-  readonly ready: boolean;
-  readonly checking: boolean;
-  readonly message: string;
 }
 
 const TASK_TEMPLATES: readonly TaskTemplate[] = [
@@ -92,12 +80,6 @@ const EMPTY_STATUS: LlmRuntimeStatus = {
   credentialStorage: "UNAVAILABLE"
 };
 
-const INITIAL_APPLY_STATE: ProposalApplyUiState = {
-  ready: false,
-  checking: false,
-  message: "제안문을 받은 뒤 적용 가능성을 확인합니다."
-};
-
 function createDefaultProvider(id: string): LlmProviderDraft {
   return {
     id,
@@ -139,10 +121,6 @@ function providerHost(provider: LlmProviderSummary | null): string {
   } catch {
     return "잘못된 URL";
   }
-}
-
-function taskSupportsDirectApply(task: LlmTaskKind): boolean {
-  return task === "REWRITE_SELECTION" || task === "CUSTOM";
 }
 
 async function browserScopeHash(scope: LlmInvocationScope): Promise<string> {
@@ -209,15 +187,7 @@ export function LlmAssistantOverlay({
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [assistantError, setAssistantError] = useState("");
   const [proposal, setProposal] = useState<ProposalState | null>(null);
-  const [proposalApply, setProposalApply] = useState<ProposalApplyUiState>(
-    INITIAL_APPLY_STATE
-  );
-  const [proposalApplyBusy, setProposalApplyBusy] = useState(false);
-  const [proposalApplied, setProposalApplied] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
-  const [editorState, setEditorState] = useState<ActiveLlmEditorState>(() =>
-    editorAccess.getState()
-  );
 
   const selectedProvider = useMemo(
     () =>
@@ -234,9 +204,6 @@ export function LlmAssistantOverlay({
 
   const resetProposalState = useCallback(() => {
     setProposal(null);
-    setProposalApply(INITIAL_APPLY_STATE);
-    setProposalApplyBusy(false);
-    setProposalApplied(false);
     setCopyStatus("");
   }, []);
 
@@ -294,8 +261,6 @@ export function LlmAssistantOverlay({
     }
   }, [api, createNewProvider, editingProviderId, selectProviderForEditing]);
 
-  useEffect(() => editorAccess.subscribe(setEditorState), [editorAccess]);
-
   useEffect(() => {
     if (!open) {
       return;
@@ -311,105 +276,14 @@ export function LlmAssistantOverlay({
       if (
         event.key === "Escape" &&
         !invocationBusy &&
-        !providerBusy &&
-        !proposalApplyBusy
+        !providerBusy
       ) {
         setOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [invocationBusy, open, proposalApplyBusy, providerBusy]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!proposal) {
-      setProposalApply(INITIAL_APPLY_STATE);
-      return () => {
-        cancelled = true;
-      };
-    }
-    if (proposalApplied) {
-      setProposalApply({
-        ready: false,
-        checking: false,
-        message:
-          "현재 Typie 문서에 적용했습니다. 단일 transaction이므로 Ctrl+Z로 되돌릴 수 있습니다."
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-    if (!taskSupportsDirectApply(proposal.task)) {
-      setProposalApply({
-        ready: false,
-        checking: false,
-        message:
-          "요약·일관성 검토·이어쓰기 결과는 현재 원문 대체로 자동 적용하지 않습니다."
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-    if (
-      proposal.sourceGeneration === null ||
-      proposal.sourceRevision === null
-    ) {
-      setProposalApply({
-        ready: false,
-        checking: false,
-        message:
-          "직접 입력한 범위는 현재 Typie 문서와 연결되지 않아 자동 적용할 수 없습니다."
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setProposalApply({
-      ready: false,
-      checking: true,
-      message: "현재 Typie 문서와 제안문을 다시 대조하는 중입니다."
-    });
-    void editorAccess
-      .assessProposal({
-        expectedGeneration: proposal.sourceGeneration,
-        expectedRevision: proposal.sourceRevision,
-        originalText: proposal.original,
-        proposalText: proposal.result.text
-      })
-      .then((assessment) => {
-        if (!cancelled) {
-          setProposalApply({
-            ready: assessment.status === "READY",
-            checking: false,
-            message: assessment.message
-          });
-        }
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setProposalApply({
-            ready: false,
-            checking: false,
-            message: publicError(
-              error,
-              "제안문의 적용 가능성을 확인하지 못했습니다."
-            )
-          });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    editorAccess,
-    editorState.generation,
-    editorState.isComposing,
-    editorState.revision,
-    proposal,
-    proposalApplied
-  ]);
+  }, [invocationBusy, open, providerBusy]);
 
   const updateProviderText =
     (field: "name" | "baseUrl" | "model") =>
@@ -560,9 +434,6 @@ export function LlmAssistantOverlay({
       });
       setProposal({
         original: scopeText,
-        sourceGeneration: scopeGeneration,
-        sourceRevision: scopeRevision,
-        task,
         result
       });
       setConsentChecked(false);
@@ -597,35 +468,6 @@ export function LlmAssistantOverlay({
     }
   };
 
-  const applyProposalToDocument = async () => {
-    if (
-      !proposal ||
-      proposal.sourceGeneration === null ||
-      proposal.sourceRevision === null ||
-      !proposalApply.ready
-    ) {
-      return;
-    }
-    setProposalApplyBusy(true);
-    setAssistantError("");
-    try {
-      await editorAccess.applyProposal({
-        expectedGeneration: proposal.sourceGeneration,
-        expectedRevision: proposal.sourceRevision,
-        originalText: proposal.original,
-        proposalText: proposal.result.text
-      });
-      setProposalApplied(true);
-      setCopyStatus("");
-    } catch (error) {
-      setAssistantError(
-        publicError(error, "AI 제안문을 현재 원고에 적용하지 못했습니다.")
-      );
-    } finally {
-      setProposalApplyBusy(false);
-    }
-  };
-
   return (
     <>
       <button
@@ -643,8 +485,7 @@ export function LlmAssistantOverlay({
             if (
               event.target === event.currentTarget &&
               !invocationBusy &&
-              !providerBusy &&
-              !proposalApplyBusy
+              !providerBusy
             ) {
               setOpen(false);
             }
@@ -665,7 +506,7 @@ export function LlmAssistantOverlay({
                 type="button"
                 className="madi-llm-icon-button"
                 aria-label="닫기"
-                disabled={invocationBusy || providerBusy || proposalApplyBusy}
+                disabled={invocationBusy || providerBusy}
                 onClick={() => setOpen(false)}
               >
                 ×
@@ -910,17 +751,6 @@ export function LlmAssistantOverlay({
                         <textarea readOnly rows={12} value={proposal.result.text} />
                       </label>
                     </div>
-                    <p
-                      className={`madi-llm-alert ${
-                        proposalApply.ready || proposalApplied
-                          ? ""
-                          : "is-warning"
-                      }`}
-                    >
-                      {proposalApply.checking
-                        ? "적용 가능성을 확인하는 중입니다…"
-                        : proposalApply.message}
-                    </p>
                     <div className="madi-llm-actions">
                       <button
                         type="button"
@@ -932,24 +762,6 @@ export function LlmAssistantOverlay({
                       <button
                         type="button"
                         className="madi-llm-secondary-button"
-                        disabled={
-                          proposalApplyBusy ||
-                          proposalApplied ||
-                          !proposalApply.ready
-                        }
-                        title={proposalApply.message}
-                        onClick={() => void applyProposalToDocument()}
-                      >
-                        {proposalApplyBusy
-                          ? "원고에 적용 중…"
-                          : proposalApplied
-                            ? "원고에 적용됨"
-                            : "원고에 안전 적용"}
-                      </button>
-                      <button
-                        type="button"
-                        className="madi-llm-secondary-button"
-                        disabled={proposalApplyBusy}
                         onClick={resetProposalState}
                       >
                         제안 닫기
