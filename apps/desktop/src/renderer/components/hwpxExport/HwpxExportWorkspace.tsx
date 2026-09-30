@@ -135,6 +135,8 @@ export const HwpxExportWorkspace = forwardRef<
   const phaseRef = useRef(phase);
   const stateRef = useRef(state);
   const closeBarrierRef = useRef(false);
+  const onProjectRevisionRef = useRef(onProjectRevision);
+  onProjectRevisionRef.current = onProjectRevision;
   phaseRef.current = phase;
   stateRef.current = state;
 
@@ -188,7 +190,7 @@ export const HwpxExportWorkspace = forwardRef<
           return true;
         }
         setState(next);
-        onProjectRevision(next.revision);
+        onProjectRevisionRef.current(next.revision);
         setSelectedPresetId((current) => {
           if (current.startsWith("BUILTIN:")) {
             return current;
@@ -215,7 +217,7 @@ export const HwpxExportWorkspace = forwardRef<
     loadTasksRef.current.add(task);
     void task.finally(() => loadTasksRef.current.delete(task));
     return task;
-  }, [api, initialBuiltIn, onProjectRevision, sessionId]);
+  }, [api, initialBuiltIn, sessionId]);
 
   useEffect(() => {
     closeBarrierRef.current = false;

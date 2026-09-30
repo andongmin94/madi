@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { HwpxExportWorkspace } from "../src/renderer/components/hwpxExport/HwpxExportWorkspace";
@@ -208,6 +208,7 @@ function harness(
     readonly getState?: () => Promise<HwpxExportState>;
     readonly handle?: ReturnType<typeof createRef<PublicationExportModeHandle>>;
     readonly onBeforeExport?: () => Promise<number | null>;
+    readonly onProjectRevision?: (revision: number) => void;
     readonly run?: (
       request: RunHwpxExportRequest
     ) => Promise<RunHwpxExportResult>;
@@ -258,7 +259,7 @@ function harness(
   } as unknown as MadiDesktopApi;
   const onBeforeExport = vi.fn(options.onBeforeExport ?? (async () => 7));
 
-  render(
+  const workspace = (onProjectRevision: (revision: number) => void) => (
     <HwpxExportWorkspace
       ref={options.handle}
       api={api}
@@ -270,15 +271,61 @@ function harness(
       reloadToken={0}
       interactionBlocked={false}
       onBeforeExport={onBeforeExport}
-      onProjectRevision={vi.fn()}
+      onProjectRevision={onProjectRevision}
       onOpenSource={vi.fn()}
       onOperationBusyChange={vi.fn()}
     />
   );
-  return { api, createPreset, getState, onBeforeExport, run, validate };
+  const rendered = render(workspace(options.onProjectRevision ?? vi.fn()));
+  return {
+    api, createPreset, getState, onBeforeExport, run, validate,
+    rerender(onProjectRevision: (revision: number) => void) {
+      rendered.rerender(workspace(onProjectRevision));
+    }
+  };
 }
 
 describe("Phase 1H HWPX export workspace", () => {
+  it("does not reload canonical state when parent revision callback identity changes", async () => {
+    const firstCallback = vi.fn();
+    const latestCallback = vi.fn();
+    const { getState, rerender } = harness({ onProjectRevision: firstCallback });
+    await screen.findByRole("region", { name: "한글 문서 내보내기" });
+    expect(getState).toHaveBeenCalledTimes(1);
+    expect(firstCallback).toHaveBeenCalledWith(7);
+
+    await act(async () => {
+      rerender(latestCallback);
+    });
+    expect(getState).toHaveBeenCalledTimes(1);
+    expect(latestCallback).not.toHaveBeenCalled();
+  });
+
+  it("uses the latest parent revision callback for an explicit canonical reload", async () => {
+    const handle = createRef<PublicationExportModeHandle>();
+    const firstCallback = vi.fn();
+    const latestCallback = vi.fn();
+    let loads = 0;
+    const { getState, rerender } = harness({
+      handle,
+      onProjectRevision: firstCallback,
+      getState: async () => state({ revision: ++loads === 1 ? 7 : 8 })
+    });
+    await screen.findByRole("region", { name: "한글 문서 내보내기" });
+    await act(async () => {
+      rerender(latestCallback);
+    });
+    firstCallback.mockClear();
+    latestCallback.mockClear();
+    await act(async () => {
+      await handle.current!.reload();
+    });
+    expect(getState).toHaveBeenCalledTimes(2);
+    expect(firstCallback).not.toHaveBeenCalled();
+    expect(latestCallback).toHaveBeenCalledTimes(1);
+    expect(latestCallback).toHaveBeenCalledWith(8);
+  });
+
   it("exposes labelled document settings and disables HWP without verified Automation", async () => {
     harness();
     const region = await screen.findByRole("region", {
