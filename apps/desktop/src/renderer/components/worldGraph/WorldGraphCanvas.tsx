@@ -224,20 +224,34 @@ export function WorldGraphCanvas({
   }, [nodePositions]);
 
   useEffect(() => {
-    const cy = cyRef.current;
     viewportRef.current = viewport;
-    if (!cy || !viewport) {
+  }, [viewport]);
+
+  const viewportZoom = viewport?.zoom;
+  const viewportPanX = viewport?.pan.x;
+  const viewportPanY = viewport?.pan.y;
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (
+      !cy ||
+      viewportZoom === undefined ||
+      viewportPanX === undefined ||
+      viewportPanY === undefined
+    ) {
       return;
     }
     const currentPan = cy.pan();
     if (
-      Math.abs(cy.zoom() - viewport.zoom) > 0.0001 ||
-      Math.abs(currentPan.x - viewport.pan.x) > 0.01 ||
-      Math.abs(currentPan.y - viewport.pan.y) > 0.01
+      Math.abs(cy.zoom() - viewportZoom) > 0.0001 ||
+      Math.abs(currentPan.x - viewportPanX) > 0.01 ||
+      Math.abs(currentPan.y - viewportPanY) > 0.01
     ) {
-      cy.viewport({ zoom: viewport.zoom, pan: viewport.pan });
+      cy.viewport({
+        zoom: viewportZoom,
+        pan: { x: viewportPanX, y: viewportPanY }
+      });
     }
-  }, [viewport]);
+  }, [viewportZoom, viewportPanX, viewportPanY]);
 
   useEffect(() => {
     const headless = isJsdom();
