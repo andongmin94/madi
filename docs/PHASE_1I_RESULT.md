@@ -1,5 +1,9 @@
 # Phase 1I result — stable narrow AI boundary
 
+This document preserves the narrow-workflow implementation and audit record. Current goals,
+progress, contract discrepancies, and next work are maintained in [PLANS.md](../PLANS.md).
+This record does not establish runtime acceptance for a later commit.
+
 ## Verdict
 
 ```text
@@ -67,9 +71,5 @@ No earlier phase report or different commit can substitute for that result.
 
 ## Next stage
 
-After the Windows gate is green:
-
-1. validate the development and unpacked application against one actual Ollama or LM Studio endpoint;
-2. validate one disposable remote HTTPS provider key;
-3. profile and split one domain out of `desktopService.ts` without changing behavior;
-4. run the native Korean IME manual matrix before author-facing handoff.
+The current execution order and completion conditions are maintained in [PLANS.md](../PLANS.md).
+Do not infer a new product phase, structural refactor, or aggregate PASS from this implementation record.

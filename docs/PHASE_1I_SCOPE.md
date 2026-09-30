@@ -15,6 +15,9 @@ Distribution boundary: PRIVATE LOCAL ONLY
 
 Phase 1I keeps AI optional and user-owned. Madi does not operate a proxy, account service, shared key, or background manuscript upload.
 
+Current execution priorities and verification status are maintained in [PLANS.md](../PLANS.md).
+The mutation contract follows [AGENTS.md](../AGENTS.md): exact same-block selection only.
+
 ## Product rules
 
 1. The application remains fully usable without an AI provider.
@@ -22,7 +25,7 @@ Phase 1I keeps AI optional and user-owned. Madi does not operate a proxy, accoun
 3. API keys are stored outside `.madi` using Electron `safeStorage` and are never returned to the renderer.
 4. Every request is bound to an explicitly confirmed scope hash.
 5. Provider output enters a non-canonical proposal buffer.
-6. Canonical mutation requires a second author action and a fresh editor identity/range check.
+6. Canonical mutation requires a second author action, an exact same-block selection range, and a fresh editor identity/range check.
 7. Errors, logs, reports, and evidence exclude manuscript text, provider response bodies, prompts, and credentials.
 
 ## Supported authoring workflows
@@ -33,8 +36,12 @@ Phase 1I keeps AI optional and user-owned. Madi does not operate a proxy, accoun
 - explicit provider, model, destination host, and character-count confirmation
 - request cancellation
 - original/proposal side-by-side review
-- copy-only output for non-replacement tasks
-- safe direct apply only when the proposal still maps to one unique same-block range
+- proposal review and copy
+- canonical application through the exact-selection workflow
+
+The current general-assistant implementation also contains a unique-text application route without
+exact selection coordinates. That static discrepancy is recorded in [PLANS.md](../PLANS.md);
+it is not an expansion of the approved mutation contract.
 
 ### Exact selection rewrite
 
@@ -58,12 +65,6 @@ Multi-block or multi-document AI mutation may return only as a complete vertical
 
 ## Remaining validation
 
-```text
-Windows aggregate verification for the cleanup commit: REQUIRED
-Development Electron smoke: REQUIRED
-Fresh unpacked Electron smoke: REQUIRED
-Ollama or LM Studio manual validation: PENDING
-Disposable remote HTTPS provider validation: PENDING
-Windows native Korean IME matrix: PENDING
-Typie distribution license decision: PENDING
-```
+Windows aggregate, development/fresh-unpacked runtime, actual provider, and native IME validation
+are tracked in [PLANS.md](../PLANS.md). Typie development permission is
+[owner-confirmed](TYPIE_LICENSE_STATUS.md); each release must remain within the external grant terms.

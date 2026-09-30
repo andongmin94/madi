@@ -7,6 +7,13 @@
 - Keep commits small, coherent, and independently reviewable.
 - Never rewrite, squash, amend, or reset published history unless the repository owner explicitly asks.
 
+## Planning policy
+
+- Read `PLANS.md` before starting product work. It is the single current execution plan for goals, progress, next work, and completion conditions.
+- Keep current priorities and work status in `PLANS.md`; do not create competing phase roadmaps or duplicate next-work lists.
+- Use scope, architecture, format, and ADR documents for detailed contracts. Use result, performance, and audit documents for evidence tied to their stated revision and environment.
+- Update the plan from actual changes and verification. User instructions and this file take precedence over the plan.
+
 ## Engineering policy
 
 - Do not preserve obsolete paths. Remove superseded code instead of adding compatibility layers, fallbacks, or migrations that are not required by the current `.madi` format contract.

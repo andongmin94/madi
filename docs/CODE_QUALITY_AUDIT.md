@@ -1,5 +1,9 @@
 # Code quality audit
 
+This document records the audit and transport-hardening observations at their stated stages.
+Current work order, open contract checks, and verification status are maintained in
+[PLANS.md](../PLANS.md). Historical audit conclusions are not a later commit's runtime acceptance.
+
 ## Verdict
 
 The repository is not “perfect,” but the core product architecture is sound. The largest immediate quality problem was not the canonical data model or export pipeline; it was an unfinished Phase 1I experiment that added a second AI review surface, structured multi-block selection mapping, duplicate planning code, and tests for a mutation path that remained disabled in production.
@@ -68,28 +72,19 @@ Fresh packaged/runtime gates: NOT RUN IN THIS ENVIRONMENT
 Technical/release GO change from these edits: NONE
 ```
 
-The transport changes reduce overlapping-process and post-completion race risk, but they do not substitute for the required exact-commit Windows verification gate below.
+The transport changes reduce overlapping-process and post-completion race risk, but they do not substitute for the required exact-commit Windows verification gate in [AGENTS.md](../AGENTS.md).
 
 ## Remaining hotspots
 
 These are real maintainability risks, but they are not safe to split in the same cleanup commit:
 
-1. `apps/desktop/src/main/desktopService.ts` is a very large orchestration module. The next refactor should extract one existing domain at a time, beginning with export orchestration or snapshot operations, while keeping each intermediate commit green.
-2. `apps/desktop/src/renderer/App.tsx` owns many product workspaces and should be decomposed only after the main-process boundary is stable.
-3. `README.md` has grown into a history and result archive. Stable user documentation should remain in README; phase evidence should remain in `docs/`.
-4. Real packaged validation against Ollama or LM Studio and one disposable HTTPS provider is still manual.
+1. `apps/desktop/src/main/desktopService.ts` is a very large orchestration module. This is a maintainability observation, not authorization for the next refactor.
+2. `apps/desktop/src/renderer/App.tsx` owns many product workspaces. Structural changes require a verified base and a defined scope.
+3. The README history and result duplication identified in this audit is consolidated by the current `PLANS.md` entry point; phase evidence remains in `docs/`.
+4. Real packaged validation against Ollama or LM Studio and one disposable HTTPS provider requires an actual endpoint and user-owned credentials/consent.
 
 ## Required gate before the next structural refactor
 
-```powershell
-pnpm install --frozen-lockfile
-pnpm verify
-pnpm package:unpacked
-pnpm check:repository
-pnpm format:check
-git diff --check
-git status --short
-git submodule status --recursive
-```
-
-Only the exact commit that passes this gate may be used as the base for the next refactor or user acceptance test.
+The mandatory commands are defined in [AGENTS.md](../AGENTS.md), and their current work order and
+completion conditions are maintained in [PLANS.md](../PLANS.md). Only the exact commit that passes
+the required Windows gate may be used as the base for a structural refactor or user acceptance test.

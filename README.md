@@ -1,75 +1,17 @@
 # madi
 
 `madi`는 한국어 장편소설 작가를 위한 local-first Windows desktop 저작도구다.
-현재 작업트리는 Phase 1G EPUB Export & Validation 위에 Phase 1H HWPX Export와 선택적
-local HWP bridge를 구현한다.
+하나의 `.madi` 파일에 원고, 작품 구조, 설정과 플롯을 저장하고, Reader Lab에서 검토한
+원고를 EPUB·HWPX로 출력한다. 사용자 소유 제공자를 사용하는 선택형 AI 보조도 구현돼 있다.
+
+**현재 목표·진척·작업 순서·완료 조건은 [PLANS.md](PLANS.md)에서 관리한다.**
+작업 규칙은 [AGENTS.md](AGENTS.md), 상세 계약과 과거 실행 근거는 `docs/`를 따른다.
+현재 구현이 존재한다는 사실과 현재 커밋의 Windows 검증 완료는 구분한다.
+
 저장된 Typie 원고는 Madi 소유의 engine-independent Publication IR로 파생되고, Reader
-Lab, EPUB exporter와 HWPX exporter가 같은 IR을 소비한다. Plot Canvas의 canonical
-planning data, Publication IR의 파생 의미 모델과 generated EPUB/HWPX/HWP artifact는 서로
-다른 소유권 경계를 유지한다.
-
-```text
-Phase 0.5 baseline: CONDITIONAL TECHNICAL GO
-Private local Phase 1A development: AUTHORIZED
-Phase 1A technical verdict: TECHNICAL GO — PRIVATE LOCAL
-Phase 1B implementation: COMPLETE IN WORKING TREE
-Phase 1B focused verification: PASS
-Phase 1B integration/development/packaged Electron acceptance: PASS
-Phase 1B final pnpm verify gate: PASS
-Phase 1B verdict: TECHNICAL GO — PRIVATE LOCAL
-Phase 1C implementation: COMPLETE IN WORKING TREE
-Phase 1C focused/integration/development/packaged Electron acceptance: PASS
-Phase 1C final pnpm verify gate: PASS
-Phase 1C verdict: TECHNICAL GO — PRIVATE LOCAL
-Phase 1D implementation: COMPLETE IN WORKING TREE
-Phase 1D focused read-model/renderer verification: PASS
-Phase 1D development/unpacked Electron hard gates: PASS
-Phase 1D verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
-Phase 1E implementation: COMPLETE
-Phase 1E development/packaged Electron and process-reopen gates: PASS
-Phase 1E final pnpm verify gate: PASS
-Phase 1E verdict: TECHNICAL GO — PRIVATE LOCAL
-Phase 1F implementation: COMPLETE
-Phase 1F development/fresh packaged Electron Reader gates: PASS
-Phase 1F final pnpm verify gate: PASS
-Phase 1F verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
-Phase 1F Reader visible-setting interaction condition: RESOLVED — packaged median 184 ms
-Phase 1G repository implementation: COMPLETE
-Phase 1G development/fresh-unpacked EPUB actual: PASS
-Phase 1G final verdict: CONDITIONAL TECHNICAL GO — RUNTIME EPUBCHECK PACKAGING PENDING
-Phase 1G boundary: PRIVATE LOCAL ONLY
-Runtime EPUBCheck/JRE: DEFERRED TO PRE-RELEASE DISTRIBUTION HARDENING
-Phase 1H repository implementation: IN WORKING TREE
-Phase 1H final verdict: WITHHELD
-HWPX development/fresh-unpacked actual: PENDING
-HWP Automation: MANUAL VALIDATION PENDING — SECURITY_MODULE_REQUIRED
-Windows native Korean IME: MANUAL VALIDATION PENDING
-Typie license: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
-Hancom Automation license/redistribution: HUMAN DECISION REQUIRED BEFORE DISTRIBUTION
-Public/paid/customer distribution: NOT AUTHORIZED
-```
-
-World Graph는 기존 Story Bible의 canonical entity/relation을 Rust가 revision-tagged
-DTO로 파생하고 전체 또는 특정 entity 중심 1~3 hop으로 보여주는 읽기 전용 분석
-화면이다. Plot Canvas는 작가가 node/edge/group과 배치를 직접 만드는 canonical planning
-data다. Canvas edge는 Story Bible relation을 만들지 않는다. Reader Lab은 canonical
-Typie snapshot을 Publication IR로 compile해 read-only Shadow DOM preview에 표시하고
-Story Bible/Canvas/Graph를 출판 원고로 섞지 않는다. EPUB/HWPX exporter도 Typie/Reader
-DOM을 읽지 않고 Publication IR만 소비한다. Phase 1H 경계와 현재 판정은
-[`docs/PHASE_1H_SCOPE.md`](docs/PHASE_1H_SCOPE.md)와
-[`docs/PHASE_1H_RESULT.md`](docs/PHASE_1H_RESULT.md)를 따른다. Phase 1G 경계와 실행 결과는
-[`docs/PHASE_1G_SCOPE.md`](docs/PHASE_1G_SCOPE.md)와
-[`docs/PHASE_1G_RESULT.md`](docs/PHASE_1G_RESULT.md)를 따른다. Phase 1F 경계와 실제 검증은
-[`docs/PHASE_1F_SCOPE.md`](docs/PHASE_1F_SCOPE.md)와
-[`docs/PHASE_1F_RESULT.md`](docs/PHASE_1F_RESULT.md)를 따른다. Phase 1E의 근거는
-[`docs/PHASE_1E_SCOPE.md`](docs/PHASE_1E_SCOPE.md)와
-[`docs/PHASE_1E_RESULT.md`](docs/PHASE_1E_RESULT.md)를 따른다. World Graph의 기존 근거는
-[`docs/PHASE_1D_RESULT.md`](docs/PHASE_1D_RESULT.md)와
-[`docs/WORLD_GRAPH_PERFORMANCE.md`](docs/WORLD_GRAPH_PERFORMANCE.md)를 따른다. Phase 1C의
-확정 결과는 [`docs/PHASE_1C_RESULT.md`](docs/PHASE_1C_RESULT.md), Phase 1B의 snapshot
-기반 project-wide rollback 결정은
-[`docs/PHASE_1B_RESULT.md`](docs/PHASE_1B_RESULT.md)와
-[`ADR-0002`](docs/decisions/ADR-0002-project-wide-undo-via-snapshots.md)에 남아 있다.
+Lab과 EPUB·HWPX exporter가 같은 IR을 소비한다. World Graph는 Story Bible의 읽기 전용
+파생 화면이고, Plot Canvas는 작가가 만든 독립 planning data다. Canvas 연결선은 Story
+Bible 관계를 만들지 않는다. 생성된 EPUB·HWPX·HWP와 report는 canonical 원고에 섞지 않는다.
 
 ## 현재 할 수 있는 일
 
@@ -650,7 +592,6 @@ pnpm run test:desktop
 pnpm run test:phase1a
 pnpm run test:phase1b
 pnpm run test:phase1c
-pnpm run test:phase1d
 pnpm run test:integration
 pnpm run fixture:phase1f-reader
 
@@ -692,63 +633,15 @@ output/madi-win32-x64/resources/licenses/
 들어간다. 한컴 binary와 Automation security module은 포함하거나 재배포하지 않는다. 이
 폴더는 installer, code signing 또는 자동 update가 아니다.
 
-### 현재 검증 상태
+### 검증 결과 확인
 
-현재 승인된 기술 판정은 다음과 같다.
+현재 커밋의 검증 상태와 남은 조건은 [개발 계획](PLANS.md)을 따른다. 과거 단계의 PASS와
+성능 수치는 당시 코드·환경에 한정하며, 새 커밋의 실행 결과로 재사용하지 않는다.
 
-```text
-Phase 1D verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
-Phase 1E verdict: TECHNICAL GO — PRIVATE LOCAL
-Phase 1F verdict: CONDITIONAL TECHNICAL GO — PRIVATE LOCAL
-Phase 1G verdict: CONDITIONAL TECHNICAL GO — RUNTIME EPUBCHECK PACKAGING PENDING
-Phase 1G boundary: PRIVATE LOCAL ONLY
-Phase 1F Reader visible-setting interaction condition: RESOLVED — packaged median 184 ms
-Runtime EPUBCheck/JRE: DEFERRED TO PRE-RELEASE DISTRIBUTION HARDENING
-Phase 1H verdict: WITHHELD
-HWPX actual: PENDING
-HWP Automation: MANUAL VALIDATION PENDING — SECURITY_MODULE_REQUIRED
-```
-
-Phase 1H의 repository/static evidence가 최종 development/fresh-unpacked actual을 대신하지
-않는다. HWPX 일반·장편 export/reopen/coverage/determinism과 fault matrix가 모두 끝나기 전에는
-Phase 1H `PASS` 또는 다음 Phase 진입을 선언하지 않는다. 현재 증거 경계는
-[`docs/PHASE_1H_RESULT.md`](docs/PHASE_1H_RESULT.md)를 따른다.
-
-Phase 1D World Graph의 Playwright search focus/selection 누적 clock과 Phase 1E Plot Canvas
-cold `Ctrl+K` 약 0.52초·autosave 누적값은 기록을 유지하되
-`NON-BLOCKING HARNESS-LEVEL OBSERVATION`으로 재분류한다. 내부 처리와 locator/poll/paint/
-debounce가 다른 경계이므로 실제 사용 중 새 오류나 명백한 지연이 발견되기 전에는 다음
-단계를 차단하거나 해당 최적화만 반복하지 않는다.
-
-Node.js `26.3.1`/pnpm `11.9.0`의 최종 Phase 1G `pnpm verify`는 `2,969.3 s`, exit `0`으로
-끝났다. Desktop 전체 `58 files / 404 tests`, Rust Publication/EPUB/core, exact EPUBCheck
-5.3.0, Typie probe, Phase 1A–1F regression, development/fresh-unpacked Electron과 package/
-lazy-bundle gate를 통과했다. 이어 독립 실행한 `pnpm package:unpacked` `6.826 s`,
-`pnpm test:electron` `1,955.6 s`, `pnpm test:package` `740.5 s`, `pnpm test:bundle`
-`1.973 s`(`1 file / 3 tests`), `pnpm check:repository` `0.642 s`, `pnpm format:check`
-`0.681 s`(`200 files`)도 모두 exit `0`이다.
-
-최종 Phase 1F-named Reader actual은 Phase 1G interaction 최적화가 반영된 같은 worktree를
-측정했다. Fresh-unpacked 장편 setting visible은 5회 median/maximum
-`184.10/200.46 ms`, first visible은 `2,259.50/2,345.10 ms`로 각각 약 250ms/3초 목표를
-통과했다. Full measurement+layout diagnostics는 반복 분포가 아닌 단일 관측이며 packaged
-`7,827.55 ms`였다. Stale generation drop은 별도 focused test에서 검증했다. 자세한 경계와
-raw evidence identity는 [`docs/READER_LAB_PERFORMANCE.md`](docs/READER_LAB_PERFORMANCE.md)에
-기록한다.
-
-Phase 1G의 development/fresh-unpacked Electron actual은 모두 `status=PASS`다. 675,000자,
-2,411 block 장편의 exporter total 5회 median/maximum은 development `493/532 ms`, fresh
-unpacked `57/58 ms`였다. Fresh unpacked의 15초 잠정 hard gate는 5/5회 통과했고 source
-section/block/Unicode character loss, rejected/fallback block과 외부 runtime request는 모두
-0이었다. Development의 end-to-end wall `52,289.60/53,407.21 ms`는 debug core compile을
-포함하므로 exporter total이나 packaged 제품 성능으로 재해석하지 않는다.
-
-EPUBCheck 5.3.0은 actual이 보존한 3.3 EPUB를 build/test harness에서 fatal/error/warning/info
-0으로 검증했다. 그러나 unpacked app에는 EPUBCheck/JRE가 없고 internal validator만 있으므로
-최종 판정은 **CONDITIONAL TECHNICAL GO — RUNTIME EPUBCHECK PACKAGING PENDING**이다. Evidence
-파일의 exact hash, package binary hash와 전체 수치는
-[`docs/PHASE_1G_RESULT.md`](docs/PHASE_1G_RESULT.md)와
-[`docs/EPUB_EXPORT_PERFORMANCE.md`](docs/EPUB_EXPORT_PERFORMANCE.md)에 고정한다.
+HWPX 실행 근거는 [Phase 1H 결과](docs/PHASE_1H_RESULT.md), EPUB 실행 근거는
+[Phase 1G 결과](docs/PHASE_1G_RESULT.md)에 기록한다. Reader와 EPUB의 기존 측정 기록은
+[Reader Lab 성능](docs/READER_LAB_PERFORMANCE.md),
+[EPUB export 성능](docs/EPUB_EXPORT_PERFORMANCE.md)에서 확인한다.
 
 ## Rust CLI와 JSON-RPC
 
@@ -817,65 +710,31 @@ plain-text 긴급 복구 예:
 `--output`은 새 file만 만들고 기존 file을 덮어쓰지 않는다. terminal에 원고를
 출력하지 않으려면 output 경로를 사용한다.
 
-## 수동 IME와 배포 금지 경계
+## 수동 검증과 배포 조건
 
-Windows native 한국어 IME 15항목은 계속
-`MANUAL VALIDATION PENDING (15 / 15 NOT TESTED)`이다. Vitest, Playwright와
-programmatic 한글 입력은 이 상태를 `PASS`로 바꾸지 않는다. 실제 절차는
-[`docs/MANUAL_KOREAN_IME_CHECKLIST.md`](docs/MANUAL_KOREAN_IME_CHECKLIST.md)를
-따른다.
+Windows native 한국어 IME는 사람이 [체크리스트](docs/MANUAL_KOREAN_IME_CHECKLIST.md)를
+수행해야 한다. Vitest, Playwright와 programmatic 한글 입력은 수동 PASS를 대신하지 않는다.
 
-Typie runtime의 `AGPL-3.0-only` 표기와 현재 결합 구조 때문에 배포 정책은
-`HUMAN DECISION REQUIRED BEFORE DISTRIBUTION`이다. 현재 허용 범위는 비공개 로컬
-개발과 제한된 내부 기술검증이다. 다음은 허용되지 않는다.
+Typie 사용 permission은 [owner-confirmed](docs/TYPIE_LICENSE_STATUS.md)이며 개발 차단
+사유는 해소됐다. 각 release의 범위는 저장소 밖의 실제 grant 조건을 확인해야 한다.
+과거 라이선스 분석 문서는 당시의 기록이며 현재 권한을 새로 해석하는 근거로 쓰지 않는다.
 
-- public download
-- 유료 또는 고객 pilot
-- installer 외부 전달
-- app store/package registry 배포
-- proprietary production 배포의 승인 근거로 사용
+한컴 Automation·실제 HWP 변환, runtime EPUBCheck/JRE, installer·signing·license 검증과
+외부 배포 조건은 [개발 계획](PLANS.md)에서 별도로 관리한다. 비공개 로컬 기술검증 성공을
+public download, 유료·고객 전달 또는 installer 배포 승인으로 취급하지 않는다.
 
-또한 `pnpm-lock.yaml`/`Cargo.lock` 전체 transitive license corpus는 아직 완결되지 않았고
-unpacked executable은 Authenticode unsigned다. 이는 PRIVATE LOCAL 검증은 막지 않지만
-Typie 결정과 별도로 모든 외부 배포를 계속 차단한다.
+## 개발 계획
 
-AGPL 호환 공개, Typie 권리자와 별도 license 또는 production editor 독립 구현 중
-하나를 제품 책임자와 법률 전문가가 서면 결정해야 이 경계를 바꿀 수 있다.
-[`docs/LICENSE_DECISION_REQUIRED.md`](docs/LICENSE_DECISION_REQUIRED.md)는 법률
-자문이 아니라 결정 입력 문서다.
-
-## 후속 단계로 미룬 항목
-
-다음은 Phase 1H 구현으로 해소한 항목이 아니라 후속 지원·배포·hardening gate로 유지한다.
-
-- Windows native 한국어 IME 수동검증
-- installer/installed-state lifecycle
-- 장편 Reader setting visible update 약 0.54초의 measurement/paint 경계 profiling
-- 장시간·DPI·다중 monitor 성능과 memory 기준
-- 저장 중 crash/power-loss fault injection
-- screen reader·keyboard-only 접근성 및 native 후보창 위치
-- 실제 후보 Typie commit upgrade rehearsal
-- remote recursive clean clone: `DEFERRED TO PRE-RELEASE`
-- Runtime EPUBCheck/JRE packaging과 security-update/license owner 결정
-- HWPX development/fresh-unpacked 실제 한컴 open/re-save와 deterministic output gate
-- 한컴 Automation file-path security module의 합법적 설치·등록·운영 절차 결정
-- HWPX → HWP SaveAs, HWP reopen, 반복 conversion/cleanup 수동·actual 검증
-- Hancom Automation 사용권과 한컴 binary/security module 비재배포 경계의 법무 확인
-- EPUB 3.4 final Recommendation/validator 지원 시 새 profile migration
-- Publication IR v1에 authored manuscript image block/asset ownership을 추가하는 별도 결정
-- exact search 성능 benchmark/index 전략
-- named snapshot retention, compression과 quota
-- 장면별 상세 diff와 부분 restore
-- 500/2,000을 넘는 graph 규모, 비동기/worker layout과 layout 중 취소
-- graph 관계 편집, 시간축과 인물별 지식 시점 필터
-- 형태소/fuzzy mention 탐색과 자동 relation 추론
-- JSON Canvas color preset/hex만을 요구하는 선택적 strict interoperability mode
-- Canvas 세부 node-by-node snapshot diff와 persistent Undo history
-- Canvas edge의 명시적 Story Bible relation 승격 workflow
-- World Graph/Plot Canvas 누적 harness clock은 실제 제품 지연 재현 시에만 재최적화
-- Entity rename→delete→broken→relink의 한 실제 Electron 연속 workflow
+다음 작업과 보류 조건은 [PLANS.md](PLANS.md)에 모은다. 단계별 범위 문서는 상세 계약,
+결과·성능 문서는 해당 시점의 실행 근거로 보존한다. README에 별도 후속 작업 목록을
+유지하지 않는다.
 
 ## 문서
+
+- [현재 개발 계획](PLANS.md)
+- [Phase 1I 범위](docs/PHASE_1I_SCOPE.md)
+- [Phase 1I 결과](docs/PHASE_1I_RESULT.md)
+- [Typie permission 현황](docs/TYPIE_LICENSE_STATUS.md)
 
 - [Phase 1H 범위](docs/PHASE_1H_SCOPE.md)
 - [Phase 1H 저장소/actual 결과](docs/PHASE_1H_RESULT.md)

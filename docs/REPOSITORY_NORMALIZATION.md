@@ -8,13 +8,14 @@ The obsolete `master` branch and temporary automation/probe branches are not pro
 
 ## Continuous verification
 
-The repository keeps one lightweight GitHub Actions workflow:
+The repository keeps two complementary, read-only GitHub Actions workflows:
 
 ```text
 .github/workflows/quality.yml
+.github/workflows/windows-gate.yml
 ```
 
-It runs on pushes to `main` and may also be dispatched manually. The workflow is read-only with respect to repository contents. It checks out the exact commit and pinned Typie submodule, activates the pinned Node/pnpm toolchain, installs the frozen workspace without runtime postinstall scripts, then runs:
+Both run on pushes to `main` and may also be dispatched manually. `quality.yml` checks out the exact commit and pinned Typie submodule, activates the pinned Node/pnpm toolchain, installs the frozen workspace without runtime postinstall scripts, then runs:
 
 ```text
 pnpm run check:toolchain
@@ -29,22 +30,20 @@ The focused Vitest set covers the local-core restart barrier, atomic-output shut
 
 This cross-platform gate is deliberately smaller than the Windows product-verification contract. A green `quality.yml` result means the repository/static contracts, desktop TypeScript typecheck, and the listed focused tests passed on that GitHub-hosted Linux runner. It does **not** prove Windows native IME behavior, Electron runtime or packaged behavior, HWPX/HWP actuals, Hancom Automation, runtime EPUBCheck packaging, or the full root `pnpm verify` path.
 
-The former `windows-private-verify.yml` workflow was intentionally removed. Do not recreate a self-modifying or repository-writing workflow merely to obtain a green status. Full Windows verification remains an exact-commit product gate and must be run in an approved Windows environment with the pinned toolchain and required local validation dependencies.
+`windows-gate.yml` provisions pinned Node/pnpm, Rust, .NET SDK, and the x86 .NET runtime on Windows,
+then invokes the full verification and unpacked-package path. Its presence is implementation, not a
+recorded PASS. Provisioning of the required EPUBCheck/JRE archives and preservation of execution
+evidence remain tracked in [PLANS.md](../PLANS.md).
+
+The former `windows-private-verify.yml` workflow was intentionally removed. Do not recreate a self-modifying or repository-writing workflow merely to obtain a green status. Full Windows verification remains an exact-commit product gate and must be run in a Windows environment with the pinned toolchain and required local validation dependencies.
 
 Self-modifying workflows, patch archives, bootstrap scripts, reconciliation scripts, and force-push automation are prohibited from the product tree.
 
 ## Local/full verification commands
 
-```powershell
-pnpm install --frozen-lockfile
-pnpm verify
-pnpm package:unpacked
-pnpm check:repository
-pnpm format:check
-git diff --check
-git status --short
-git submodule status --recursive
-```
+Mandatory commands are defined in [AGENTS.md](../AGENTS.md). Current status, prerequisites, work
+order, and completion conditions are maintained in [PLANS.md](../PLANS.md). Record Git status and
+recursive submodule status alongside the verification candidate.
 
 A release or user-validation candidate must identify one exact `main` commit SHA and one matching unpacked build. Results from a different commit are not transferable. The lightweight GitHub quality gate and the full Windows gate are complementary; neither should be reported as the other.
 

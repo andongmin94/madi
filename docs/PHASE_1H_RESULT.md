@@ -3,6 +3,10 @@
 기준일: 2026-08-13  
 문서 상태: static implementation record; final actual pending
 
+이 문서는 아래 기준일의 구현·실행 근거를 보존한다. 현행 목표와 작업 순서는
+[PLANS.md](../PLANS.md)를 따른다. 후속 Phase 1I 구현이나 계획 정리는 이 문서의
+`WITHHELD`를 해소하는 실행 근거가 아니다.
+
 ## 1. Phase 1H 최종 판정
 
 ```text
@@ -249,19 +253,16 @@ Automated UTF-8/HWPX output은 Windows native IME PASS 근거가 아니다. 한�
 - Executable signing/installer/auto-update/distribution license corpus 미완료
 - Runtime EPUBCheck/JRE bundle은 distribution hardening으로 deferred
 
-## 22. Phase 1I 진입 가능 여부
+## 22. 당시 Phase 1I 진입 판단
 
-현재 판정은 `WITHHELD`이므로 Phase 1I 진입을 선언하지 않는다. HWPX actual, general/
+이 문서 작성 당시 판정은 `WITHHELD`였으므로 Phase 1I 진입을 선언하지 않았다. HWPX actual, general/
 long-form coverage, development/fresh-unpacked Electron과 최종 command가 모두 PASS하면
-private-local Phase 1I 기술 작업은 진행할 수 있다. Distribution 진입은 Typie/Hancom/
-runtime packaging/signing/license hardening과 별도다.
+private-local Phase 1I 기술 작업을 진행한다는 것이 당시 조건이었다. 현재 코드에는 좁은
+Phase 1I 구현이 존재하지만 Phase 1H actual 판정은 계속 보류한다. 현행 개발·배포 경계는
+[AGENTS.md](../AGENTS.md)와 [개발 계획](../PLANS.md)을 따른다.
 
-## 23. 정확한 다음 추천 작업
+## 23. 현행 계획 참조
 
-1. Exporter/core/desktop/C# full focused suite와 typecheck를 안정화한다.
-2. General 및 675,000자 development Electron actual을 실행한다.
-3. Fresh `pnpm package:unpacked` 후 같은 workflow, ZIP/XML reopen과 no-network를 실행한다.
-4. 7개 required pnpm command를 final docs diff 위에서 독립 실행한다.
-5. Evidence/hash/timing/test inventory를 이 result/performance 문서에 고정한다.
-6. 승인된 security module/license 조건이 마련된 별도 환경에서 Hancom HWP conversion/reopen을
-   검증한다. 그 전에는 HWP를 `MANUAL VALIDATION PENDING`으로 유지한다.
+다음 실행 작업, 필수 command와 HWP 별도 조건은 [PLANS.md](../PLANS.md)에서 관리한다.
+새 실행 근거가 확보되면 해당 commit·환경·hash·결과를 이 문서와 성능 문서에 기록한다.
+계획 목록 정리는 실행 성공이나 최종 판정 변경을 뜻하지 않는다.
