@@ -327,3 +327,58 @@ UOI_IO=false 2,115회·입력 Default 관측·active job 0·desktop 제거를 �
 `.tools/verification/phase1h-development-55d1d45-run1/`에 보존했다.
 이는 해당 development 실행의 성공이며 최종 full verification·fresh-unpacked H actual은
 아직 대기 중이다. 그 실행들이 완료되기 전까지 최종 Phase 1H 판정은 **WITHHELD**다.
+
+## 25. 2026-09-30 후속 full Windows 실행과 저장 오류 재현
+
+`b21827ae0d6ccd1ac5995fa160306f17583a3a5b`의 frozen install은 성공했다.
+같은 clean source의 `pnpm verify` run1은 4021.131초 후 exit1로 종료했다.
+Desktop 103파일·678테스트, native·CLI·build와 development basic/D/E/F/G/H는 통과했지만,
+`pretest:package`의 Phase E fixture 생성 중 `create_tree_node -32000`으로 실패했다.
+따라서 새 unpacked package와 packaged actual은 미도달이며 전체 성공으로 기록하지 않는다.
+
+이 실행의 H development는 장편 5회 모두 450 sections, 2411 blocks
+(1961 exported + 450 fallback + 0 omission + 0 rejected), 675000자를 보존했다.
+VALID fatal/error0·warning451을 유지하며 ZIP/XML reopen과 byte/logical 결정성은 통과했다.
+Exporter median/max는 755/768ms, IR compile은 61677.31/62004.99ms,
+click부터 output read/reopen까지 wall은 63462.74/63794.01ms다. Development에서는
+exporter hard target을 적용하지 않았으므로 fresh-unpacked 15초 target 성공으로 이전하지 않는다.
+Renderer HTTP/WebSocket과 owned TCP non-loopback·경계 위반은 0이었다.
+세 app의 정상 종료·native exit·wrapper 정리 진단은 0, 잔여 소유 프로세스도 0이었다.
+Hancom 실제 변환·reopen은 실행하지 않았고 기존 비활성 조건을 유지한다.
+
+Full host는 시작·끝 같은 source SHA와 tracked clean을 기록했다. Input desktop은
+7839/7839 samples에서 Default, owned desktop은 모든 sample에서 비활성이었다.
+Job2082의 cleanup active0, process/thread/job handle과 desktop 정리를 확인했다.
+Evidence는 `.tools/verification/full-verify-b21827a-run1/`에 보관했다.
+H JSON SHA-256은 `9fa4a2db9bdaa6498d146978982ddeab9e270954bd31721d869d8581b5fa1786`다.
+
+원본 generator를 유지한 별도 진단에서도 `create_entity -32000`을 재현했다.
+보존한 synthetic DB는 revision107·entity53으로 실패 항목이 없었고 mutation은 미커밋이었다.
+기존 CLI의 공통 백업 경로 120회는 성공했으므로 이를 exact entity 재현으로 표현하지 않는다.
+Pinned production rlib에 연결한 ignored native dispatch 진단에서는 같은 프로세스의 연속 생성 중
+I/O·Windows native code32를 확인했다. 실패 요청 expected revision241과 실패 후 revision241은
+같았으며, 진단 acceptance는 false다. 구체 fs 단계와 최초 full 실패의 인과는 아직 확정하지 않는다.
+이 진단은 H actual 판정의 근거가 아니며 최종 판정은 계속 **WITHHELD**다.
+
+## 26. 2026-10-01 백업 공유 위반 수정과 회귀 검증
+
+`4463d7a6ee220a667a630e7d61cdcfe49f12680d`는 `create_consistent_backup` 내부의
+sync·remove·rename에만 Windows I/O32/33 재시도를 적용한다. 간격은 20ms, 파일 작업당
+재시도 budget은 500ms이며 sleep 후 deadline을 다시 확인해 만료 뒤 새 시도를 시작하지 않는다.
+OS syscall 자체 실행 시간의 hard 상한은 뜻하지 않는다. SQLite VACUUM·전역 sync·원고 mutation
+전체의 재시도, 새 설정·의존성은 추가하지 않았고 원래 회전·rollback·오류 반환은 유지한다.
+
+이 수정 worktree에서 실제 Windows `share_mode(0)` previous-backup 잠금 회귀를 실행했다.
+Baseline은 잠금 해제 후 저장 1건이 I/O32로 실패했고, 수정 후 저장 roundtrip 7개는 모두 통과했다.
+성공 시 revision이 한 번 증가하고 원고·snapshot·두 백업 revision을 확인했다.
+영구 previous-backup 잠금 시 원고·revision과 두 백업의 byte-exact 불변, 잠금 해제 뒤
+같은 expected revision으로 저장 성공도 확인했다. 잠금 해제 검사는 150ms timer를 사용하며
+baseline 실제 RED를 확보했지만 모든 scheduler에서 최초 공유 충돌이 발생함을 보장하는 hook은 아니다.
+
+최종 오류 분류 unit은 rustc object 파일 삭제 I/O32로 두 번 컴파일 실패해 테스트에 미도달했다.
+별도 단일 명령의 `CARGO_INCREMENTAL=0`에서 최종 코드의 2테스트가 모두 통과했다.
+다른 I/O·SQLite 즉시 반환과 code33 회복을 확인했으며 code33은 합성 unit 증거다.
+실제 파일 잠금 증거는 code32다. 증분 cache 제어는 [Cargo 공식 환경 변수](https://doc.rust-lang.org/cargo/reference/environment-variables.html)를
+따르며 compile 실패의 근본 원인을 이 성공으로 확정하지 않는다. 시스템 보안 설정은 변경하지 않았다.
+Logs·환경 receipt는 `.tools/verification/backup-sharing-b21827a-regression-run1/`에 보관했다.
+Repository·format·diff 검사는 통과했지만 새로운 full Windows·fresh-unpacked 실제 판정은 아직 대기 중이다.
