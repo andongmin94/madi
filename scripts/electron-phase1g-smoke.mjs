@@ -157,6 +157,7 @@ function summarizeError(error) {
     "TimeoutError",
   ]);
   const allowedHarnessFunctions = new Set([
+    "assertNativeSidecarsExitedBeforeWrapperCleanup",
     "assertSecurity",
     "closeGlobalPanel",
     "closeWindowCleanly",
@@ -1728,6 +1729,19 @@ function assertProcessDiagnosticDelta(delta, code) {
   );
 }
 
+function assertProductProcessDiagnosticDelta(delta, code) {
+  assertProcessDiagnosticDelta(delta, `${code}-shape`);
+  verify(
+    delta.unexpectedDiagnosticCount === 0 &&
+      delta.mainProcessDiagnosticCount === 0 &&
+      delta.childStderrDiagnosticCount === 0 &&
+      !delta.privateContentDetected &&
+      !delta.rawPathOrUrlDetected,
+    code,
+    delta,
+  );
+}
+
 async function launchElectronWithProcessCapture(options, processDiagnostics) {
   const originalSpawn = childProcessModule.spawn;
   let capturedLaunchCount = 0;
@@ -1801,11 +1815,66 @@ function powershellProcessFilter() {
     .join(" OR ");
 }
 
-function captureRelevantProcessSnapshot() {
+function powershellProcessHelpers() {
+  return [
+    String.raw`function Get-MadiPhase1gCreationDate([object]$phase1gProcess) { if ($null -eq $phase1gProcess.CreationDate) { return '' }; return $phase1gProcess.CreationDate.ToUniversalTime().Ticks.ToString([System.Globalization.CultureInfo]::InvariantCulture) }`,
+  ];
+}
+
+function processInstanceKey(pid, creationDate) {
+  return `${pid}:${creationDate}`;
+}
+
+function parseProcessSnapshot(parsed, extraIds = []) {
+  return (Array.isArray(parsed) ? parsed : [parsed]).map((row) => {
+    const pid = safeInteger(row?.pid, 0xffff_ffff);
+    const ppid = safeInteger(row?.ppid, 0xffff_ffff);
+    const role =
+      processRole(row?.name) ?? (extraIds.includes(pid) ? "QUERY_TARGET" : null);
+    const creationDate =
+      typeof row?.creationDate === "string" && /^\d{1,20}$/u.test(row.creationDate)
+        ? row.creationDate
+        : null;
+    const parentCreationDate =
+      typeof row?.parentCreationDate === "string" &&
+      /^\d{1,20}$/u.test(row.parentCreationDate)
+        ? row.parentCreationDate
+        : null;
+    verify(
+      pid !== null && pid > 0 && ppid !== null && role && creationDate !== null,
+      "phase1g-process-instance-shape",
+    );
+    return {
+      pid,
+      ppid,
+      role,
+      creationDate,
+      instanceKey: processInstanceKey(pid, creationDate),
+      parentInstanceKey:
+        ppid > 0 && parentCreationDate !== null
+          ? processInstanceKey(ppid, parentCreationDate)
+          : null,
+    };
+  });
+}
+
+function captureRelevantProcessSnapshot(extraIds = []) {
   verify(process.platform === "win32", "phase1g-process-proof-platform");
+  verify(
+    Array.isArray(extraIds) &&
+      extraIds.every((pid) => safeInteger(pid, 0xffff_ffff) !== null && pid > 0),
+    "phase1g-process-query-target-shape",
+  );
+  const filter = [
+    powershellProcessFilter(),
+    ...new Set(extraIds.map((pid) => `ProcessId=${pid}`)),
+  ].join(" OR ");
   const command = [
-    `$phase1gFilter = \"${powershellProcessFilter()}\"`,
-    "$phase1gRows = @(Get-CimInstance Win32_Process -Filter $phase1gFilter -ErrorAction Stop | ForEach-Object { [PSCustomObject]@{ pid = [int]$_.ProcessId; ppid = [int]$_.ParentProcessId; name = [string]$_.Name } })",
+    ...powershellProcessHelpers(),
+    `$phase1gFilter = \"${filter}\"`,
+    "$phase1gProcesses = @(Get-CimInstance Win32_Process -Filter $phase1gFilter -ErrorAction Stop)",
+    "$phase1gByPid = @{}; foreach ($phase1gProcess in $phase1gProcesses) { $phase1gByPid[[int]$phase1gProcess.ProcessId] = $phase1gProcess }",
+    "$phase1gRows = @($phase1gProcesses | ForEach-Object { $phase1gParent = $phase1gByPid[[int]$_.ParentProcessId]; [PSCustomObject]@{ pid = [int]$_.ProcessId; ppid = [int]$_.ParentProcessId; name = [string]$_.Name; creationDate = Get-MadiPhase1gCreationDate $_; parentCreationDate = if ($null -eq $phase1gParent) { $null } else { Get-MadiPhase1gCreationDate $phase1gParent } } })",
     "ConvertTo-Json -InputObject $phase1gRows -Compress",
   ].join("; ");
   const result = spawnSync(
@@ -1828,60 +1897,18 @@ function captureRelevantProcessSnapshot() {
     },
   );
   const parsed = JSON.parse(result.stdout || "[]");
-  return (Array.isArray(parsed) ? parsed : [parsed]).flatMap((row) => {
-    const pid = safeInteger(row?.pid, 0xffff_ffff);
-    const ppid = safeInteger(row?.ppid, 0xffff_ffff);
-    const role = processRole(row?.name);
-    return pid !== null && pid > 0 && ppid !== null && role
-      ? [{ pid, ppid, role }]
-      : [];
-  });
-}
-
-function captureAliveProcessIds(processIds) {
-  if (processIds.length === 0) {
-    return [];
-  }
-  const ids = [...new Set(processIds)].filter(
-    (pid) => Number.isSafeInteger(pid) && pid > 0 && pid <= 0xffff_ffff,
-  );
-  const command = [
-    `$phase1gIds = @(${ids.join(",")})`,
-    "$phase1gAlive = @($phase1gIds | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })",
-    "ConvertTo-Json -InputObject $phase1gAlive -Compress",
-  ].join("; ");
-  const result = spawnSync(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", command],
-    {
-      encoding: "utf8",
-      maxBuffer: 1024 * 1024,
-      timeout: 15_000,
-      windowsHide: true,
-    },
-  );
-  verify(
-    !result.error && result.status === 0 && result.signal === null,
-    "phase1g-process-exact-pid-query-failed",
-    {
-      status: result.status,
-      signalPresent: result.signal !== null,
-      stderrLength: result.stderr?.length ?? 0,
-    },
-  );
-  const parsed = JSON.parse(result.stdout || "[]");
-  return (Array.isArray(parsed) ? parsed : [parsed]).filter(
-    (pid) => Number.isSafeInteger(pid) && pid > 0,
-  );
+  return parseProcessSnapshot(parsed, extraIds);
 }
 
 async function startRelevantProcessMonitor() {
   const baseline = captureRelevantProcessSnapshot();
-  const baselineIds = new Set(baseline.map((entry) => entry.pid));
+  const baselineInstanceKeys = new Set(baseline.map((entry) => entry.instanceKey));
   const observations = new Map();
+  const observedChildren = [];
   const command = [
+    ...powershellProcessHelpers(),
     `$phase1gFilter = \"${powershellProcessFilter()}\"`,
-    "while ($true) { $phase1gRows = @(Get-CimInstance Win32_Process -Filter $phase1gFilter -ErrorAction Stop); foreach ($phase1gRow in $phase1gRows) { Write-Output (\"{0}|{1}|{2}\" -f $phase1gRow.ProcessId, $phase1gRow.ParentProcessId, $phase1gRow.Name) }; Write-Output '__MADI_PHASE1G_PROCESS_SAMPLE__'; Start-Sleep -Milliseconds 200 }",
+    "while ($true) { $phase1gRows = @(Get-CimInstance Win32_Process -Filter $phase1gFilter -ErrorAction Stop); $phase1gByPid = @{}; foreach ($phase1gRow in $phase1gRows) { $phase1gByPid[[int]$phase1gRow.ProcessId] = $phase1gRow }; foreach ($phase1gRow in $phase1gRows) { $phase1gParent = $phase1gByPid[[int]$phase1gRow.ParentProcessId]; $phase1gCreationDate = Get-MadiPhase1gCreationDate $phase1gRow; $phase1gParentCreationDate = if ($null -eq $phase1gParent) { '' } else { Get-MadiPhase1gCreationDate $phase1gParent }; Write-Output (\"{0}|{1}|{2}|{3}|{4}\" -f $phase1gRow.ProcessId, $phase1gRow.ParentProcessId, $phase1gRow.Name, $phase1gCreationDate, $phase1gParentCreationDate) }; Write-Output '__MADI_PHASE1G_PROCESS_SAMPLE__'; Start-Sleep -Milliseconds 200 }",
   ].join("; ");
   const child = spawn(
     "powershell.exe",
@@ -1892,7 +1919,10 @@ async function startRelevantProcessMonitor() {
   let stderrLength = 0;
   let sampleCount = 0;
   let distinctProcessCount = 0;
-  let rootPid = null;
+  let rootInstanceKey = null;
+  let launcherInstanceKey = null;
+  let launcherProcessPid = null;
+  let invalidProcessRowCount = 0;
   let readyResolve;
   let readyReject;
   const ready = new Promise((resolveReady, rejectReady) => {
@@ -1903,6 +1933,17 @@ async function startRelevantProcessMonitor() {
     () => readyReject(new Error("phase1g-process-monitor-ready-timeout")),
     15_000,
   );
+  function rememberProcessInstance(entry) {
+    const previous = observations.get(entry.instanceKey);
+    if (!previous) {
+      distinctProcessCount += 1;
+    }
+    observations.set(entry.instanceKey, {
+      ...entry,
+      role: entry.instanceKey === rootInstanceKey ? "ROOT" : entry.role,
+      parentInstanceKey: previous?.parentInstanceKey ?? entry.parentInstanceKey,
+    });
+  }
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
     stdoutRemainder += chunk;
@@ -1917,7 +1958,8 @@ async function startRelevantProcessMonitor() {
         }
         continue;
       }
-      const [pidText, ppidText, name] = line.split("|", 3);
+      const [pidText, ppidText, name, creationDate, parentCreationDate] =
+        line.split("|", 5);
       const pid = Number(pidText);
       const ppid = Number(ppidText);
       const role = processRole(name);
@@ -1925,16 +1967,24 @@ async function startRelevantProcessMonitor() {
         Number.isSafeInteger(pid) &&
         pid > 0 &&
         Number.isSafeInteger(ppid) &&
-        role
+        role &&
+        /^\d{1,20}$/u.test(creationDate ?? "") &&
+        (parentCreationDate === "" || /^\d{1,20}$/u.test(parentCreationDate ?? ""))
       ) {
-        if (!observations.has(pid)) {
-          distinctProcessCount += 1;
-        }
-        observations.set(pid, {
+        const key = processInstanceKey(pid, creationDate);
+        rememberProcessInstance({
           pid,
           ppid,
-          role: pid === rootPid ? "ROOT" : role,
+          role: key === rootInstanceKey ? "ROOT" : role,
+          creationDate,
+          instanceKey: key,
+          parentInstanceKey:
+            ppid > 0 && parentCreationDate
+              ? processInstanceKey(ppid, parentCreationDate)
+              : null,
         });
+      } else {
+        invalidProcessRowCount += 1;
       }
     }
   });
@@ -1955,19 +2005,65 @@ async function startRelevantProcessMonitor() {
   let stopped = false;
   return {
     baseline,
-    baselineIds,
+    baselineInstanceKeys,
     observations,
-    recordObservedChildren(children) {
-      for (const child of children) {
-        if (!observations.has(child.pid)) {
-          distinctProcessCount += 1;
-        }
-        observations.set(child.pid, child);
+    observedChildren,
+    recordProcessSnapshot(current) {
+      for (const entry of current) {
+        rememberProcessInstance(entry);
       }
     },
-    recordRoot(pid) {
-      rootPid = pid;
-      observations.set(pid, { pid, ppid: 0, role: "ROOT" });
+    recordObservedChildren(children, current) {
+      verify(rootInstanceKey !== null, "phase1g-child-process-root-instance");
+      for (const entry of current) {
+        rememberProcessInstance(entry);
+      }
+      for (const child of children) {
+        if (child.exitReceived && child.closeReceived) {
+          observedChildren.push({ ...child, instanceKey: null });
+          continue;
+        }
+        const matches = current.filter(
+          (entry) =>
+            entry.pid === child.pid &&
+            entry.role === child.role &&
+            entry.parentInstanceKey === rootInstanceKey,
+        );
+        verify(matches.length === 1, "phase1g-live-child-process-instance", {
+          role: child.role,
+          matchCount: matches.length,
+        });
+        observedChildren.push({ ...child, instanceKey: matches[0].instanceKey });
+      }
+    },
+    recordRoot(pid, launcherPid) {
+      const current = captureRelevantProcessSnapshot([launcherPid]);
+      const roots = current.filter((entry) => entry.pid === pid);
+      const launchers = current.filter((entry) => entry.pid === launcherPid);
+      verify(
+        roots.length === 1 && roots[0].role === "ELECTRON" &&
+          launchers.length === 1,
+        "phase1g-launch-process-instance-capture",
+        { rootMatchCount: roots.length, launcherMatchCount: launchers.length },
+      );
+      rootInstanceKey = roots[0].instanceKey;
+      launcherInstanceKey = launchers[0].instanceKey;
+      launcherProcessPid = launcherPid;
+      verify(
+        rootInstanceKey === launcherInstanceKey ||
+          roots[0].parentInstanceKey === launcherInstanceKey,
+        "phase1g-launch-process-parent-instance",
+      );
+      rememberProcessInstance(roots[0]);
+    },
+    get rootInstanceKey() {
+      return rootInstanceKey;
+    },
+    get launcherInstanceKey() {
+      return launcherInstanceKey;
+    },
+    get launcherProcessPid() {
+      return launcherProcessPid;
     },
     async stop() {
       if (!stopped) {
@@ -1978,9 +2074,10 @@ async function startRelevantProcessMonitor() {
           "phase1g-process-monitor-stop-timeout",
         );
       }
-      verify(sampleCount > 0 && stderrLength === 0, "phase1g-process-monitor-health", {
+      verify(sampleCount > 0 && stderrLength === 0 && invalidProcessRowCount === 0, "phase1g-process-monitor-health", {
         sampleCount,
         stderrLength,
+        invalidProcessRowCount,
       });
       return { sampleCount, distinctProcessCount };
     },
@@ -1998,65 +2095,164 @@ function roleCounts(processes) {
   return counts;
 }
 
-function capturedDescendants(processes, rootPid) {
-  const descendantIds = new Set([rootPid]);
+function capturedDescendants(processes, rootInstanceKey) {
+  const byInstance = new Map();
+  for (const entry of processes) {
+    const previous = byInstance.get(entry.instanceKey);
+    byInstance.set(entry.instanceKey, {
+      ...entry,
+      parentInstanceKey: previous?.parentInstanceKey ?? entry.parentInstanceKey,
+    });
+  }
+  const uniqueProcesses = [...byInstance.values()];
+  const descendantKeys = new Set([rootInstanceKey]);
   let changed = true;
   while (changed) {
     changed = false;
-    for (const process of processes) {
-      if (!descendantIds.has(process.pid) && descendantIds.has(process.ppid)) {
-        descendantIds.add(process.pid);
+    for (const entry of uniqueProcesses) {
+      if (
+        !descendantKeys.has(entry.instanceKey) &&
+        entry.parentInstanceKey !== null &&
+        descendantKeys.has(entry.parentInstanceKey)
+      ) {
+        descendantKeys.add(entry.instanceKey);
         changed = true;
       }
     }
   }
-  return processes.filter(
-    (process) => process.pid !== rootPid && descendantIds.has(process.pid),
+  return uniqueProcesses.filter(
+    (entry) =>
+      entry.instanceKey !== rootInstanceKey && descendantKeys.has(entry.instanceKey),
   );
 }
 
-async function assertNoOrphanProcesses(
-  processMonitor,
-  mainProcessPid,
-  launcherProcessPid,
-) {
+async function assertNativeSidecarsExitedBeforeWrapperCleanup(run) {
+  const processMonitor = run.processMonitor;
+  verify(
+    typeof processMonitor.rootInstanceKey === "string",
+    "phase1g-native-sidecar-root-instance",
+  );
+  const nativeChildren = processMonitor.observedChildren.filter(
+    (entry) => entry.role === "CORE" || entry.role === "EXPORTER",
+  );
+  const closedChildren = nativeChildren.filter(
+    (entry) => entry.exitReceived && entry.closeReceived,
+  );
+  const liveChildren = nativeChildren.filter(
+    (entry) => !(entry.exitReceived && entry.closeReceived),
+  );
+  verify(
+    liveChildren.every((entry) => typeof entry.instanceKey === "string"),
+    "phase1g-native-sidecar-child-process-instance",
+  );
+  const capturedNativeInstanceKeys = new Set(
+    liveChildren.map((entry) => entry.instanceKey),
+  );
+  let proof = {
+    proofMode: "WIN32_PROCESS_INSTANCE_BEFORE_TEST_WRAPPER_CLEANUP",
+    capturedNativeSidecarInstanceCount: capturedNativeInstanceKeys.size,
+    closedSpawnTapReceiptCountByRole: roleCounts(closedChildren),
+    liveSpawnTapNativeInstanceCount: liveChildren.length,
+    liveNativeSidecarInstanceCount: null,
+    preWrapperNativeSidecarsExited: false,
+  };
+  run.closeAttemptEvidence = {
+    ...run.closeAttemptEvidence,
+    preWrapperNativeSidecarExitProof: proof,
+  };
+  await poll(
+    () => {
+      const current = captureRelevantProcessSnapshot();
+      processMonitor.recordProcessSnapshot(current);
+      const nativeDescendants = capturedDescendants(
+        [...processMonitor.observations.values()],
+        processMonitor.rootInstanceKey,
+      ).filter((entry) => entry.role === "CORE" || entry.role === "EXPORTER");
+      for (const entry of nativeDescendants) {
+        capturedNativeInstanceKeys.add(entry.instanceKey);
+      }
+      const currentInstanceKeys = new Set(current.map((entry) => entry.instanceKey));
+      const exactAlive = [...capturedNativeInstanceKeys].filter((key) =>
+        currentInstanceKeys.has(key),
+      );
+      proof = {
+        ...proof,
+        capturedNativeSidecarInstanceCount: capturedNativeInstanceKeys.size,
+        liveNativeSidecarInstanceCount: exactAlive.length,
+        preWrapperNativeSidecarsExited: exactAlive.length === 0,
+      };
+      run.closeAttemptEvidence = {
+        ...run.closeAttemptEvidence,
+        preWrapperNativeSidecarExitProof: proof,
+      };
+      return proof.preWrapperNativeSidecarsExited ? proof : null;
+    },
+    "phase1g-native-sidecar-exit-before-wrapper-cleanup",
+    PROCESS_EXIT_TIMEOUT_MS,
+  );
+  return proof;
+}
+
+async function assertNoOrphanProcesses(processMonitor) {
   const monitorHealth = await processMonitor.stop();
   const capturedNew = [...processMonitor.observations.values()].filter(
-    (entry) => entry.role === "ROOT" || !processMonitor.baselineIds.has(entry.pid),
+    (entry) =>
+      entry.role === "ROOT" || !processMonitor.baselineInstanceKeys.has(entry.instanceKey),
   );
   const observed = roleCounts(capturedNew);
-  const descendantProcesses = capturedDescendants(capturedNew, mainProcessPid);
+  const descendantProcesses = capturedDescendants(
+    capturedNew,
+    processMonitor.rootInstanceKey,
+  );
   const observedDescendants = roleCounts(descendantProcesses);
+  // Short-lived native children may finish between CIM samples. Their owned
+  // main-process spawn records are validated by either exit/close receipts or
+  // a live process instance; sampled process counts remain a lower bound.
+  const spawned = roleCounts(processMonitor.observedChildren);
   verify(
     observed.root === 1 &&
       observedDescendants.electron > 0 &&
-      observedDescendants.core > 0 &&
-      observedDescendants.exporter > 0,
+      spawned.core > 0 &&
+      spawned.exporter > 0,
     "phase1g-process-role-observation",
-    { observed, observedDescendants },
+    { observed, observedDescendants, spawned },
   );
-  const capturedPids = [
+  const closedChildProcessReceiptCount = processMonitor.observedChildren.filter(
+    (entry) => entry.exitReceived && entry.closeReceived,
+  ).length;
+  const liveChildren = processMonitor.observedChildren.filter(
+    (entry) => !(entry.exitReceived && entry.closeReceived),
+  );
+  verify(
+    liveChildren.every((entry) => typeof entry.instanceKey === "string"),
+    "phase1g-child-process-exit-proof-complete",
+  );
+  const capturedInstanceKeys = [
     ...new Set([
-      launcherProcessPid,
-      mainProcessPid,
-      ...descendantProcesses.map((entry) => entry.pid),
+      processMonitor.launcherInstanceKey,
+      processMonitor.rootInstanceKey,
+      ...descendantProcesses.map((entry) => entry.instanceKey),
+      ...liveChildren.map((entry) => entry.instanceKey),
     ]),
   ];
   const proof = await poll(
     async () => {
-      const current = captureRelevantProcessSnapshot();
-      const newGlobalRelevant = current.filter(
-        (entry) => !processMonitor.baselineIds.has(entry.pid),
+      const current = captureRelevantProcessSnapshot([
+        processMonitor.launcherProcessPid,
+      ]);
+      const relevantCurrent = current.filter((entry) => entry.role !== "QUERY_TARGET");
+      const newGlobalRelevant = relevantCurrent.filter(
+        (entry) => !processMonitor.baselineInstanceKeys.has(entry.instanceKey),
       );
-      const exactAlive = captureAliveProcessIds(capturedPids);
-      const currentIds = new Set(current.map((entry) => entry.pid));
-      const liveTreeDescendantIds = new Set(
-        capturedDescendants([...capturedNew, ...current], mainProcessPid)
-          .filter((entry) => currentIds.has(entry.pid))
-          .map((entry) => entry.pid),
+      const currentInstanceKeys = new Set(current.map((entry) => entry.instanceKey));
+      const exactAlive = capturedInstanceKeys.filter((key) => currentInstanceKeys.has(key));
+      const liveTreeDescendantKeys = new Set(
+        capturedDescendants([...capturedNew, ...relevantCurrent], processMonitor.rootInstanceKey)
+          .filter((entry) => currentInstanceKeys.has(entry.instanceKey))
+          .map((entry) => entry.instanceKey),
       );
-      return exactAlive.length === 0 && liveTreeDescendantIds.size === 0
-        ? { current, newGlobalRelevant, exactAlive, liveTreeDescendantIds }
+      return exactAlive.length === 0 && liveTreeDescendantKeys.size === 0
+        ? { current, newGlobalRelevant, exactAlive, liveTreeDescendantKeys }
         : null;
     },
     "phase1g-process-orphan-exit",
@@ -2066,13 +2262,20 @@ async function assertNoOrphanProcesses(
     baseline: roleCounts(processMonitor.baseline),
     observed,
     observedDescendants,
+    spawned,
+    sampledProcessCountSemantics: "LOWER_BOUND",
     captureMode: "MAIN_PROCESS_SPAWN_TAP_AND_WIN32_SNAPSHOT",
+    processIdentityMode: "PID_AND_WIN32_PROCESS_CREATION_DATE",
+    processExitProofMode: "WIN32_PROCESS_INSTANCE_AND_CHILD_PROCESS_CLOSE_RECEIPTS",
     monitorSampleCount: monitorHealth.sampleCount,
     distinctObservedProcessCount: monitorHealth.distinctProcessCount,
-    exactCapturedProcessCount: capturedPids.length,
+    exactCapturedProcessCount: capturedInstanceKeys.length,
+    capturedChildProcessCount: processMonitor.observedChildren.length,
+    closedChildProcessReceiptCount,
+    liveChildProcessInstanceCount: liveChildren.length,
     exactCapturedProcessesExited: proof.exactAlive.length === 0,
     capturedDescendantProcessesAfterClose:
-      proof.exactAlive.length + proof.liveTreeDescendantIds.size,
+      proof.exactAlive.length + proof.liveTreeDescendantKeys.size,
     unrelatedOrConcurrentGlobalRelevantProcessCountAfterClose:
       proof.newGlobalRelevant.length,
   };
@@ -2089,7 +2292,7 @@ async function installMainChildProcessObserver(application) {
       throw new Error("phase1g-main-child-process-module-unavailable");
     }
     const originalSpawn = childProcess.spawn;
-    const records = new Map();
+    const records = [];
     const wrapper = function phase1gObservedMainSpawn(...args) {
       const child = Reflect.apply(originalSpawn, this, args);
       const commandName = String(args[0] ?? "")
@@ -2104,17 +2307,28 @@ async function installMainChildProcessObserver(application) {
             ? "EXPORTER"
             : null;
       if (role) {
-        const record = () => {
-          if (Number.isSafeInteger(child.pid) && child.pid > 0) {
-            records.set(`${role}:${child.pid}`, {
-              pid: child.pid,
-              ppid: process.pid,
-              role,
-            });
-          }
+        const record = {
+          recordId: records.length + 1,
+          pid: null,
+          ppid: process.pid,
+          role,
+          spawned: false,
+          exitReceived: false,
+          closeReceived: false,
         };
-        record();
-        child.once("spawn", record);
+        records.push(record);
+        child.once("spawn", () => {
+          if (Number.isSafeInteger(child.pid) && child.pid > 0) {
+            record.pid = child.pid;
+            record.spawned = true;
+          }
+        });
+        child.once("exit", () => {
+          record.exitReceived = true;
+        });
+        child.once("close", () => {
+          record.closeReceived = true;
+        });
       }
       return child;
     };
@@ -2152,7 +2366,7 @@ async function collectMainChildProcessObservations(run) {
     return {
       installed: stillInstalled,
       processId: process.pid,
-      records: [...observer.records.values()],
+      records: observer.records,
     };
   });
   verify(
@@ -2161,18 +2375,24 @@ async function collectMainChildProcessObservations(run) {
       Array.isArray(result.records),
     "phase1g-main-child-process-observer-collect",
   );
-  const records = result.records.map((record) => {
+  const records = result.records.map((record, index) => {
     verify(
-      Object.keys(record).sort().join(",") === "pid,ppid,role" &&
+      Object.keys(record).sort().join(",") ===
+        "closeReceived,exitReceived,pid,ppid,recordId,role,spawned" &&
+        record.recordId === index + 1 &&
+        record.spawned === true &&
         Number.isSafeInteger(record.pid) &&
         record.pid > 0 &&
         record.ppid === result.processId &&
-        ["CORE", "EXPORTER"].includes(record.role),
+        ["CORE", "EXPORTER"].includes(record.role) &&
+        typeof record.exitReceived === "boolean" &&
+        typeof record.closeReceived === "boolean" &&
+        (!record.closeReceived || record.exitReceived),
       "phase1g-main-child-process-observation-shape",
     );
     return record;
   });
-  run.processMonitor.recordObservedChildren(records);
+  run.processMonitor.recordObservedChildren(records, captureRelevantProcessSnapshot());
 }
 
 async function installMainLifecycleConsoleProbe(application) {
@@ -2238,7 +2458,13 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
     );
     mainProcessPid = await installMainChildProcessObserver(application);
     await installMainLifecycleConsoleProbe(application);
-    processMonitor.recordRoot(mainProcessPid);
+    processMonitor.recordRoot(mainProcessPid, launcherProcessPid);
+    verify(
+      (await application.evaluate(() => process.pid)) === mainProcessPid &&
+        application.process().exitCode === null &&
+        application.process().signalCode === null,
+      "phase1g-launch-process-instance-live",
+    );
   } catch (error) {
     await processMonitor.stop().catch(() => undefined);
     const message = error instanceof Error ? error.message.toLocaleLowerCase() : "";
@@ -2567,8 +2793,8 @@ async function closeWindowCleanly(run) {
     "phase1g-application-launcher-identity",
   );
   await collectMainChildProcessObservations(run);
-  // Seal only the product process streams before initiating close. Network,
-  // page, and renderer collections remain live through the close lifecycle.
+  // Capture the product baseline before close. Product diagnostics remain live
+  // through quit and native sidecar exit, before test wrapper cleanup.
   const productProcessDiagnostics = run.processDiagnostics.evidence();
   run.productProcessDiagnostics = productProcessDiagnostics;
   assertSecurity(securityEvidence(run));
@@ -2618,21 +2844,10 @@ async function closeWindowCleanly(run) {
     },
   );
   const postProductQuitProcessDiagnostics = run.processDiagnostics.evidence();
+  run.productProcessDiagnostics = postProductQuitProcessDiagnostics;
   const productCloseToQuitProcessDiagnostics = processDiagnosticDelta(
     postProductQuitProcessDiagnostics,
     productProcessDiagnostics,
-  );
-  assertProcessDiagnosticDelta(
-    productCloseToQuitProcessDiagnostics,
-    "phase1g-product-close-to-quit-process-diagnostic-delta",
-  );
-  verify(
-    !postProductQuitProcessDiagnostics.privateContentDetected,
-    "phase1g-product-quit-process-diagnostic-privacy",
-    {
-      privateContentDetected:
-        postProductQuitProcessDiagnostics.privateContentDetected,
-    },
   );
   run.closeAttemptEvidence = {
     productWindowClosed: true,
@@ -2644,25 +2859,34 @@ async function closeWindowCleanly(run) {
     productCloseToQuitProcessDiagnostics,
     testTransportWrapperCleanupDiagnostics: null,
   };
+  assertProductProcessDiagnosticDelta(
+    productCloseToQuitProcessDiagnostics,
+    "phase1g-product-close-to-quit-process-diagnostic-delta",
+  );
   // Playwright 1.54 launches Windows Electron through an inspector-enabled
   // wrapper. The product has already emitted its ordered quit lifecycle, so
   // clean up only that test transport tree while process monitoring remains on.
+  const preWrapperNativeSidecarExitProof =
+    await assertNativeSidecarsExitedBeforeWrapperCleanup(run);
+  const beforeWrapperProcessDiagnostics = run.processDiagnostics.evidence();
+  run.productProcessDiagnostics = beforeWrapperProcessDiagnostics;
+  const productQuitToNativeSidecarExitProcessDiagnostics = processDiagnosticDelta(
+    beforeWrapperProcessDiagnostics,
+    postProductQuitProcessDiagnostics,
+  );
+  run.closeAttemptEvidence = {
+    ...run.closeAttemptEvidence,
+    productQuitToNativeSidecarExitProcessDiagnostics,
+  };
+  assertProductProcessDiagnosticDelta(
+    productQuitToNativeSidecarExitProcessDiagnostics,
+    "phase1g-product-quit-to-native-sidecar-exit-process-diagnostic-delta",
+  );
   await forceCloseApplication(run.application);
   const postCleanupProcessDiagnostics = run.processDiagnostics.evidence();
   const testTransportWrapperCleanupDiagnostics = processDiagnosticDelta(
     postCleanupProcessDiagnostics,
-    postProductQuitProcessDiagnostics,
-  );
-  assertProcessDiagnosticDelta(
-    testTransportWrapperCleanupDiagnostics,
-    "phase1g-test-transport-wrapper-cleanup-diagnostic-delta",
-  );
-  verify(
-    !postCleanupProcessDiagnostics.privateContentDetected,
-    "phase1g-test-transport-wrapper-cleanup-private-content",
-    {
-      privateContentDetected: postCleanupProcessDiagnostics.privateContentDetected,
-    },
+    beforeWrapperProcessDiagnostics,
   );
   run.testTransportWrapperCleanupDiagnostics =
     testTransportWrapperCleanupDiagnostics;
@@ -2674,13 +2898,15 @@ async function closeWindowCleanly(run) {
     testTransportWrapperCleanupRequired: true,
     testTransportWrapperCleanupCompleted: true,
     productCloseToQuitProcessDiagnostics,
+    productQuitToNativeSidecarExitProcessDiagnostics,
     testTransportWrapperCleanupDiagnostics,
+    preWrapperNativeSidecarExitProof,
   };
-  const processTracking = await assertNoOrphanProcesses(
-    run.processMonitor,
-    run.mainProcessPid,
-    run.launcherProcessPid,
+  assertProductProcessDiagnosticDelta(
+    testTransportWrapperCleanupDiagnostics,
+    "phase1g-test-transport-wrapper-cleanup-diagnostic-delta",
   );
+  const processTracking = await assertNoOrphanProcesses(run.processMonitor);
   run.closed = true;
   return {
     productGracefulQuit: true,
@@ -2688,7 +2914,9 @@ async function closeWindowCleanly(run) {
     testTransportWrapperCleanupRequired: true,
     testTransportWrapperCleanupCompleted: true,
     productCloseToQuitProcessDiagnostics,
+    productQuitToNativeSidecarExitProcessDiagnostics,
     testTransportWrapperCleanupDiagnostics,
+    preWrapperNativeSidecarExitProof,
     processTracking,
   };
 }

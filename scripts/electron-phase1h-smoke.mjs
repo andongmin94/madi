@@ -1067,11 +1067,18 @@ function processInstanceKey(pid, creationDate) {
   return `${pid}:${creationDate}`;
 }
 
-function parseProcessSnapshot(parsed) {
-  return (Array.isArray(parsed) ? parsed : [parsed]).flatMap((row) => {
+function parseProcessSnapshot(parsed, extraIds = []) {
+  verify(
+    Array.isArray(extraIds) && extraIds.every(
+      (pid) => safeInteger(pid, 0xffff_ffff) === pid && pid > 0,
+    ),
+    "phase1h-explicit-process-query-ids",
+  );
+  const explicitIds = new Set(extraIds);
+  return (Array.isArray(parsed) ? parsed : [parsed]).map((row) => {
     const pid = safeInteger(row?.pid, 0xffff_ffff);
     const ppid = safeInteger(row?.ppid, 0xffff_ffff);
-    const role = processRole(row?.name);
+    const role = processRole(row?.name) ?? (explicitIds.has(pid) ? "QUERY_TARGET" : null);
     const creationDate =
       typeof row?.creationDate === "string" && /^\d{1,20}$/u.test(row.creationDate)
         ? row.creationDate
@@ -1084,38 +1091,43 @@ function parseProcessSnapshot(parsed) {
     const electronSubtype = electronProcessSubtypes.has(row?.electronSubtype)
       ? row.electronSubtype
       : null;
-    if (
-      pid === null ||
-      pid <= 0 ||
-      ppid === null ||
-      !role ||
-      creationDate === null ||
-      electronSubtype === null
-    ) {
-      return [];
-    }
-    return [
-      {
-        pid,
-        ppid,
-        role,
-        creationDate,
-        instanceKey: processInstanceKey(pid, creationDate),
-        parentInstanceKey:
-          ppid > 0 && parentCreationDate !== null
-            ? processInstanceKey(ppid, parentCreationDate)
-            : null,
-        electronSubtype,
-      },
-    ];
+    verify(
+      pid !== null && pid > 0 && ppid !== null && role !== null &&
+        creationDate !== null && electronSubtype !== null &&
+        (row?.parentCreationDate === null || parentCreationDate !== null),
+      "phase1h-process-snapshot-identity-shape",
+    );
+    return {
+      pid,
+      ppid,
+      role,
+      creationDate,
+      instanceKey: processInstanceKey(pid, creationDate),
+      parentInstanceKey:
+        ppid > 0 && parentCreationDate !== null
+          ? processInstanceKey(ppid, parentCreationDate)
+          : null,
+      electronSubtype,
+    };
   });
 }
 
-function captureRelevantProcessSnapshot() {
+function captureRelevantProcessSnapshot(extraIds = []) {
   verify(process.platform === "win32", "phase1h-process-proof-platform");
+  verify(
+    Array.isArray(extraIds) && extraIds.every(
+      (pid) => safeInteger(pid, 0xffff_ffff) === pid && pid > 0,
+    ),
+    "phase1h-explicit-process-query-ids",
+  );
+  const explicitIds = [...new Set(extraIds)];
+  const snapshotFilter = [
+    powershellProcessFilter(),
+    ...explicitIds.map((pid) => "ProcessId=" + pid),
+  ].join(" OR ");
   const command = [
     ...powershellProcessHelpers(),
-    `$phase1hFilter = \"${powershellProcessFilter()}\"`,
+    `$phase1hFilter = \"${snapshotFilter}\"`,
     "$phase1hProcesses = @(Get-CimInstance Win32_Process -Filter $phase1hFilter -ErrorAction Stop)",
     "$phase1hByPid = @{}; foreach ($phase1hProcess in $phase1hProcesses) { $phase1hByPid[[int]$phase1hProcess.ProcessId] = $phase1hProcess }",
     "$phase1hRows = @($phase1hProcesses | ForEach-Object { $phase1hParent = $phase1hByPid[[int]$_.ParentProcessId]; [PSCustomObject]@{ pid = [int]$_.ProcessId; ppid = [int]$_.ParentProcessId; name = [string]$_.Name; creationDate = Get-MadiPhase1hCreationDate $_; parentCreationDate = if ($null -eq $phase1hParent) { $null } else { Get-MadiPhase1hCreationDate $phase1hParent }; electronSubtype = Get-MadiPhase1hElectronSubtype $_ } })",
@@ -1141,44 +1153,7 @@ function captureRelevantProcessSnapshot() {
     },
   );
   const parsed = JSON.parse(result.stdout || "[]");
-  return parseProcessSnapshot(parsed);
-}
-
-function captureAliveProcessIds(processIds) {
-  if (processIds.length === 0) {
-    return [];
-  }
-  const ids = [...new Set(processIds)].filter(
-    (pid) => Number.isSafeInteger(pid) && pid > 0 && pid <= 0xffff_ffff,
-  );
-  const command = [
-    `$phase1hIds = @(${ids.join(",")})`,
-    "$phase1hAlive = @($phase1hIds | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })",
-    "ConvertTo-Json -InputObject $phase1hAlive -Compress",
-  ].join("; ");
-  const result = spawnSync(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", command],
-    {
-      encoding: "utf8",
-      maxBuffer: 1024 * 1024,
-      timeout: 15_000,
-      windowsHide: true,
-    },
-  );
-  verify(
-    !result.error && result.status === 0 && result.signal === null,
-    "phase1h-process-exact-pid-query-failed",
-    {
-      status: result.status,
-      signalPresent: result.signal !== null,
-      stderrLength: result.stderr?.length ?? 0,
-    },
-  );
-  const parsed = JSON.parse(result.stdout || "[]");
-  return (Array.isArray(parsed) ? parsed : [parsed]).filter(
-    (pid) => Number.isSafeInteger(pid) && pid > 0,
-  );
+  return parseProcessSnapshot(parsed, explicitIds);
 }
 
 async function startRelevantProcessMonitor() {
@@ -1190,6 +1165,7 @@ async function startRelevantProcessMonitor() {
   const identityRaceCounts = new Map();
   let currentTcpSample = [];
   let globalTcpParserRejectedRowCount = 0;
+  let processIdentityRejectedRowCount = 0;
   const command = [
     ...powershellProcessHelpers(),
     ...powershellTcpHelpers(),
@@ -1205,8 +1181,19 @@ async function startRelevantProcessMonitor() {
   let stdoutRemainder = "";
   let stderrLength = 0;
   let sampleCount = 0;
-  let rootPid = null;
+  let launcherProcessPid = null;
   let rootInstanceKey = null;
+  let launcherInstanceKey = null;
+  function rememberProcessInstance(entry) {
+    const previous = observations.get(entry.instanceKey);
+    const remembered = {
+      ...entry,
+      role: entry.instanceKey === rootInstanceKey ? "ROOT" : entry.role,
+      parentInstanceKey: previous?.parentInstanceKey ?? entry.parentInstanceKey,
+    };
+    observations.set(entry.instanceKey, remembered);
+    return remembered;
+  }
   let readyResolve;
   let readyReject;
   const ready = new Promise((resolveReady, rejectReady) => {
@@ -1290,6 +1277,7 @@ async function startRelevantProcessMonitor() {
         Number.isSafeInteger(pid) &&
         pid > 0 &&
         Number.isSafeInteger(ppid) &&
+        ppid >= 0 &&
         role &&
         /^\d{1,20}$/u.test(creationDate ?? "") &&
         (parentCreationDate === "" ||
@@ -1297,7 +1285,7 @@ async function startRelevantProcessMonitor() {
         electronProcessSubtypes.has(electronSubtype)
       ) {
         const key = processInstanceKey(pid, creationDate);
-        observations.set(key, {
+        rememberProcessInstance({
           pid,
           ppid,
           role: key === rootInstanceKey ? "ROOT" : role,
@@ -1309,6 +1297,8 @@ async function startRelevantProcessMonitor() {
               : null,
           electronSubtype,
         });
+      } else if (prefix === "P") {
+        processIdentityRejectedRowCount += 1;
       }
     }
   });
@@ -1332,53 +1322,76 @@ async function startRelevantProcessMonitor() {
     baselineInstanceKeys,
     observations,
     observedChildren,
-    recordObservedChildren(children) {
+    recordProcessSnapshot(current) {
+      for (const entry of current) rememberProcessInstance(entry);
+    },
+    recordObservedChildren(children, current) {
+      for (const entry of current) {
+        rememberProcessInstance(entry);
+      }
       for (const child of children) {
-        observedChildren.push(child);
+        const closedReceipt = child.exitReceived && child.closeReceived;
+        if (closedReceipt) {
+          observedChildren.push({ ...child, instanceKey: null });
+          continue;
+        }
+        const matches = current.filter(
+          (entry) =>
+            entry.pid === child.pid &&
+            entry.role === child.role &&
+            entry.parentInstanceKey === rootInstanceKey,
+        );
+        verify(
+          matches.length === 1,
+          "phase1h-live-spawn-process-instance-attribution",
+          { role: child.role, matchCount: matches.length },
+        );
+        observedChildren.push({ ...child, instanceKey: matches[0].instanceKey });
       }
     },
-    recordRoot(pid) {
-      rootPid = pid;
-      const matches = captureRelevantProcessSnapshot().filter(
-        (entry) => entry.pid === pid,
+    recordRoot(pid, launcherPid) {
+      const current = captureRelevantProcessSnapshot([launcherPid]);
+      const rootMatches = current.filter(
+        (entry) => entry.pid === pid && entry.role === "ELECTRON",
       );
-      verify(matches.length === 1, "phase1h-root-process-instance-capture", {
-        matchCount: matches.length,
-      });
-      const root = { ...matches[0], role: "ROOT" };
+      const launcherMatches = current.filter((entry) => entry.pid === launcherPid);
+      verify(
+        rootMatches.length === 1 && launcherMatches.length === 1,
+        "phase1h-root-launcher-process-instance-capture",
+        { rootMatchCount: rootMatches.length, launcherMatchCount: launcherMatches.length },
+      );
+      const root = rootMatches[0];
+      const launcher = launcherMatches[0];
+      verify(
+        pid === launcherPid || root.parentInstanceKey === launcher.instanceKey,
+        "phase1h-root-launcher-process-instance-association",
+      );
       rootInstanceKey = root.instanceKey;
-      observations.set(root.instanceKey, root);
+      launcherInstanceKey = launcher.instanceKey;
+      launcherProcessPid = launcherPid;
+      // The explicitly queried CMD wrapper is kept outside app/TCP observations.
+      for (const entry of current) {
+        if (entry.role !== "QUERY_TARGET") rememberProcessInstance(entry);
+      }
     },
     get rootInstanceKey() {
       return rootInstanceKey;
     },
+    get launcherInstanceKey() {
+      return launcherInstanceKey;
+    },
+    get launcherProcessPid() {
+      return launcherProcessPid;
+    },
     getOwnedProcessInstances() {
       verify(
-        rootInstanceKey !== null && rootPid !== null,
+        rootInstanceKey !== null && launcherInstanceKey !== null,
         "phase1h-owned-process-root-instance",
       );
       const ownedKeys = new Set([rootInstanceKey]);
-      const spawnTapUnsampledCountByRole = zeroCounts(
-        spawnTappedSidecarRoles,
-      );
       for (const child of observedChildren) {
-        const matches = [...observations.values()].filter(
-          (entry) =>
-            entry.pid === child.pid &&
-            entry.ppid === child.ppid &&
-            entry.role === child.role &&
-            child.ppid === rootPid,
-        );
-        verify(
-          matches.length <= 1,
-          "phase1h-spawn-tapped-process-instance-attribution",
-          { role: child.role, matchCount: matches.length },
-        );
-        if (matches.length === 0) {
-          spawnTapUnsampledCountByRole[child.role] += 1;
-          continue;
-        }
-        ownedKeys.add(matches[0].instanceKey);
+        // Closed ChildProcess receipts never attribute a later reused numeric PID.
+        if (child.instanceKey !== null) ownedKeys.add(child.instanceKey);
       }
       let changed = true;
       while (changed) {
@@ -1394,12 +1407,30 @@ async function startRelevantProcessMonitor() {
           }
         }
       }
+      const ownedProcesses = [...ownedKeys].flatMap((key) => {
+        const entry = observations.get(key);
+        return entry ? [entry] : [];
+      });
+      const spawnTapUnsampledCountByRole = zeroCounts(spawnTappedSidecarRoles);
+      const closedSpawnTapReceiptCountByRole = zeroCounts(spawnTappedSidecarRoles);
+      const liveSpawnTapInstanceCountByRole = zeroCounts(spawnTappedSidecarRoles);
+      for (const role of spawnTappedSidecarRoles) {
+        const taps = observedChildren.filter((entry) => entry.role === role);
+        closedSpawnTapReceiptCountByRole[role] = taps.filter(
+          (entry) => entry.exitReceived && entry.closeReceived,
+        ).length;
+        liveSpawnTapInstanceCountByRole[role] = taps.filter(
+          (entry) => entry.instanceKey !== null,
+        ).length;
+        // A completed unsampled child has a close receipt, not an inferred birth.
+        const sampledCount = ownedProcesses.filter((entry) => entry.role === role).length;
+        spawnTapUnsampledCountByRole[role] = Math.max(0, taps.length - sampledCount);
+      }
       return {
-        ownedProcesses: [...ownedKeys].flatMap((key) => {
-          const entry = observations.get(key);
-          return entry ? [entry] : [];
-        }),
+        ownedProcesses,
         spawnTapUnsampledCountByRole,
+        closedSpawnTapReceiptCountByRole,
+        liveSpawnTapInstanceCountByRole,
       };
     },
     async stop() {
@@ -1411,16 +1442,22 @@ async function startRelevantProcessMonitor() {
           "phase1h-process-monitor-stop-timeout",
         );
       }
-      verify(sampleCount > 0 && stderrLength === 0, "phase1h-process-monitor-health", {
-        sampleCount,
-        stderrLength,
-      });
+      verify(
+        sampleCount > 0 && stderrLength === 0 && processIdentityRejectedRowCount === 0,
+        "phase1h-process-monitor-health",
+        { sampleCount, stderrLength, processIdentityRejectedRowCount },
+      );
       const ownership = this.getOwnedProcessInstances();
       return {
         sampleCount,
+        processIdentityRejectedRowCount,
         distinctProcessCount: observations.size,
         spawnTapUnsampledCountByRole:
           ownership.spawnTapUnsampledCountByRole,
+        closedSpawnTapReceiptCountByRole:
+          ownership.closedSpawnTapReceiptCountByRole,
+        liveSpawnTapInstanceCountByRole:
+          ownership.liveSpawnTapInstanceCountByRole,
         ...summarizeOwnedTcpMonitoring({
           observations,
           ownedProcesses: ownership.ownedProcesses,
@@ -1672,7 +1709,7 @@ function summarizeOwnedTcpMonitoring({
   return {
     processIdentityMode: "PID_AND_WIN32_PROCESS_CREATION_DATE",
     processOwnershipMode:
-      "MAIN_PROCESS_INSTANCE_TRANSITIVE_DESCENDANTS_AND_SPAWN_TAPPED_SIDECARS",
+      "MAIN_PROCESS_INSTANCE_DESCENDANTS_AND_LIVE_SPAWN_TAP_INSTANCES",
     ownedProcessInstanceCountsByRole: roleCounts(ownedProcesses),
     ownedElectronSubtypeCounts,
     distinctUnownedRelevantProcessInstanceCount,
@@ -1746,8 +1783,6 @@ function capturedDescendants(processes, rootInstanceKey) {
 
 async function assertNoOrphanProcesses(
   processMonitor,
-  mainProcessPid,
-  launcherProcessPid,
   hancomStatus,
   hwpExportExercised,
   atomicOutputExercised,
@@ -1858,32 +1893,36 @@ async function assertNoOrphanProcesses(
     "phase1h-owned-tcp-boundary",
     ownedTcpBoundaryFailureDetails,
   );
-  const capturedPids = [
-    ...new Set([
-      launcherProcessPid,
-      mainProcessPid,
-      ...descendantProcesses.map((entry) => entry.pid),
-      ...processMonitor.observedChildren.map((entry) => entry.pid),
-      ...capturedNew
-        .filter((entry) => hwpExportExercised && entry.role === "HANCOM")
-        .map((entry) => entry.pid),
-    ]),
-  ];
+  const ownership = processMonitor.getOwnedProcessInstances();
+  const capturedInstanceKeys = new Set([
+    processMonitor.launcherInstanceKey,
+    ...ownership.ownedProcesses.map((entry) => entry.instanceKey),
+    ...capturedNew
+      .filter((entry) => hwpExportExercised && entry.role === "HANCOM")
+      .map((entry) => entry.instanceKey),
+  ]);
   const proof = await poll(
     async () => {
-      const current = captureRelevantProcessSnapshot();
-      const newGlobalRelevant = current.filter(
+      const current = captureRelevantProcessSnapshot([processMonitor.launcherProcessPid]).map((entry) => ({
+        ...entry,
+        parentInstanceKey:
+          processMonitor.observations.get(entry.instanceKey)?.parentInstanceKey ??
+          entry.parentInstanceKey,
+      }));
+      const relevantCurrent = current.filter((entry) => entry.role !== "QUERY_TARGET");
+      const newGlobalRelevant = relevantCurrent.filter(
         (entry) =>
           !processMonitor.baselineInstanceKeys.has(entry.instanceKey),
       );
-      const exactAlive = captureAliveProcessIds(capturedPids);
       const currentInstanceKeys = new Set(
         current.map((entry) => entry.instanceKey),
       );
+      const exactAlive = [...capturedInstanceKeys].filter(
+        (key) => currentInstanceKeys.has(key),
+      );
       const liveTreeDescendantKeys = new Set(
         capturedDescendants(
-          [...capturedNew, ...current],
-          processMonitor.rootInstanceKey,
+          [...capturedNew, ...relevantCurrent], processMonitor.rootInstanceKey,
         )
           .filter((entry) => currentInstanceKeys.has(entry.instanceKey))
           .map((entry) => entry.instanceKey),
@@ -1903,6 +1942,7 @@ async function assertNoOrphanProcesses(
     networkCaptureMode:
       "WIN32_NETSTAT_OWNED_PROCESS_INSTANCE_TCP_STATE_ADDRESS_CLASS_SAMPLING",
     monitorSampleCount: monitorHealth.sampleCount,
+    processIdentityRejectedRowCount: monitorHealth.processIdentityRejectedRowCount,
     distinctObservedProcessCount: monitorHealth.distinctProcessCount,
     spawned,
     packagedPathPinningRequired: packaged,
@@ -1948,7 +1988,13 @@ async function assertNoOrphanProcesses(
       monitorHealth.ownedTcpBoundaryViolationRowCount,
     ownedTcpBoundaryViolationRoles:
       monitorHealth.ownedTcpBoundaryViolationRoles,
-    exactCapturedProcessCount: capturedPids.length,
+    orphanProofMode: "WIN32_PROCESS_INSTANCE_AND_CHILD_PROCESS_CLOSE_RECEIPTS",
+    spawnTapUnsampledCountMode: "ROLE_COUNT_LOWER_BOUND",
+    closedSpawnTapReceiptCountByRole:
+      monitorHealth.closedSpawnTapReceiptCountByRole,
+    liveSpawnTapInstanceCountByRole:
+      monitorHealth.liveSpawnTapInstanceCountByRole,
+    exactCapturedProcessCount: capturedInstanceKeys.size,
     exactCapturedProcessesExited: proof.exactAlive.length === 0,
     capturedDescendantProcessesAfterClose:
       proof.exactAlive.length + proof.liveTreeDescendantKeys.size,
@@ -1992,7 +2038,7 @@ async function installMainChildProcessObserver(application) {
       ],
     ]);
     const originalSpawn = childProcess.spawn;
-    const records = new Map();
+    const records = [];
     const wrapper = function phase1hObservedMainSpawn(...args) {
       const child = Reflect.apply(originalSpawn, this, args);
       const commandName = String(args[0] ?? "")
@@ -2017,18 +2063,23 @@ async function installMainChildProcessObserver(application) {
           typeof expectedBundledCommand === "string" &&
           nodePath.resolve(String(args[0])).toLocaleLowerCase() ===
             nodePath.resolve(expectedBundledCommand).toLocaleLowerCase();
-        const record = () => {
-          if (Number.isSafeInteger(child.pid) && child.pid > 0) {
-            records.set(`${role}:${child.pid}`, {
-              pid: child.pid,
-              ppid: process.pid,
-              role,
-              bundledPath,
-            });
-          }
+        const record = {
+          recordId: records.length + 1,
+          pid: Number.isSafeInteger(child.pid) && child.pid > 0 ? child.pid : null,
+          ppid: process.pid,
+          role,
+          bundledPath,
+          spawned: false,
+          exitReceived: false,
+          closeReceived: false,
         };
-        record();
-        child.once("spawn", record);
+        records.push(record);
+        child.once("spawn", () => {
+          record.pid = child.pid;
+          record.spawned = true;
+        });
+        child.once("exit", () => { record.exitReceived = true; });
+        child.once("close", () => { record.closeReceived = true; });
       }
       return child;
     };
@@ -2066,7 +2117,7 @@ async function collectMainChildProcessObservations(run) {
     return {
       installed: stillInstalled,
       processId: process.pid,
-      records: [...observer.records.values()],
+      records: observer.records.map((record) => ({ ...record })),
     };
   });
   verify(
@@ -2075,10 +2126,15 @@ async function collectMainChildProcessObservations(run) {
       Array.isArray(result.records),
     "phase1h-main-child-process-observer-collect",
   );
-  const records = result.records.map((record) => {
+  const records = result.records.map((record, index) => {
     verify(
       Object.keys(record).sort().join(",") ===
-        "bundledPath,pid,ppid,role" &&
+        "bundledPath,closeReceived,exitReceived,pid,ppid,recordId,role,spawned" &&
+        record.recordId === index + 1 &&
+        record.spawned === true &&
+        typeof record.exitReceived === "boolean" &&
+        typeof record.closeReceived === "boolean" &&
+        (!record.closeReceived || record.exitReceived) &&
         Number.isSafeInteger(record.pid) &&
         record.pid > 0 &&
         record.ppid === result.processId &&
@@ -2090,7 +2146,8 @@ async function collectMainChildProcessObservations(run) {
     );
     return record;
   });
-  run.processMonitor.recordObservedChildren(records);
+  const current = captureRelevantProcessSnapshot();
+  run.processMonitor.recordObservedChildren(records, current);
 }
 
 async function installMainLifecycleConsoleProbe(application) {
@@ -2158,7 +2215,15 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
     );
     mainProcessPid = await installMainChildProcessObserver(application);
     await installMainLifecycleConsoleProbe(application);
-    processMonitor.recordRoot(mainProcessPid);
+    processMonitor.recordRoot(mainProcessPid, launcherProcessPid);
+    const verifiedMainProcessPid = await application.evaluate(() => process.pid);
+    const launcherProcess = application.process();
+    verify(
+      verifiedMainProcessPid === mainProcessPid &&
+        launcherProcess.pid === launcherProcessPid &&
+        launcherProcess.exitCode === null && launcherProcess.signalCode === null,
+      "phase1h-root-launcher-process-instance-live",
+    );
   } catch (error) {
     await processMonitor.stop().catch(() => undefined);
     const message = error instanceof Error ? error.message.toLocaleLowerCase() : "";
@@ -2486,6 +2551,46 @@ async function waitForChildExit(childProcess, timeoutMs) {
   });
 }
 
+async function assertNativeSidecarsExitedBeforeWrapperCleanup(run) {
+  const nativeRoles = new Set(["CORE", "EXPORTER", "ATOMIC_OUTPUT", "BRIDGE"]);
+  if (run.hwpExportExercised) nativeRoles.add("HANCOM");
+  const capturedNativeKeys = new Set();
+  return poll(
+    async () => {
+      const current = captureRelevantProcessSnapshot();
+      run.processMonitor.recordProcessSnapshot(current);
+      const ownership = run.processMonitor.getOwnedProcessInstances();
+      const nativeInstances = [
+        ...ownership.ownedProcesses,
+        ...[...run.processMonitor.observations.values()].filter(
+          (entry) => run.hwpExportExercised && entry.role === "HANCOM" &&
+            !run.processMonitor.baselineInstanceKeys.has(entry.instanceKey),
+        ),
+      ];
+      for (const entry of nativeInstances) {
+        if (nativeRoles.has(entry.role)) capturedNativeKeys.add(entry.instanceKey);
+      }
+      const currentKeys = new Set(current.map((entry) => entry.instanceKey));
+      const aliveCount = [...capturedNativeKeys].filter((key) => currentKeys.has(key)).length;
+      const proof = {
+        proofMode: "WIN32_PROCESS_INSTANCE_BEFORE_WRAPPER_CLEANUP",
+        capturedNativeProcessInstanceCount: capturedNativeKeys.size,
+        aliveNativeProcessInstanceCount: aliveCount,
+        closedSpawnTapReceiptCountByRole: ownership.closedSpawnTapReceiptCountByRole,
+        hancomScopeRequired: run.hwpExportExercised,
+        preWrapperNativeSidecarsExited: aliveCount === 0,
+      };
+      run.closeAttemptEvidence = {
+        ...run.closeAttemptEvidence,
+        preWrapperNativeSidecarExitProof: proof,
+      };
+      return proof.preWrapperNativeSidecarsExited ? proof : null;
+    },
+    "phase1h-pre-wrapper-native-sidecar-exit",
+    PROCESS_EXIT_TIMEOUT_MS,
+  );
+}
+
 async function forceCloseApplication(application, processMonitor = undefined) {
   try {
     if (!application) {
@@ -2580,6 +2685,17 @@ async function closeWindowCleanly(run) {
     postProductQuitProcessDiagnostics,
     productProcessDiagnostics,
   );
+  run.productProcessDiagnostics = postProductQuitProcessDiagnostics;
+  run.closeAttemptEvidence = {
+    productWindowClosed: true,
+    productQuitObserved: true,
+    productGracefulQuit: true,
+    productLifecycle,
+    testTransportWrapperCleanupRequired: true,
+    testTransportWrapperCleanupCompleted: false,
+    productCloseToQuitProcessDiagnostics,
+    testTransportWrapperCleanupDiagnostics: null,
+  };
   assertProductProcessDiagnosticDelta(
     productCloseToQuitProcessDiagnostics,
     "phase1h-product-close-to-quit-process-diagnostic-delta",
@@ -2592,16 +2708,22 @@ async function closeWindowCleanly(run) {
         postProductQuitProcessDiagnostics.privateContentDetected,
     },
   );
+  const preWrapperNativeSidecarExitProof =
+    await assertNativeSidecarsExitedBeforeWrapperCleanup(run);
+  const beforeWrapperProcessDiagnostics = run.processDiagnostics.evidence();
+  const productQuitToNativeSidecarExitProcessDiagnostics = processDiagnosticDelta(
+    beforeWrapperProcessDiagnostics,
+    postProductQuitProcessDiagnostics,
+  );
+  run.productProcessDiagnostics = beforeWrapperProcessDiagnostics;
   run.closeAttemptEvidence = {
-    productWindowClosed: true,
-    productQuitObserved: true,
-    productGracefulQuit: true,
-    productLifecycle,
-    testTransportWrapperCleanupRequired: true,
-    testTransportWrapperCleanupCompleted: false,
-    productCloseToQuitProcessDiagnostics,
-    testTransportWrapperCleanupDiagnostics: null,
+    ...run.closeAttemptEvidence,
+    productQuitToNativeSidecarExitProcessDiagnostics,
   };
+  assertProductProcessDiagnosticDelta(
+    productQuitToNativeSidecarExitProcessDiagnostics,
+    "phase1h-product-quit-to-native-sidecar-exit-process-diagnostic-delta",
+  );
   // Playwright 1.54 launches Windows Electron through an inspector-enabled
   // wrapper. The product has already emitted its ordered quit lifecycle, so
   // clean up only that test transport tree while process monitoring remains on.
@@ -2609,18 +2731,7 @@ async function closeWindowCleanly(run) {
   const postCleanupProcessDiagnostics = run.processDiagnostics.evidence();
   const testTransportWrapperCleanupDiagnostics = processDiagnosticDelta(
     postCleanupProcessDiagnostics,
-    postProductQuitProcessDiagnostics,
-  );
-  assertProcessDiagnosticDelta(
-    testTransportWrapperCleanupDiagnostics,
-    "phase1h-test-transport-wrapper-cleanup-diagnostic-delta",
-  );
-  verify(
-    !postCleanupProcessDiagnostics.privateContentDetected,
-    "phase1h-test-transport-wrapper-cleanup-private-content",
-    {
-      privateContentDetected: postCleanupProcessDiagnostics.privateContentDetected,
-    },
+    beforeWrapperProcessDiagnostics,
   );
   run.testTransportWrapperCleanupDiagnostics =
     testTransportWrapperCleanupDiagnostics;
@@ -2633,11 +2744,22 @@ async function closeWindowCleanly(run) {
     testTransportWrapperCleanupCompleted: true,
     productCloseToQuitProcessDiagnostics,
     testTransportWrapperCleanupDiagnostics,
+    productQuitToNativeSidecarExitProcessDiagnostics,
+    preWrapperNativeSidecarExitProof,
   };
+  assertProductProcessDiagnosticDelta(
+    testTransportWrapperCleanupDiagnostics,
+    "phase1h-test-transport-wrapper-cleanup-diagnostic-delta",
+  );
+  verify(
+    !postCleanupProcessDiagnostics.privateContentDetected,
+    "phase1h-test-transport-wrapper-cleanup-private-content",
+    {
+      privateContentDetected: postCleanupProcessDiagnostics.privateContentDetected,
+    },
+  );
   const processTracking = await assertNoOrphanProcesses(
     run.processMonitor,
-    run.mainProcessPid,
-    run.launcherProcessPid,
     run.hancomStatus,
     run.hwpExportExercised,
     run.atomicOutputExercised,
@@ -2650,6 +2772,8 @@ async function closeWindowCleanly(run) {
     testTransportWrapperCleanupCompleted: true,
     productCloseToQuitProcessDiagnostics,
     testTransportWrapperCleanupDiagnostics,
+    productQuitToNativeSidecarExitProcessDiagnostics,
+    preWrapperNativeSidecarExitProof,
     processTracking,
   };
 }
