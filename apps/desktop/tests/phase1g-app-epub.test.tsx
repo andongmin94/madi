@@ -592,23 +592,24 @@ describe("Phase 1G App EPUB lifecycle", () => {
   it("fails semantic replacement closed when EPUB metadata cannot be persisted", async () => {
     const { api } = await openEpub();
     fireEvent.click(screen.getByRole("button", { name: "검색 · 치환" }));
-    await screen.findByRole("complementary", {
+    const searchPanel = await screen.findByRole("complementary", {
       name: "프로젝트 검색 및 선택 치환"
     });
-    fireEvent.change(screen.getByRole("searchbox", { name: "찾을 문자열" }), {
+    const search = within(searchPanel);
+    fireEvent.change(search.getByRole("searchbox", { name: "찾을 문자열" }), {
       target: { value: "EPUB" }
     });
-    fireEvent.click(screen.getByRole("button", { name: "검색" }));
-    const selection = await screen.findByRole("checkbox", {
+    fireEvent.click(search.getByRole("button", { name: "검색" }));
+    const selection = await search.findByRole("checkbox", {
       name: "본문 일치: EPUB 선택"
     });
     await waitFor(() =>
       expect((selection as HTMLInputElement).checked).toBe(true)
     );
-    fireEvent.change(screen.getByRole("textbox", { name: "바꿀 문자열" }), {
+    fireEvent.change(search.getByRole("textbox", { name: "바꿀 문자열" }), {
       target: { value: "전자책" }
     });
-    const applyButton = screen.getByRole("button", {
+    const applyButton = search.getByRole("button", {
       name: "선택 항목 치환 적용"
     }) as HTMLButtonElement;
     await waitFor(() => expect(applyButton.disabled).toBe(false));
