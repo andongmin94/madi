@@ -1630,24 +1630,94 @@ pub(crate) fn create_consistent_backup(
     })?;
 
     connection.execute("VACUUM main INTO ?1", [temporary_text])?;
-    sync_file(&temporary_path)?;
+    retry_backup_io(|| sync_file(&temporary_path))?;
 
     if previous_path.exists() {
-        fs::remove_file(&previous_path)?;
+        retry_backup_io(|| fs::remove_file(&previous_path).map_err(CoreError::from))?;
     }
     if backup_path.exists() {
-        fs::rename(&backup_path, &previous_path)?;
+        retry_backup_io(|| fs::rename(&backup_path, &previous_path).map_err(CoreError::from))?;
     }
 
-    if let Err(error) = fs::rename(&temporary_path, &backup_path) {
+    if let Err(error) =
+        retry_backup_io(|| fs::rename(&temporary_path, &backup_path).map_err(CoreError::from))
+    {
         if previous_path.exists() && !backup_path.exists() {
-            let _ = fs::rename(&previous_path, &backup_path);
+            let _ = retry_backup_io(|| {
+                fs::rename(&previous_path, &backup_path).map_err(CoreError::from)
+            });
         }
-        return Err(error.into());
+        return Err(error);
     }
     temporary_guard.disarm();
-    sync_file(&backup_path)?;
+    retry_backup_io(|| sync_file(&backup_path))?;
     Ok(backup_path)
+}
+
+fn retry_backup_io<T>(mut operation: impl FnMut() -> Result<T>) -> Result<T> {
+    let started = std::time::Instant::now();
+    let delay = std::time::Duration::from_millis(20);
+    let limit = std::time::Duration::from_millis(500);
+    loop {
+        match operation() {
+            Err(CoreError::Io(error))
+                if cfg!(windows)
+                    && matches!(error.raw_os_error(), Some(32 | 33))
+                    && started.elapsed() + delay <= limit =>
+            {
+                std::thread::sleep(delay);
+                if started.elapsed() >= limit {
+                    return Err(CoreError::Io(error));
+                }
+            }
+            result => return result,
+        }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod backup_io_tests {
+    use super::*;
+
+    #[test]
+    fn non_sharing_io_and_sqlite_errors_are_not_retried() {
+        for code in [5, 2] {
+            let mut attempts = 0;
+            let result: Result<()> = retry_backup_io(|| {
+                attempts += 1;
+                Err(CoreError::Io(std::io::Error::from_raw_os_error(code)))
+            });
+            assert_eq!(attempts, 1);
+            assert!(
+                matches!(result, Err(CoreError::Io(error)) if error.raw_os_error() == Some(code))
+            );
+        }
+        let mut attempts = 0;
+        let result: Result<()> = retry_backup_io(|| {
+            attempts += 1;
+            Err(CoreError::Sqlite(rusqlite::Error::InvalidQuery))
+        });
+        assert_eq!(attempts, 1);
+        assert!(matches!(
+            result,
+            Err(CoreError::Sqlite(rusqlite::Error::InvalidQuery))
+        ));
+    }
+
+    #[test]
+    fn lock_violation_can_recover_without_repeating_a_mutation() {
+        let mut attempts = 0;
+        let result = retry_backup_io(|| {
+            attempts += 1;
+            if attempts == 1 {
+                Err(CoreError::Io(std::io::Error::from_raw_os_error(33)))
+            } else {
+                Ok(())
+            }
+        });
+        assert!(result.is_ok());
+        assert_eq!(attempts, 2);
+    }
 }
 
 fn append_file_suffix(path: &Path, suffix: &str) -> PathBuf {

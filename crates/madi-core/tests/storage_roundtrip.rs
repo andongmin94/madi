@@ -201,6 +201,133 @@ fn backup_rotation_keeps_the_two_previous_consistent_revisions() {
     assert_eq!(previous.integrity_check, "ok");
 }
 
+#[cfg(windows)]
+mod windows_backup_sharing {
+    use super::*;
+    use madi_core::CoreError;
+    use std::fs::OpenOptions;
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::path::{Path, PathBuf};
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    fn save_params(path: &Path, revision: i64) -> SaveDocumentParams {
+        SaveDocumentParams {
+            file_path: path.to_path_buf(),
+            document: SaveDocumentPayload {
+                id: DOCUMENT_ID.to_owned(),
+                project_id: None,
+                title: "fixture".to_owned(),
+                editor_engine: "typie".to_owned(),
+                editor_engine_commit: TYPIE_COMMIT.to_owned(),
+                editor_schema_version: 1,
+                snapshot_base64: BASE64_STANDARD.encode(format!("snapshot-{revision}")),
+                plain_text_recovery: format!("fixture-{revision}"),
+            },
+            expected_revision: Some(revision),
+            saved_by: None,
+        }
+    }
+
+    fn fixture_with_two_backups() -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf) {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("sharing-test.madi");
+        create_project(create_params(&path)).unwrap();
+        for revision in 0..2 {
+            save_document(save_params(&path, revision)).unwrap();
+        }
+        let backup = path.with_file_name("sharing-test.madi.bak");
+        let previous = path.with_file_name("sharing-test.madi.bak.previous");
+        assert!(backup.is_file() && previous.is_file());
+        (directory, path, backup, previous)
+    }
+
+    #[test]
+    fn backup_sharing_release_allows_one_same_revision_save() {
+        let (_directory, path, backup, previous) = fixture_with_two_backups();
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(0)
+            .open(&previous)
+            .unwrap();
+        let release = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(150));
+            drop(lock);
+        });
+        let result = save_document(save_params(&path, 2));
+        release.join().unwrap();
+        let saved = result.unwrap();
+        assert_eq!(saved.metadata.revision, 3);
+        let loaded = load_document(LoadDocumentParams {
+            file_path: path,
+            document_id: Some(DOCUMENT_ID.to_owned()),
+        })
+        .unwrap();
+        assert_eq!(loaded.plain_text_recovery, "fixture-2");
+        assert_eq!(
+            BASE64_STANDARD.decode(loaded.snapshot_base64).unwrap(),
+            b"snapshot-2"
+        );
+        for (path, revision) in [(backup, 2), (previous, 1)] {
+            assert_eq!(
+                open_project(OpenProjectParams { file_path: path })
+                    .unwrap()
+                    .metadata
+                    .revision,
+                revision
+            );
+        }
+    }
+
+    #[test]
+    fn backup_sharing_permanent_lock_preserves_revision_content_and_both_backups() {
+        let (_directory, path, backup, previous) = fixture_with_two_backups();
+        let original_bytes =
+            [fs::read(&path), fs::read(&backup), fs::read(&previous)].map(Result::unwrap);
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(0)
+            .open(&previous)
+            .unwrap();
+        let started = Instant::now();
+        let error = save_document(save_params(&path, 2)).unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(matches!(error, CoreError::Io(ref error) if error.raw_os_error() == Some(32)));
+        drop(lock);
+        let unchanged_bytes =
+            [fs::read(&path), fs::read(&backup), fs::read(&previous)].map(Result::unwrap);
+        assert_eq!(unchanged_bytes, original_bytes);
+        let loaded = load_document(LoadDocumentParams {
+            file_path: path.clone(),
+            document_id: Some(DOCUMENT_ID.to_owned()),
+        })
+        .unwrap();
+        assert_eq!(
+            open_project(OpenProjectParams {
+                file_path: path.clone()
+            })
+            .unwrap()
+            .metadata
+            .revision,
+            2
+        );
+        assert_eq!(loaded.plain_text_recovery, "fixture-1");
+        assert_eq!(
+            BASE64_STANDARD.decode(loaded.snapshot_base64).unwrap(),
+            b"snapshot-1"
+        );
+        assert_eq!(
+            save_document(save_params(&path, 2))
+                .unwrap()
+                .metadata
+                .revision,
+            3
+        );
+    }
+}
+
 #[test]
 fn stale_revision_never_overwrites_the_document() {
     let directory = tempdir().unwrap();
