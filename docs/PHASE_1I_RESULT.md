@@ -12,6 +12,7 @@ Exact same-block selection apply: IMPLEMENTED
 General proposal review: IMPLEMENTED
 Multi-block/project-wide apply: REMOVED, NOT AUTHORIZED
 Aggregate Windows verification: PENDING FOR THIS COMMIT
+Actual loopback source51: DEVELOPMENT/PACKAGED PASS WITH DIAGNOSTIC WARNING
 Distribution: PRIVATE LOCAL ONLY
 ```
 
@@ -57,9 +58,10 @@ The stable product now has one clear canonical mutation path: an exact same-bloc
 
 ## Verification contract
 
-The exact cleanup commit must pass:
+The final product candidate must pass the required pinned path:
 
 ```powershell
+pnpm install --frozen-lockfile
 pnpm verify
 pnpm package:unpacked
 pnpm check:repository
@@ -128,8 +130,50 @@ switch, and zero active job processes at cleanup. Both app windows closed and th
 exited; the evidence records Playwright `closed=false`, rather than claiming that field passed.
 Owned temporary app data was removed.
 
-This result is limited to that development source. Fresh-unpacked provider validation and
-aggregate Windows verification of the final candidate remain **PENDING**.
+This result is limited to that development source. At that point, fresh-unpacked provider
+validation and aggregate Windows verification remained **PENDING**. The later source51 runs follow.
+
+## 2026-10-01 exact source51 actual loopback development and packaged
+
+Source `51c1e6cdc10107d76e30103fbe1d6f4d035218e3` passed both explicitly authorized real
+loopback-provider workflows with status `PASS_LOOPBACK_ACTUAL_WITH_DIAGNOSTIC_WARNING`.
+Both hosts recorded child exit0 and source clean before/after. The full source51 Windows run2
+still failed at fresh D; these separate AI runs do not establish aggregate PASS or H acceptance.
+
+| Mode | UTC start→finish, 2026-09-30 | Host seconds | actual.json SHA-256 |
+| --- | --- | --- | --- |
+| Development | 17:37:48.1484739→17:38:26.1467169 | 37.998 | `b7fef91cbc3f54a69f6b2d62791ce2b5a6604e0c82fe278cb7f7ec08801bae92` |
+| Packaged | 17:38:41.6535598→17:39:19.5562741 | 37.903 | `02903a69daf0e0a5db67286c3a498b33195cad54e542531cc0dfd9a06ee70ab1` |
+
+Both workflows verified consent, actual general-response copy with canonical content unchanged,
+no mutation before acceptance, exact same-block apply, one exact Undo/Redo, exact save/reopen,
+and provider/request settings persisted outside canonical content. Reopen issued no provider request.
+The diagnostic received a real provider response but exact `MADI_OK` was false: state
+`UNEXPECTED_RESPONSE`, error count0 and warning message length61. That warning is preserved.
+Both selected11 characters, reviewed2 hunks, and received13-character general/rewrite responses;
+response text is omitted. Diagnostic times were583/581ms and rewrite→apply1654/1647ms.
+
+First-app approved loopback main fetches were3, reopen0; unapproved main fetches and renderer
+HTTP/WS/page errors were0. These are main-fetch/renderer observations: full process TCP observation
+was false. Both environments observed isolated user data, trusted sandbox/preload settings and
+session spellchecker disabled/languages0. Clipboard interception passed; OS clipboard, remote
+HTTPS, keyless credential encryption and native Korean IME remain unvalidated.
+
+The owned local model used CPU threads2/batch2/GPU0/parallel1/context2048; prepared runtime/model
+hashes matched and raw provider logging was disabled. No credentials were read or stored and no
+global install or persistent environment change was performed. Both model processes exited after
+owned `SIGTERM` cleanup; exitCode was null rather than a claimed normal exit0.
+Both app windows/processes closed, with `playwrightClosed=false` preserved. Temporary app data
+was removed. Each host recorded job35/active cleanup0/no forced job termination, job empty and
+closed handles/desktop, Input Default74 samples/unavailable0/inactive desktop throughout.
+
+Actual and orchestrator receipts are archived recursively under ignored
+`.tools/verification/llm-development-51c1e6c-run1/` and `llm-packaged-51c1e6c-run1/`.
+Packaged first/reopen observed `isPackaged=true` and used the same candidate build recorded by
+full run2's package receipt/source join and source51 inventory. Inventory alone does not infer
+freshness. Preparation source21c9a9d describes the local runtime preparation, not the app source.
+This completes the recorded source51 loopback actual pair with warnings. The new viewport
+candidate has not inherited those passes; final aggregate Windows verification remains **PENDING**.
 
 ## Next stage
 

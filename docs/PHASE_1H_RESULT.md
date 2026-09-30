@@ -1,7 +1,8 @@
 # Phase 1H — HWPX Export & Optional Local HWP Bridge 결과
 
 기준일: 2026-08-13  
-문서 상태: static implementation record; final actual pending
+후속 갱신일: 2026-10-01
+문서 상태: baseline static record and source51 actual follow-up; final aggregate pending
 
 이 문서는 아래 기준일의 구현·실행 근거를 보존한다. 현행 목표와 작업 순서는
 [PLANS.md](../PLANS.md)를 따른다. 후속 Phase 1I 구현이나 계획 정리는 이 문서의
@@ -11,14 +12,16 @@
 
 ```text
 Phase 1H verdict: WITHHELD
-HWPX actual verdict: WITHHELD UNTIL DEVELOPMENT/FRESH-UNPACKED GATES COMPLETE
+HWPX source51 actual: DEVELOPMENT PASS / STANDALONE FRESH-UNPACKED PASS
+Final Windows aggregate: source51 FAIL; new candidate PENDING
 HWP Automation: MANUAL VALIDATION PENDING
 Development boundary: PRIVATE LOCAL ONLY
 ```
 
 Repository implementation과 일부 focused/static/package boundary 검증은 존재하지만 이
-문서를 작성한 시점에는 일반·675,000자 actual, development/fresh-unpacked Electron과 최종
-7개 pnpm command를 완료하지 않았다. 따라서 `TECHNICAL GO — HWPX`를 미리 선언하지 않는다.
+기준일에는 일반·675,000자 actual과 development/fresh-unpacked Electron을 완료하지 않았다.
+후속 source51의 개별 actual 성공과 full 실패는 section27에 기록한다. 최종 필수 명령은
+[PLANS.md](../PLANS.md)의 6개이며, 새 후보의 전체 성공 전 `TECHNICAL GO — HWPX`를 선언하지 않는다.
 
 ## 2. Runtime EPUBCheck 재분류 결과
 
@@ -174,11 +177,12 @@ HWPX open/HWP SaveAs/HWP reopen: MANUAL VALIDATION PENDING
 
 측정 계약은 general semantic fixture와 10권/150화/450장면/675,000자 long-form fixture를
 development/fresh-unpacked에서 가능한 5회 측정하는 것이다. Fresh-unpacked exporter total
-target은 15초다. 현재 actual evidence가 없어 수치와 PASS는 `WITHHELD`다.
+target은 15초다. 기준일에는 actual evidence가 없어 수치와 PASS를 `WITHHELD`로 기록했다.
+후속 source51 development/fresh 실측은 section27과 [성능 문서](HWPX_EXPORT_PERFORMANCE.md)에 기록한다.
 
 ## 16. 테스트 결과
 
-현재 확정된 focused/static 경계만 기록한다.
+아래 표는 기준일에 확정한 focused/static 경계다. 후속 실행의 결과로 과거 표를 덮지 않는다.
 
 | Gate | Result |
 |---|---|
@@ -207,8 +211,8 @@ Focused result는 aggregate/final actual을 대신하지 않는다.
 - `node scripts/check-repository.mjs`
 - `node scripts/check-format.mjs`
 
-Required 최종 7개 command의 independent elapsed/exit는 root actual 종료 후 이 문서에
-추가한다. 실행하지 않은 명령을 PASS로 적지 않는다.
+당시 최종 aggregate command의 independent elapsed/exit는 미확보였다. 현행 필수 6명령은
+[PLANS.md](../PLANS.md)를 따른다. 실행하지 않은 명령을 PASS로 적지 않는다.
 
 ## 18. 변경 파일과 commit
 
@@ -381,4 +385,60 @@ baseline 실제 RED를 확보했지만 모든 scheduler에서 최초 공유 충�
 실제 파일 잠금 증거는 code32다. 증분 cache 제어는 [Cargo 공식 환경 변수](https://doc.rust-lang.org/cargo/reference/environment-variables.html)를
 따르며 compile 실패의 근본 원인을 이 성공으로 확정하지 않는다. 시스템 보안 설정은 변경하지 않았다.
 Logs·환경 receipt는 `.tools/verification/backup-sharing-b21827a-regression-run1/`에 보관했다.
-Repository·format·diff 검사는 통과했지만 새로운 full Windows·fresh-unpacked 실제 판정은 아직 대기 중이다.
+당시 Repository·format·diff 검사는 통과했고 새로운 full Windows·fresh actual은 대기 중이었다.
+후속 검증은 아래 source51 실행으로 구분한다.
+
+## 27. 2026-10-01 exact source51 full 실패와 standalone actual
+
+검증 source는 `51c1e6cdc10107d76e30103fbe1d6f4d035218e3`다. Node26.3.1/pnpm11.9.0/
+Rust1.97.1/.NET10.0.400, jobs1/workers2와 command-local `CARGO_INCREMENTAL=0`을 사용했다.
+원본 E generator 두 번은 각각422 requests를 통과했다. 이 focused 성공은 전체 gate가 아니다.
+
+| 실행 | 실제 결과 |
+| --- | --- |
+| Full run1 | FAIL/exit1/1539.756초. Desktop678·core63·native·WASM·CLI·build·basic 통과 후 development D의 filters opened 이후 Error messageLength71. 실패 조건·인과 미확정 |
+| D 후속 확인 | Readiness diagnostic33.411초/acceptance=false; 원본 stock D 두 번 PASS34.231/34.988초. 원 full 실패의 인과를 확정하지 않음 |
+| Full run2 | FAIL/exit1/5133.172초. Desktop103파일/678테스트·native·CLI·build·development basic/D/E/F/G/H·prepackage D/E/F·package build·fresh basic 통과 후 fresh D pointer-center wait 실패(messageLength88). 이 full의 fresh E/F/G/H는 NOT_REACHED |
+| 후속 standalone fresh E/F/G/H | 각각 공식 PASS/exit0. Host metadata elapsed50.495/126.316/80.444/101.537초. Full run2의 결과를 PASS로 바꾸지 않음 |
+
+두 full은 시작·끝 같은 source와 clean을 기록했다. Run1 job817/cleanup active0/no forced termination,
+Input Default3003 samples였다. Run2는 UTC16:09:10.9771007→17:34:44.1609365,
+job2156/cleanup active1/owned-job 강제 종료 후 job empty·handle/desktop 정리를 기록했고
+Input Default10011 samples였다. 후속 standalone host는 active0/no forced termination이었다.
+V3는 fresh D 원본88조건을 actual selected가 height503 canvas 밖인 상태로 재현했다.
+V4는 center 이동을 반복 VIEWPORT 적용이 덮는 journal을 보존했다. 두 진단은 acceptance=false이며
+H actual이나 새 수정의 aggregate 성공으로 분류하지 않는다. 현행 수정·재검증 상태는 PLANS를 따른다.
+
+Source51 H development와 standalone fresh는 일반6 scopes, preset CRUD·snapshot/reopen·overwrite·
+Markdown·no-clobber·취소·정상 종료를 완료했다. 장편5회 각각 sections450/450,
+blocks2411=1961 exported+450 fallback+0 omission+0 rejected, characters675000/675000,
+VALID fatal/error0·warning451, ZIP/XML reopen을 확인했다. 최초 custom scene의 의도한 omission1은 별도다.
+장편 output31867bytes와 byte/logical/source/preset 해시는 각5회와 development/fresh 사이 모두 같다.
+
+| 장편 identity | SHA-256 |
+| --- | --- |
+| Output | `0dd78a22ae530a85506bf05087e0ddc07f27d1d2704dd5a05be9bba52298afde` |
+| Logical package | `f09e22b7841aaee73a0a6445440f419b55cf55ed30461eb19eb175453652afe0` |
+| Source Publication IR | `eba872b8ce302e8ff54c9f3417a115768f0d0ebbaa1f33c87ed37f706854626b` |
+| ONE_OFF preset | `5651a452f234acdf399e9ba3c3dd8007a888f46d1693740f59fff66230a17bbb` |
+
+Development exporter median/max769/773ms, runtime IR59052.25/59144.39ms, wall60824.30/60922.14ms.
+Fresh exporter76/77ms, IR2583.83/2634.53ms, wall3541.54/3601.06ms다.
+Fresh 일반5초·장편15초의 exporter 기준을 실제 적용해 모두 통과했다. Wall은 별도 관측값이다.
+Renderer HTTP/WS와 owned birth-based TCP nonloopback·peer/listener 위반·classification/identity race/
+parser reject는0, session spellcheck enabled=false/languages0였다. 세 lifecycle의 제품 종료·native exit·
+wrapper 진단0, wrapper 전 native alive0, exact captured exit·잔여0, recovery/artifact cleanup0을 확인했다.
+Fresh 개발용 renderer·core/exporter/bridge/atomic override canary는 요청0/파일 생성false였다.
+Hancom REGISTERED_UNVERIFIED/HWP disabled/security module false/COM-HWP attempt false/reopen NOT_RUN 유지.
+
+Evidence는 ignored `full-verify-51c1e6c-run2/`와 `phase1{e,f,g,h}-packaged-51c1e6c-run1/`에 보존했다.
+Development H JSON SHA는 `0f7f9428194948dfa8aa3eec613797280d209e2ae13ea6f0fe5b7d3cc19a04cc`,
+fresh H는 `64e2ae11c222c34193dd2c55d21b6aec275bad1ae69e28fe21779de08d9c384a`다.
+Same-run `package-unpacked-receipt.json` SHA는 `a32f82a5f35a17d312fcfe5a7f1a9e5e43f776fb4dc813bcdc34ab887d83c6b4`,
+source join은 `60e554d41919bb3182e7f55eb0e2e3beea64e95856501d20beeec5b7888b787b`다.
+Source/build/log·선택 inventory101files/233244993bytes를 연결했고 sidecar4+bridge4 SHA/bytes가 일치했다.
+Receipt는 중첩 `package:unpacked` 성공이며 별도 실행 시간을 만들지 않는다. Inventory는 acceptance=false/
+freshness 추정false이고 전체 Electron runtime/license 목록이나 actual gate를 대체하지 않는다.
+`36cbf72e51667e06f0124651396f448d5a3d73db`는 D World Graph의 viewport 경합을 좁게 수정했다.
+작업 중 회귀 RED→GREEN2·관련21테스트·typecheck는 통과했지만 수정 후 actual/full은 미실행이다.
+Source51의 개별 development/fresh H 성공은 보존하되 full 실패와 새 후보 검증 대기로 최종 **WITHHELD**를 유지한다.

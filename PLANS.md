@@ -2,7 +2,7 @@
 
 갱신일: 2026-10-01
 작업 위치: `main`. 실제 검증 대상은 각 실행에 기록된 exact source SHA를 따른다.
-현재 작업: development 전체 실제 검증 후 package 준비에서 재현된 저장 오류를 수정하고 새 후보의 전체 Windows·fresh package 검증을 종료한다.
+현재 작업: World Graph의 반복 VIEWPORT 적용 경합을 수정한 새 후보에서 development·fresh D와 전체 Windows 검증을 종료한다.
 
 이 문서는 현재 목표, 작업 순서와 완료 조건을 관리하는 유일한 실행 계획이다.
 목표는 기존 제품 범위를 완성하고 동일 후보의 Windows 실제 검증을 종료하는 것이다.
@@ -37,21 +37,30 @@ AI mutation은 정확한 단일 블록 선택 범위만 허용한다. 일반 보
 PID와 생성 시각으로 마디 프로세스의 종료를 증명한다.
 후속 구현과 단위 성공만으로 Phase 1H의 실제 offline/network 판정을 해소하지 않는다.
 
+최근 실제 검증 source는 `51c1e6cdc10107d76e30103fbe1d6f4d035218e3`다.
+이 source의 development 전체와 후속 standalone fresh E/F/G/H·AI 양쪽은 통과했지만,
+full run2는 fresh D의 World Graph에서 실패했다. `36cbf72e51667e06f0124651396f448d5a3d73db`는
+viewport 수정을 구현하고 회귀 RED→GREEN2·관련21테스트·typecheck를 통과했지만 수정 후 actual은 미실행이다.
+
 | 검증 | 현재 관측과 판정 |
 | --- | --- |
 | 고정 원본 | Typie exact pin 복구 및 repository hash 검증 경로 유지 |
 | 종료 저장 경합 | 기존 코드의 추가 저장 1회 재현 후 수정. 관련 4파일·28테스트와 typecheck PASS |
-| G development actual | `80225d3`와 `b21827a` **PASS**. 일반 180,000자·장편 675,000자 5회 exact coverage, ZIP reopen·결정성, 종료 진단·잔여 프로세스 0 |
-| H development actual | `55d1d45`와 `b21827a` **PASS**: 일반 원고와 장편 5회, preset·snapshot·ZIP/XML reopen·결정성·취소·no-clobber·정상 종료. 과거 preflight·Markdown 실패는 결과 문서에 보존 |
+| G development actual | `80225d3`·`b21827a`·`51c1e6c` **PASS**. 일반 180,000자·장편 675,000자 5회 exact coverage, ZIP reopen·결정성, 종료 진단·잔여 프로세스 0 |
+| H development actual | `55d1d45`·`b21827a`·`51c1e6c` **PASS**. 일반 원고와 장편 5회, preset·snapshot·ZIP/XML reopen·결정성·취소·no-clobber·정상 종료. 과거 실패는 결과 문서에 보존 |
 | HWPX 상태 조회 경합 | `7c87e83`: 부모 callback 변경 시 불필요한 재조회를 재현 후 기존 EPUB 방식으로 수정. 관련 14테스트·typecheck PASS. 후속 actual 실패의 오류 표시를 확인 |
-| 저장 HWPX 프리셋 해시 | `451e085` native 재현 후 `bf357ca`에서 중복 JS 재해시만 제거. 정상 수락 2건 RED→GREEN·잘못된 hash/config 거부, 관련 34테스트·typecheck PASS. `55d1d45` development 전체 PASS; fresh package·최종 aggregate 대기 |
+| 저장 HWPX 프리셋 해시 | `451e085` native 재현 후 `bf357ca`에서 중복 JS 재해시만 제거. 정상 수락 2건 RED→GREEN·잘못된 hash/config 거부, 관련 34테스트·typecheck PASS. `51c1e6c` development·standalone fresh H PASS; 최종 aggregate 대기 |
 | 과거 `pnpm verify` 전체 | `31adb1d` run2 **FAIL**, 약 48.72분 후 G orphan 검사에서 종료. 선행 Desktop 666테스트·native·integration·build·basic/D/E/F 통과, H와 package 미도달 |
 | 후속 `pnpm verify` 전체 | `b21827a` run1 **FAIL**, 4021.131초. Desktop 678테스트·native·integration·build·development basic/D/E/F/G/H 통과 후 package 준비의 E fixture `create_tree_node -32000` 실패. Fresh package 미도달 |
-| 저장 오류 재현·수정 | `b21827a` 원본 진단에서 연속 생성 I/O·Windows code32와 미커밋 상태 확인. `4463d7a`는 백업 내부 파일 작업만 32/33 한정·20ms 간격·500ms 재시도 budget을 적용. 실제 잠금 RED→GREEN·저장 7테스트·오류 분류 2테스트 PASS. 새로운 full·fixture 반복 검증 대기 |
-| 수정 후 최종 Windows gate | **PENDING**. 같은 exact source SHA의 full verify·fresh-unpacked actual·필수 명령이 필요 |
-| 현재 후보 unpacked package | **PENDING / NOT REACHED**. 기존 package 성공은 `102f810`의 결과이며 현재 후보에 이전하지 않음 |
-| 사용자 소유 AI 실제 검증 | `451e085` development loopback **PASS_WITH_DIAGNOSTIC_WARNING**. 실제 selection apply·Undo·Redo·save·reopen, general-copy 무변이 확인. 고정 `MADI_OK` exact 응답은 false. 같은 최종 후보의 development·fresh-unpacked 검증 **PENDING** |
-| Phase 1H / Phase 1I | H actual **WITHHELD**, I aggregate·fresh-unpacked provider **PENDING**. 제한된 loopback development 성공과 warning은 별도 기록 |
+| 저장 오류 재현·수정 | `4463d7a`는 백업 파일 작업의 I/O32/33만 20ms 간격·500ms budget으로 재시도. 실제 잠금 RED→GREEN·저장 7테스트·오류 분류 2테스트 PASS. 원본 E generator 두 번/각422 requests PASS, `51c1e6c` full run2의 prepackage E도 PASS |
+| `51c1e6c` full run1 | **FAIL**, exit1/1539.756초. Desktop678·core63·native·WASM·CLI·build·basic PASS 후 development D에서 Error messageLength71. 실제 실패 조건·인과 미확정 |
+| `51c1e6c` full run2 | **FAIL**, exit1/5133.172초. Desktop103파일/678테스트·native·CLI·build·development basic/D/E/F/G/H·prepackage D/E/F·package build·fresh basic PASS 후 fresh D pointer-center wait 실패(messageLength88). 이 full의 fresh E/F/G/H는 미도달 |
+| `51c1e6c` standalone fresh | E/F/G/H 공식 workflow 각각 **PASS**. G/H 장편5회 coverage·ZIP/XML reopen·결정성·종료 증명 통과, exporter max G65/H77ms. Full run2의 도달 범위와 구분 |
+| Fresh D World Graph viewport 경합 | 원본88조건과 V4 center 덮임을 진단으로 확인(acceptance=false). `36cbf72`의 좁은 수정·회귀 RED→GREEN2/관련21테스트/typecheck **PASS**. 수정 후 development/fresh actual·새 exact full **PENDING** |
+| 현재 후보 unpacked package | `51c1e6c` full run2의 중첩 `package:unpacked` **PASS**. Same-run receipt·source join과 선택 파일 inventory101개/233244993bytes를 보존. 후속 standalone fresh PASS가 full FAIL을 바꾸지 않음 |
+| 사용자 소유 AI 실제 검증 | `51c1e6c` development·packaged 양쪽 **PASS_LOOPBACK_ACTUAL_WITH_DIAGNOSTIC_WARNING**. General-copy 무변이·exact selection apply·Undo/Redo·save/reopen 통과. Exact `MADI_OK` false, keyless/clipboard interception/loopback 범위 유지 |
+| 수정 후 최종 Windows gate | **PENDING**. 새 viewport 후보의 같은 exact source에서 필수 6명령·development/fresh actual과 AI 경로를 검증해야 함 |
+| Phase 1H / Phase 1I | H 최종 **WITHHELD**, I aggregate Windows **PENDING**. Source51의 개별 development/fresh·AI 성공과 전체 실패를 함께 기록 |
 
 run1은 Desktop 663 PASS·3 FAIL로 종료했다. 두 timeout과 COSE 5초 초과를 실제 실패로 보존한다.
 run2의 Desktop 666 PASS와 development basic·D·E·F PASS는 전체 `verify` 성공을 뜻하지 않는다.
@@ -78,6 +87,19 @@ Markdown harness 기대값 불일치다. 전체 줄의 exact 검사로 정정하
 smoke 구문·format·diff 검사 PASS이며 `55d1d45` 후속 development actual은 통과했다.
 spellcheck window preference는 constructor 단위 증거로 구분하고, 실제 session 상태와 network 관측은 runtime evidence로 판정한다.
 
+`51c1e6c` run1 뒤 readiness diagnostic은 33.411초/acceptance=false였고, 원본 stock D 두 번은
+34.231/34.988초에 통과했다. 이 성공으로 run1의 messageLength71 실패를 성능 기준 실패나
+특정 timeout으로 단정하지 않는다. Run2의 messageLength88은 별도 V3에서 실제 selected canvas
+위치가 height503 밖인 상태로 재현했다. V4는 ANIMATE14/VIEWPORT332와 center 목표로 이동한 뒤
+반복 viewport 적용에 의해 되돌아가는 journal을 보존했다. V4의 실패 화면은 alpha0으로,
+그 실행의 alpha false-negative 인과는 지지하지 않는다. 진단은 모두 NOT_GATE이며 수정 후 actual 효과는 미검증이다.
+
+Full run2 host는 같은 clean source, job2156/cleanup active1, owned-job 강제 종료 후
+job empty·handle/desktop 정리, Input Default10011 samples를 기록했다. 후속 standalone E/F/G/H와
+AI host는 active0/no forced job termination이었다. 개별 제품 종료 proof와 host 정리를 구분한다.
+Source51 package build receipt의 sidecar4·bridge4 SHA/bytes가 inventory와 일치했다.
+Inventory 자체는 acceptance=false/freshness 추정false이며 actual workflow 증거를 대체하지 않는다.
+
 고정 도구는 Node `26.3.1`, pnpm `11.9.0`, Rust `1.97.1`, .NET SDK `10.0.400`을 사용한다.
 Windows MSVC·SDK와 x86 .NET runtime을 갖추고 `.tools/run-pinned.ps1`로 실행한다.
 현재 Rust build는 1개로 제한하고 Desktop Vitest worker는 2개로 제한한다.
@@ -89,8 +111,8 @@ Input desktop 관측에는 `Default`와 unknown이 있으므로 모든 관측이
 
 | 순서 | 작업 | 완료 조건 |
 | --- | --- | --- |
-| 1 | 현재 후보 full Windows gate와 candidate package 종료 | 아래 필수 명령이 실제 성공하고 동일 source SHA의 development·fresh-unpacked actual을 통과 |
-| 2 | 현재 후보 사용자 소유 AI 실제 경로 종료 | 사용자가 승인한 실제 제공자·범위에서 development·fresh-unpacked 양쪽 검증; warning·실패·전송 경계를 그대로 기록 |
+| 1 | World Graph 수정 후보의 actual과 full Windows gate | 구현·focused 회귀 성공을 새 exact 후보의 D actual에서 확인하고 필수 6명령·동일 source의 development/fresh actual 통과 |
+| 2 | 새 후보 사용자 소유 AI 실제 경로 확인 | Source51 양쪽 성공을 새 후보로 이전하지 않고 승인한 provider/range에서 development·fresh 양쪽 검증; warning·전송 경계 기록 |
 | 3 | 결과와 계획의 최종 동기화 | 명령별 commit·환경·exit, 실제 coverage·hash·network·cleanup·성능을 기존 결과 문서에 기록하고 이 계획의 상태를 갱신 |
 
 실패가 재현되어 좁은 수정이 필요하면 main의 작은 commit으로 처리하고 새 후보의 필수 gate를 다시 실행한다.
