@@ -32,6 +32,8 @@ const desktopRequire = createRequire(
 const childProcessModule = desktopRequire("node:child_process");
 const packagedExecutable = process.env.MADI_PACKAGED_EXE?.trim();
 const packaged = Boolean(packagedExecutable);
+const isolatedDesktop = Boolean(process.env.MADI_ISOLATED_GATE_RUN_DIR?.trim());
+const isolatedDesktopArguments = isolatedDesktop ? ["--disable-gpu"] : [];
 const electronExecutable = packagedExecutable || desktopRequire("electron");
 const executableSuffix = process.platform === "win32" ? ".exe" : "";
 const coreBinary = resolve(
@@ -2132,8 +2134,8 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
     application = await launchElectronWithProcessCapture({
       executablePath: electronExecutable,
       args: packaged
-        ? [`--user-data-dir=${userDataPath}`]
-        : [".", `--user-data-dir=${userDataPath}`],
+        ? [...isolatedDesktopArguments, `--user-data-dir=${userDataPath}`]
+        : [".", ...isolatedDesktopArguments, `--user-data-dir=${userDataPath}`],
       cwd: packaged ? dirname(electronExecutable) : desktopDirectory,
       env: {
         ...process.env,
@@ -2394,6 +2396,7 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
       return {
         isPackaged: app.isPackaged,
         appNameLength: app.getName().length,
+        disableGpuSwitchObserved: app.commandLine.hasSwitch("disable-gpu"),
         backgroundNetworkingDisabled: app.commandLine.hasSwitch(
           "disable-background-networking",
         ),
@@ -2773,6 +2776,10 @@ function assertSecurity(evidence) {
     },
   );
   verify(evidence.runtime.isPackaged === packaged, "phase1h-runtime-package-mode");
+  verify(
+    evidence.runtime.disableGpuSwitchObserved === isolatedDesktop,
+    "phase1h-runtime-isolated-desktop-rendering",
+  );
   verify(evidence.runtime.rendererProtocol === "madi:", "phase1h-runtime-protocol");
   verify(
     evidence.runtime.backgroundNetworkingDisabled === true &&

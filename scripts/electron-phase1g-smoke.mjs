@@ -32,6 +32,8 @@ const desktopRequire = createRequire(
 const childProcessModule = desktopRequire("node:child_process");
 const packagedExecutable = process.env.MADI_PACKAGED_EXE?.trim();
 const packaged = Boolean(packagedExecutable);
+const isolatedDesktop = Boolean(process.env.MADI_ISOLATED_GATE_RUN_DIR?.trim());
+const isolatedDesktopArguments = isolatedDesktop ? ["--disable-gpu"] : [];
 const electronExecutable = packagedExecutable || desktopRequire("electron");
 const executableSuffix = process.platform === "win32" ? ".exe" : "";
 const coreBinary = resolve(
@@ -1611,9 +1613,17 @@ function createProcessDiagnosticCollector() {
         "profileEnd",
         "OTHER",
       ]);
+      const chromium = text.match(
+        /:(INFO|WARNING|ERROR|FATAL):(?:[A-Za-z0-9_.\/\\-]*[\/\\])?([A-Za-z0-9_-]+\.(?:cc|h))(?::(\d+)|\((\d+)\))\]/u,
+      );
       target.push({
         source,
         type: allowedTypes.has(type) ? type : "OTHER",
+        chromiumSeverity: chromium?.[1] ?? null,
+        chromiumComponent: chromium
+          ? (chromium[2] === "gpu_process_host.cc" ? "GPU_PROCESS_HOST" : "OTHER")
+          : null,
+        chromiumLine: chromium ? Number(chromium[3] ?? chromium[4]) : null,
         characterCount: text.length,
         lineCount: text.split(/\r?\n/u).length,
       });
@@ -2206,8 +2216,8 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
     application = await launchElectronWithProcessCapture({
       executablePath: electronExecutable,
       args: packaged
-        ? [`--user-data-dir=${userDataPath}`]
-        : [".", `--user-data-dir=${userDataPath}`],
+        ? [...isolatedDesktopArguments, `--user-data-dir=${userDataPath}`]
+        : [".", ...isolatedDesktopArguments, `--user-data-dir=${userDataPath}`],
       cwd: packaged ? dirname(electronExecutable) : desktopDirectory,
       env: {
         ...process.env,
@@ -2457,6 +2467,7 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
     const appRuntime = await application.evaluate(({ app }) => ({
       isPackaged: app.isPackaged,
       appNameLength: app.getName().length,
+      disableGpuSwitchObserved: app.commandLine.hasSwitch("disable-gpu"),
     }));
     const runtime = {
       ...appRuntime,
@@ -2801,6 +2812,10 @@ function assertSecurity(evidence) {
     },
   );
   verify(evidence.runtime.isPackaged === packaged, "phase1g-runtime-package-mode");
+  verify(
+    evidence.runtime.disableGpuSwitchObserved === isolatedDesktop,
+    "phase1g-runtime-isolated-desktop-rendering",
+  );
   verify(evidence.runtime.rendererProtocol === "madi:", "phase1g-runtime-protocol");
   verify(
     evidence.runtime.packagedOverrideCanary === packaged,
@@ -3075,6 +3090,12 @@ async function captureRunFailureContext(run) {
       rendererDiagnosticCount: run.rendererDiagnostics.length,
       mainProcessDiagnosticCount: diagnostics.mainProcessDiagnostics.length,
       childStderrDiagnosticCount: diagnostics.childStderrDiagnostics.length,
+      processDiagnostics: {
+        main: diagnostics.mainProcessDiagnostics,
+        childStderr: diagnostics.childStderrDiagnostics,
+        privateContentDetected: diagnostics.privateContentDetected,
+        rawPathOrUrlDetected: diagnostics.rawPathOrUrlDetected,
+      },
     };
   } catch (error) {
     return {
