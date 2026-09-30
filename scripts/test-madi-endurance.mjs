@@ -78,14 +78,15 @@ function assertProjectInspection(inspected, expectedRevision) {
     );
   }
   if (
-    inspected.schema_migrations.length !== 7 ||
+    inspected.schema_migrations.length !== 8 ||
     inspected.schema_migrations[0]?.version !== 1 ||
     inspected.schema_migrations[1]?.version !== 2 ||
     inspected.schema_migrations[2]?.version !== 3 ||
     inspected.schema_migrations[3]?.version !== 4 ||
     inspected.schema_migrations[4]?.version !== 5 ||
     inspected.schema_migrations[5]?.version !== 6 ||
-    inspected.schema_migrations[6]?.version !== 7
+    inspected.schema_migrations[6]?.version !== 7 ||
+    inspected.schema_migrations[7]?.version !== 8
   ) {
     throw new Error("Schema migration record changed during endurance test");
   }
@@ -311,7 +312,7 @@ try {
         semanticSceneBreaks: roundReports.at(-1)?.sceneBreaks,
         orderedContent: true,
         sqliteQuickCheck: "ok",
-        schemaMigrationVersions: [1, 2, 3, 4, 5, 6, 7],
+        schemaMigrationVersions: [1, 2, 3, 4, 5, 6, 7, 8],
         perRound: roundReports,
       },
       null,
