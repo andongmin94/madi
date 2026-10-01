@@ -242,3 +242,113 @@ PID18872 종료는 그 process에 한정한 사람의 승인으로 실행했으�
 
 HWP 생성·재열기·본문 coverage·5회 반복·network/lifecycle gate는 미통과이며 제품 HWP는 disabled다.
 독립 빈 대조군의 식별·정상 종료 성공을 이 판정이나 public/layout/native IME 승인으로 확대하지 않는다.
+
+## 11. 2026-10-01 BBB native file-load controls
+
+실제 outer source는 `bbbeb4d20debce8aef67c68eb060a7d31aea5063`이며 각 실행 전후 tracked clean이다.
+제품·검증한 배포본·ZIP은 `5151f6a804cf1565a09211ea8f7a11e9f547fd34` 그대로다. 기존 full5256.600초 PASS를 BBB 전체 gate 실행으로 옮기지 않는다.
+아래는 합성 파일의 native 문서 식별/정리 진단이다. HWP 변환·저장·재열기·최종 한컴 호환성 승인이 아니다.
+
+### Actual results
+
+NONEMPTY와 TEXT는 독립 대조군의 1문단/18 scalar이고, 나머지는 마디의 18 scalar 본문을 포함한 5 display 문단/44 scalar 진단 입력이다.
+`poll`은 bounded FullName readiness의 표본 수/경과 ms이며 성능 기준을 완화한 값이 아니다. `outer`는 전체 host 경과 초다.
+
+| Case | 입력/차이 | poll | outer(s) | 실제 결과/정리 |
+| --- | --- | ---: | ---: | --- |
+| NONEMPTY | 독립 빈 template의 hp:t 하나에 합성18 scalar | 1/98 | 12.721 | 문서 식별 PASS, 자연 종료 |
+| TEXT | 같은 NONEMPTY에서 GetTextFile(TEXT,'') 1회 | 1/189 | 15.092 | STRING 관측 PASS, 자연 종료 |
+| TINY | 실제5151 Publication IR exporter 원본 | 18/15285 | 44.466 | blank 상태/timeout FAIL, inner 소유 job 강제 정리 |
+| BASELINE | Tiny의 matched stdlib repack | 21/15007 | 42.343 | 같은 범위 FAIL, inner 강제 정리 |
+| SPINEHEADER | BASELINE content.hpf spine에 header itemref 추가만 | 19/15003 | 44.511 | 같은 범위 FAIL, inner 강제 정리 |
+| VKNOWN | BASELINE version.xml만 독립 대조군 원본 bytes로 교체 | 20/15198 | 44.849 | 같은 범위 FAIL, inner 강제 정리 |
+| PARTS | 독립 대조군 packaging에 Tiny header+section 교체 | 18/15012 | 45.738 | 같은 범위 FAIL, inner 강제 정리 |
+| SECTION | 독립 header 유지/Tiny section의 사용 char refs를0으로 맞춘 입력 | 21/15013 | 42.041 | 같은 범위 FAIL, inner 강제 정리 |
+| SAFE_FIRST_RUN | 첫 run을 donor secPr+column+t로 구성/pageNum 제거; 여러 변수 | 1/105 | 16.388 | 문서 식별 PASS, 자연 종료 |
+| T_ONLY | 첫 run에 t만 | 22/15098 | 41.854 | 같은 범위 FAIL, inner 강제 정리 |
+| COLUMN_AND_T | 첫 run에 column+t만 | 22/15060 | 41.384 | 같은 범위 FAIL, inner 강제 정리 |
+| NO_PAGE_NUM | COLUMN_AND_T에서 pageNum 요소 삭제만 | 17/15284 | 46.793 | 같은 범위 FAIL, inner 강제 정리 |
+| KNOWN_SEC_PR | COLUMN_AND_T secPr를 독립 donor로 교체; 여러 설정 | 1/98 | 13.015 | 문서 식별 PASS, 자연 종료 |
+| CHILDREN_ONLY | COLUMN_AND_T secPr에 donor 자식8개 추가/기존 opening·startNum·pagePr 유지 | 1/264 | 17.407 | 문서 식별 PASS, 자연 종료 |
+| ATTRIBUTES_ONLY | COLUMN_AND_T에서 donor opening·startNum·pagePr만 교체/자식8개 제외; 여러 설정 | 19/15006 | 43.779 | 같은 범위 FAIL, inner 강제 정리 |
+
+PASS 범위는 정확한 FullName·captured/current-active Count1·nonempty/unmodified·소유 HWND/PID/birth/image/job/private/input guards와 Close BOOL true→Quit 반환→native exit/job0다.
+실패 case는 bounded readiness 후에도 strict blank였으며 TEXT·Close·Quit를 실행하지 않았다. Inner 강제 정리와 FAIL을 그대로 보존했고 outer는 job0·desktop 제거·별도 강제 정리 없음이었다.
+모든 case의 입력/module hash가 유지됐다. 각 종료 관측의 Hwp0·양 registry view 등록값 부재는 현재 시점 증거이며 연속 host 관측을 뜻하지 않는다.
+
+### Narrow findings and limits
+
+CHILDREN_ONLY에서는 기존 Madi secPr opening·startNum·pagePr와 pageNum·column·동일44 scalar를 유지한 채 추가한 donor 자식8개 묶음으로 문서 식별이 성공했다.
+이는 단일 자식의 필요성·전체 format 원인·제품 수정 완료를 증명하지 않는다. 원본 Tiny/PARTS/SECTION 실패는 재판정하지 않았다.
+독립 accepted header를 사용한 hybrid 입력은 사용되는 section refs를 맞췄지만 inherited unused/sentinel header refs가 남아 있어 `allHeaderReferencesResolved=false`를 유지한다. 원본 Madi header에 이 판정을 적용하지 않는다.
+TEXT는 STRING18 UTF-16/18 scalar/26 UTF-8bytes, SHA `82c2c06622fdef248f28daa5cfc9ea9e274d19bb6c0fc63029be409c593f3044`였고 literal exact/CRLF0/loneCR0/loneLF0였다.
+본문은 memory에서만 비교했고 저장·출력·trim·빈 문단 제거를 하지 않았다. `nativeRawExpected=null`, profile PENDING, canonical coverage=false다.
+TEXT를 제외한14 case는 TEXT NOT_READ다. Tiny와 hybrid 입력의 5문단/44 scalar native 본문 coverage나 빈 문단 경계 보존은 측정하지 않았다. NONEMPTY는 별도의 1문단/18 scalar 대조군이다.
+TCP는 DISABLED_UNKNOWN이고 network gate PASS가 아니다. Worker thread desktop unknown을 expected로 승격하지 않았으며 foreground 비간섭의 절대 보증은 하지 않는다.
+직접 Win32 activation/desktop switch/UI 입력·RegisterModule·registry writes·Automation.Open·SaveAs는 이 진단에 없다. Captured SetActive는 포커스 동작 가능한 private 문서 활성화로 따로 기록했다.
+HWP는 계속 disabled이고 실제5회 변환·HWP재열기·layout·취소/timeout/network 승인 및 사람의 결정은 미완료다. Native Korean IME15항목도 MANUAL VALIDATION PENDING이다.
+
+### Immutable byte joins
+
+각 join은 prepared/static/build/raw actual/outer metadata 원본5개를 wx로 복사·재해시했고 `INSPECT_NATIVE_FILE`과 fixed case를 명시 선택했다. 아래는 draft 작성 때 다시 확인한 join SHA다.
+
+| Case / `.tools/verification/` 하위 join | SHA256 |
+| --- | --- |
+| NONEMPTY `hancom-nonempty-control-bbbeb4d-run1/actual-join.json` | `9bde2484a02f6957a2f56d215c0f5e3609ee9c59a33148dd999cfb929f44b3a2` |
+| TEXT `hancom-nonempty-text-bbbeb4d-run1/actual-join.json` | `23329e383d26f154f311d16a6b70e8f6672770b233748e1adc8f40bbb688812f` |
+| TINY `hancom-madi-tiny-bbbeb4d-run1/actual-join.json` | `038ac53202adac22c0802b85579407898e808679067592c318fd55a317d0de9f` |
+| BASELINE `hancom-tiny-baseline-bbbeb4d-run1/actual-join.json` | `17a0da5ef4d08ad0133642c148c9bb029c96ed6ae84fe6e027e9f8b7691103db` |
+| SPINEHEADER `hancom-tiny-spineheader-bbbeb4d-run1/actual-join.json` | `7f3651babc3c3628f77c63564e32c21d28882cb668c9fd50045e38f0a50ae7aa` |
+| VKNOWN `hancom-tiny-vknown-bbbeb4d-run1/actual-join.json` | `4b9b5db5617df93872cd197f527a153c2d7935193bf156977bca7643cd50f278` |
+| PARTS `hancom-madi-parts-bbbeb4d-run1/actual-join.json` | `af84474c8d99ac0a45ed204e60e5ae67be98e044cb546a086486002306b7e126` |
+| SECTION `hancom-madi-section-bbbeb4d-run1/actual-join.json` | `5845214ed5332a9ae94fcdab9eab22044faff5973317d15c677a643c28434778` |
+| SAFE_FIRST_RUN `hancom-safe-first-run-bbbeb4d-run1/actual-join.json` | `13e4b2e5876054f1426af8db10cd6a07a55df9252dcd92ad34ac939d2759034e` |
+| T_ONLY `hancom-t-only-bbbeb4d-run1/actual-join.json` | `39054b2428db16ba3f77c2325b6642b7d0ed92d24548841f947ba74a24c5c26f` |
+| COLUMN_AND_T `hancom-column-t-bbbeb4d-run1/actual-join.json` | `fa665e2a73f30077ce53311487df2175bee816f5e3e944e22df073ab8231892a` |
+| NO_PAGE_NUM `hancom-no-page-num-bbbeb4d-run1/actual-join.json` | `657425d881ae0b4589e615c8ea728b946df470eed86f0282ca1eefbcd04464ee` |
+| KNOWN_SEC_PR `hancom-known-secpr-bbbeb4d-run1/actual-join.json` | `7ad6faa90f1c2e5df9a07d6bcfdd9a0edf082b60375b154cb21b6100d0d61aca` |
+| CHILDREN_ONLY `hancom-secpr-children-bbbeb4d-run1/actual-join.json` | `cb45cb6503d7c1e6d7b165cd06a7703146aea2fc19511927b3f56f828dd77682` |
+| ATTRIBUTES_ONLY `hancom-secpr-attributes-bbbeb4d-run1/actual-join.json` | `3ea0d1121c5d3551c4913f078cef0c3445298351945aec1cd2088645de0336d6` |
+
+4-case 종료 후 fresh annotation: `.tools/verification/hancom-secpr-four-case-postguard-6b93b6e3-a545-4a5e-80d8-ebe2a5bce63f/receipt.json`, SHA `56e3363357afbb78cda68d27a88cf83d8d57bf2f04c482ca0363478fa6d1e727`.
+앞/뒤 Hwp0·등록값 부재·BBB clean, 원본20/보관20 receipts와54 build/static references의 해시/크기를 실제 재확인했다. 이전 join의 deferred Hwp 표시는 수정하지 않았다.
+
+## 12. 2026-10-02 minimal Madi section profile control
+
+정확한 outer source는 clean `bbbeb4d20debce8aef67c68eb060a7d31aea5063`다. 제품 source5151의 tiny HWPX를
+동일한 stdlib 재포장 baseline과 대조했다. 기존 `secPr` attrs·`startNum`·`pagePr`·geometry·major0·Madi header·본문을 유지하고
+`grid`·`visibility`·`lineNumberShape` 세 직계 자식만 올바른 순서로 넣었다. 원본 ZIP과 바이트 동일한 변경이라고 주장하지 않는다.
+다른8 raw/compressed payload의 동일성은 재포장 baseline과의 비교다. 이전 baseline native FAIL도 보존했다.
+
+| 추가 대조 | 실제 관측 |
+| --- | --- |
+| 알려진 header의 LAYOUT_ONLY 첫 실행 | 파일 식별·Close BOOL true는 반환했지만 post-close/terminal 기록이 완료되지 않아 diagnostic 소유 process 강제 정리, FAIL. 닫기 실패나 blank load timeout으로 재분류하지 않음 |
+| 같은 LAYOUT_ONLY 재실행 | PASS16.684초. exact FullName·Count1·nonempty/unmodified·Close BOOL true/전후 guard·Quit·native exit |
+| 마디 자체 MADI_ALL_CHILDREN | PASS14.406초. 자체 header·major0, 자식8개와 colPr/empty t의 결합 대조. 이 넓은 구성을 제품에 그대로 채택하지 않음 |
+| NOTES_ONLY / BORDERS_ONLY | 각각 FAIL41.551/41.855초. strict blank·15초 file readiness timeout, TEXT/Close/Quit 미실행·소유 job 강제 정리 |
+| 마디 자체 MADI_LAYOUT_ONLY | **PASS18.849초**. 4663bytes/SHA `0b026dc17a3731d23260859154304f69912290e0eddb32dd48da0b6ffa2ec7fe`, file readiness1표본/375ms·exact captured/current Active Count1·nonempty/unmodified·Close BOOL true/전후 guard·Quit·native exit. 5문단/44 scalar/52 UTF-8 bytes는 ZIP/XML 정적 보존 수치이며 native TEXT는 NOT_READ |
+
+MADI_LAYOUT_ONLY outer는 UTC2026-10-01T15:19:56.7615687Z→15:20:15.6109775Z,
+job31/active0·outer/inner 강제 정리 없음·desktop 제거, input36표본 Default/inactive/unknown0이다.
+이 호출에서 registry/module registration·Automation Open/SaveAs·본문 읽기는 하지 않았다.
+prepared MADI_LAYOUT_COLUMN_T와 MADI_ALL_CHILDREN_MAJOR5는 실제 실행하지 않았다.
+
+| 보존 근거 | SHA-256 |
+| --- | --- |
+| LAYOUT_ONLY run1 join | `86164d8a8c2d5f60b3788cae02436d4dd0d26c29014c437d61bc7b80f9304e11` |
+| LAYOUT_ONLY run2 join | `a224f43fb71479e7336cd5cff3715f012936df072d8b3fdb5c7ecd887434c785` |
+| MADI_ALL_CHILDREN join | `4095f3c6aa0357cfd27894f1c2340de991dc6b07b883122ab94072752529181f` |
+| NOTES_ONLY / BORDERS_ONLY joins | `b170ac1d50e2af87e61c9280e13a5331e887836aed27748097d65dc160f34f29` / `27600eb763a443eea5b9cff7601926e2a4c409f32f20ac28bdfb8381f3a3976f` |
+| own minimal artifact receipt | `5235a76a4cb260b2f195c2184f76f5e2fbeaa016f731dabac85cca3b5d081db9` |
+| own minimal raw receipt | `dad402d2545b4d9effc6e07b7b981187134421ebab60eaac04e64e19414948b0` |
+| own minimal join | `495c20377414547f5e17da8d2cfb04af97929c263fd1389ce176f1a65c57b9d1` |
+| own minimal fresh boundary receipt | `282712f57ce9bf4dbadca9209f762e977ca8e4c79f0b20a252ab85ece8445b09` |
+
+fresh boundary는 UTC2026-10-01T15:23:20.2925029Z에 실제 확인했다. BBB clean before/after·Hwp0 before/after·
+HKCU32/64 예제 등록값 부재·module 불변·artifact/tool54개 hash/bytes·join 원본5개/보관5개의 byte 일치를 확인했다.
+그 뒤 제품 편집 상태로 이 clean 관측을 확대하지 않는다. TCP는 UNKNOWN이며 native network gate가 아니다.
+
+세 layout 자식의 대조 성공은 Madi가 채택할 좁은 writer/validator profile의 근거다. 모든 HWPX에서 각각 필수인
+공식 XSD 조항이라는 주장은 하지 않는다. 새 compiled exporter의 native 출력, 전체 표시 coverage, HWP conversion/reopen,
+5회·no-clobber·취소/timeout/종료·network·사람의 layout/IME 승인까지 통과한 것으로 해석하지 않는다.
+HWP는 계속 disabled이며 새 제품 commit은 exact Windows gate 전까지 implementation-only다.

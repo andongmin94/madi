@@ -165,6 +165,7 @@ struct SectionData {
     paragraph_ids: BTreeSet<u32>,
     control_paragraph_id: Option<u32>,
     has_section_definition: bool,
+    native_section_profile_valid: bool,
     page_width: Option<u32>,
     page_height: Option<u32>,
     margins: Option<[u32; 7]>,
@@ -1289,6 +1290,14 @@ fn validate_header(
 }
 
 fn parse_section(bytes: &[u8], report: &mut HwpxValidationReport) -> SectionData {
+    // This is Madi's native-tested layout profile, not a universal HWPX schema.
+    const PROFILE_CHILDREN: [&[u8]; 5] = [
+        b"hp:grid",
+        b"hp:startNum",
+        b"hp:visibility",
+        b"hp:lineNumberShape",
+        b"hp:pagePr",
+    ];
     let mut reader = Reader::from_reader(bytes);
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
@@ -1297,8 +1306,27 @@ fn parse_section(bytes: &[u8], report: &mut HwpxValidationReport) -> SectionData
     let mut current_run: Option<ParsedRun> = None;
     let mut in_text = false;
     let mut control_context: Option<&'static str> = None;
+    let mut depth = 0_usize;
+    let mut section_definition_depth = None;
+    let mut section_definition_count = 0_u64;
+    let mut profile_child_index = 0_usize;
+    let mut invalid_profile = false;
     loop {
-        match reader.read_event_into(&mut buffer) {
+        let event = reader.read_event_into(&mut buffer);
+        if let Ok(Event::Start(event) | Event::Empty(event)) = &event
+            && section_definition_depth.is_some_and(|parent| depth == parent + 1)
+            && PROFILE_CHILDREN.contains(&event.name().as_ref())
+        {
+            let name = event.name();
+            invalid_profile |= PROFILE_CHILDREN.get(profile_child_index).copied()
+                != Some(name.as_ref())
+                || !native_section_layout_attributes_valid(
+                    name.as_ref(),
+                    &attributes(&reader, event),
+                );
+            profile_child_index += 1;
+        }
+        match event {
             Ok(Event::Start(event)) => {
                 let name = event.name();
                 let attrs = attributes(&reader, &event);
@@ -1341,6 +1369,8 @@ fn parse_section(bytes: &[u8], report: &mut HwpxValidationReport) -> SectionData
                         in_text = true;
                     }
                     b"hp:secPr" => {
+                        section_definition_count += 1;
+                        section_definition_depth = Some(depth);
                         data.has_section_definition =
                             attrs.get("textDirection").map(String::as_str) == Some("HORIZONTAL")
                                 && attrs.get("tabStopUnit").map(String::as_str) == Some("HWPUNIT");
@@ -1355,12 +1385,14 @@ fn parse_section(bytes: &[u8], report: &mut HwpxValidationReport) -> SectionData
                     b"hp:footer" => control_context = Some("footer"),
                     _ => {}
                 }
+                depth += 1;
             }
             Ok(Event::Empty(event)) => {
                 let name = event.name();
                 let attrs = attributes(&reader, &event);
                 match name.as_ref() {
                     b"hp:secPr" => {
+                        section_definition_count += 1;
                         data.has_section_definition =
                             attrs.get("textDirection").map(String::as_str) == Some("HORIZONTAL")
                                 && attrs.get("tabStopUnit").map(String::as_str) == Some("HWPUNIT");
@@ -1389,34 +1421,40 @@ fn parse_section(bytes: &[u8], report: &mut HwpxValidationReport) -> SectionData
                     }
                 }
             }
-            Ok(Event::End(event)) => match event.name().as_ref() {
-                b"hp:t" => in_text = false,
-                b"hp:run" => {
-                    if let Some(run) = current_run.take()
-                        && let Some(paragraph) = current_paragraph.as_mut()
-                    {
-                        paragraph.runs.push(run);
-                    }
+            Ok(Event::End(event)) => {
+                depth = depth.saturating_sub(1);
+                if event.name().as_ref() == b"hp:secPr" {
+                    section_definition_depth = None;
                 }
-                b"hp:p" => {
-                    if let Some(paragraph) = current_paragraph.take() {
-                        let text: String =
-                            paragraph.runs.iter().map(|run| run.text.as_str()).collect();
-                        match control_context {
-                            Some("header") => data.header_text = Some(text),
-                            Some("footer") => data.footer_text = Some(text),
-                            _ => {
-                                let id = paragraph.id;
-                                if data.paragraphs.insert(id, paragraph).is_some() {
-                                    data.duplicate_paragraph_id = true;
+                match event.name().as_ref() {
+                    b"hp:t" => in_text = false,
+                    b"hp:run" => {
+                        if let Some(run) = current_run.take()
+                            && let Some(paragraph) = current_paragraph.as_mut()
+                        {
+                            paragraph.runs.push(run);
+                        }
+                    }
+                    b"hp:p" => {
+                        if let Some(paragraph) = current_paragraph.take() {
+                            let text: String =
+                                paragraph.runs.iter().map(|run| run.text.as_str()).collect();
+                            match control_context {
+                                Some("header") => data.header_text = Some(text),
+                                Some("footer") => data.footer_text = Some(text),
+                                _ => {
+                                    let id = paragraph.id;
+                                    if data.paragraphs.insert(id, paragraph).is_some() {
+                                        data.duplicate_paragraph_id = true;
+                                    }
                                 }
                             }
                         }
                     }
+                    b"hp:header" | b"hp:footer" => control_context = None,
+                    _ => {}
                 }
-                b"hp:header" | b"hp:footer" => control_context = None,
-                _ => {}
-            },
+            }
             Ok(Event::Eof) => break,
             Err(_) => break,
             _ => {}
@@ -1426,10 +1464,43 @@ fn parse_section(bytes: &[u8], report: &mut HwpxValidationReport) -> SectionData
     if current_paragraph.is_some() || current_run.is_some() || in_text {
         data.valid_root = false;
     }
+    data.native_section_profile_valid = section_definition_count == 1
+        && profile_child_index == PROFILE_CHILDREN.len()
+        && !invalid_profile;
     if data.duplicate_paragraph_id {
         duplicate_id(report, HWPX_SECTION_PATH, "paragraph");
     }
     data
+}
+
+fn native_section_layout_attributes_valid(name: &[u8], attrs: &BTreeMap<String, String>) -> bool {
+    let defaults: &[(&str, &str)] = match name {
+        b"hp:grid" => &[
+            ("lineGrid", "0"),
+            ("charGrid", "0"),
+            ("wonggojiFormat", "0"),
+        ],
+        b"hp:visibility" => &[
+            ("hideFirstHeader", "0"),
+            ("hideFirstFooter", "0"),
+            ("hideFirstMasterPage", "0"),
+            ("border", "SHOW_ALL"),
+            ("fill", "SHOW_ALL"),
+            ("hideFirstPageNum", "0"),
+            ("hideFirstEmptyLine", "0"),
+            ("showLineNumber", "0"),
+        ],
+        b"hp:lineNumberShape" => &[
+            ("restartType", "0"),
+            ("countBy", "0"),
+            ("distance", "0"),
+            ("startNumber", "0"),
+        ],
+        _ => return true,
+    };
+    defaults
+        .iter()
+        .all(|(name, value)| attrs.get(*name).map(String::as_str) == Some(*value))
 }
 
 fn parse_paragraph_attrs(attrs: &BTreeMap<String, String>) -> Option<ParsedParagraph> {
@@ -1466,6 +1537,16 @@ fn validate_section(data: &SectionData, header: &HeaderData, report: &mut HwpxVa
             report,
             "HWPX_SECTION_STRUCTURE",
             "section0.xml lacks a valid root, paragraph, section definition, or page definition.",
+            None,
+            Some(HWPX_SECTION_PATH),
+            None,
+        );
+    }
+    if !data.native_section_profile_valid {
+        error(
+            report,
+            "HWPX_NATIVE_SECTION_PROFILE",
+            "The section does not match Madi's adopted native layout profile.",
             None,
             Some(HWPX_SECTION_PATH),
             None,

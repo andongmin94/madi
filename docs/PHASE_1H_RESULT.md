@@ -605,3 +605,22 @@ Native Korean IME·Hancom licensing/security/conversion/reopen은 사람의 검�
 Typie 개발 permission owner-confirmed와 외부 grant의 정확한 출시 범위, signing/installer/공개·유료·고객 승인은 별개다.
 Phase1I actual은 별도 I 결과 문서를 따르며 이 H 성공으로 AI network 범위를 확대하지 않는다.
 이후 docs-only HEAD의 정적 검사와 runtime-tested source5151을 구분한다.
+
+## 30. 2026-10-02 좁은 native HWPX profile 대조와 수정
+
+후속 진단은 clean `bbbeb4d20debce8aef67c68eb060a7d31aea5063`에서 실행했다. Full Windows actual 제품은 여전히
+source5151이며 BBB의 전체 gate를 주장하지 않는다. 독립18자 대조군은 native TEXT18자 일치·정상 종료를 확인했다.
+마디 tiny 원본과 재포장 baseline은 열리지 않았지만 자체 header·major0·geometry·본문을 유지한 채
+`secPr`의 `grid`·`visibility`·`lineNumberShape` 세 직계 자식만 추가한 대조본은 exact FullName/current Active Count1·
+nonempty/unmodified·Close BOOL true/전후 guard·Quit·native exit를 통과했다. Outer18.849초·job31/active0·
+강제 정리 없음·input36표본 Default/inactive/unknown0·Hwp0·HKCU32/64 예제 등록값 부재를 확인했다.
+
+join SHA는 `495c20377414547f5e17da8d2cfb04af97929c263fd1389ce176f1a65c57b9d1`이다.
+이 대조본의 5문단/44 scalar/52bytes 보존은 ZIP/XML 수치이며 native TEXT는 NOT_READ, TCP는 UNKNOWN이다.
+다른8 payload 동일성은 stdlib 재포장 baseline과의 비교이며 원본 archive byte-exact 수정이 아니다.
+전체 대조·종료 실패 후 재시험·원본 hashes는 [한컴 검증 section11/12](HANCOM_AUTOMATION_VALIDATION.md#12-2026-10-02-minimal-madi-section-profile-control)에 보존했다.
+
+이 근거로 세 자식과 좁은 validator 회귀를 제품에 반영한다. 새 product source는 exact development/fresh Windows gate 전까지
+implementation-only다. 이전 source5151의 full PASS·long artifact hashes를 새 제품 출력에 이전하지 않는다.
+HWP conversion/reopen·전체 native coverage·5회·no-clobber·취소/timeout/종료·network는 미완료, HWPdisabled를 유지한다.
+Native IME15항목은 사람이 확인해야 하며 public/paid/customer/installer 배포나 최종 layout 승인은 아니다.

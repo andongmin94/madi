@@ -197,3 +197,15 @@ Inner/outer input과 network UNKNOWN 범위·A/B 원본은 [Hancom 재개 후 �
 
 과거 source51/660의 full·개별 성공·WITHHELD 기록은 기존 phase 결과 문서와 Git history에 보존한다.
 이번5151 판정은 위 실제 실행과 별도 evidence에만 적용하며 후속 제품 변경의 actual 성공을 추론하지 않는다.
+
+## 2026-10-02 Hancom 좁은 구조 대조 후 제품 수정
+
+clean BBB 진단에서 마디 자체 tiny HWPX에 구역 layout 자식3개만 더한 대조본의 문서 식별과 정상 종료가 통과했다.
+기존 source5151의 full5256.600초·ZIP·AI actual과 후속 diagnostic sourceBBB를 분리한다. BBB의 전체 Windows gate나
+native 본문/네트워크/HWP conversion 성공을 주장하지 않는다. 대조본은 stdlib 재포장이며 native TEXT는 NOT_READ,
+TCP는 UNKNOWN이다. 상세·이전 FAIL·후속 PASS·source/hash/fresh boundary는
+[한컴 기록 section11/12](HANCOM_AUTOMATION_VALIDATION.md#12-2026-10-02-minimal-madi-section-profile-control)를 따른다.
+
+writer/validator의 좁은 수정 뒤 새 exact source에서 필수 pinned Windows 명령과 development/fresh actual을 다시 실행한다.
+기존 ZIP은 source5151의 보관본이며 새 compiled 제품으로 자동 갱신된 것으로 표현하지 않는다.
+HWP는 승인 결과·소유권·cleanup과 실제 conversion/reopen gate 전까지 disabled다. Native IME15항목은 수동 pending이다.

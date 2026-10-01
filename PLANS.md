@@ -1,10 +1,12 @@
 # madi 개발 계획
 
-갱신일: 2026-10-01. 작업 위치: `main`.
+갱신일: 2026-10-02. 작업 위치: `main`.
 이 문서는 현재 목표·진척·완료 조건을 관리하는 유일한 실행 계획이다.
 
 **작업 재개:** 사용자가 재부팅을 위해 중지한 뒤 계속 진행을 요청했다. 실제 재부팅 여부는 독립 확인하지 않았다.
-현재 host·등록·도구 identity를 새로 확인했고 합성 HWPX의 native 문서 식별 대조를 진행하고 있다.
+현재 host·등록·도구 identity를 새로 확인했다. 합성 대조로 HWPX 구역 설정의 좁은 수정 범위를 확인해
+exporter에 반영했다. 관련21개 테스트는 통과했으며 새 exact source의 전체 Windows gate는 실행 전이다.
+이전 실패와 정상 종료 재시험의 결과는 각각 보존한다.
 
 ## 현재 판정
 
@@ -22,7 +24,7 @@ HWP 변환·재열기와 한컴 호환성 판정은 아직 완료하지 못했�
 | 실행용 ZIP | **COMPLETE**. 검증한561파일/81폴더/549,528,995bytes와 ZIP 전체 내용 hash 일치, 새 폴더 압축 해제 대조 통과 |
 | 수동 시험 준비물 | **PREPARED / NOT TESTED**. 한글5,000자·IME15항목·한컴 결과 template·절차 문서11파일 준비. Native IME와 최종 한컴 검증 결과는 미완료 |
 | IME 보고서 경로 | **REPORT EXPORT/RESTART PASS ONLY**. 같은 source의 배포본에서 JSON/Markdown 저장·재실행 후 보존 확인. 입력15항목은 모두 NOT TESTED |
-| 실제 한컴 시험 | **OPEN FAILED / HWP DISABLED**. 제품 bridge의 OPEN_FAILED 유지. 독립 빈 HWPX는 문서 식별·정상 종료 통과. 마디 원본과 major5 단일 변경 시험본은 모두 식별 실패; SaveAs·HWP 재열기는 미실행 |
+| 실제 한컴 시험 | **NARROW HWPX CONTROL PASS / HWP DISABLED**. 기존 제품 bridge의 OPEN_FAILED 유지. 마디 자체 tiny 출력에 구역 자식3개만 추가한 대조본은 정확한 문서 식별·Close BOOL·Quit·native exit 통과. 새 compiled exporter·전체 native 본문·SaveAs·HWP 재열기는 아직 검증 전 |
 
 전체 Windows run은 `full-verify-5151f6a-run1`이며 exit0·5256.600초다.
 소유 job cleanup active0·강제 종료 없음·handle/desktop 정리를 확인했다.
@@ -78,9 +80,13 @@ full package receipt·source archive·whole inventory·ZIP byte join을 함께 �
 빈 대조군 성공은 마디 호환성·본문 coverage·HWP 변환 성공이 아니다.
 실패·정리·관측 범위와 원본 hash는 [한컴 재개 후 검증 기록](docs/HANCOM_AUTOMATION_VALIDATION.md#10-2026-10-01-resumed-native-controls)에 보존한다.
 
-1. 정상적으로 열렸던 빈 대조 파일에 짧은 합성 문장만 넣은 시험본을 준비하고 같은 비활성 desktop에서
-   nonempty 문서 식별·정상 종료를 확인한다. 이후 본문 읽기와 마디 HWPX 구조를 구분해 원인을 좁힌다.
-   소유권 미확인 한컴이 있으면 COM·등록 전에 중단하고 확인된 원인만 수정한다.
+1. **구조 대조·좁은 제품 수정 완료, 전체 gate 전.** 독립18자 대조군은 실제 TEXT18자 일치까지 통과했다.
+   마디 tiny 원본·재포장 baseline과 단일 version/본문 control 변경들은 실패했으며,
+   마디 자체 구역에 `grid`·`visibility`·`lineNumberShape`만 추가한 대조본은 정확한 FullName·현재 문서1개·
+   nonempty/unmodified·Close BOOL true·Quit·native exit를 통과했다. 원본 major0·header·geometry·본문은 유지했다.
+   이 세 자식과 좁은 validator 회귀만 제품에 반영했고 관련21개 테스트·debug build·Rust format·repository/format/diff를 실제 통과했다.
+   새 compiled exporter의 출력·native TEXT를 따로 검증한다.
+   대조본은 stdlib 재포장 기준이며 native format·전체 coverage·HWP 성공으로 확대하지 않는다.
 2. 제품을 수정하면 해당 exact source의 필수 Windows 검증과 development/fresh 경로를 다시 실행한다.
    HWP는 conversion/reopen·전체 표시 coverage·5회·no-clobber·취소/timeout/종료·network gate를 통과하기 전 켜지 않는다.
    현재 제품의 승인 결과 연결·Item(0) 소유권·STA cleanup도 해결해야 한다.

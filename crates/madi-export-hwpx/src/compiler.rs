@@ -1622,7 +1622,7 @@ fn write_section_definition(
     };
     write!(
         xml,
-        "<hp:secPr id=\"0\" textDirection=\"HORIZONTAL\" spaceColumns=\"0\" tabStop=\"8000\" tabStopVal=\"0\" tabStopUnit=\"HWPUNIT\" outlineShapeIDRef=\"0\" memoShapeIDRef=\"0\" textVerticalWidthHead=\"0\" masterPageCnt=\"0\"><hp:startNum pageStartsOn=\"BOTH\" page=\"{}\" pic=\"1\" tbl=\"1\" equation=\"1\"/><hp:pagePr landscape=\"{landscape}\" width=\"{}\" height=\"{}\" gutterType=\"LEFT_ONLY\"><hp:margin left=\"{}\" right=\"{}\" top=\"{}\" bottom=\"{}\" header=\"{}\" footer=\"{}\" gutter=\"{}\"/></hp:pagePr></hp:secPr>",
+        "<hp:secPr id=\"0\" textDirection=\"HORIZONTAL\" spaceColumns=\"0\" tabStop=\"8000\" tabStopVal=\"0\" tabStopUnit=\"HWPUNIT\" outlineShapeIDRef=\"0\" memoShapeIDRef=\"0\" textVerticalWidthHead=\"0\" masterPageCnt=\"0\"><hp:grid lineGrid=\"0\" charGrid=\"0\" wonggojiFormat=\"0\"/><hp:startNum pageStartsOn=\"BOTH\" page=\"{}\" pic=\"1\" tbl=\"1\" equation=\"1\"/><hp:visibility hideFirstHeader=\"0\" hideFirstFooter=\"0\" hideFirstMasterPage=\"0\" border=\"SHOW_ALL\" fill=\"SHOW_ALL\" hideFirstPageNum=\"0\" hideFirstEmptyLine=\"0\" showLineNumber=\"0\"/><hp:lineNumberShape restartType=\"0\" countBy=\"0\" distance=\"0\" startNumber=\"0\"/><hp:pagePr landscape=\"{landscape}\" width=\"{}\" height=\"{}\" gutterType=\"LEFT_ONLY\"><hp:margin left=\"{}\" right=\"{}\" top=\"{}\" bottom=\"{}\" header=\"{}\" footer=\"{}\" gutter=\"{}\"/></hp:pagePr></hp:secPr>",
         if section_index == 0 {
             request.options.page_number_start
         } else {
@@ -2282,6 +2282,159 @@ mod tests {
             .status,
             HwpxValidationStatus::Fail
         );
+    }
+
+    #[test]
+    fn native_section_layout_profile_preserves_custom_pages_and_source_coverage() {
+        let document = sample_document();
+        for mode in [HwpxSectionSplitMode::Single, HwpxSectionSplitMode::Volume] {
+            for controls in [false, true] {
+                let mut request = request(&document, mode);
+                request.options.page = crate::model::HwpxPageSettings {
+                    page_size_token: HwpxPageSizeToken::Custom,
+                    orientation: HwpxOrientation::Landscape,
+                    custom_width_mm: Some(180.0),
+                    custom_height_mm: Some(240.0),
+                    margin_top_mm: 17.0,
+                    margin_bottom_mm: 19.0,
+                    margin_left_mm: 21.0,
+                    margin_right_mm: 23.0,
+                    header_margin_mm: 11.0,
+                    footer_margin_mm: 13.0,
+                    gutter_mm: 3.0,
+                };
+                request.options.page_number_start = 7;
+                request.options.include_header = controls;
+                request.options.include_footer = controls;
+                request.options.include_page_number = controls;
+                if !controls {
+                    request.options.header_text.clear();
+                    request.options.footer_text.clear();
+                }
+                let compiled =
+                    compile_hwpx_bytes(&document, &request, &CancellationToken::new()).unwrap();
+                assert_eq!(
+                    crate::validator::validate_hwpx_against_publication(
+                        &compiled.bytes,
+                        &document,
+                        &request.options,
+                    )
+                    .status,
+                    HwpxValidationStatus::Pass
+                );
+                let sections: Vec<_> = extracted_entries(&compiled.bytes)
+                    .into_iter()
+                    .filter(|entry| entry.path.starts_with("Contents/section"))
+                    .collect();
+                for (index, entry) in sections.iter().enumerate() {
+                    let section = String::from_utf8(entry.bytes.clone()).unwrap();
+                    let positions: Vec<_> = [
+                        "<hp:grid ",
+                        "<hp:startNum ",
+                        "<hp:visibility ",
+                        "<hp:lineNumberShape ",
+                        "<hp:pagePr ",
+                    ]
+                    .into_iter()
+                    .map(|name| {
+                        assert_eq!(section.matches(name).count(), 1);
+                        section.find(name).unwrap()
+                    })
+                    .collect();
+                    assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+                    assert!(
+                        section.contains("landscape=\"WIDELY\" width=\"68031\" height=\"51024\"")
+                    );
+                    assert!(section.contains("<hp:margin left=\"5953\" right=\"6520\" top=\"4819\" bottom=\"5386\" header=\"3118\" footer=\"3685\" gutter=\"850\"/>"));
+                    assert!(section.contains(&format!(
+                        "<hp:startNum pageStartsOn=\"BOTH\" page=\"{}\"",
+                        if index == 0 { 7 } else { 0 },
+                    )));
+                    assert_eq!(section.contains("<hp:header "), controls);
+                    assert_eq!(section.contains("<hp:footer "), controls);
+                    assert_eq!(section.contains("<hp:pageNum "), controls);
+                    assert!(!section.contains("<hp:colPr"));
+                    assert!(!section.contains("<hp:t/>"));
+                    assert!(!section.contains("<hp:footNotePr"));
+                    assert!(!section.contains("<hp:pageBorderFill"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn validator_rejects_broken_native_section_layout_profile() {
+        const GRID: &str = "<hp:grid lineGrid=\"0\" charGrid=\"0\" wonggojiFormat=\"0\"/>";
+        const VISIBILITY: &str = "<hp:visibility hideFirstHeader=\"0\" hideFirstFooter=\"0\" hideFirstMasterPage=\"0\" border=\"SHOW_ALL\" fill=\"SHOW_ALL\" hideFirstPageNum=\"0\" hideFirstEmptyLine=\"0\" showLineNumber=\"0\"/>";
+        const LINE_NUMBER: &str = "<hp:lineNumberShape restartType=\"0\" countBy=\"0\" distance=\"0\" startNumber=\"0\"/>";
+        let document = sample_document();
+        let request = request(&document, HwpxSectionSplitMode::Single);
+        let compiled = compile_hwpx_bytes(&document, &request, &CancellationToken::new()).unwrap();
+        // This native-tested profile is an independent validator fixture. Its three
+        // layout children carry no manuscript text or page geometry.
+        let native_profile = rewrite_entry(&compiled.bytes, HWPX_SECTION_PATH, |section| {
+            let mut xml = String::from_utf8(section.clone()).unwrap();
+            for child in [GRID, VISIBILITY, LINE_NUMBER] {
+                xml = xml.replace(child, "");
+            }
+            let start = xml.find("<hp:secPr ").unwrap();
+            let opening_end = start + xml[start..].find('>').unwrap() + 1;
+            xml.insert_str(opening_end, GRID);
+            let page = xml.find("<hp:pagePr ").unwrap();
+            xml.insert_str(page, &format!("{VISIBILITY}{LINE_NUMBER}"));
+            *section = xml.into_bytes();
+        });
+        assert_eq!(
+            crate::validator::validate_hwpx_bytes(&native_profile).status,
+            HwpxValidationStatus::Pass
+        );
+        for child in [GRID, VISIBILITY, LINE_NUMBER] {
+            for mutation in ["missing", "misplaced", "duplicate"] {
+                let invalid = rewrite_entry(&native_profile, HWPX_SECTION_PATH, |section| {
+                    let mut xml = String::from_utf8(section.clone()).unwrap();
+                    xml = match mutation {
+                        "missing" => xml.replacen(child, "", 1),
+                        "misplaced" => xml.replacen(child, "", 1).replacen(
+                            "</hp:secPr>",
+                            &format!("</hp:secPr>{child}"),
+                            1,
+                        ),
+                        "duplicate" => xml.replacen(child, &format!("{child}{child}"), 1),
+                        _ => unreachable!(),
+                    };
+                    *section = xml.into_bytes();
+                });
+                let report = crate::validator::validate_hwpx_bytes(&invalid);
+                assert_eq!(report.status, HwpxValidationStatus::Fail);
+                assert!(has_code(&report, "HWPX_NATIVE_SECTION_PROFILE"));
+            }
+        }
+        for (before, after) in [
+            ("lineGrid=\"0\"", "lineGrid=\"1\""),
+            ("hideFirstPageNum=\"0\"", "hideFirstPageNum=\"1\""),
+            ("countBy=\"0\"", "countBy=\"1\""),
+        ] {
+            let invalid = rewrite_entry(&native_profile, HWPX_SECTION_PATH, |section| {
+                let xml = String::from_utf8(section.clone()).unwrap();
+                *section = xml.replacen(before, after, 1).into_bytes();
+            });
+            let report = crate::validator::validate_hwpx_bytes(&invalid);
+            assert_eq!(report.status, HwpxValidationStatus::Fail);
+            assert!(has_code(&report, "HWPX_NATIVE_SECTION_PROFILE"));
+        }
+        let reordered = rewrite_entry(&native_profile, HWPX_SECTION_PATH, |section| {
+            let xml = String::from_utf8(section.clone()).unwrap();
+            *section = xml
+                .replacen(
+                    &format!("{VISIBILITY}{LINE_NUMBER}"),
+                    &format!("{LINE_NUMBER}{VISIBILITY}"),
+                    1,
+                )
+                .into_bytes();
+        });
+        let report = crate::validator::validate_hwpx_bytes(&reordered);
+        assert_eq!(report.status, HwpxValidationStatus::Fail);
+        assert!(has_code(&report, "HWPX_NATIVE_SECTION_PROFILE"));
     }
 
     #[test]
