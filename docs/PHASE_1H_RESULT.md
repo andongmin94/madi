@@ -15,7 +15,7 @@ Phase 1H verdict: TECHNICAL GO — HWPX / PRIVATE LOCAL ONLY
 Actual tested source: 5151f6a804cf1565a09211ea8f7a11e9f547fd34
 HWPX source5151 actual: DEVELOPMENT PASS / FRESH-UNPACKED PASS
 Full pinned Windows aggregate source5151: PASS / exit0 / 5256.600s
-HWP Automation: MANUAL VALIDATION PENDING
+HWP Automation: ACTUAL OPEN FAILURE / DISABLED / MANUAL ACCEPTANCE PENDING
 Public/paid/customer/installer distribution: NOT APPROVED
 ```
 
@@ -23,6 +23,11 @@ Public/paid/customer/installer distribution: NOT APPROVED
 성공과 full 실패는 section27, source660의 전체 실제 성공은 section28, 새 source5151은 section29에 기록한다.
 필수 6개 명령의 실행 범위와 package join을 구분하며 HWPX private-local 기술 성공을
 수동 Hancom 검증이나 배포 승인으로 해석하지 않는다. 최종 문서 commit과 실제 검증 source5151도 구분한다.
+
+후속 clean ad7fb61에서 사용자가 임시 module·합성 로컬 시험을 승인했다. source5151 bridge는
+OPEN_FAILED, 별도 진단은 실제 Open=false/getters 성공을 관측했다. HWP output·reopen 성공은 없다.
+Section29의 HWPX 내부 실제 경로 판정을 실제 한컴 호환성 GO로 확대하지 않는다.
+현재 host와 실패·중단·정리 범위는 [Hancom actual section9](HANCOM_AUTOMATION_VALIDATION.md#9-2026-10-01-private-local-actual)에 보존한다.
 
 ## 2. Runtime EPUBCheck 재분류 결과 — 기준일 기록
 

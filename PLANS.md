@@ -5,7 +5,8 @@
 
 ## 현재 판정
 
-사용자가 요청한 기존 제품 범위의 자동 검증과 남은 로컬 배포 준비를 완료했다.
+기존 자동 검증과 로컬 ZIP 준비는 완료했다. 후속 실제 한컴 시험에서는 HWPX 열기 실패가 확인돼
+HWP 변환·재열기와 한컴 호환성 판정은 아직 완료하지 못했다. Native IME도 사람의 확인이 남아 있다.
 실제 검증 제품 source는 `5151f6a804cf1565a09211ea8f7a11e9f547fd34`다.
 후속 문서 갱신 커밋은 이 source와 구분하며, 문서만 바뀐 HEAD에서 전체 actual을 재실행했다고 표현하지 않는다.
 
@@ -13,10 +14,12 @@
 | --- | --- |
 | 필수 Windows 검증 | **PASS**. Frozen install·전체 verify·unpacked·repository·format·diff 실제 실행. Desktop105파일/705테스트, native·WASM·CLI·build, 개발판/새 배포본 basic/D/E/F/G/H 통과 |
 | EPUBCheck/JRE | **COMPLETE**. 고정 오프라인 bundle364파일과 manifest 포함. 앱의 실제 Java 검사·UI 취소·검사 중 종료·출력 보호·runtime 외부 요청0 확인 |
-| EPUB·HWPX | **PRIVATE LOCAL TECHNICAL GO**. 일반·675,000자 원고, 장편5회 exact coverage·ZIP/XML 재열기·결정성·no-clobber·취소·종료 정리 통과 |
+| EPUB·HWPX 내부 경로 | **PRIVATE LOCAL TECHNICAL GO**. 일반·675,000자 원고, 장편5회 exact coverage·ZIP/XML 재열기·결정성·no-clobber·취소·종료 정리 통과. 실제 한컴 열기 성공은 이 판정에 포함하지 않음 |
 | 같은 source의 AI 실증 | **PASS WITH DIAGNOSTIC WARNING**. 임시 로컬 모델로 양쪽 실제 요청·검토/복사·단일 블록 적용·Undo/Redo·저장/reopen 확인. 진단 지정 응답 불일치 경고 보존 |
 | 실행용 ZIP | **COMPLETE**. 검증한561파일/81폴더/549,528,995bytes와 ZIP 전체 내용 hash 일치, 새 폴더 압축 해제 대조 통과 |
-| 수동 시험 준비물 | **PREPARED / NOT TESTED**. 한글5,000자·IME15항목·한컴 결과 template·절차 문서11파일 준비. 사람의 검사와 승인은 아직 없음 |
+| 수동 시험 준비물 | **PREPARED / NOT TESTED**. 한글5,000자·IME15항목·한컴 결과 template·절차 문서11파일 준비. Native IME와 최종 한컴 검증 결과는 미완료 |
+| IME 보고서 경로 | **REPORT EXPORT/RESTART PASS ONLY**. 같은 source의 배포본에서 JSON/Markdown 저장·재실행 후 보존 확인. 입력15항목은 모두 NOT TESTED |
+| 실제 한컴 시험 | **OPEN FAILED / HWP DISABLED**. 사용자가 임시 모듈 등록·합성 로컬 시험을 승인. 제품 bridge의 OPEN_FAILED와 별도 진단의 Open=false 확인; SaveAs·HWP 재열기는 미실행 |
 
 전체 Windows run은 `full-verify-5151f6a-run1`이며 exit0·5256.600초다.
 소유 job cleanup active0·강제 종료 없음·handle/desktop 정리를 확인했다.
@@ -59,9 +62,22 @@ full package receipt·source archive·whole inventory·ZIP byte join을 함께 �
 | 항목 | 현재 상태와 완료 조건 |
 | --- | --- |
 | Windows native Korean IME | **MANUAL VALIDATION PENDING**. 사람이 [체크리스트](docs/MANUAL_KOREAN_IME_CHECKLIST.md)15항목과 실제 환경을 기록 |
-| 실제 HWP 변환 | **MANUAL VALIDATION PENDING / DISABLED**. Hancom security module·Automation 이용조건 승인과 실제 conversion/reopen 검증 |
+| 실제 HWP 변환 | **ACTUAL OPEN FAILURE / DISABLED**. 임시 모듈·합성 로컬 시험은 승인됨. 한컴 자체 HWPX와 대조해 Open=false 원인을 해결하고 conversion/reopen·내용·반복·정리 검증 필요. 영구 등록·공개 배포·최종 layout 승인 없음 |
 | Typie 배포 범위 | 개발 permission은 owner-confirmed. 공개 배포 전 저장소 밖 실제 grant 범위를 소유자가 확인 |
 | 공개 배포 | ZIP은 private-local 실행 자료다. Signing·installer·자동 update·공개/유료/고객 배포 승인 완료로 해석하지 않음 |
+
+## 현재 이어갈 작업
+
+1. 실행 중인 소유권 미확인 한컴을 조작하지 않는다. Hwp0가 확인되면 이미 승인한 비활성 desktop 시험에서
+   한컴 자체 저장 HWPX·자동 감지 Open을 대조하고, 확인된 원인만 수정한다.
+2. HWP 생성에 성공한 뒤 전체 표시 문단·문자 coverage, 새 session 재열기,5회 반복, no-clobber,
+   취소·timeout·종료 정리와 network 경계를 실제 검증한다. 현재 제품에는 승인 결과를 AVAILABLE로
+   연결하는 경로가 없고 Item(0) 소유권·STA cleanup도 미검증이므로 등록 존재만으로 HWP를 켜지 않는다.
+3. Native IME15항목은 사람이 실제 환경을 기록해 완료한다. 화면·키보드 사용 승인 전에는 입력 시험을 진행하지 않는다.
+
+후속 시험은 clean `ad7fb613668128a740f683ca8e51fa6624e0e3ae`에서 진행했고 제품 바이너리는 source5151 그대로다.
+일시 등록은 원복했고 시험 소유 process는 정리했다. 후속 소유권 미확인 Hwp 발견 시 COM·등록 전에 중단했다.
+실패와 한계는 [한컴 실제 검증 기록](docs/HANCOM_AUTOMATION_VALIDATION.md#9-2026-10-01-private-local-actual)에 보존한다.
 
 AI 실증은 keyless loopback·합성 단일 블록 전체 선택·clipboard API interception 범위다.
 Remote HTTPS·인증키·OS clipboard·사람의 native IME 실증으로 확대하지 않는다.

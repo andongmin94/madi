@@ -12,12 +12,14 @@ HWPX: PRIVATE LOCAL TECHNICAL GO
 Actual AI: DEVELOPMENT/PACKAGED PASS WITH DIAGNOSTIC WARNING
 Portable ZIP: CREATED / FRESH EXTRACTION MATCH / WHOLE TESTED-PAYLOAD JOIN PASS
 Manual kit: PREPARED / NOT TESTED
-Native Korean IME and actual Hancom HWP conversion: MANUAL VALIDATION PENDING
+Native Korean IME: MANUAL VALIDATION PENDING
+Actual Hancom HWP conversion: OPEN_FAILED / NO OUTPUT / DISABLED
 Public/paid/customer/installer distribution: NOT APPROVED
 ```
 
 사용자가 요청한 기존 제품 범위의 자동 검증과 로컬 배포 준비를 마쳤다.
-수동 IME와 Hancom 보안 모듈·Automation 이용조건·실제 HWP conversion/reopen은 사람의 확인이 필요하며 HWP는 disabled다.
+수동 IME는 사람의 확인이 필요하다. 후속 승인된 임시 모듈·합성 한컴 시험에서 실제 Open=false를 확인했으며
+HWP conversion/reopen은 아직 성공하지 못했다. HWP는 disabled이며 최종 문서/layout·배포 승인은 없다.
 Typie 개발 permission은 owner-confirmed이고 공개 배포 범위는 저장소 밖 실제 grant를 따른다.
 이 기록은 현재 컴퓨터의 개발판/새 unpacked 앱 실증이다. 다른 깨끗한 PC나 installer 설치 성공으로 확대하지 않는다.
 
@@ -140,7 +142,30 @@ Clipboard는 interception, 선택은 합성11자 블록 전체다. Remote HTTPS�
 합성 한글5000자, IME15항목/환경 미기록 template, Hancom 미검증 template와 기존 절차 문서 등11파일이다.
 Manifest SHA는 `588883f4a03bdb726b83bc00fb39c1efb5f0c2d98be3324fca1628a62ce2ebd4`이며
 내용10파일의 size/hash와 사용 앱 executable/package metadata가 tested inventory와 일치함을 확인했다.
-앱·COM·registry·security를 자동 조작하지 않았고 승인/실제 수동 검증은 없다. HWP는 disabled다.
+Kit 준비 자체는 앱·COM·registry·security를 조작하지 않았고 수동 결과를 만들지 않았다. HWP는 disabled다.
+
+## 후속 IME report와 실제 Hancom 진단
+
+Clean ad7fb61에서 source5151 배포본 전체561파일의 size/hash를 기존 inventory와 연결해
+IME report 버튼의 JSON1463bytes/Markdown1678bytes 저장과 같은 profile의 앱 재실행 후 JSON1463bytes 보존을 확인했다.
+7환경 필드는 DIAGNOSTIC_ONLY,15입력 항목은 NOT TESTED로 유지했으며 native composition 기록은 없다.
+Renderer HTTP/WS/page/main warning/error는 관측 범위에서0이었다. 이것은 native IME 입력 성공이나 whole-TCP gate가 아니다.
+Actual status는 PASS_REPORT_EXPORT_RESTART_DIAGNOSTIC_ONLY다. 앱 close/quit 이후 Playwright close=false로
+exact PID/birth의 소유 CMD wrapper taskkill/T를 사용했으므로 모든 계층의 무강제 자연 종료를 주장하지 않는다.
+Outer host38.520초/exit0/job46active0/host force 없음/desktop 정리, 비활성75표본·input Default/unknown0을 기록했다.
+
+| 근거 | SHA-256 |
+| --- | --- |
+| `.tools/verification/ime-report-packaged-ad7fb61-run1/ime-report-evidence.json` | `1d40ec5f343fe3155c67e0b5b30cd44ce9543d5484bee554fe5bd879fea5fbea` |
+| `.tools/verification/ime-report-packaged-ad7fb61-run1/proof-join.json` | `f3b615aa527823b613e786b5621b62c661ce1f6b87607b9d1af25775258cf369` |
+
+동일 clean HEAD에서 사용자 승인으로 unsigned 공식 모듈을 일시 등록·복원하고180000자 합성 입력을 시험했다.
+제품 bridge는 UTF-8 요청에서 OPEN_FAILED, 별도 .NET 진단은 Open=false/getters 성공을 관측했다.
+독점 시험 instance는 Quit 후 native exit/no-force를 관측했지만 제품 run6은 소유 job 강제 정리가 필요했다.
+HWP output/SaveAs/reopen·5회 반복·최종 network/lifecycle gate는 통과하지 않았다.
+새 소유권 미확인 Hwp 존재 시 후속 control을 COM·등록 전에 중단했다.
+제품·ZIP 재빌드나 수정은 없으며 static docs 검사와 새 실제 runtime 성공을 구분한다.
+전체 실패·사전 중단·approval scope와 hash는 [Hancom actual 기록](HANCOM_AUTOMATION_VALIDATION.md#9-2026-10-01-private-local-actual)을 따른다.
 
 ## 이번 실행의 실패·수정 기록
 

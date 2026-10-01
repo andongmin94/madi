@@ -1,6 +1,6 @@
 # Optional Local HWP Bridge
 
-기준일: 2026-08-13
+기준일: 2026-08-13. 후속 actual 갱신일: 2026-10-01.
 
 ## 1. 결정
 
@@ -81,7 +81,7 @@ response를 반환하고 worker cancellation을 요청하지만 사용자 한글
 종료하지 않는다. Unattended distribution 전에 supported Hancom version별 prompt/hang,
 owned-window cleanup과 repeated conversion을 실제 검증해야 한다.
 
-## 7. Current machine
+## 7. 기준일 machine과 후속 actual
 
 ```text
 Independent host inventory, not probe: Hancom Office 2022 / hwp.exe 12.0.0.4170 observed
@@ -94,6 +94,14 @@ HWP conversion/reopen: MANUAL VALIDATION PENDING
 
 Presence-only registry 분류는 security-module DLL이나 Automation 안전성을 증명하지 않는다.
 위험한 승인 prompt/hang을 피하기 위해 실제 COM object를 활성화하지 않았다.
+
+위 inventory와 미실행 상태는 기준일 기록이다. 2026-10-01에는 version12.0.0.4605를 확인했고
+원래 없는 module 값을 사용자가 승인한 합성 시험에만 임시 등록·복원했다.
+source5151 제품 bridge는 OPEN_FAILED/output 없음, 별도 진단은 Open=false/getters 성공이었다.
+독점 시험 instance의 Quit/native exit는 관측했지만 제품 cleanup 성공이나 AVAILABLE 조건으로 이전하지 않는다.
+새 소유권 미확인 Hwp가 나타나 다음 control은 COM·등록 전에 중단했다.
+현재 원인 대조·SaveAs·HWP reopen은 미완료이며 HWP는 disabled다.
+현재 approval·실패·근거 hash·검증 한계는 [한컴 actual 기록](HANCOM_AUTOMATION_VALIDATION.md#9-2026-10-01-private-local-actual)을 따른다.
 
 ## 8. Licensing
 
