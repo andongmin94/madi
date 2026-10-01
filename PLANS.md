@@ -20,7 +20,7 @@ Publication IR만 Reader Lab과 exporter의 원고 입력으로 사용한다. Ty
 
 ## 현재 판정과 진척
 
-**플랜은 진행 중이다. 기본 Windows 검증은 통과했고, 후속 HWP 수정의 실제 검증이 남아 있다.**
+**플랜은 진행 중이다. 최종 Windows 검증·포장을 이어가며, HWP 실제 변환은 한컴의 외부 TCP 관측 때문에 환경 차단 상태다.**
 기본 통과를 새 HWP 구현이나 사람의 IME·layout·라이선스 승인으로 이전하지 않는다.
 
 | 항목 | 실제 완료 근거와 남은 조건 |
@@ -39,6 +39,7 @@ Publication IR만 Reader Lab과 exporter의 원고 입력으로 사용한다. Ty
 기본 실행: `.tools/verification/full-verify-20e8f3a-run1/`.
 정확한 기본 source: `20e8f3a970d321152940db47e26f9252b4524f26`.
 후속 sourcee636 실제 tiny 변환은 소유권 확인에서 실패했고, 일반 HWPX native 판독은 열린 시험 파일의 재해시에서 실패했다. Source dbff 진단 실행에서 초기 창 열거의 false/error0를 확인했다. 창이 없는 초기 표본은 기존 제한 시간 안에서 NOT_READY로 처리하며 실제 창·문서 확인은 계속 요구한다. 실패 실행은 통과 근거로 사용하지 않고 process·job 정리와 module 부재를 확인했다. Sourcef464에서 창·문서 소유권 확인 뒤 RegisterModule nontrue 반환을 확인했다. 실제 공유 위반(error32)에 따라 시험 파일만 ReadWrite 공유로 재해시했고, 실행되지 않던 검증 스크립트 검사도 수정했다. 일반·장편 HWPX 전체 문단 판독을 자연 종료로 통과했으며, 기존 실패 실행은 그대로 보존한다. 등록 실패는 BOOL_FALSE/NULL/OTHER만 기록하는 제한된 제품 진단으로 이어서 확인한다.
+Source90fe 승인된 tiny 시험에서 소유 한컴 프로세스의 PUBLIC TCP peer1을 실제 관측해 중단했다. 변환·반환 종류는 통과하거나 확정하지 않았고, 소유 job 강제 정리와 exact-value external postguard의 등록 부재를 확인했다. 외부 runtime 연결0 조건을 완화하지 않는다. HWP 변환·재열기·내용/5회·취소/timeout은 네트워크 차단 환경에서 재검증해야 하며 WITHHELD/disabled를 유지한다.
 Whole inventory·raw E/F/G/H archive·ZIP join은 이 run의 source와 실제 package receipt에 연결했다.
 이전 source5347/1ff 전체 FAIL과 graph 집중5회, source5151 기존 PASS는 각 revision의 결과로 보존한다.
 서로 다른 revision의 부분 성공을 합쳐 전체 통과로 표현하지 않는다.
@@ -47,7 +48,7 @@ Whole inventory·raw E/F/G/H archive·ZIP join은 이 run의 source와 실제 pa
 
 1. **완료 — 기본 gate 복구.** 장편 graph 재열기 진단, IPv4/IPv6 회귀, 초기화 뒤 시험 순서를 적용하고 exact source20e8의 전체 Windows 경로를 통과했다.
 2. **구현·계약 시험 완료 — HWP 수정 고정.** 반영한 소유권·취소 수정의 빌드·관련 C#/앱 시험·repository·format·diff를 통과했다. 실제 한컴 검증과 최종 전체 gate 전에는 구현 완료를 runtime GO로 표현하지 않는다.
-3. **다음 — 승인된 실제 한컴 시험.** 원본 예제 모듈만 임시 등록하고 tiny conversion→fresh reopen→no-clobber부터 검증한다. 통과하면 일반·장편 전체 표시 내용, 장편5회, 취소·timeout·종료와 TCP 관측을 확인한다. 모든 결과 뒤 exact-value external postguard와 등록 원복을 확인한다.
+3. **환경 차단 — 승인된 실제 HWP 시험.** 한컴 PUBLIC TCP peer 관측으로 현재 변환 gate는 FAIL/WITHHELD다. HWP는 disabled를 유지한다. 외부 연결0을 만족하는 환경에서 tiny conversion→fresh reopen→no-clobber가 통과해야 일반·장편 전체 표시 내용·장편5회·취소·timeout을 진행할 수 있다. 기존 원본 모듈 일시 등록 승인만 유지하며, 모든 결과 뒤 exact-value external postguard와 등록 원복을 요구한다.
 4. **다음 — 최종 source 검증·포장.** 최종 제품의 frozen install·전체 pinned Windows gate·dev/fresh AI를 실행한다. 실제 검증한 unpacked 전체 inventory·ZIP·새 압축 해제본을 바이트로 연결하고 최종 IME report/수동 kit를 준비한다. 검증 후 포장 전 재빌드하지 않는다.
 5. **사람의 확인 — Native IME15항목·한컴 layout/라이선스.** 실제 환경과 결과를 사람이 기록한다. 자동 검증을 완료해도 사람의 미완료 항목을 PASS로 바꾸지 않는다.
 
