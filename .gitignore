@@ -20,6 +20,7 @@ test-results/
 playwright-report/
 output/playwright/
 output/madi-win32-x64/
+output/releases/
 output/test-fixtures/
 
 # Local editor and OS files

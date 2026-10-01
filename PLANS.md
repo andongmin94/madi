@@ -6,13 +6,13 @@
 
 ## 현재 작업
 
-사용자가 남은 항목의 진행을 요청했다. 기준 HEAD는 `94c7361e2160229397724242d9bb99a82a999c11`이며,
+사용자가 남은 항목의 진행을 요청했다. 작업 시작 HEAD는 `94c7361e2160229397724242d9bb99a82a999c11`이며,
 그 커밋은 검증 source660과 문서4개만 다르다. 아래 새 제품 변경은 source660의 PASS를 그대로 이전하지 않는다.
 
 | 순서 | 작업 | 완료 조건과 상태 |
 | --- | --- | --- |
-| 1 | EPUBCheck/JRE 오프라인 runtime bundle | 기존 exact5.3.0/21.0.11+10 자산·고지·해시를 재사용하고 앱의 검사/출력·취소·종료 경로를 완성. **진행 중** |
-| 2 | 배포용 파일과 수동 시험 준비 | 우선 portable ZIP·manifest·checksum·독립 시험 자료를 준비. 설치본 범위는 사용자 답변을 반영하며 실제 설치·공개 배포는 별도 |
+| 1 | EPUBCheck/JRE 오프라인 runtime bundle | `495f2ed` bundle·`bd62ec9` 앱 연결 구현. Full tree364파일 대조·관련91테스트·실제 client VALID/INVALID/취소 PASS. 새 앱 gate는 **PENDING** |
+| 2 | 배포용 파일과 수동 시험 준비 | Portable ZIP 생성기 focused7/7·미검증 IME15항목/한글5,000자 kit 준비. 새 source의 실제 배포 ZIP 생성은 **PENDING**. 설치·공개 배포는 별도 |
 | 3 | 수정 후 exact Windows gate | 같은 새 source의 필수6명령·개발판/새 배포본 offline/network·coverage·결정성·정리 실제 검증. **PENDING** |
 
 공개 배포를 위한 소유자 권한·실제 서명 인증서와 한컴 보안 모듈 승인·사람의 IME 검증은 자동 완료로 바꾸지 않는다.
@@ -64,7 +64,7 @@ Source51의 full 두 번 FAIL와 후속 개별 PASS는 과거 실행으로 보�
 | Windows native Korean IME | **MANUAL VALIDATION PENDING**. 사람이 [체크리스트](docs/MANUAL_KOREAN_IME_CHECKLIST.md)를 완료 |
 | 실제 HWP 변환 | **MANUAL VALIDATION PENDING / DISABLED**. Hancom security module·Automation 이용조건 승인과 실제 conversion/reopen 검증 |
 | Typie 배포 범위 | 개발 permission은 owner-confirmed. 공개 배포 전 저장소 밖 실제 grant 범위를 소유자가 확인 |
-| 배포 준비 | Runtime EPUBCheck/JRE packaging, installer·signing·update 등 별도 release gate |
+| 배포 준비 | 새 runtime·portable actual 검증 진행. 소유자 signing·실제 installer·자동 update·공개 승인과 구분 |
 
 현재 unpacked 실행 파일은 `output/madi-win32-x64/madi.exe`다.
 Private-local 기술 성공을 공개·유료·고객·installer 배포 승인으로 표현하지 않는다.

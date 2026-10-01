@@ -72,7 +72,7 @@ Bible 관계를 만들지 않는다. 생성된 EPUB·HWPX·HWP와 report는 cano
 - metadata와 closed-token EPUB preset CRUD, snapshot/close/reopen 복원
 - 내부 ZIP/package/nav/XHTML/asset/content-coverage validator
 - staged atomic no-clobber/confirmed replace, progress/cancel, JSON/Markdown report와 reveal
-- build/test-only exact EPUBCheck 5.3.0 validation; 앱 runtime의 Java/JAR bundle 없음
+- bundled EPUBCheck 5.3.0·Temurin JRE의 실제 검사, 3.4 보조 호환성 경계
 - 같은 Publication IR 기반의 deterministic HWPX XML 1.31 상호운용 profile export
 - WORK/VOLUME/CHAPTER/SCENE scope, SINGLE/VOLUME section split과 closed-token HWPX preset
 - `mimetype`, version/header/section/settings/RDF/HPF/container/manifest package와 internal validator
@@ -290,15 +290,15 @@ operation 화면이 lazy-load된다.
    고르거나 저장 EPUB preset을 사용한다.
 4. 필요하면 PNG/JPEG cover를 선택한다. 원본 경로는 저장하지 않으며 검증·재인코딩된
    bytes만 사용한다.
-5. `검사`로 internal validation report를 확인한다.
+5. `검사`로 내부 검증과 bundled EPUBCheck 결과를 확인한다.
 6. `EPUB 내보내기`에서 destination을 고른다. 기존 file은 native save dialog에서 사용자가
    확인한 경우에만 교체한다.
 7. Progress를 보거나 cancel하고, 성공 뒤 file 위치를 열거나 JSON/Markdown report를
    저장한다.
 
 3.4는 Candidate Recommendation Draft target이며 3.4 전용 feature를 사용하지 않는다.
-EPUBCheck 5.3.0은 `pnpm test:epubcheck`의 3.3 build/test validator이고 앱 runtime에는
-Java/JAR가 없다. 자세한 경계는
+EPUBCheck 5.3.0·Temurin JRE는 앱에 고정 bundle로 포함된다. 검사와 출력 commit 전에 실제
+실행하며 3.4 결과는 공통 subset의 보조 검사다. 실행 중 도구를 내려받지 않는다. 자세한 경계는
 [`docs/EPUB_EXPORT_ARCHITECTURE.md`](docs/EPUB_EXPORT_ARCHITECTURE.md)와
 [`docs/EPUB_VALIDATION_STRATEGY.md`](docs/EPUB_VALIDATION_STRATEGY.md)를 따른다.
 
@@ -550,6 +550,13 @@ script는 clean/pinned submodule을 확인하고
 - HWP local bridge 실행용 compatible x86 .NET 10 runtime; HWPX export 자체에는 필요 없음
 - Visual Studio 2022 Build Tools의 C++ desktop workload와 Windows SDK
 
+EPUB 검사 자산은 `.tools/phase1g-validation/`에 `epubcheck-5.3.0.zip`과
+`temurin-jre-21.0.11+10.zip`으로 준비한다. 공식 다운로드 URL은
+[Windows gate의 validation tools 단계](.github/workflows/windows-gate.yml), exact size/hash는
+[검증 전략](docs/EPUB_VALIDATION_STRATEGY.md)을 따른다. `pnpm prepare:epubcheck`가 전체 archive와
+추출 tree를 검증한다. Build/dev/start와 package 명령도 이 준비를 사용하며, 누락·변조된
+도구를 system Java나 자동 download로 우회하지 않는다.
+
 Windows에서 pnpm CLI를 한 번만 준비한다. 이 명령은 전역 CLI 설치에만 npm을
 사용하며, 저장소 설치·build·test·package는 계속 pnpm만 사용한다.
 
@@ -599,6 +606,8 @@ pnpm run fixture:phase1f-reader
 # 최종 gate
 pnpm verify
 pnpm package:unpacked
+pnpm package:portable
+pnpm prepare:manual-validation
 pnpm test:electron
 pnpm test:package
 pnpm test:bundle
@@ -610,7 +619,7 @@ pnpm test:dev
 ```
 
 `pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust Publication/EPUB/HWPX test,
-atomic-output helper build/test, C# bridge contract test, exact build/test-only EPUBCheck 5.3.0,
+atomic-output helper build/test, C# bridge contract test, pinned EPUBCheck fixture와 runtime,
 실제 Typie probe, `.madi` integration, production build, build 뒤 lazy bundle artifact
 test, 일반·scale development Electron과 fresh unpacked packaged smoke를 순서대로
 실행한다. Phase 1F smoke는 일반·675,000자 장편 Reader fixture를 각각 5회 측정하고 새
@@ -627,12 +636,20 @@ output/madi-win32-x64/resources/bin/madi-export-epub.exe
 output/madi-win32-x64/resources/bin/madi-export-hwpx.exe
 output/madi-win32-x64/resources/bin/madi-atomic-output.exe
 output/madi-win32-x64/resources/bin/hwp-bridge/
+output/madi-win32-x64/resources/validation/
 output/madi-win32-x64/resources/licenses/
 ```
 
 `hwp-bridge/`에는 Madi가 빌드한 bridge와 framework-dependent .NET runtime metadata만
 들어간다. 한컴 binary와 Automation security module은 포함하거나 재배포하지 않는다. 이
 폴더는 installer, code signing 또는 자동 update가 아니다.
+
+`pnpm package:portable`은 새 unpacked build를 ZIP으로 만들고 fresh extraction의 모든
+path·size·SHA-256을 원본과 대조한다. ZIP·manifest·checksum·실행/수동 업데이트 안내는
+`output/releases/`에 source별로 보관하며 기존 release를 덮어쓰지 않는다. 앱을 실행하거나
+설치하지 않는다. `pnpm prepare:manual-validation`은 별도 시험 profile 안내·합성 한글
+5,000자·미검증 결과 template을 준비하고 창을 열지 않는다. 실제 IME·한컴 PASS는 사람의
+검증 결과로만 기록한다.
 
 ### 검증 결과 확인
 
@@ -720,7 +737,7 @@ Typie 사용 permission은 [owner-confirmed](docs/TYPIE_LICENSE_STATUS.md)이며
 사유는 해소됐다. 각 release의 범위는 저장소 밖의 실제 grant 조건을 확인해야 한다.
 과거 라이선스 분석 문서는 당시의 기록이며 현재 권한을 새로 해석하는 근거로 쓰지 않는다.
 
-한컴 Automation·실제 HWP 변환, runtime EPUBCheck/JRE, installer·signing·license 검증과
+한컴 Automation·실제 HWP 변환, exact runtime gate, signing·license 검증과
 외부 배포 조건은 [개발 계획](PLANS.md)에서 별도로 관리한다. 비공개 로컬 기술검증 성공을
 public download, 유료·고객 전달 또는 installer 배포 승인으로 취급하지 않는다.
 
