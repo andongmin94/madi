@@ -3,8 +3,8 @@
 갱신일: 2026-10-01. 작업 위치: `main`.
 이 문서는 현재 목표·진척·완료 조건을 관리하는 유일한 실행 계획이다.
 
-**작업 재개:** 사용자가 재부팅 후 계속 진행을 요청했다. 재부팅 전 checkpoint와 원본 receipt를 읽었다.
-현재 host·등록·도구 identity를 새로 확인하고 ROT 연결의 module 등록 false 원인부터 이어간다.
+**작업 재개:** 사용자가 재부팅을 위해 중지한 뒤 계속 진행을 요청했다. 실제 재부팅 여부는 독립 확인하지 않았다.
+현재 host·등록·도구 identity를 새로 확인했고 합성 HWPX의 native 문서 식별 대조를 진행하고 있다.
 
 ## 현재 판정
 
@@ -22,7 +22,7 @@ HWP 변환·재열기와 한컴 호환성 판정은 아직 완료하지 못했�
 | 실행용 ZIP | **COMPLETE**. 검증한561파일/81폴더/549,528,995bytes와 ZIP 전체 내용 hash 일치, 새 폴더 압축 해제 대조 통과 |
 | 수동 시험 준비물 | **PREPARED / NOT TESTED**. 한글5,000자·IME15항목·한컴 결과 template·절차 문서11파일 준비. Native IME와 최종 한컴 검증 결과는 미완료 |
 | IME 보고서 경로 | **REPORT EXPORT/RESTART PASS ONLY**. 같은 source의 배포본에서 JSON/Markdown 저장·재실행 후 보존 확인. 입력15항목은 모두 NOT TESTED |
-| 실제 한컴 시험 | **OPEN FAILED / HWP DISABLED**. 사용자가 임시 모듈 등록·합성 로컬 시험을 승인. 제품 bridge의 OPEN_FAILED와 별도 진단의 Open=false 확인; SaveAs·HWP 재열기는 미실행 |
+| 실제 한컴 시험 | **OPEN FAILED / HWP DISABLED**. 제품 bridge의 OPEN_FAILED 유지. 독립 빈 HWPX는 문서 식별·정상 종료 통과. 마디 원본과 major5 단일 변경 시험본은 모두 식별 실패; SaveAs·HWP 재열기는 미실행 |
 
 전체 Windows run은 `full-verify-5151f6a-run1`이며 exit0·5256.600초다.
 소유 job cleanup active0·강제 종료 없음·handle/desktop 정리를 확인했다.
@@ -65,38 +65,29 @@ full package receipt·source archive·whole inventory·ZIP byte join을 함께 �
 | 항목 | 현재 상태와 완료 조건 |
 | --- | --- |
 | Windows native Korean IME | **MANUAL VALIDATION PENDING**. 사람이 [체크리스트](docs/MANUAL_KOREAN_IME_CHECKLIST.md)15항목과 실제 환경을 기록 |
-| 실제 HWP 변환 | **ACTUAL OPEN FAILURE / DISABLED**. 임시 모듈·합성 로컬 시험은 승인됨. 한컴 자체 HWPX와 대조해 Open=false 원인을 해결하고 conversion/reopen·내용·반복·정리 검증 필요. 영구 등록·공개 배포·최종 layout 승인 없음 |
+| 실제 HWP 변환 | **ACTUAL OPEN FAILURE / DISABLED**. 임시 모듈·합성 로컬 시험은 승인됨. 출처를 확인한 대조 HWPX와 비교해 실패 원인을 해결하고 conversion/reopen·내용·반복·정리 검증 필요. 영구 등록·공개 배포·최종 layout 승인 없음 |
 | Typie 배포 범위 | 개발 permission은 owner-confirmed. 공개 배포 전 저장소 밖 실제 grant 범위를 소유자가 확인 |
 | 공개 배포 | ZIP은 private-local 실행 자료다. Signing·installer·자동 update·공개/유료/고객 배포 승인 완료로 해석하지 않음 |
 
 ## 현재 이어갈 작업
 
-재부팅 전 checkpoint: clean source931fb5d에서 ROT 연결 자체는 두 번 성공했지만
-`RegisterModule`은 등록을 시작 전/후로 바꿔도 모두 false였다. Native blank Save·positive Open은 미실행이다.
-`Activator` 시험이 별도 생성한 PID18872는 사람의 특정 종료 승인 뒤 강제 종료했고,
-후속 읽기 검사에서 해당 desktop 부재(error2)를 확인했다. 이전 실패를 PASS로 바꾸지 않았다.
-중지 직전 Hwp0, HKCU32/64의 예제 module value 부재를 다시 확인했다. 제품·검증한 ZIP은 변경하지 않았다.
+재개 후 좁은 진단은 clean `ccd406ef620eb5175e3ac2fd6671d6dff2550853`에서 실행했다.
+제품·검증한 ZIP은 source5151 그대로이며 CCD에서 전체 Windows gate를 다시 실행한 것은 아니다.
+독립 빈 대조군은 정확한 FullName·단일 현재 문서·empty/unmodified와 Close BOOL true→Quit→native exit를 통과했다.
+마디 원본과 버전 major0→5만 바꾼 시험본은 둘 다15초 안에 native FullName을 확인하지 못했다.
+빈 대조군 성공은 마디 호환성·본문 coverage·HWP 변환 성공이 아니다.
+실패·정리·관측 범위와 원본 hash는 [한컴 재개 후 검증 기록](docs/HANCOM_AUTOMATION_VALIDATION.md#10-2026-10-01-resumed-native-controls)에 보존한다.
 
-- ROT after-start 실패: `.tools/verification/hancom-rot-diagnostic-run-7486438a-ae51-48f8-987c-1f1fdbea4b04/receipt.json`, SHA `b95813d8bbc3286669f515b0aab60a20ff83872acf0548e01015c62e0e1584bd`.
-- ROT before-start 실패: `.tools/verification/hancom-rot-diagnostic-run-f5418f39-0bfc-4cc1-800d-b6bc2207e84a/receipt.json`, SHA `4e6c025d55f6b8cc2d6c66874b2ee51834b18c246743e030dac173b83366ae56`.
-- 특정 process 정리: `.tools/verification/hancom18872-specific-cleanup-b525eef9-4130-4439-b6ae-a35f6df1ec2f/receipt.json`, SHA `e21a7ef211f91eac992790567ec25398181f6f2d534ca8fc469574da962fcbf9`.
-- 이후 desktop 부재: `.tools/verification/retired-hancom-desktop-readonly-7924d0d3-c130-4943-b289-343cefff013b/receipt.json`, SHA `976a30f95794761072ece39ab659f7146798f4311fa647aabfb39a1b38539cd8`.
-
-기존 승인 범위는 원본 unsigned module의 일시 등록·합성 로컬 시험이다. PID18872 종료 승인을
-다른 process에 확대하지 않으며, native IME 화면·키보드 사용 승인과 사람의15항목 판정은 아직 없다.
-재개 첫 작업은 기존 ROT 객체의 module 등록 false 원인 확인이다. 다른 registry namespace나
-새 COM activation으로 임의 우회하지 않는다. 소유권이 불명확한 process를 다시 만들지 않는 경로가 필요하다.
-
-1. 실행 중인 소유권 미확인 한컴을 조작하지 않는다. Hwp0가 확인되면 이미 승인한 비활성 desktop 시험에서
-   한컴 자체 저장 HWPX·자동 감지 Open을 대조하고, 확인된 원인만 수정한다.
-2. HWP 생성에 성공한 뒤 전체 표시 문단·문자 coverage, 새 session 재열기,5회 반복, no-clobber,
-   취소·timeout·종료 정리와 network 경계를 실제 검증한다. 현재 제품에는 승인 결과를 AVAILABLE로
-   연결하는 경로가 없고 Item(0) 소유권·STA cleanup도 미검증이므로 등록 존재만으로 HWP를 켜지 않는다.
+1. 정상적으로 열렸던 빈 대조 파일에 짧은 합성 문장만 넣은 시험본을 준비하고 같은 비활성 desktop에서
+   nonempty 문서 식별·정상 종료를 확인한다. 이후 본문 읽기와 마디 HWPX 구조를 구분해 원인을 좁힌다.
+   소유권 미확인 한컴이 있으면 COM·등록 전에 중단하고 확인된 원인만 수정한다.
+2. 제품을 수정하면 해당 exact source의 필수 Windows 검증과 development/fresh 경로를 다시 실행한다.
+   HWP는 conversion/reopen·전체 표시 coverage·5회·no-clobber·취소/timeout/종료·network gate를 통과하기 전 켜지 않는다.
+   현재 제품의 승인 결과 연결·Item(0) 소유권·STA cleanup도 해결해야 한다.
 3. Native IME15항목은 사람이 실제 환경을 기록해 완료한다. 화면·키보드 사용 승인 전에는 입력 시험을 진행하지 않는다.
 
-후속 시험은 clean `ad7fb613668128a740f683ca8e51fa6624e0e3ae`에서 진행했고 제품 바이너리는 source5151 그대로다.
-일시 등록은 원복했고 시험 소유 process는 정리했다. 후속 소유권 미확인 Hwp 발견 시 COM·등록 전에 중단했다.
-실패와 한계는 [한컴 실제 검증 기록](docs/HANCOM_AUTOMATION_VALIDATION.md#9-2026-10-01-private-local-actual)에 보존한다.
+기존 승인은 원본 unsigned module의 일시 등록·합성 로컬 시험이다. 예전 PID18872 특정 종료 승인을
+다른 process에 확대하지 않는다. 다른 registry namespace나 소유권이 불명확한 새 COM activation으로 우회하지 않는다.
 
 AI 실증은 keyless loopback·합성 단일 블록 전체 선택·clipboard API interception 범위다.
 Remote HTTPS·인증키·OS clipboard·사람의 native IME 실증으로 확대하지 않는다.

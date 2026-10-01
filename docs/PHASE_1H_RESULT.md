@@ -29,6 +29,12 @@ OPEN_FAILED, 별도 진단은 실제 Open=false/getters 성공을 관측했다. 
 Section29의 HWPX 내부 실제 경로 판정을 실제 한컴 호환성 GO로 확대하지 않는다.
 현재 host와 실패·중단·정리 범위는 [Hancom actual section9](HANCOM_AUTOMATION_VALIDATION.md#9-2026-10-01-private-local-actual)에 보존한다.
 
+재개 후 cleanCCD의 좁은 진단에서는 독립 빈 HWPX의 정확한 FullName·단일 현재 문서·empty/unmodified와
+Close BOOL true→Quit→native exit를 통과했다. 마디 원본과 major0→5 단일 변경 시험본은 모두 native 문서 식별에 실패했다.
+이 결과는 source5151의 내부 HWPX 판정이나 최종 한컴 acceptance를 대체하지 않는다.
+제품·ZIP은 변경하지 않았고 HWP conversion/reopen·본문 coverage·network gate는 미통과다.
+상세 원본·승인·관측 범위는 [Hancom 재개 후 기록](HANCOM_AUTOMATION_VALIDATION.md#10-2026-10-01-resumed-native-controls)을 따른다.
+
 ## 2. Runtime EPUBCheck 재분류 결과 — 기준일 기록
 
 아래 DEFERRED는 기준일의 기록이다. Source5151의 bundled offline runtime과 배포 준비 결과는

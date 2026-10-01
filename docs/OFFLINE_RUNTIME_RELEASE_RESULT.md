@@ -167,6 +167,13 @@ HWP output/SaveAs/reopen·5회 반복·최종 network/lifecycle gate는 통과�
 제품·ZIP 재빌드나 수정은 없으며 static docs 검사와 새 실제 runtime 성공을 구분한다.
 전체 실패·사전 중단·approval scope와 hash는 [Hancom actual 기록](HANCOM_AUTOMATION_VALIDATION.md#9-2026-10-01-private-local-actual)을 따른다.
 
+재개 후 cleanCCD의 native 진단은 기존 source5151 full·개발판/새 배포본 성공과 별도다.
+독립 빈 HWPX의 정확한 FullName·단일 현재 문서·empty/unmodified와 Close BOOL true→Quit→native exit는 통과했다.
+마디 원본과 major0→5 단일 변경 시험본은 둘 다15초 readiness에서 정확한 native FullName을 확인하지 못했다.
+빈 대조군 PASS는 마디 호환성·본문 coverage·HWP 변환 성공이 아니다. 초기 Path 조건 실패와 소유 강제 정리도 보존했다.
+원본 DLL의 별도 load 성공을 RegisterModule acceptance로 이전하지 않는다. 제품·ZIP 변경이나 CCD의 전체 rerun은 하지 않았다.
+Inner/outer input과 network UNKNOWN 범위·A/B 원본은 [Hancom 재개 후 기록](HANCOM_AUTOMATION_VALIDATION.md#10-2026-10-01-resumed-native-controls)을 따른다.
+
 ## 이번 실행의 실패·수정 기록
 
 - `a54f1e5` full은2359.074초/exit1, G `normal-export-cancel`의 `phase1g-cancel-enabled timed out`로 실패했다.

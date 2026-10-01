@@ -1,7 +1,7 @@
 # Hancom Automation Validation
 
 기준일: 2026-08-13. 후속 갱신일: 2026-10-01.
-Sections1–8은 기준일의 기록이다. 현재 host·승인·actual 실패는 section9를 따른다.
+Sections1–8은 기준일의 기록이다. 최초 실제 시험은 section9, 재개 후 대조와 현재 한계는 section10을 따른다.
 
 ## 1. Official basis
 
@@ -102,7 +102,7 @@ Distribution verdict: LICENSE REVIEW REQUIRED
 
 ## 9. 2026-10-01 private-local actual
 
-실행 HEAD는 clean `ad7fb613668128a740f683ca8e51fa6624e0e3ae`이며 제품 source·배포본은
+최초 실제 시험 HEAD는 clean `ad7fb613668128a740f683ca8e51fa6624e0e3ae`이며 제품 source·배포본은
 `5151f6a804cf1565a09211ea8f7a11e9f547fd34` 그대로다. 제품 재빌드나 ZIP 변경 없이 시험했다.
 Current host의 registered x86 Hwp는 version12.0.0.4605, signature Valid/HANCOM_INC,
 SHA `59d402c3a3fe1409f3bb612b5c59301425aa5a7781c76163c96ebb07fb11d680`다.
@@ -135,11 +135,11 @@ byte/logical hash 동일하고 ZIP9entry/XML8개 재열기·내부 coverage를 �
 따라서 현재 호출 token이 잘못됐거나 한컴2022가 HWPX를 지원하지 않는다고 단정하지 않는다.
 실제 생성 파일·format filter·환경 중 원인을 대조하기 전 임의 XML 보완을 하지 않았다.
 
-Prelaunch는 Hwp0부터 시작해 verified executable의 `-Automation -Embedding`을 inactive Win32 desktop의
+이 최초 Open 진단의 prelaunch는 Hwp0부터 시작해 verified executable의 `-Automation -Embedding`을 inactive Win32 desktop의
 소유 nested job에서 실행했다. PID/birth/image hash/job과 실제 window-owner thread desktop을 확인했다.
 GetThreadDesktop NULL/error0인 worker thread는 unknown으로 보존했으며 전체 native thread 판독 성공으로 쓰지 않았다.
 Open 진단의 HWND와 COM object 직접 binding은 하지 않았다. 독점 process/GUI 관측 범위다.
-시험 desktop은 비활성이고 입력 이름 관측은 Default였으며 화면 전환·활성화·입력·보안 prompt 승인·global kill은 호출하지 않았다.
+이 최초 Open 진단의 시험 desktop은 비활성이고 입력 이름 관측은 Default였으며 화면 전환·활성화·입력·보안 prompt 승인·global kill은 호출하지 않았다.
 Foreground 비간섭의 절대 보증이나 모든 Windows process의 감시로 확대하지 않는다.
 TCP sampling은 이 좁은 진단에서 disabled/unknown이며 network gate PASS가 아니다.
 
@@ -168,3 +168,77 @@ Five conversions/content/reopen/network/lifecycle gate: NOT PASSED
 App HWP: DISABLED
 Distribution/layout approval: NOT GIVEN
 ```
+
+## 10. 2026-10-01 resumed native controls
+
+사용자가 재부팅을 위해 중지한 뒤 작업 재개를 요청했다. 실제 재부팅 여부는 독립 확인하지 않았다.
+재개 후 좁은 ignored 진단은 clean `ccd406ef620eb5175e3ac2fd6671d6dff2550853`에서 실행했다.
+제품·배포본·ZIP은 source5151 그대로이며 기존 full5256.600초 PASS를 CCD의 전체 gate 실행으로 옮기지 않는다.
+
+별도 x86 loader에서 원본 예제 DLL load/export lookup/free를 통과했다. 이는 Hancom의 RegisterModule 성공이나
+Automation 안전 가용성을 증명하지 않는다. `-Automation`과 인자 없는 prelaunch의 ROT RegisterModule은 모두 false였다.
+이전 GetTextFile NULL도 보존하며 NULL을 빈 문자열이나 확정 고장 원인으로 해석하지 않는다.
+아래 문서 식별 대조에서는 module 등록·Automation Open/SaveAs·본문 읽기를 수행하지 않았다.
+
+독립 대조군은 Apache-2.0 `neolord0/hwpxlib`의 고정 commit
+`f9fd2255ac0fc57414e0b657d115e7de51d31c65`, `testFile/tool/blank.hwpx`다.
+6397bytes/SHA `d28f55cd622b6d0cade2d8ae3b5d53f1ed5c4154289e463a4c390d9be157aa6d`,
+ZIP8entry·문단1·문자0이며 Hancom 자체 생성 파일이라고 증명한 것은 아니다.
+URI16개는 선언된 namespace를 고르는 `hp:case required-namespace`였다. 외부 대상0이라는 정적 분류는 runtime network 판정이 아니다.
+
+| 실제 대조 | 관측과 판정 |
+| --- | --- |
+| 원본 마디 quoted filepath | strict blank에서 SetActive 반환 뒤 FullName16표본/15007ms, 일치 없음·timeout. Native emptytrue/nonmodified. TEXT·Close·Quit 미실행, 소유 job 강제 정리와 FAIL 보존 |
+| 독립 빈 대조군의 초기 Path 조건 | FullName exact/emptytrue/nonmodified이지만 Path가 파일·디렉터리 비교 모두 false여서 활성화 전에 중단. Path 표현의 원인은 미확정이며 FAIL 보존 |
+| 독립 빈 대조군의 FullName 조건 | before/after FullName exact, captured/current-active Count1, emptytrue/nonmodified. Close BOOL true와 전후 guard, Quit 반환, native exit/no force, Hwp0. 문서 식별·정리 범위 PASS |
+| 마디 major0 재대조 | 공통 A/B 빌드에서 FullName20표본/15011ms, 일치 없음·timeout. Native blank 상태, TEXT·Close·Quit 미실행. Inner 소유 job 강제 정리/FAIL, outer COMMAND_FAILED45.104초 |
+| 마디 major5 시험본 | 같은 빌드에서 FullName21표본/15151ms, 일치 없음·timeout. Native blank 상태, TEXT·Close·Quit 미실행. Inner 소유 job 강제 정리/FAIL, outer COMMAND_FAILED42.516초 |
+
+Known file identity는 공식 FullName 전체경로 계약, 고정 fixture hash, 현재 active Count1,
+HWND→PID/birth/image/job/private desktop을 함께 확인한다. Path는 metadata로 관측한다.
+미명명 blank의 SetActive-only 자격에는 Path와 FullName 모두 empty/native emptytrue/nonmodified 조건을 유지한다.
+Close 직전 captured/current active FullName·Count1·empty/modified를 다시 검사하고,
+Close API BOOL true와 전후 input guard가 성공한 뒤에만 Quit을 허용한다.
+공식 계약은 [고정 Hancom Automation manual](https://github.com/hancom-io/devcenter-archive/blob/213c7faad552b4853b525887e36accb6025e837b/hwp-automation/HwpAutomation_2504.pdf)과 installed type library로 확인했다.
+문서 식별 guard는 좁은 시험 도구의 설계 판단이며 제품의 안전 가용성 인증이 아니다.
+
+빈 대조군의 C# input43회와 outer host25회는 각각 Default/owned desktop inactive를 확인했다.
+Outer12.695초/exit0/jobactive0/no force/desktop 제거다. 두 관측 범위를 합치지 않는다.
+A/B outer는 major0의88표본, major5의83표본에서 Default/inactive/unknown0, jobactive0/desktop 제거를 확인했다.
+각 시험 뒤 Hwp0·HKCU32/64 예제 값 부재·원본 module/fixture hash 불변을 새로 확인했다.
+전체 native thread desktop 판독은 완전 증명되지 않았고 foreground 비간섭을 절대 보증하지 않는다.
+화면 전환·직접 Win32 활성화·키보드/마우스 입력·보안 prompt 승인은 하지 않았다.
+SetActive는 focus-capable COM 호출이며 각 호출 전후 private input guard를 적용했다.
+TCP는 DISABLED_UNKNOWN이므로 network gate PASS가 아니다. source5151 full의 input36 unknown 이력도 유지한다.
+
+Major 대조군은 원본7785bytes의 byte-exact copy와 major0→5 한 바이트/local·central CRC8바이트만 바꾼 파일이다.
+다른8entry의 raw/compressed bytes와324문단/181324자/framed sequence hash는 동일하다.
+ZIP CRC/XML 정적 통과는 native format·본문 coverage 성공이 아니다.
+단일 major 변경은 이 시험의 로드 실패를 해결하지 못했으며 다른 형식 원인 전체를 배제한 것은 아니다.
+제품 version 값이나 XML을 이 차이만으로 수정하지 않았다.
+
+| 재개 후 원본 근거 | SHA-256 |
+| --- | --- |
+| `.tools/verification/hancom-module-loader-run-efe2efe1-2f7b-4912-9326-f36487736ee3/receipt.json` | `9b6caa5e86a9ab9b5a7df0ebf43aaeec4816a489548f01c844c51cf203e89b3e` |
+| `.tools/verification/hancom-file-blank-activation-ccd406e-run1/actual-join.json` | `3253b7ed996d19ae4a859f9a72c160757f7c90bc927e4e3a65df55dd4a3dd32a` |
+| `.tools/verification/hancom-independent-empty-control-ccd406e-run1/actual-join.json` | `a86960f237011f5508080d94ce0a911ba0664c02250854b4853e720b6d9d7f3b` |
+| `.tools/verification/hancom-empty-control-fullname-ccd406e-run1/actual-join.json` | `d959868391357ed0a5c5f5f5c915034f3a8efe94fbd5488e543239ad2713af90` |
+| `.tools/verification/hwpx-major-byte-patch-374ed9b9-b018-4adc-838e-ca7b37d4f608/receipt.json` | `d2da182a97cfd82ef59539144e78fb714f18be2875d22c3609f723b874d95005` |
+| `.tools/verification/hancom-major0-ab-ccd406e-run1/actual-join.json` | `7059bfa08ee333367ef8b4b77d678cbd3abc3eb1fd80c828d218480a440b5699` |
+| `.tools/verification/hancom-major5-ab-ccd406e-run1/actual-join.json` | `8981c959ad337608cea60d5a5357c4e278592eee79d7065fc34da09094614a76` |
+
+원본 prepared/build/actual/outer receipt는 바이트 그대로 새 보관본과 hash를 연결했다. 실패 원본을 고치지 않았다.
+이전 active blank join의 index0 요약이 ROT baseline을 선택했던 오류도 원본과 별도 operation correction에 보존했다.
+
+재개 전931 진단의 RegisterModule false와 특정 PID18872 정리는 다음 원본에 남는다.
+PID18872 종료는 그 process에 한정한 사람의 승인으로 실행했으며 다른 process 종료 승인으로 확대하지 않았다.
+
+| 중지 전 원본 근거 | SHA-256 |
+| --- | --- |
+| `.tools/verification/hancom-rot-diagnostic-run-7486438a-ae51-48f8-987c-1f1fdbea4b04/receipt.json` | `b95813d8bbc3286669f515b0aab60a20ff83872acf0548e01015c62e0e1584bd` |
+| `.tools/verification/hancom-rot-diagnostic-run-f5418f39-0bfc-4cc1-800d-b6bc2207e84a/receipt.json` | `4e6c025d55f6b8cc2d6c66874b2ee51834b18c246743e030dac173b83366ae56` |
+| `.tools/verification/hancom18872-specific-cleanup-b525eef9-4130-4439-b6ae-a35f6df1ec2f/receipt.json` | `e21a7ef211f91eac992790567ec25398181f6f2d534ca8fc469574da962fcbf9` |
+| `.tools/verification/retired-hancom-desktop-readonly-7924d0d3-c130-4943-b289-343cefff013b/receipt.json` | `976a30f95794761072ece39ab659f7146798f4311fa647aabfb39a1b38539cd8` |
+
+HWP 생성·재열기·본문 coverage·5회 반복·network/lifecycle gate는 미통과이며 제품 HWP는 disabled다.
+독립 빈 대조군의 식별·정상 종료 성공을 이 판정이나 public/layout/native IME 승인으로 확대하지 않는다.
