@@ -13,15 +13,19 @@
 | --- | --- | --- |
 | 1 | EPUBCheck/JRE 오프라인 runtime bundle | `495f2ed` bundle·`bd62ec9` 앱 연결 구현. Full tree364파일 대조·관련91테스트·실제 client VALID/INVALID/취소 PASS. 새 앱 gate는 **PENDING** |
 | 2 | 배포용 파일과 수동 시험 준비 | Portable ZIP 생성기 focused7/7·미검증 IME15항목/한글5,000자 kit 준비. 새 source의 실제 배포 ZIP 생성은 **PENDING**. 설치·공개 배포는 별도 |
-| 3 | 수정 후 exact Windows gate | **PENDING**. `a54f1e5` full은 Desktop105파일/705테스트·개발판 basic/D/E/F PASS 후 G의 실제 Java 시작 대기30초에서 FAIL. H와 fresh actual은 미실행. 실패 원본을 보존하고 취소 검증을 수정해 재실행 |
+| 3 | 수정 후 exact Windows gate | **PENDING**. `4c47ec4` 집중 G 개발판 PASS·Java 시작 대기31.9초 확인. 단독 unpacked 명령exit0 후 격리 정리FAIL은 보존. 영구 build server를 사용하지 않도록 수정한 같은 source의 새 배포본·전체 gate를 재실행 |
 
 공개 배포를 위한 소유자 권한·실제 서명 인증서와 한컴 보안 모듈 승인·사람의 IME 검증은 자동 완료로 바꾸지 않는다.
 
 `a54f1e5` 실패는 `normal-export-cancel`의 `phase1g-cancel-enabled timed out`이다.
 Java 시작 전 원고 생성·bundle364파일 hash 검증을 포함하므로 시작 대기에 기존 전체 작업 제한240초를 적용하고,
 실제 시작 대기시간과 고정 enum/count/bool 진단을 남긴다. 실제 Java 실행·UI 취소·close/drain·출력 부재 조건과
-장편 성능5회 gate는 유지한다. 아직 제품 취소 실패나 수정 후 PASS로 판정하지 않는다.
+장편 성능5회 gate는 유지한다. `4c47ec4` 집중 G 개발판은874.752초/exit0이며 Java 시작31,885.86ms와
+실제 취소·검사 중 앱 종료·native TCP0·정리0를 확인했다. 이 집중 성공을 전체 PASS로 이전하지 않는다.
 실패 run2359.074초·exit1·source clean·job cleanup0를 보존하며 input unavailable2회/error5도 숨기지 않는다.
+`4c47ec4` 단독 package run1은 빌드 명령exit0이나35.094초 뒤 owned job active2·강제 정리·desktop 잔존으로
+host125/CLEANUP_FAILED다. 고정 .NET10 CLI의 `--disable-build-servers`를 build/publish/run에 적용하고
+다른 사용자 build server 종료나 전역 환경 설정 없이 다시 검증한다.
 
 ## 제품 범위
 
