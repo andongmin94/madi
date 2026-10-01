@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   cp,
+  lstat,
   mkdir,
   readdir,
   readFile,
@@ -11,6 +12,8 @@ import {
 } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { prepareEpubCheckRuntime } from "./prepare-epubcheck-runtime.mjs";
+import { verifyExtractedToolTree } from "./epubcheck-tools.mjs";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const outputRoot = resolve(repositoryRoot, "output");
@@ -277,6 +280,17 @@ if (
   );
 }
 await mkdir(outputRoot, { recursive: true });
+if ((await lstat(outputRoot)).isSymbolicLink()) {
+  throw new Error("The package output must not be a symbolic link");
+}
+try {
+  if ((await lstat(packageDirectory)).isSymbolicLink()) {
+    throw new Error("The unpacked package target must not be a symbolic link");
+  }
+} catch (error) {
+  if (error?.code !== "ENOENT") throw error;
+}
+const validationBundle = await prepareEpubCheckRuntime();
 await rm(packageDirectory, { recursive: true, force: true });
 await cp(electronDist, packageDirectory, {
   recursive: true,
@@ -325,6 +339,17 @@ const packagedHwpBridgeDirectory = resolve(
   resourcesDirectory,
   "bin",
   "hwp-bridge",
+);
+const packagedValidationDirectory = resolve(resourcesDirectory, "validation");
+await cp(validationBundle.directory, packagedValidationDirectory, {
+  recursive: true,
+  force: false,
+  errorOnExist: true,
+});
+await verifyExtractedToolTree(
+  packagedValidationDirectory,
+  validationBundle.tree,
+  "packaged-runtime-bundle-verify",
 );
 await mkdir(packagedHwpBridgeDirectory, { recursive: true });
 await Promise.all(
@@ -469,6 +494,23 @@ process.stdout.write(
       atomicOutputSha256: atomicOutputCopy.sha256,
       atomicOutputSourceCopyMatched: atomicOutputCopy.sourceCopyMatched,
       packagedBinaryAllowlist,
+      epubCheckRuntime: {
+        directory: "resources/validation",
+        epubCheckVersion: "5.3.0",
+        javaVersion: "21.0.11+10",
+        files: validationBundle.fileCount,
+        bytes: validationBundle.bytes,
+        bundleSha256: validationBundle.bundleSha256,
+        fullTreeSourceCopyMatched: true,
+        runtimeDownload: false,
+        licenses: [
+          "resources/validation/epubcheck-5.3.0/LICENSE.txt",
+          "resources/validation/epubcheck-5.3.0/THIRD-PARTY.txt",
+          "resources/validation/epubcheck-5.3.0/licenses",
+          "resources/validation/jdk-21.0.11+10-jre/NOTICE",
+          "resources/validation/jdk-21.0.11+10-jre/legal",
+        ],
+      },
       hwpBridge: {
         deployment: "framework-dependent .NET 10 win-x86",
         runtimeFramework: "Microsoft.NETCore.App/10.0.0",

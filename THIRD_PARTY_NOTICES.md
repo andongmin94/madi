@@ -343,13 +343,13 @@ license-complete artifact라고 판정하지 않는다. 이 한계는 Typie의 �
 `HUMAN DECISION REQUIRED BEFORE DISTRIBUTION`과 별개로 public/paid/customer distribution을
 계속 차단한다.
 
-## EPUBCheck 5.3.0과 test-only Java runtime
+## EPUBCheck 5.3.0과 bundled Java runtime
 
 - Project: EPUBCheck
 - Exact release: 5.3.0
 - Release: `https://github.com/w3c/epubcheck/releases/tag/v5.3.0`
 - License: BSD 3-Clause
-- Runtime role: 없음
+- Runtime role: EPUB 검사와 출력 commit 전 검증; 3.4는 공통 subset의 보조 호환성 검사
 - Build/test role: EPUB 3.3 production validation, EPUB 3.4 공통 subset 보조 검사
 - Checked-in license text:
   `docs/licenses/EPUBCHECK-5.3.0-BSD-3-CLAUSE.txt`
@@ -358,7 +358,7 @@ license-complete artifact라고 판정하지 않는다. 이 한계는 Typie의 �
 - Packaged notice path:
   `resources/licenses/EPUBCHECK-5.3.0-BSD-3-CLAUSE.txt`
 
-Ignored local test tool identity:
+고정 build 입력 identity:
 
 | Artifact | Exact identity |
 |---|---|
@@ -390,11 +390,21 @@ Unicode-3.0과 SAX license를 매핑하고 `licenses/` 및 JAR metadata를 함�
 distribution directory는 ignored `.tools/phase1g-validation` 안에서 이 files와
 `THIRD-PARTY.txt`를 그대로 보존한다.
 
-EPUBCheck ZIP/JAR, 그 transitive JAR와 Temurin JRE는 source control 또는 unpacked app의
-runtime payload에 포함하지 않는다. 따라서 Java/JAR license corpus를 app runtime
-license로 가장하지 않는다. 향후 runtime bundle을 승인하려면 Temurin GPLv2 with Classpath
-Exception 및 assembly third-party notices, EPUBCheck 전체 transitive corpus, package size와
-security-update owner를 별도 재검토해야 한다.
+ZIP은 ignored build cache에 두고, 전체 검증·추출 tree를 unpacked app의
+`resources/validation`에 복사한다. EPUBCheck의 `LICENSE.txt`, `THIRD-PARTY.txt`, `licenses/`,
+각 JAR의 metadata와 Temurin의 `NOTICE`, `legal/`, `release`를 수정 없이 함께 포함한다.
+Temurin `NOTICE`의 declared license는 GPLv2 with Classpath Exception이다. 각 모듈의
+추가 고지와 예외 원문은 `legal/`에 보존한다.
+
+Payload는 364파일·187,794,843 bytes이며 별도 manifest를 포함한다. ASCII path 순서의
+`{path,bytes,sha256}` 배열을 JSON 직렬화한 SHA-256은
+`bcabd009a2a10ec70499c1e239bef6c53df9580253cc2a19448d804cbaabcb0c`다.
+Build와 runtime은 전체 tree를 이 source pin과 대조하며 system Java lookup이나 runtime
+download를 사용하지 않는다. 검증 source와 실제 실행 결과는 `PLANS.md`에서 구분한다.
+
+고정 자산의 갱신은 저장소 유지보수자가 archive/tree pin, 전체 license corpus와 Windows
+gate를 함께 다시 검토하는 release 변경이다. 자동 업데이트는 없다. Public/paid/customer
+배포의 실제 권한과 소스 제공 조건 확인은 private-local bundle 작성으로 승인되지 않는다.
 
 ## Phase 1H HWPX exporter
 
