@@ -240,3 +240,23 @@ G/H의 기존 `netstat -ano -p tcp` 수집은IPv4만 관측했다. 실제 local 
 UDP는TCP parser에 들어가지 않았고 endpoint/body는 기록하지 않았다. 이 검사는 수집기 회귀이며 runtime
 network GO가 아니다. 기존 PASS의 관측 범위는IPv4로 한정하고, 수정 후 exact source의 development/fresh 전체
 gate 전까지 현행 판정은WITHHELD다. Source5151 ZIP은 기존 보관본이며 현행 새 제품의 release로 자동 갱신하지 않았다.
+
+## 2026-10-02 source1ff 초기화 시험 재현·수정
+
+Source `1ff964cd55d20b7521a68067b7278a711b3eb7c2`의 collector 회귀와 frozen install은 각각1.697/1.473초,
+exit0/job0/noForce·Default/비활성·unknown0으로 통과했다. 새 collector 명령은두 IP 가족의 LISTENING/accepted
+ESTABLISHED를 각각1씩 관측했고 source byte 불변·socket 정리를 확인했다. Runtime network verdict는 아니다.
+
+이 source의 full은 UTC18:26:43.1890108Z→18:28:37.8587755Z,114.669초/exit1로 끝났다.
+Desktop104/105파일·704/705테스트 PASS였고 `ime-test-app`의 dirty document unload 시험은 createProject 호출0에서 실패했다.
+전후 source clean·job186/active0·강제 정리 없음·handles/desktop 정리, input223표본 Default/비활성·unknown0이다.
+Rust/dev/fresh/package 시작 전 실패했으며 이번 실행의 새 package/inventory는 없다.
+Source70·원본 meta/log 등75파일 byte-exact receipt SHA는
+`c6de559f65f9f2df8ded3767c5361ceb880d0bb7885082f9ee568543984c371e`이고 원본/보관을 독립 재확인했다.
+기존 dev/fresh E/F/G/H raw8개는 run 밖의 자료로 분류했다. PASS 전용 archiver는 실행하지 않았다.
+
+비활성 버튼의 조기 click을 delayed-adapter 대조로 재현했다. 같은 지연과 enabled 대기만 추가한 대조는 통과했다.
+기존 create/save/composition/unload assertions와 timeout을 유지한 최소 변경 후 집중8개 PASS를 실제 확인했다.
+대조 receipt SHA는 `fa71465be30f239412ee3a914d0a5d0118140d6cac85042727dc5d2d058ec123`이며
+diagnostic 당시 clean1ff와 적용 후 dirty 상태를 구분한다. Root 적용본과 후보의 LF-normalized 일치도 확인했다.
+전체 gate·native Korean IME·새 package 성공으로 확대하지 않는다. 다음 exact source에서 필수 Windows 경로를 다시 실행한다.

@@ -2,18 +2,18 @@
 
 기준일: 2026-08-13  
 후속 갱신일: 2026-10-02
-문서 상태: previous source5151 actual preserved; source5347 full FAIL / current verdict WITHHELD
+문서 상태: previous source5151 actual preserved; source5347 and source1ff full FAIL / current verdict WITHHELD
 
 이 문서는 아래 기준일의 구현·실행 근거와 revision별 후속 actual을 보존한다. 현행 목표와
 작업 순서는 [PLANS.md](../PLANS.md)를 따른다. Source5151의 section29 development/fresh 판정은
-그 revision에만 적용한다. 후속 제품 source5347은 section31의 full 실패로 현행 판정을 WITHHELD로 둔다.
+그 revision에만 적용한다. 후속 source5347·1ff는 section31/32의 full 실패로 현행 판정을 WITHHELD로 둔다.
 
 ## 1. Phase 1H 최종 판정
 
 ```text
 Phase 1H current verdict: WITHHELD
-Latest full tested source: 534756060e8f56ec2f58c307004013cde592ada3
-Latest full pinned Windows aggregate: FAIL / exit1 / 5830.138s
+Latest full tested source: 1ff964cd55d20b7521a68067b7278a711b3eb7c2
+Latest full pinned Windows aggregate: FAIL / exit1 / 114.669s
 Source5347 HWPX: DEVELOPMENT PASS / FRESH-UNPACKED NOT RUN
 Previous source5151: PRIVATE LOCAL TECHNICAL GO / full PASS / 5256.600s
 HWP Automation: ACTUAL OPEN FAILURE / DISABLED / MANUAL ACCEPTANCE PENDING
@@ -649,3 +649,19 @@ Source before/after는5347 clean,11382 input 표본은 모두 Default/비활성�
 각0이었고 `-ano` 수정본은 IPv4/IPv6 각각1이었다. 기존 명령의 PASS를 바꾸지는 않지만 TCP 관측 범위를
 IPv4로 한정한다. 새 수집 명령·회귀·실패 진단 수정도 다음 exact-source full runtime 성공 전에는
 verification implementation-only다. 현재 verdict는 WITHHELD, HWP는 disabled다.
+
+## 32. 2026-10-02 source1ff 앱 초기화 시험 실패
+
+Source `1ff964cd55d20b7521a68067b7278a711b3eb7c2`는 IPv4/IPv6 collector 회귀와 숫자 위주의
+graph 실패 문맥을 포함한다. 실제 collector 회귀1.697초와 frozen install1.473초는 PASS/job0/noForce였다.
+그러나 `full-verify-1ff964c-run1`은 desktop104/105파일·704/705테스트를 통과한 뒤
+`ime-test-app`의 dirty document unload 시험에서 createProject 호출0/기대1로 실패했다.
+Elapsed114.669초/exit1, 전후 source clean·job0/noForce·handles/desktop 정리·input223표본 Default/비활성·unknown0이다.
+Rust·개발판·fresh·package 단계는 이 실행에서 시작하지 않았다. 이전 raw를 새 결과로 포함하지 않는다.
+
+해당 시험은 편집기 준비 중 이미 존재하는 disabled 버튼을 클릭하고 있었다. Adapter 준비를 늦춘 대조에서
+동일한 호출0 실패를 재현했고, 같은 대조에서 enabled 상태를 기다린 경우 통과했다.
+기존 동일 파일의 다른 시험과 같은 대기를 적용했으며 제품 동작·저장/조합/닫기 assertions·timeout은 바꾸지 않았다.
+수정한 실제 파일의 집중8개는 모두 PASS했다. Jsdom orchestration 시험이며 native IME15항목의 수동 PASS가 아니다.
+대조 원본14개와 수정 연결 receipt SHA는 `fa71465be30f239412ee3a914d0a5d0118140d6cac85042727dc5d2d058ec123`다.
+새 exact-source full gate 전까지 현행 판정은 WITHHELD다.

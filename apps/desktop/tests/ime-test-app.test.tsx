@@ -584,9 +584,11 @@ describe("Phase 0.5 IME Test screen orchestration", () => {
       />
     );
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "새 프로젝트" })
-    );
+    const createButton = await screen.findByRole("button", { name: "새 프로젝트" });
+    await waitFor(() => {
+      expect((createButton as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(createButton);
     await waitFor(() => {
       expect(api.createProject).toHaveBeenCalledTimes(1);
     });

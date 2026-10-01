@@ -7,21 +7,24 @@
 현재 host·등록·도구 identity를 새로 확인했다. HWPX 구역 설정을 수정한 source5347의 관련21개 테스트와
 compiled tiny 출력의 native TEXT 5문단 일치·정상 종료는 통과했다. 그러나 전체 Windows gate는 새 배포본의
 장편 World Graph 재열기에서 실패했다. 같은 배포본의 집중5회는 모두 통과했으며 원래 실패 원인은 미확정이다.
-IPv6 수집 누락을 실제 대조로 확인해 검증 명령과 회귀 검사를 수정했다. 다음 exact source의 전체 gate를 다시 실행한다.
+IPv6 수집 누락을 실제 대조로 확인해 검증 명령과 회귀 검사를 수정했다. Source1ff의 새 회귀 검사·frozen install은
+통과했으나 full은 앱 초기화 전 비활성 버튼을 클릭한 자동 시험1개 때문에114.669초에 실패했다.
+버튼 활성화를 기다리도록 시험 순서만 수정했고 관련8개는 통과했다. 다음 exact source의 전체 gate를 다시 실행한다.
 
 ## 현재 판정
 
 **현재 계획은 미완료다.** 기존 source5151의 전체 자동 검증·로컬 ZIP은 보존한다. 후속 제품 source
-`534756060e8f56ec2f58c307004013cde592ada3`의 전체 검증은 FAIL이며 현행 제품 판정은 WITHHELD다.
+`534756060e8f56ec2f58c307004013cde592ada3`의 전체 검증과 후속 검증 source
+`1ff964cd55d20b7521a68067b7278a711b3eb7c2`의 전체 검증은 FAIL이며 현행 제품 판정은 WITHHELD다.
 HWP 변환·재열기와 전체 native 내용·layout 검증, 사람의 Native IME 확인이 남아 있다.
 서로 다른 source의 부분 성공을 합쳐 현행 전체 통과로 표현하지 않는다.
 
 | 항목 | 상태와 완료 근거 |
 | --- | --- |
-| 필수 Windows 검증 | **현재 WITHHELD**. source5151의 전체 PASS 보존. source5347 frozen install·개발판 basic/D/E/F/G/H·unpacked·새 배포본 basic은 통과했으나 별도 장편 graph reopen에서 full FAIL. Fresh E/F/G/H는 미실행 |
-| EPUBCheck/JRE | **COMPLETE**. 고정 오프라인 bundle364파일과 manifest 포함. 앱의 실제 Java 검사·UI 취소·검사 중 종료·출력 보호·runtime 외부 요청0 확인 |
+| 필수 Windows 검증 | **현재 WITHHELD**. source5151의 전체 PASS 보존. source5347은 fresh scale graph reopen에서 FAIL. 후속 source1ff full은 앱 시험704/705 통과 후 초기화 순서 시험1개에서 FAIL. 해당8개 수정 후 집중 PASS, 새 전체 gate 전 |
+| EPUBCheck/JRE | **source5151 COMPLETE**. 고정 오프라인 bundle364파일과 manifest 포함. 실제 Java 검사·UI 취소·검사 중 종료·출력 보호 통과. 기존 네트워크 관측 범위와 IPv6 추가 검증을 구분 |
 | EPUB·HWPX 내부 경로 | **source5151 PRIVATE LOCAL TECHNICAL GO** 보존. 새 source5347 개발판은 통과했으나 fresh 전체 판정은 대기. Compiled tiny HWPX의 결정성·ZIP/XML와 native 5문단 TEXT 일치만 별도 확인 |
-| 같은 source의 AI 실증 | **PASS WITH DIAGNOSTIC WARNING**. 임시 로컬 모델로 양쪽 실제 요청·검토/복사·단일 블록 적용·Undo/Redo·저장/reopen 확인. 진단 지정 응답 불일치 경고 보존 |
+| source5151 AI 실증 | **PASS WITH DIAGNOSTIC WARNING**. 임시 로컬 모델로 양쪽 실제 요청·검토/복사·단일 블록 적용·Undo/Redo·저장/reopen 확인. 진단 지정 응답 불일치 경고 보존. 최종 source 재실행용 캐시53파일 재확인 |
 | 실행용 ZIP | **COMPLETE**. 검증한561파일/81폴더/549,528,995bytes와 ZIP 전체 내용 hash 일치, 새 폴더 압축 해제 대조 통과 |
 | 수동 시험 준비물 | **PREPARED / NOT TESTED**. 한글5,000자·IME15항목·한컴 결과 template·절차 문서11파일 준비. Native IME와 최종 한컴 검증 결과는 미완료 |
 | IME 보고서 경로 | **REPORT EXPORT/RESTART PASS ONLY**. 같은 source의 배포본에서 JSON/Markdown 저장·재실행 후 보존 확인. 입력15항목은 모두 NOT TESTED |
@@ -38,6 +41,8 @@ HWP 변환·재열기와 전체 native 내용·layout 검증, 사람의 Native I
 최종 job empty·handles/desktop 정리를 기록했다. Input11382표본은 모두 Default/비활성·unknown0이다.
 집중 graph5회의 PASS는 이 전체 실패를 대체하지 않는다. 기존 G/H TCP 관측은 IPv4 범위였으며
 IPv6 포함 수정과 실제 loopback 회귀 성공을 새 exact source의 runtime network GO로 이전하지 않는다.
+후속 `full-verify-1ff964c-run1`은 exit1·114.669초, source before/after clean·job0/noForce·handles/desktop
+정리·223 input Default/비활성·unknown0이다. Rust·개발판·fresh·package 단계 전에 실패했으므로 새 package를 만들지 않았다.
 
 ## 제품 범위
 
@@ -85,7 +90,8 @@ full package receipt·source archive·whole inventory·ZIP byte join을 함께 �
 현행 작업 순서와 완료 조건은 다음과 같다.
 
 1. **진행 중 — 기본 Windows gate 복구.** 장편 graph reopen의 실패 조건을 본문·ID·경로 없이 기록하도록
-   검증을 보완하고 IPv4/IPv6 실제 수집 회귀를 전체 verify에 포함한다. 현행 exact source의 frozen install·
+   보완했고 IPv4/IPv6 실제 수집 회귀를 전체 verify에 포함했다. 앱 종료 시험의 초기화 순서도 수정했다.
+   현행 exact source의 frozen install·
    verify·unpacked·repository·format·diff와 development/fresh 경로를 실제 통과해야 다음 제품 수정을 적용한다.
 2. **준비됨 — HWP bridge 소유권·취소 수정.** 기본 gate 통과 뒤 별도 사본에서 검증한 수정안을 적용한다.
    unchecked COM activation을 제거하고 소유 process·문서·native exit, 취소/commit 경합과 cleanup 오류를 묶는다.
