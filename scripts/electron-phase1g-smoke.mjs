@@ -23,6 +23,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { inflateRawSync } from "node:zlib";
 
 import { _electron as electron } from "playwright-core";
+import { inspectExtractedToolTree } from "./epubcheck-tools.mjs";
+import { bundleSha256, runtimeDirectory } from "./prepare-epubcheck-runtime.mjs";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const desktopDirectory = resolve(repositoryRoot, "apps", "desktop");
@@ -73,11 +75,11 @@ const longScreenshotPath = resolve(
   artifactDirectory,
   `${artifactPrefix}-long.png`,
 );
-const epubCheckValidationScript = resolve(
-  repositoryRoot,
-  "scripts",
-  "test-phase1g-epubcheck.mjs",
-);
+const epubCheckJavaRelativePath = "jdk-21.0.11+10-jre/bin/java.exe";
+const epubCheckJarRelativePath = "epubcheck-5.3.0/epubcheck.jar";
+const epubCheckBundleDirectory = packaged
+  ? resolve(dirname(electronExecutable), "resources", "validation")
+  : runtimeDirectory;
 const WINDOW_CLOSE_TIMEOUT_MS = 195_000;
 const OPERATION_TIMEOUT_MS = 240_000;
 const PROCESS_EXIT_TIMEOUT_MS = 30_000;
@@ -765,6 +767,65 @@ function hasExactKeys(value, keys) {
   );
 }
 
+async function verifyEpubCheckBundleIdentity() {
+  const directory = await lstat(epubCheckBundleDirectory);
+  verify(
+    directory.isDirectory() && !directory.isSymbolicLink() &&
+      (await realpath(epubCheckBundleDirectory)).toLocaleLowerCase() ===
+        resolve(epubCheckBundleDirectory).toLocaleLowerCase(),
+    "phase1g-epubcheck-bundle-directory",
+  );
+  const tree = await inspectExtractedToolTree(
+    epubCheckBundleDirectory,
+    "phase1g-epubcheck-bundle",
+  );
+  const manifestEntry = tree.get("bundle-manifest.json");
+  verify(
+    manifestEntry?.kind === "file" && manifestEntry.bytes <= 512 * 1024,
+    "phase1g-epubcheck-bundle-manifest-file",
+  );
+  const manifest = JSON.parse(await readFile(
+    resolve(epubCheckBundleDirectory, "bundle-manifest.json"),
+    "utf8",
+  ));
+  const actualFiles = [...tree]
+    .filter(([path, entry]) => entry.kind === "file" && path !== "bundle-manifest.json")
+    .map(([path, entry]) => ({ path, bytes: entry.bytes, sha256: entry.sha256 }))
+    .sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+  verify(
+    hasExactKeys(manifest, ["schemaVersion", "epubCheckVersion", "javaVersion", "archives", "files", "bundleSha256"]) &&
+      manifest.schemaVersion === 1 && manifest.epubCheckVersion === "5.3.0" &&
+      manifest.javaVersion === "21.0.11+10" && manifest.bundleSha256 === bundleSha256 &&
+      JSON.stringify(manifest.archives) === JSON.stringify([
+        { name: "epubcheck-5.3.0.zip", sha256: "6c07e68584b2e2ce2f89fe06e1246dfead3eb36b46b340e7d93524f29dcff6c5" },
+        { name: "temurin-jre-21.0.11+10.zip", sha256: "be26677aaa20b39a62edcaab4c8857a8b76673b0f45abc0b6143b142b62717e4" },
+      ]) &&
+      Array.isArray(manifest.files) &&
+      JSON.stringify(actualFiles) === JSON.stringify(manifest.files) &&
+      createHash("sha256").update(JSON.stringify(actualFiles)).digest("hex") === bundleSha256,
+    "phase1g-epubcheck-bundle-identity",
+  );
+  const java = tree.get(epubCheckJavaRelativePath);
+  const jar = tree.get(epubCheckJarRelativePath);
+  verify(java?.kind === "file" && jar?.kind === "file", "phase1g-epubcheck-bundle-entrypoints");
+  return {
+    packaged,
+    source: packaged ? "PACKAGED_RESOURCES_VALIDATION" : "PINNED_LOCAL_RUNTIME",
+    epubCheckVersion: manifest.epubCheckVersion,
+    javaVersion: manifest.javaVersion,
+    bundleSha256,
+    manifestSha256: manifestEntry.sha256,
+    fileCount: actualFiles.length,
+    bytes: actualFiles.reduce((sum, entry) => sum + entry.bytes, 0),
+    javaSha256: java.sha256,
+    javaBytes: java.bytes,
+    jarSha256: jar.sha256,
+    jarBytes: jar.bytes,
+    fullTreeHashMatched: true,
+    symlinkAllowed: false,
+  };
+}
+
 function validateFixtureManifest(manifest) {
   verify(
     hasExactKeys(manifest, ["formatVersion", "fixtures"]) &&
@@ -894,8 +955,8 @@ function validateExportReport(report, expected) {
   verify(validation.fatalCount === 0 && validation.errorCount === 0, "phase1g-report-fatal-error");
   verify(Array.isArray(validation.messages), "phase1g-report-messages");
   verify(
-    validation.epubCheck?.status === "UNAVAILABLE" &&
-      validation.epubCheck.version === null &&
+    validation.epubCheck?.status === "VALID" &&
+      validation.epubCheck.version === "5.3.0" &&
       validation.epubCheck.compatibilityOnly ===
         (expected.profile === "EPUB_3_4_DRAFT_2026_08"),
     "phase1g-report-runtime-epubcheck-contract",
@@ -913,7 +974,7 @@ function validateExportReport(report, expected) {
       key,
     });
   }
-  verify(timing.epubCheckMs === null, "phase1g-report-runtime-epubcheck-timing");
+  verify(Number.isFinite(timing.epubCheckMs) && timing.epubCheckMs >= 0, "phase1g-report-runtime-epubcheck-timing");
   verify(typeof report.generatedAt === "string" && report.generatedAt.length > 0, "phase1g-report-generated-at");
   verify(typeof report.madiVersion === "string" && report.madiVersion.length > 0, "phase1g-report-madi-version");
   return {
@@ -1262,177 +1323,6 @@ async function proveEmbeddedCoverPersistence(
   };
 }
 
-async function validateActualRepresentativeWithEpubCheck(epubPath) {
-  const beforeMetadata = await lstat(epubPath);
-  verify(
-    beforeMetadata.isFile() &&
-      !beforeMetadata.isSymbolicLink() &&
-      beforeMetadata.size > 0,
-    "phase1g-actual-epubcheck-input",
-  );
-  const beforeHash = await sha256File(epubPath);
-  const result = await new Promise((resolveResult, rejectResult) => {
-    const child = spawn(process.execPath, [epubCheckValidationScript, "--actual-epub"], {
-      cwd: repositoryRoot,
-      env: {
-        ...process.env,
-        MADI_PHASE1G_ACTUAL_EPUB: epubPath,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    let stdout = "";
-    let stderrLength = 0;
-    let outputOverflow = false;
-    let settled = false;
-    let timeout;
-    const finish = (value, error = undefined) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timeout);
-      if (error) {
-        rejectResult(error);
-      } else {
-        resolveResult(value);
-      }
-    };
-    const terminateTree = () => {
-      if (process.platform === "win32" && child.pid) {
-        spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
-          stdio: "ignore",
-          timeout: 8_000,
-          windowsHide: true,
-        });
-      } else {
-        child.kill();
-      }
-    };
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
-      if (stdout.length + chunk.length > 8 * 1024 * 1024) {
-        outputOverflow = true;
-        terminateTree();
-        return;
-      }
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk) => {
-      stderrLength += Buffer.byteLength(chunk);
-    });
-    child.once("error", () =>
-      finish(undefined, new Error("phase1g-actual-epubcheck-spawn")),
-    );
-    child.once("close", (code, signal) =>
-      finish({ code, signal, stdout, stderrLength, outputOverflow }),
-    );
-    timeout = setTimeout(() => {
-      terminateTree();
-      finish(undefined, new Error("phase1g-actual-epubcheck-timeout"));
-    }, 300_000);
-  });
-  verify(
-    result.code === 0 &&
-      result.signal === null &&
-      result.stderrLength === 0 &&
-      !result.outputOverflow,
-    "phase1g-actual-epubcheck-process",
-    {
-      exitCode: result.code,
-      signalPresent: result.signal !== null,
-      stderrLength: result.stderrLength,
-      outputOverflow: result.outputOverflow,
-    },
-  );
-  let raw;
-  try {
-    raw = JSON.parse(result.stdout);
-  } catch {
-    throw new Error("phase1g-actual-epubcheck-json");
-  }
-  verify(
-    raw?.check === "phase1g-actual-madi-epubcheck" &&
-      raw.status === "PASS" &&
-      raw.validationScope === "ACTUAL_MADI_DERIVED_EPUB" &&
-      raw.targetProfile === "EPUB_3_3_COMPATIBILITY" &&
-      raw.automaticDownloads === 0 &&
-      raw.externalRuntimeLookup === false &&
-      raw.validator?.name === "EPUBCheck" &&
-      raw.validator.version === "5.3.0" &&
-      raw.validator.timeoutEnforced === true &&
-      raw.validator.externalXmlAccess === "DISABLED" &&
-      raw.input?.byteLength === beforeMetadata.size &&
-      raw.input.stableDuringValidation === true &&
-      raw.input.retainedArtifact === true &&
-      raw.epubCheck?.status === "PASS" &&
-      raw.epubCheck.version === "5.3.0" &&
-      Number.isFinite(raw.epubCheck.elapsedMs) &&
-      raw.epubCheck.elapsedMs >= 0 &&
-      raw.epubCheck.fatalCount === 0 &&
-      raw.epubCheck.errorCount === 0 &&
-      safeInteger(raw.epubCheck.warningCount) !== null &&
-      safeInteger(raw.epubCheck.infoCount) !== null &&
-      safeInteger(raw.epubCheck.usageCount) !== null &&
-      raw.supplyChain?.archiveHashVerifiedBeforeExtraction === true &&
-      raw.supplyChain.freshTemporaryExtraction === true &&
-      raw.supplyChain.deterministicFullTreeComparison === true &&
-      raw.supplyChain.extractedSymlinksAllowed === false &&
-      Array.isArray(raw.supplyChain.adversarialPreSpawnChecks) &&
-      raw.supplyChain.adversarialPreSpawnChecks.length === 2 &&
-      raw.privacy?.rawValidatorOutputPersisted === false &&
-      raw.privacy.outputPathsReported === false &&
-      raw.privacy.manuscriptReported === false,
-    "phase1g-actual-epubcheck-contract",
-  );
-  const afterMetadata = await lstat(epubPath);
-  const afterHash = await sha256File(epubPath);
-  verify(
-    afterMetadata.isFile() &&
-      !afterMetadata.isSymbolicLink() &&
-      afterMetadata.size === beforeMetadata.size &&
-      afterHash === beforeHash,
-    "phase1g-actual-epubcheck-artifact-link",
-    {
-      regularFile: afterMetadata.isFile(),
-      symbolicLink: afterMetadata.isSymbolicLink(),
-      byteLengthMatched: afterMetadata.size === beforeMetadata.size,
-      hashMatched: afterHash === beforeHash,
-    },
-  );
-  return {
-    status: raw.epubCheck.status,
-    name: raw.validator.name,
-    version: raw.epubCheck.version,
-    targetProfile: raw.targetProfile,
-    elapsedMs: roundMilliseconds(raw.epubCheck.elapsedMs),
-    fatalCount: raw.epubCheck.fatalCount,
-    errorCount: raw.epubCheck.errorCount,
-    warningCount: raw.epubCheck.warningCount,
-    infoCount: raw.epubCheck.infoCount,
-    usageCount: raw.epubCheck.usageCount,
-    retainedArtifactByteLength: beforeMetadata.size,
-    retainedArtifactStable: true,
-    retainedArtifactHashMatched: true,
-    automaticDownloads: raw.automaticDownloads,
-    externalRuntimeLookup: raw.externalRuntimeLookup,
-    externalXmlAccessDisabled: true,
-    supplyChain: {
-      archiveHashVerifiedBeforeExtraction: true,
-      freshTemporaryExtraction: true,
-      deterministicFullTreeComparison: true,
-      extractedSymlinksAllowed: false,
-      adversarialPreSpawnCheckCount:
-        raw.supplyChain.adversarialPreSpawnChecks.length,
-    },
-    privacy: {
-      rawValidatorOutputPersisted: false,
-      outputPathsReported: false,
-      manuscriptReported: false,
-    },
-  };
-}
-
 function sanitizeDiagnosticValue(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { type: "OTHER" };
@@ -1578,6 +1468,36 @@ function createMainLifecycleCollector() {
 function createProcessDiagnosticCollector() {
   const mainProcessDiagnostics = [];
   const childStderrDiagnostics = [];
+  const javaCloseReceipts = new Map();
+  const javaWindowCloseRequests = new Map();
+  const recordJavaWindowCloseRequest = (text) => {
+    const prefix = "[madi-phase1g-java-window-close] ";
+    if (!text.startsWith(prefix)) return false;
+    let receipt;
+    try { receipt = JSON.parse(text.slice(prefix.length)); } catch { return false; }
+    if (!hasExactKeys(receipt, ["recordId", "pid", "ppid", "role", "activeAtWindowClose"]) ||
+      safeInteger(receipt.recordId) === null || receipt.recordId < 1 ||
+      safeInteger(receipt.pid, 0xffff_ffff) === null || receipt.pid < 1 ||
+      safeInteger(receipt.ppid, 0xffff_ffff) === null || receipt.ppid < 1 ||
+      receipt.role !== "JAVA" || typeof receipt.activeAtWindowClose !== "boolean") return false;
+    javaWindowCloseRequests.set(`${receipt.recordId}:${receipt.pid}:${receipt.ppid}`, receipt);
+    return true;
+  };
+  const recordJavaCloseReceipt = (text) => {
+    const prefix = "[madi-phase1g-java-close] ";
+    if (!text.startsWith(prefix)) return false;
+    let receipt;
+    try { receipt = JSON.parse(text.slice(prefix.length)); } catch { return false; }
+    if (!hasExactKeys(receipt, ["recordId", "pid", "ppid", "role", "exitReceived", "closeReceived", "stdoutEndReceived", "stderrEndReceived"]) ||
+      safeInteger(receipt.recordId) === null || receipt.recordId < 1 ||
+      safeInteger(receipt.pid, 0xffff_ffff) === null || receipt.pid < 1 ||
+      safeInteger(receipt.ppid, 0xffff_ffff) === null || receipt.ppid < 1 || receipt.role !== "JAVA" ||
+      receipt.exitReceived !== true || receipt.closeReceived !== true ||
+      receipt.stdoutEndReceived !== true || receipt.stderrEndReceived !== true) return false;
+    const key = `${receipt.recordId}:${receipt.pid}:${receipt.ppid}`;
+    javaCloseReceipts.set(key, receipt);
+    return true;
+  };
   let expectedTransportLineCount = 0;
   let expectedLifecycleProbeLineCount = 0;
   let expectedLifecycleProbeMirrorLineCount = 0;
@@ -1642,6 +1562,7 @@ function createProcessDiagnosticCollector() {
       } catch {
         text = "main-console-inspection-failed";
       }
+      if (recordJavaCloseReceipt(text) || recordJavaWindowCloseRequest(text)) return;
       if (mainLifecycleEventsByMarker.has(text)) {
         expectedLifecycleProbeLineCount += 1;
         return;
@@ -1649,6 +1570,7 @@ function createProcessDiagnosticCollector() {
       record(mainProcessDiagnostics, "main.console", type, text);
     },
     recordMainProcessOutput(text) {
+      if (recordJavaCloseReceipt(text) || recordJavaWindowCloseRequest(text)) return;
       if (mainLifecycleEventsByMarker.has(text)) {
         expectedLifecycleProbeMirrorLineCount += 1;
         return;
@@ -1674,6 +1596,8 @@ function createProcessDiagnosticCollector() {
         stderrRemainder = "";
       }
       return {
+        javaCloseReceipts: [...javaCloseReceipts.values()].map((entry) => ({ ...entry })),
+        javaWindowCloseRequests: [...javaWindowCloseRequests.values()].map((entry) => ({ ...entry })),
         mainProcessDiagnostics: [...mainProcessDiagnostics],
         childStderrDiagnostics: [...childStderrDiagnostics],
         childStderrCaptureMode: "PRELAUNCH_CHILD_PROCESS_STREAM_TAP",
@@ -1802,7 +1726,96 @@ const relevantProcessRoles = new Map([
   ["madi", "ELECTRON"],
   ["madi-core", "CORE"],
   ["madi-export-epub", "EXPORTER"],
+  ["java", "JAVA"],
 ]);
+const spawnTappedSidecarRoles = [
+  "CORE",
+  "EXPORTER",
+  "JAVA",
+];
+const processRoleCountKeys = [
+  "root",
+  "electron",
+  "core",
+  "exporter",
+  "java",
+];
+const privacySafeProcessRoles = new Set([
+  "ROOT",
+  "ELECTRON",
+  "CORE",
+  "EXPORTER",
+  "JAVA",
+  "OTHER",
+]);
+
+const electronProcessSubtypes = new Set([
+  "NONE",
+  "MAIN",
+  "NETWORK_SERVICE",
+  "RENDERER",
+  "GPU",
+  "UTILITY",
+  "CRASHPAD",
+  "OTHER",
+]);
+const tcpStateClasses = [
+  "LISTEN",
+  "CONNECTING",
+  "CONNECTED",
+  "CLOSING",
+  "UNKNOWN",
+];
+const tcpAddressClasses = [
+  "UNSPECIFIED",
+  "LOOPBACK",
+  "PRIVATE",
+  "LINK_LOCAL",
+  "PUBLIC",
+  "SPECIAL",
+  "PARSE_ERROR",
+];
+const prohibitedTcpPeerAddressClasses = new Set([
+  "PRIVATE",
+  "LINK_LOCAL",
+  "PUBLIC",
+  "SPECIAL",
+]);
+const ownedTcpBoundaryFailureDetailKeys = [
+  "peerViolationCount",
+  "listenerViolationCount",
+  "classificationFailureCount",
+  "identityRaceCount",
+  "parserRejectedRowCount",
+  "roles",
+  "monitorSampleCount",
+  "ownedTcpRowObservationCount",
+  "unownedTcpRowObservationCount",
+  "ownedProcessInstanceCountsByRole",
+  "ownedElectronSubtypeCounts",
+  "tcpStateObservationCounts",
+  "tcpPeerRemoteAddressClassObservationCounts",
+  "tcpListenerLocalAddressClassObservationCounts",
+  "tcpSamplesWithPeerByRemoteAddressClass",
+  "tcpMaximumConcurrentPeersByRemoteAddressClass",
+  "tcpDistinctOwnedProcessInstanceCountsByRemoteAddressClass",
+  "tcpPeerRolesByRemoteAddressClass",
+];
+
+function powershellProcessHelpers() {
+  return [
+    String.raw`function Get-MadiPhase1gCreationDate([object]$phase1gProcess) { if ($null -eq $phase1gProcess.CreationDate) { return '' }; return $phase1gProcess.CreationDate.ToUniversalTime().Ticks.ToString([System.Globalization.CultureInfo]::InvariantCulture) }`,
+    String.raw`function Get-MadiPhase1gElectronSubtype([object]$phase1gProcess) { $phase1gName = ([string]$phase1gProcess.Name).ToLowerInvariant(); if ($phase1gName -notin @('electron.exe', 'madi.exe')) { return 'NONE' }; $phase1gCommand = [string]$phase1gProcess.CommandLine; if ([string]::IsNullOrWhiteSpace($phase1gCommand)) { return 'OTHER' }; if ($phase1gCommand -match '(?i)--utility-sub-type=network\.mojom\.NetworkService') { return 'NETWORK_SERVICE' }; if ($phase1gCommand -match '(?i)--type=renderer') { return 'RENDERER' }; if ($phase1gCommand -match '(?i)--type=gpu-process') { return 'GPU' }; if ($phase1gCommand -match '(?i)--type=utility') { return 'UTILITY' }; if ($phase1gCommand -match '(?i)--type=crashpad-handler') { return 'CRASHPAD' }; if ($phase1gCommand -notmatch '(?i)--type=') { return 'MAIN' }; return 'OTHER' }`,
+  ];
+}
+
+function powershellTcpHelpers() {
+  return [
+    String.raw`function Get-MadiPhase1gTcpStateClass([string]$phase1gState) { $phase1gNormalizedState = $phase1gState.ToUpperInvariant(); if ($phase1gNormalizedState -in @('LISTENING', 'BOUND')) { return 'LISTEN' }; if ($phase1gNormalizedState -in @('SYN_SENT', 'SYN_RECEIVED')) { return 'CONNECTING' }; if ($phase1gNormalizedState -eq 'ESTABLISHED') { return 'CONNECTED' }; if ($phase1gNormalizedState -in @('FIN_WAIT_1', 'FIN_WAIT_2', 'CLOSE_WAIT', 'CLOSING', 'LAST_ACK', 'TIME_WAIT', 'DELETE_TCB')) { return 'CLOSING' }; return 'UNKNOWN' }`,
+    String.raw`function Get-MadiPhase1gEndpointAddress([string]$phase1gEndpoint) { if ([string]::IsNullOrWhiteSpace($phase1gEndpoint)) { return $null }; if ($phase1gEndpoint.StartsWith('[')) { $phase1gEndBracket = $phase1gEndpoint.IndexOf(']'); if ($phase1gEndBracket -le 1) { return $null }; $phase1gHost = $phase1gEndpoint.Substring(1, $phase1gEndBracket - 1) } else { $phase1gLastColon = $phase1gEndpoint.LastIndexOf(':'); if ($phase1gLastColon -le 0) { return $null }; $phase1gHost = $phase1gEndpoint.Substring(0, $phase1gLastColon) }; $phase1gAddress = $null; if (-not [System.Net.IPAddress]::TryParse($phase1gHost, [ref]$phase1gAddress)) { return $null }; if ($phase1gAddress.IsIPv4MappedToIPv6) { return $phase1gAddress.MapToIPv4() }; return $phase1gAddress }`,
+    String.raw`function Get-MadiPhase1gAddressClass([System.Net.IPAddress]$phase1gAddress) { if ($null -eq $phase1gAddress) { return 'PARSE_ERROR' }; if ($phase1gAddress.Equals([System.Net.IPAddress]::Any) -or $phase1gAddress.Equals([System.Net.IPAddress]::IPv6Any)) { return 'UNSPECIFIED' }; if ([System.Net.IPAddress]::IsLoopback($phase1gAddress)) { return 'LOOPBACK' }; $phase1gBytes = $phase1gAddress.GetAddressBytes(); if ($phase1gAddress.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork) { if ($phase1gBytes[0] -eq 10 -or ($phase1gBytes[0] -eq 172 -and $phase1gBytes[1] -ge 16 -and $phase1gBytes[1] -le 31) -or ($phase1gBytes[0] -eq 192 -and $phase1gBytes[1] -eq 168)) { return 'PRIVATE' }; if ($phase1gBytes[0] -eq 169 -and $phase1gBytes[1] -eq 254) { return 'LINK_LOCAL' }; if ($phase1gBytes[0] -eq 0 -or ($phase1gBytes[0] -eq 100 -and $phase1gBytes[1] -ge 64 -and $phase1gBytes[1] -le 127) -or ($phase1gBytes[0] -eq 192 -and $phase1gBytes[1] -eq 0 -and ($phase1gBytes[2] -eq 0 -or $phase1gBytes[2] -eq 2)) -or ($phase1gBytes[0] -eq 198 -and ($phase1gBytes[1] -eq 18 -or $phase1gBytes[1] -eq 19)) -or ($phase1gBytes[0] -eq 198 -and $phase1gBytes[1] -eq 51 -and $phase1gBytes[2] -eq 100) -or ($phase1gBytes[0] -eq 203 -and $phase1gBytes[1] -eq 0 -and $phase1gBytes[2] -eq 113) -or $phase1gBytes[0] -ge 224) { return 'SPECIAL' }; return 'PUBLIC' }; if (($phase1gBytes[0] -band 0xfe) -eq 0xfc) { return 'PRIVATE' }; if ($phase1gAddress.IsIPv6LinkLocal) { return 'LINK_LOCAL' }; if ($phase1gAddress.IsIPv6Multicast -or $phase1gAddress.IsIPv6SiteLocal -or ($phase1gBytes[0] -eq 0x20 -and $phase1gBytes[1] -eq 0x01 -and $phase1gBytes[2] -eq 0x0d -and $phase1gBytes[3] -eq 0xb8) -or ($phase1gBytes[0] -eq 0x01 -and $phase1gBytes[1] -eq 0x00 -and $phase1gBytes[2] -eq 0x00 -and $phase1gBytes[3] -eq 0x00 -and $phase1gBytes[4] -eq 0x00 -and $phase1gBytes[5] -eq 0x00 -and $phase1gBytes[6] -eq 0x00 -and $phase1gBytes[7] -eq 0x00)) { return 'SPECIAL' }; return 'PUBLIC' }`,
+  ];
+}
 
 function processRole(processName) {
   const normalized = String(processName).toLocaleLowerCase().replace(/\.exe$/u, "");
@@ -1810,15 +1823,15 @@ function processRole(processName) {
 }
 
 function powershellProcessFilter() {
-  return ["electron.exe", "madi.exe", "madi-core.exe", "madi-export-epub.exe"]
+  return [
+    "electron.exe",
+    "madi.exe",
+    "madi-core.exe",
+    "madi-export-epub.exe",
+    "java.exe",
+  ]
     .map((name) => `Name='${name}'`)
     .join(" OR ");
-}
-
-function powershellProcessHelpers() {
-  return [
-    String.raw`function Get-MadiPhase1gCreationDate([object]$phase1gProcess) { if ($null -eq $phase1gProcess.CreationDate) { return '' }; return $phase1gProcess.CreationDate.ToUniversalTime().Ticks.ToString([System.Globalization.CultureInfo]::InvariantCulture) }`,
-  ];
 }
 
 function processInstanceKey(pid, creationDate) {
@@ -1826,11 +1839,17 @@ function processInstanceKey(pid, creationDate) {
 }
 
 function parseProcessSnapshot(parsed, extraIds = []) {
+  verify(
+    Array.isArray(extraIds) && extraIds.every(
+      (pid) => safeInteger(pid, 0xffff_ffff) === pid && pid > 0,
+    ),
+    "phase1g-explicit-process-query-ids",
+  );
+  const explicitIds = new Set(extraIds);
   return (Array.isArray(parsed) ? parsed : [parsed]).map((row) => {
     const pid = safeInteger(row?.pid, 0xffff_ffff);
     const ppid = safeInteger(row?.ppid, 0xffff_ffff);
-    const role =
-      processRole(row?.name) ?? (extraIds.includes(pid) ? "QUERY_TARGET" : null);
+    const role = processRole(row?.name) ?? (explicitIds.has(pid) ? "QUERY_TARGET" : null);
     const creationDate =
       typeof row?.creationDate === "string" && /^\d{1,20}$/u.test(row.creationDate)
         ? row.creationDate
@@ -1840,9 +1859,14 @@ function parseProcessSnapshot(parsed, extraIds = []) {
       /^\d{1,20}$/u.test(row.parentCreationDate)
         ? row.parentCreationDate
         : null;
+    const electronSubtype = electronProcessSubtypes.has(row?.electronSubtype)
+      ? row.electronSubtype
+      : null;
     verify(
-      pid !== null && pid > 0 && ppid !== null && role && creationDate !== null,
-      "phase1g-process-instance-shape",
+      pid !== null && pid > 0 && ppid !== null && role !== null &&
+        creationDate !== null && electronSubtype !== null &&
+        (row?.parentCreationDate === null || parentCreationDate !== null),
+      "phase1g-process-snapshot-identity-shape",
     );
     return {
       pid,
@@ -1851,9 +1875,11 @@ function parseProcessSnapshot(parsed, extraIds = []) {
       creationDate,
       instanceKey: processInstanceKey(pid, creationDate),
       parentInstanceKey:
-        ppid > 0 && parentCreationDate !== null
+        ppid > 0 && parentCreationDate !== null &&
+          BigInt(creationDate) >= BigInt(parentCreationDate)
           ? processInstanceKey(ppid, parentCreationDate)
           : null,
+      electronSubtype,
     };
   });
 }
@@ -1861,21 +1887,23 @@ function parseProcessSnapshot(parsed, extraIds = []) {
 function captureRelevantProcessSnapshot(extraIds = []) {
   verify(process.platform === "win32", "phase1g-process-proof-platform");
   verify(
-    Array.isArray(extraIds) &&
-      extraIds.every((pid) => safeInteger(pid, 0xffff_ffff) !== null && pid > 0),
-    "phase1g-process-query-target-shape",
+    Array.isArray(extraIds) && extraIds.every(
+      (pid) => safeInteger(pid, 0xffff_ffff) === pid && pid > 0,
+    ),
+    "phase1g-explicit-process-query-ids",
   );
-  const filter = [
+  const explicitIds = [...new Set(extraIds)];
+  const snapshotFilter = [
     powershellProcessFilter(),
-    ...new Set(extraIds.map((pid) => `ProcessId=${pid}`)),
+    ...explicitIds.map((pid) => "ProcessId=" + pid),
   ].join(" OR ");
   const command = [
     ...powershellProcessHelpers(),
-    `$phase1gFilter = \"${filter}\"`,
+    `$phase1gFilter = \"${snapshotFilter}\"`,
     "$phase1gProcesses = @(Get-CimInstance Win32_Process -Filter $phase1gFilter -ErrorAction Stop)",
     "$phase1gByPid = @{}; foreach ($phase1gProcess in $phase1gProcesses) { $phase1gByPid[[int]$phase1gProcess.ProcessId] = $phase1gProcess }",
-    "$phase1gRows = @($phase1gProcesses | ForEach-Object { $phase1gParent = $phase1gByPid[[int]$_.ParentProcessId]; [PSCustomObject]@{ pid = [int]$_.ProcessId; ppid = [int]$_.ParentProcessId; name = [string]$_.Name; creationDate = Get-MadiPhase1gCreationDate $_; parentCreationDate = if ($null -eq $phase1gParent) { $null } else { Get-MadiPhase1gCreationDate $phase1gParent } } })",
-    "ConvertTo-Json -InputObject $phase1gRows -Compress",
+    "$phase1gRows = @($phase1gProcesses | ForEach-Object { $phase1gParent = $phase1gByPid[[int]$_.ParentProcessId]; [PSCustomObject]@{ pid = [int]$_.ProcessId; ppid = [int]$_.ParentProcessId; name = [string]$_.Name; creationDate = Get-MadiPhase1gCreationDate $_; parentCreationDate = if ($null -eq $phase1gParent) { $null } else { Get-MadiPhase1gCreationDate $phase1gParent }; electronSubtype = Get-MadiPhase1gElectronSubtype $_ } })",
+    "ConvertTo-Json -InputObject @($phase1gRows) -Compress",
   ].join("; ");
   const result = spawnSync(
     "powershell.exe",
@@ -1897,7 +1925,7 @@ function captureRelevantProcessSnapshot(extraIds = []) {
     },
   );
   const parsed = JSON.parse(result.stdout || "[]");
-  return parseProcessSnapshot(parsed, extraIds);
+  return parseProcessSnapshot(parsed, explicitIds);
 }
 
 async function startRelevantProcessMonitor() {
@@ -1905,10 +1933,17 @@ async function startRelevantProcessMonitor() {
   const baselineInstanceKeys = new Set(baseline.map((entry) => entry.instanceKey));
   const observations = new Map();
   const observedChildren = [];
+  const tcpSamples = [];
+  const identityRaceCounts = new Map();
+  let currentTcpSample = [];
+  let globalTcpParserRejectedRowCount = 0;
+  let processIdentityRejectedRowCount = 0;
   const command = [
     ...powershellProcessHelpers(),
+    ...powershellTcpHelpers(),
     `$phase1gFilter = \"${powershellProcessFilter()}\"`,
-    "while ($true) { $phase1gRows = @(Get-CimInstance Win32_Process -Filter $phase1gFilter -ErrorAction Stop); $phase1gByPid = @{}; foreach ($phase1gRow in $phase1gRows) { $phase1gByPid[[int]$phase1gRow.ProcessId] = $phase1gRow }; foreach ($phase1gRow in $phase1gRows) { $phase1gParent = $phase1gByPid[[int]$phase1gRow.ParentProcessId]; $phase1gCreationDate = Get-MadiPhase1gCreationDate $phase1gRow; $phase1gParentCreationDate = if ($null -eq $phase1gParent) { '' } else { Get-MadiPhase1gCreationDate $phase1gParent }; Write-Output (\"{0}|{1}|{2}|{3}|{4}\" -f $phase1gRow.ProcessId, $phase1gRow.ParentProcessId, $phase1gRow.Name, $phase1gCreationDate, $phase1gParentCreationDate) }; Write-Output '__MADI_PHASE1G_PROCESS_SAMPLE__'; Start-Sleep -Milliseconds 200 }",
+    "$phase1gNetstat = Join-Path $env:SystemRoot 'System32\\netstat.exe'",
+    String.raw`while ($true) { $phase1gRows = @(Get-CimInstance Win32_Process -Filter $phase1gFilter -ErrorAction Stop); $phase1gByPid = @{}; foreach ($phase1gRow in $phase1gRows) { $phase1gByPid[[int]$phase1gRow.ProcessId] = $phase1gRow }; foreach ($phase1gRow in $phase1gRows) { $phase1gParent = $phase1gByPid[[int]$phase1gRow.ParentProcessId]; $phase1gCreationDate = Get-MadiPhase1gCreationDate $phase1gRow; $phase1gParentCreationDate = if ($null -eq $phase1gParent) { '' } else { Get-MadiPhase1gCreationDate $phase1gParent }; Write-Output ("P|{0}|{1}|{2}|{3}|{4}|{5}" -f $phase1gRow.ProcessId, $phase1gRow.ParentProcessId, $phase1gRow.Name, $phase1gCreationDate, $phase1gParentCreationDate, (Get-MadiPhase1gElectronSubtype $phase1gRow)) }; $phase1gNetstatRows = @(& $phase1gNetstat -ano -p tcp); if ($LASTEXITCODE -ne 0) { throw 'phase1g-netstat-sample-failed' }; $phase1gPostRows = @(Get-CimInstance Win32_Process -Filter $phase1gFilter -ErrorAction Stop); $phase1gPostByPid = @{}; foreach ($phase1gPostRow in $phase1gPostRows) { $phase1gPostByPid[[int]$phase1gPostRow.ProcessId] = $phase1gPostRow }; foreach ($phase1gLine in $phase1gNetstatRows) { $phase1gTrimmed = $phase1gLine.Trim(); if (-not $phase1gTrimmed.StartsWith('TCP')) { continue }; $phase1gParts = @($phase1gTrimmed -split '\s+'); if ($phase1gParts.Count -lt 2 -or $phase1gParts[0] -ne 'TCP') { Write-Output 'R|PARSER'; continue }; $phase1gPid = 0; if (-not [int]::TryParse($phase1gParts[-1], [ref]$phase1gPid)) { Write-Output 'R|PARSER'; continue }; $phase1gProcess = $phase1gByPid[$phase1gPid]; if ($null -eq $phase1gProcess) { continue }; $phase1gCreationDate = Get-MadiPhase1gCreationDate $phase1gProcess; $phase1gPostProcess = $phase1gPostByPid[$phase1gPid]; if ($null -eq $phase1gPostProcess -or (Get-MadiPhase1gCreationDate $phase1gPostProcess) -cne $phase1gCreationDate -or ([string]$phase1gPostProcess.Name) -cne ([string]$phase1gProcess.Name)) { Write-Output ("R|IDENTITY|{0}|{1}" -f $phase1gPid, $phase1gCreationDate); continue }; if ($phase1gParts.Count -ne 5) { Write-Output ("T|{0}|{1}|UNKNOWN|PARSE_ERROR|PARSE_ERROR" -f $phase1gPid, $phase1gCreationDate); continue }; $phase1gStateClass = Get-MadiPhase1gTcpStateClass $phase1gParts[3]; $phase1gLocalClass = Get-MadiPhase1gAddressClass (Get-MadiPhase1gEndpointAddress $phase1gParts[1]); $phase1gRemoteClass = Get-MadiPhase1gAddressClass (Get-MadiPhase1gEndpointAddress $phase1gParts[2]); Write-Output ("T|{0}|{1}|{2}|{3}|{4}" -f $phase1gPid, $phase1gCreationDate, $phase1gStateClass, $phase1gRemoteClass, $phase1gLocalClass) }; Write-Output '__MADI_PHASE1G_PROCESS_SAMPLE__'; Start-Sleep -Milliseconds 200 }`,
   ].join("; ");
   const child = spawn(
     "powershell.exe",
@@ -1918,11 +1953,19 @@ async function startRelevantProcessMonitor() {
   let stdoutRemainder = "";
   let stderrLength = 0;
   let sampleCount = 0;
-  let distinctProcessCount = 0;
+  let launcherProcessPid = null;
   let rootInstanceKey = null;
   let launcherInstanceKey = null;
-  let launcherProcessPid = null;
-  let invalidProcessRowCount = 0;
+  function rememberProcessInstance(entry) {
+    const previous = observations.get(entry.instanceKey);
+    const remembered = {
+      ...entry,
+      role: entry.instanceKey === rootInstanceKey ? "ROOT" : entry.role,
+      parentInstanceKey: previous?.parentInstanceKey ?? entry.parentInstanceKey,
+    };
+    observations.set(entry.instanceKey, remembered);
+    return remembered;
+  }
   let readyResolve;
   let readyReject;
   const ready = new Promise((resolveReady, rejectReady) => {
@@ -1933,17 +1976,6 @@ async function startRelevantProcessMonitor() {
     () => readyReject(new Error("phase1g-process-monitor-ready-timeout")),
     15_000,
   );
-  function rememberProcessInstance(entry) {
-    const previous = observations.get(entry.instanceKey);
-    if (!previous) {
-      distinctProcessCount += 1;
-    }
-    observations.set(entry.instanceKey, {
-      ...entry,
-      role: entry.instanceKey === rootInstanceKey ? "ROOT" : entry.role,
-      parentInstanceKey: previous?.parentInstanceKey ?? entry.parentInstanceKey,
-    });
-  }
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
     stdoutRemainder += chunk;
@@ -1952,24 +1984,77 @@ async function startRelevantProcessMonitor() {
     for (const line of lines) {
       if (line === "__MADI_PHASE1G_PROCESS_SAMPLE__") {
         sampleCount += 1;
+        tcpSamples.push(currentTcpSample);
+        currentTcpSample = [];
         if (sampleCount === 1) {
           clearTimeout(readyTimer);
           readyResolve();
         }
         continue;
       }
-      const [pidText, ppidText, name, creationDate, parentCreationDate] =
-        line.split("|", 5);
+      if (line === "R|PARSER") {
+        globalTcpParserRejectedRowCount += 1;
+        continue;
+      }
+      if (line.startsWith("R|IDENTITY|")) {
+        const [, , pidText, creationDate] = line.split("|", 4);
+        const pid = Number(pidText);
+        if (
+          Number.isSafeInteger(pid) &&
+          pid > 0 &&
+          /^\d{1,20}$/u.test(creationDate ?? "")
+        ) {
+          const key = processInstanceKey(pid, creationDate);
+          identityRaceCounts.set(key, (identityRaceCounts.get(key) ?? 0) + 1);
+        }
+        continue;
+      }
+      if (line.startsWith("T|")) {
+        const [, pidText, creationDate, stateClass, remoteClass, localClass] =
+          line.split("|", 6);
+        const pid = Number(pidText);
+        if (
+          Number.isSafeInteger(pid) &&
+          pid > 0 &&
+          /^\d{1,20}$/u.test(creationDate ?? "") &&
+          tcpStateClasses.includes(stateClass) &&
+          tcpAddressClasses.includes(remoteClass) &&
+          tcpAddressClasses.includes(localClass)
+        ) {
+          currentTcpSample.push({
+            instanceKey: processInstanceKey(pid, creationDate),
+            stateClass,
+            remoteClass,
+            localClass,
+          });
+        } else {
+          globalTcpParserRejectedRowCount += 1;
+        }
+        continue;
+      }
+      const [
+        prefix,
+        pidText,
+        ppidText,
+        name,
+        creationDate,
+        parentCreationDate,
+        electronSubtype,
+      ] = line.split("|", 7);
       const pid = Number(pidText);
       const ppid = Number(ppidText);
       const role = processRole(name);
       if (
+        prefix === "P" &&
         Number.isSafeInteger(pid) &&
         pid > 0 &&
         Number.isSafeInteger(ppid) &&
+        ppid >= 0 &&
         role &&
         /^\d{1,20}$/u.test(creationDate ?? "") &&
-        (parentCreationDate === "" || /^\d{1,20}$/u.test(parentCreationDate ?? ""))
+        (parentCreationDate === "" ||
+          /^\d{1,20}$/u.test(parentCreationDate ?? "")) &&
+        electronProcessSubtypes.has(electronSubtype)
       ) {
         const key = processInstanceKey(pid, creationDate);
         rememberProcessInstance({
@@ -1979,12 +2064,14 @@ async function startRelevantProcessMonitor() {
           creationDate,
           instanceKey: key,
           parentInstanceKey:
-            ppid > 0 && parentCreationDate
+            ppid > 0 && parentCreationDate &&
+              BigInt(creationDate) >= BigInt(parentCreationDate)
               ? processInstanceKey(ppid, parentCreationDate)
               : null,
+          electronSubtype,
         });
-      } else {
-        invalidProcessRowCount += 1;
+      } else if (prefix === "P") {
+        processIdentityRejectedRowCount += 1;
       }
     }
   });
@@ -2009,17 +2096,15 @@ async function startRelevantProcessMonitor() {
     observations,
     observedChildren,
     recordProcessSnapshot(current) {
-      for (const entry of current) {
-        rememberProcessInstance(entry);
-      }
+      for (const entry of current) rememberProcessInstance(entry);
     },
     recordObservedChildren(children, current) {
-      verify(rootInstanceKey !== null, "phase1g-child-process-root-instance");
       for (const entry of current) {
         rememberProcessInstance(entry);
       }
       for (const child of children) {
-        if (child.exitReceived && child.closeReceived) {
+        const closedReceipt = child.exitReceived && child.closeReceived;
+        if (closedReceipt) {
           observedChildren.push({ ...child, instanceKey: null });
           continue;
         }
@@ -2029,32 +2114,38 @@ async function startRelevantProcessMonitor() {
             entry.role === child.role &&
             entry.parentInstanceKey === rootInstanceKey,
         );
-        verify(matches.length === 1, "phase1g-live-child-process-instance", {
-          role: child.role,
-          matchCount: matches.length,
-        });
+        verify(
+          matches.length === 1,
+          "phase1g-live-spawn-process-instance-attribution",
+          { role: child.role, matchCount: matches.length },
+        );
         observedChildren.push({ ...child, instanceKey: matches[0].instanceKey });
       }
     },
     recordRoot(pid, launcherPid) {
       const current = captureRelevantProcessSnapshot([launcherPid]);
-      const roots = current.filter((entry) => entry.pid === pid);
-      const launchers = current.filter((entry) => entry.pid === launcherPid);
-      verify(
-        roots.length === 1 && roots[0].role === "ELECTRON" &&
-          launchers.length === 1,
-        "phase1g-launch-process-instance-capture",
-        { rootMatchCount: roots.length, launcherMatchCount: launchers.length },
+      const rootMatches = current.filter(
+        (entry) => entry.pid === pid && entry.role === "ELECTRON",
       );
-      rootInstanceKey = roots[0].instanceKey;
-      launcherInstanceKey = launchers[0].instanceKey;
+      const launcherMatches = current.filter((entry) => entry.pid === launcherPid);
+      verify(
+        rootMatches.length === 1 && launcherMatches.length === 1,
+        "phase1g-root-launcher-process-instance-capture",
+        { rootMatchCount: rootMatches.length, launcherMatchCount: launcherMatches.length },
+      );
+      const root = rootMatches[0];
+      const launcher = launcherMatches[0];
+      verify(
+        pid === launcherPid || root.parentInstanceKey === launcher.instanceKey,
+        "phase1g-root-launcher-process-instance-association",
+      );
+      rootInstanceKey = root.instanceKey;
+      launcherInstanceKey = launcher.instanceKey;
       launcherProcessPid = launcherPid;
-      verify(
-        rootInstanceKey === launcherInstanceKey ||
-          roots[0].parentInstanceKey === launcherInstanceKey,
-        "phase1g-launch-process-parent-instance",
-      );
-      rememberProcessInstance(roots[0]);
+      // The explicitly queried CMD wrapper is kept outside app/TCP observations.
+      for (const entry of current) {
+        if (entry.role !== "QUERY_TARGET") rememberProcessInstance(entry);
+      }
     },
     get rootInstanceKey() {
       return rootInstanceKey;
@@ -2065,6 +2156,56 @@ async function startRelevantProcessMonitor() {
     get launcherProcessPid() {
       return launcherProcessPid;
     },
+    getOwnedProcessInstances() {
+      verify(
+        rootInstanceKey !== null && launcherInstanceKey !== null,
+        "phase1g-owned-process-root-instance",
+      );
+      const ownedKeys = new Set([rootInstanceKey]);
+      for (const child of observedChildren) {
+        // Closed ChildProcess receipts never attribute a later reused numeric PID.
+        if (child.instanceKey !== null) ownedKeys.add(child.instanceKey);
+      }
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const entry of observations.values()) {
+          if (
+            !ownedKeys.has(entry.instanceKey) &&
+            entry.parentInstanceKey !== null &&
+            ownedKeys.has(entry.parentInstanceKey)
+          ) {
+            ownedKeys.add(entry.instanceKey);
+            changed = true;
+          }
+        }
+      }
+      const ownedProcesses = [...ownedKeys].flatMap((key) => {
+        const entry = observations.get(key);
+        return entry ? [entry] : [];
+      });
+      const spawnTapUnsampledCountByRole = zeroCounts(spawnTappedSidecarRoles);
+      const closedSpawnTapReceiptCountByRole = zeroCounts(spawnTappedSidecarRoles);
+      const liveSpawnTapInstanceCountByRole = zeroCounts(spawnTappedSidecarRoles);
+      for (const role of spawnTappedSidecarRoles) {
+        const taps = observedChildren.filter((entry) => entry.role === role);
+        closedSpawnTapReceiptCountByRole[role] = taps.filter(
+          (entry) => entry.exitReceived && entry.closeReceived,
+        ).length;
+        liveSpawnTapInstanceCountByRole[role] = taps.filter(
+          (entry) => entry.instanceKey !== null,
+        ).length;
+        // A completed unsampled child has a close receipt, not an inferred birth.
+        const sampledCount = ownedProcesses.filter((entry) => entry.role === role).length;
+        spawnTapUnsampledCountByRole[role] = Math.max(0, taps.length - sampledCount);
+      }
+      return {
+        ownedProcesses,
+        spawnTapUnsampledCountByRole,
+        closedSpawnTapReceiptCountByRole,
+        liveSpawnTapInstanceCountByRole,
+      };
+    },
     async stop() {
       if (!stopped) {
         stopped = true;
@@ -2074,23 +2215,313 @@ async function startRelevantProcessMonitor() {
           "phase1g-process-monitor-stop-timeout",
         );
       }
-      verify(sampleCount > 0 && stderrLength === 0 && invalidProcessRowCount === 0, "phase1g-process-monitor-health", {
+      verify(
+        sampleCount > 0 && stderrLength === 0 && processIdentityRejectedRowCount === 0,
+        "phase1g-process-monitor-health",
+        { sampleCount, stderrLength, processIdentityRejectedRowCount },
+      );
+      const ownership = this.getOwnedProcessInstances();
+      return {
         sampleCount,
-        stderrLength,
-        invalidProcessRowCount,
-      });
-      return { sampleCount, distinctProcessCount };
+        processIdentityRejectedRowCount,
+        distinctProcessCount: observations.size,
+        spawnTapUnsampledCountByRole:
+          ownership.spawnTapUnsampledCountByRole,
+        closedSpawnTapReceiptCountByRole:
+          ownership.closedSpawnTapReceiptCountByRole,
+        liveSpawnTapInstanceCountByRole:
+          ownership.liveSpawnTapInstanceCountByRole,
+        ...summarizeOwnedTcpMonitoring({
+          observations,
+          ownedProcesses: ownership.ownedProcesses,
+          baselineInstanceKeys,
+          tcpSamples,
+          identityRaceCounts,
+          globalTcpParserRejectedRowCount,
+        }),
+      };
     },
   };
 }
 
+function zeroCounts(keys) {
+  return Object.fromEntries(keys.map((key) => [key, 0]));
+}
+
+function hasExactSafeCountMap(value, keys) {
+  return (
+    hasExactKeys(value, keys) &&
+    keys.every((key) => safeInteger(value[key], 10_000_000) !== null)
+  );
+}
+
+function hasPrivacySafeRoleList(value) {
+  return (
+    Array.isArray(value) &&
+    value.length === new Set(value).size &&
+    value.every((role) => privacySafeProcessRoles.has(role))
+  );
+}
+
+function hasExactPrivacySafeRoleClassMap(value) {
+  return (
+    hasExactKeys(value, tcpAddressClasses) &&
+    tcpAddressClasses.every((addressClass) =>
+      hasPrivacySafeRoleList(value[addressClass]),
+    )
+  );
+}
+
+function countMapTotal(value, keys) {
+  return keys.reduce((sum, key) => sum + value[key], 0);
+}
+
+function hasPrivacySafeOwnedTcpBoundaryFailureDetails(value) {
+  if (
+    !hasExactKeys(value, ownedTcpBoundaryFailureDetailKeys) ||
+    safeInteger(value.peerViolationCount, 10_000_000) === null ||
+    safeInteger(value.listenerViolationCount, 10_000_000) === null ||
+    safeInteger(value.classificationFailureCount, 10_000_000) === null ||
+    safeInteger(value.identityRaceCount, 10_000_000) === null ||
+    safeInteger(value.parserRejectedRowCount, 10_000_000) === null ||
+    safeInteger(value.monitorSampleCount, 10_000_000) === null ||
+    safeInteger(value.ownedTcpRowObservationCount, 10_000_000) === null ||
+    safeInteger(value.unownedTcpRowObservationCount, 10_000_000) === null ||
+    !hasPrivacySafeRoleList(value.roles) ||
+    !hasExactSafeCountMap(
+      value.ownedProcessInstanceCountsByRole,
+      processRoleCountKeys,
+    ) ||
+    !hasExactSafeCountMap(
+      value.ownedElectronSubtypeCounts,
+      [...electronProcessSubtypes],
+    ) ||
+    !hasExactSafeCountMap(value.tcpStateObservationCounts, tcpStateClasses) ||
+    !hasExactSafeCountMap(
+      value.tcpPeerRemoteAddressClassObservationCounts,
+      tcpAddressClasses,
+    ) ||
+    !hasExactSafeCountMap(
+      value.tcpListenerLocalAddressClassObservationCounts,
+      tcpAddressClasses,
+    ) ||
+    !hasExactSafeCountMap(
+      value.tcpSamplesWithPeerByRemoteAddressClass,
+      tcpAddressClasses,
+    ) ||
+    !hasExactSafeCountMap(
+      value.tcpMaximumConcurrentPeersByRemoteAddressClass,
+      tcpAddressClasses,
+    ) ||
+    !hasExactSafeCountMap(
+      value.tcpDistinctOwnedProcessInstanceCountsByRemoteAddressClass,
+      tcpAddressClasses,
+    ) ||
+    !hasExactPrivacySafeRoleClassMap(
+      value.tcpPeerRolesByRemoteAddressClass,
+    )
+  ) {
+    return false;
+  }
+  const listenerObservationCount =
+    value.tcpStateObservationCounts.LISTEN;
+  const peerObservationCount =
+    value.ownedTcpRowObservationCount - listenerObservationCount;
+  return (
+    countMapTotal(value.tcpStateObservationCounts, tcpStateClasses) ===
+      value.ownedTcpRowObservationCount &&
+    countMapTotal(
+      value.tcpPeerRemoteAddressClassObservationCounts,
+      tcpAddressClasses,
+    ) === peerObservationCount &&
+    countMapTotal(
+      value.tcpListenerLocalAddressClassObservationCounts,
+      tcpAddressClasses,
+    ) === listenerObservationCount &&
+    value.peerViolationCount <= peerObservationCount &&
+    value.listenerViolationCount <= listenerObservationCount &&
+    value.classificationFailureCount <=
+      value.ownedTcpRowObservationCount &&
+    tcpAddressClasses.every(
+      (addressClass) =>
+        value.tcpSamplesWithPeerByRemoteAddressClass[addressClass] <=
+          value.monitorSampleCount &&
+        value.tcpMaximumConcurrentPeersByRemoteAddressClass[addressClass] <=
+          value.tcpPeerRemoteAddressClassObservationCounts[addressClass] &&
+        value.tcpDistinctOwnedProcessInstanceCountsByRemoteAddressClass[
+          addressClass
+        ] <= value.tcpPeerRemoteAddressClassObservationCounts[addressClass],
+    )
+  );
+}
+
+function summarizeOwnedTcpMonitoring({
+  observations,
+  ownedProcesses,
+  baselineInstanceKeys,
+  tcpSamples,
+  identityRaceCounts,
+  globalTcpParserRejectedRowCount,
+}) {
+  const ownedKeys = new Set(ownedProcesses.map((entry) => entry.instanceKey));
+  const tcpStateObservationCounts = zeroCounts(tcpStateClasses);
+  const tcpPeerRemoteAddressClassObservationCounts = zeroCounts(tcpAddressClasses);
+  const tcpListenerLocalAddressClassObservationCounts = zeroCounts(tcpAddressClasses);
+  const tcpSamplesWithPeerByRemoteAddressClass = zeroCounts(tcpAddressClasses);
+  const tcpMaximumConcurrentPeersByRemoteAddressClass = zeroCounts(tcpAddressClasses);
+  const distinctPeerInstancesByRemoteAddressClass = Object.fromEntries(
+    tcpAddressClasses.map((addressClass) => [addressClass, new Set()]),
+  );
+  const peerRolesByRemoteAddressClass = Object.fromEntries(
+    tcpAddressClasses.map((addressClass) => [addressClass, new Set()]),
+  );
+  const ownedElectronSubtypeCounts = zeroCounts([...electronProcessSubtypes]);
+  const ownedTcpRowObservationCountsByRole = zeroCounts(processRoleCountKeys);
+  const boundaryViolationRoles = new Set();
+  let ownedTcpRowObservationCount = 0;
+  let unownedTcpRowObservationCount = 0;
+  let ownedTcpPeerBoundaryViolationCount = 0;
+  let ownedTcpListenerBoundaryViolationCount = 0;
+  let ownedTcpClassificationFailureCount = 0;
+  let ownedTcpBoundaryViolationRowCount = 0;
+
+  for (const process of ownedProcesses) {
+    ownedElectronSubtypeCounts[process.electronSubtype] += 1;
+  }
+
+  for (const sample of tcpSamples) {
+    const samplePeerCounts = zeroCounts(tcpAddressClasses);
+    for (const row of sample) {
+      if (!ownedKeys.has(row.instanceKey)) {
+        unownedTcpRowObservationCount += 1;
+        continue;
+      }
+      const process = observations.get(row.instanceKey);
+      const role = process?.role ?? "OTHER";
+      const roleKey = role.toLocaleLowerCase();
+      verify(processRoleCountKeys.includes(roleKey), "phase1g-owned-tcp-role-shape");
+      ownedTcpRowObservationCountsByRole[roleKey] += 1;
+      let peerViolation = false;
+      let listenerViolation = false;
+      let classificationFailure = row.stateClass === "UNKNOWN";
+      ownedTcpRowObservationCount += 1;
+      tcpStateObservationCounts[row.stateClass] += 1;
+      if (row.stateClass === "LISTEN") {
+        tcpListenerLocalAddressClassObservationCounts[row.localClass] += 1;
+        listenerViolation = row.localClass !== "LOOPBACK";
+        classificationFailure ||= row.localClass === "PARSE_ERROR";
+      } else {
+        tcpPeerRemoteAddressClassObservationCounts[row.remoteClass] += 1;
+        samplePeerCounts[row.remoteClass] += 1;
+        distinctPeerInstancesByRemoteAddressClass[row.remoteClass].add(
+          row.instanceKey,
+        );
+        peerRolesByRemoteAddressClass[row.remoteClass].add(role);
+        peerViolation = prohibitedTcpPeerAddressClasses.has(row.remoteClass);
+        classificationFailure ||=
+          row.remoteClass === "UNSPECIFIED" || row.remoteClass === "PARSE_ERROR";
+      }
+      if (peerViolation) {
+        ownedTcpPeerBoundaryViolationCount += 1;
+      }
+      if (listenerViolation) {
+        ownedTcpListenerBoundaryViolationCount += 1;
+      }
+      if (classificationFailure) {
+        ownedTcpClassificationFailureCount += 1;
+      }
+      if (peerViolation || listenerViolation || classificationFailure) {
+        ownedTcpBoundaryViolationRowCount += 1;
+        boundaryViolationRoles.add(role);
+      }
+    }
+    for (const addressClass of tcpAddressClasses) {
+      if (samplePeerCounts[addressClass] > 0) {
+        tcpSamplesWithPeerByRemoteAddressClass[addressClass] += 1;
+      }
+      tcpMaximumConcurrentPeersByRemoteAddressClass[addressClass] = Math.max(
+        tcpMaximumConcurrentPeersByRemoteAddressClass[addressClass],
+        samplePeerCounts[addressClass],
+      );
+    }
+  }
+
+  let ownedTcpIdentityRaceCount = 0;
+  for (const [instanceKey, count] of identityRaceCounts) {
+    if (ownedKeys.has(instanceKey)) {
+      ownedTcpIdentityRaceCount += count;
+      boundaryViolationRoles.add(observations.get(instanceKey)?.role ?? "OTHER");
+    }
+  }
+  const distinctUnownedRelevantProcessInstanceCount = [
+    ...observations.values(),
+  ].filter(
+    (entry) =>
+      !ownedKeys.has(entry.instanceKey) &&
+      !baselineInstanceKeys.has(entry.instanceKey),
+  ).length;
+  const tcpDistinctOwnedProcessInstanceCountsByRemoteAddressClass =
+    Object.fromEntries(
+      tcpAddressClasses.map((addressClass) => [
+        addressClass,
+        distinctPeerInstancesByRemoteAddressClass[addressClass].size,
+      ]),
+    );
+  const tcpPeerRolesByRemoteAddressClass = Object.fromEntries(
+    tcpAddressClasses.map((addressClass) => [
+      addressClass,
+      [...peerRolesByRemoteAddressClass[addressClass]].sort(),
+    ]),
+  );
+  const ownedTcpPeerNonLoopbackObservationCount = [
+    "PRIVATE",
+    "LINK_LOCAL",
+    "PUBLIC",
+    "SPECIAL",
+  ].reduce(
+    (sum, addressClass) =>
+      sum + tcpPeerRemoteAddressClassObservationCounts[addressClass],
+    0,
+  );
+  return {
+    processIdentityMode: "PID_AND_WIN32_PROCESS_CREATION_DATE",
+    processOwnershipMode:
+      "MAIN_PROCESS_INSTANCE_DESCENDANTS_AND_LIVE_SPAWN_TAP_INSTANCES",
+    ownedProcessInstanceCountsByRole: roleCounts(ownedProcesses),
+    ownedTcpRowObservationCountsByRole,
+    ownedNativeTcpRowObservationCount:
+      ownedTcpRowObservationCountsByRole.core + ownedTcpRowObservationCountsByRole.exporter +
+      ownedTcpRowObservationCountsByRole.java,
+    ownedElectronSubtypeCounts,
+    distinctUnownedRelevantProcessInstanceCount,
+    ownedTcpRowObservationCount,
+    unownedTcpRowObservationCount,
+    tcpStateObservationCounts,
+    tcpPeerRemoteAddressClassObservationCounts,
+    tcpListenerLocalAddressClassObservationCounts,
+    tcpSamplesWithPeerByRemoteAddressClass,
+    tcpMaximumConcurrentPeersByRemoteAddressClass,
+    tcpDistinctOwnedProcessInstanceCountsByRemoteAddressClass,
+    tcpPeerRolesByRemoteAddressClass,
+    ownedTcpPeerNonLoopbackObservationCount,
+    ownedTcpPeerBoundaryViolationCount,
+    ownedTcpListenerBoundaryViolationCount,
+    ownedTcpClassificationFailureCount,
+    ownedTcpIdentityRaceCount,
+    globalTcpParserRejectedRowCount,
+    ownedTcpBoundaryViolationRowCount,
+    ownedTcpBoundaryViolationRoles: [...boundaryViolationRoles].sort(),
+  };
+}
+
 function roleCounts(processes) {
-  const counts = { root: 0, electron: 0, core: 0, exporter: 0 };
+  const counts = { root: 0, electron: 0, core: 0, exporter: 0, java: 0 };
   for (const process of processes) {
     if (process.role === "ROOT") counts.root += 1;
     if (process.role === "ELECTRON") counts.electron += 1;
     if (process.role === "CORE") counts.core += 1;
     if (process.role === "EXPORTER") counts.exporter += 1;
+    if (process.role === "JAVA") counts.java += 1;
   }
   return counts;
 }
@@ -2133,10 +2564,16 @@ async function assertNativeSidecarsExitedBeforeWrapperCleanup(run) {
     "phase1g-native-sidecar-root-instance",
   );
   const nativeChildren = processMonitor.observedChildren.filter(
-    (entry) => entry.role === "CORE" || entry.role === "EXPORTER",
+    (entry) => spawnTappedSidecarRoles.includes(entry.role),
   );
   const closedChildren = nativeChildren.filter(
     (entry) => entry.exitReceived && entry.closeReceived,
+  );
+  verify(
+    closedChildren.filter((entry) => entry.role === "JAVA").every(
+      (entry) => entry.stdoutEndReceived && entry.stderrEndReceived,
+    ),
+    "phase1g-java-closed-stream-drain",
   );
   const liveChildren = nativeChildren.filter(
     (entry) => !(entry.exitReceived && entry.closeReceived),
@@ -2167,7 +2604,7 @@ async function assertNativeSidecarsExitedBeforeWrapperCleanup(run) {
       const nativeDescendants = capturedDescendants(
         [...processMonitor.observations.values()],
         processMonitor.rootInstanceKey,
-      ).filter((entry) => entry.role === "CORE" || entry.role === "EXPORTER");
+      ).filter((entry) => spawnTappedSidecarRoles.includes(entry.role));
       for (const entry of nativeDescendants) {
         capturedNativeInstanceKeys.add(entry.instanceKey);
       }
@@ -2213,9 +2650,65 @@ async function assertNoOrphanProcesses(processMonitor) {
     observed.root === 1 &&
       observedDescendants.electron > 0 &&
       spawned.core > 0 &&
-      spawned.exporter > 0,
+      spawned.exporter > 0 &&
+      spawned.java > 0 &&
+      processMonitor.observedChildren.every((entry) =>
+        entry.commandMatchesExpected && entry.bundledPath === packaged),
     "phase1g-process-role-observation",
     { observed, observedDescendants, spawned },
+  );
+  const ownedTcpBoundaryFailureDetails = {
+    peerViolationCount: monitorHealth.ownedTcpPeerBoundaryViolationCount,
+    listenerViolationCount:
+      monitorHealth.ownedTcpListenerBoundaryViolationCount,
+    classificationFailureCount:
+      monitorHealth.ownedTcpClassificationFailureCount,
+    identityRaceCount: monitorHealth.ownedTcpIdentityRaceCount,
+    parserRejectedRowCount: monitorHealth.globalTcpParserRejectedRowCount,
+    roles: monitorHealth.ownedTcpBoundaryViolationRoles,
+    monitorSampleCount: monitorHealth.sampleCount,
+    ownedTcpRowObservationCount: monitorHealth.ownedTcpRowObservationCount,
+    unownedTcpRowObservationCount:
+      monitorHealth.unownedTcpRowObservationCount,
+    ownedProcessInstanceCountsByRole:
+      monitorHealth.ownedProcessInstanceCountsByRole,
+    ownedElectronSubtypeCounts: monitorHealth.ownedElectronSubtypeCounts,
+    tcpStateObservationCounts: monitorHealth.tcpStateObservationCounts,
+    tcpPeerRemoteAddressClassObservationCounts:
+      monitorHealth.tcpPeerRemoteAddressClassObservationCounts,
+    tcpListenerLocalAddressClassObservationCounts:
+      monitorHealth.tcpListenerLocalAddressClassObservationCounts,
+    tcpSamplesWithPeerByRemoteAddressClass:
+      monitorHealth.tcpSamplesWithPeerByRemoteAddressClass,
+    tcpMaximumConcurrentPeersByRemoteAddressClass:
+      monitorHealth.tcpMaximumConcurrentPeersByRemoteAddressClass,
+    tcpDistinctOwnedProcessInstanceCountsByRemoteAddressClass:
+      monitorHealth.tcpDistinctOwnedProcessInstanceCountsByRemoteAddressClass,
+    tcpPeerRolesByRemoteAddressClass:
+      monitorHealth.tcpPeerRolesByRemoteAddressClass,
+  };
+  processMonitor.boundaryEvidence = ownedTcpBoundaryFailureDetails;
+  processMonitor.nativeTcpEvidence = {
+    count: monitorHealth.ownedNativeTcpRowObservationCount,
+    roles: monitorHealth.ownedTcpRowObservationCountsByRole,
+  };
+  verify(
+    hasPrivacySafeOwnedTcpBoundaryFailureDetails(
+      ownedTcpBoundaryFailureDetails,
+    ),
+    "phase1g-owned-tcp-diagnostics-shape",
+  );
+  verify(
+    monitorHealth.ownedProcessInstanceCountsByRole.java > 0 &&
+    monitorHealth.ownedNativeTcpRowObservationCount === 0 &&
+    monitorHealth.ownedTcpPeerBoundaryViolationCount === 0 &&
+      monitorHealth.ownedTcpListenerBoundaryViolationCount === 0 &&
+      monitorHealth.ownedTcpClassificationFailureCount === 0 &&
+      monitorHealth.ownedTcpIdentityRaceCount === 0 &&
+      monitorHealth.ownedTcpBoundaryViolationRowCount === 0 &&
+      monitorHealth.globalTcpParserRejectedRowCount === 0,
+    "phase1g-owned-tcp-boundary",
+    ownedTcpBoundaryFailureDetails,
   );
   const closedChildProcessReceiptCount = processMonitor.observedChildren.filter(
     (entry) => entry.exitReceived && entry.closeReceived,
@@ -2267,6 +2760,14 @@ async function assertNoOrphanProcesses(processMonitor) {
     captureMode: "MAIN_PROCESS_SPAWN_TAP_AND_WIN32_SNAPSHOT",
     processIdentityMode: "PID_AND_WIN32_PROCESS_CREATION_DATE",
     processExitProofMode: "WIN32_PROCESS_INSTANCE_AND_CHILD_PROCESS_CLOSE_RECEIPTS",
+    networkCaptureMode: "WIN32_NETSTAT_OWNED_PROCESS_INSTANCE_TCP_STATE_ADDRESS_CLASS_SAMPLING",
+    allObservedCommandsUseExpectedPathMode: true,
+    requiredSpawnRolesObserved: true,
+    javaBundledPathObserved: processMonitor.observedChildren.some(
+      (entry) => entry.role === "JAVA" && entry.bundledPath),
+    javaExpectedPathMatched: processMonitor.observedChildren.filter(
+      (entry) => entry.role === "JAVA").every((entry) => entry.commandMatchesExpected),
+    ...monitorHealth,
     monitorSampleCount: monitorHealth.sampleCount,
     distinctObservedProcessCount: monitorHealth.distinctProcessCount,
     exactCapturedProcessCount: capturedInstanceKeys.length,
@@ -2282,7 +2783,7 @@ async function assertNoOrphanProcesses(processMonitor) {
 }
 
 async function installMainChildProcessObserver(application) {
-  const status = await application.evaluate(() => {
+  const status = await application.evaluate(({ app }, expectedDevelopmentCommands) => {
     const observerKey = "__madiPhase1gMainChildProcessObserver";
     if (Reflect.has(globalThis, observerKey)) {
       return { installed: false, processId: process.pid };
@@ -2291,6 +2792,21 @@ async function installMainChildProcessObserver(application) {
     if (!childProcess || typeof childProcess.spawn !== "function") {
       throw new Error("phase1g-main-child-process-module-unavailable");
     }
+    const nodePath = process.getBuiltinModule("node:path");
+    const validationDirectory = app.isPackaged
+      ? nodePath.join(process.resourcesPath, "validation")
+      : nodePath.resolve(app.getAppPath(), "..", "..", ".tools", "phase1g-validation", "runtime");
+    const expectedCommands = new Map([
+      ["CORE", app.isPackaged ? nodePath.join(process.resourcesPath, "bin", "madi-core.exe") : expectedDevelopmentCommands.core],
+      ["EXPORTER", app.isPackaged ? nodePath.join(process.resourcesPath, "bin", "madi-export-epub.exe") : expectedDevelopmentCommands.exporter],
+      ["JAVA", nodePath.join(validationDirectory, "jdk-21.0.11+10-jre", "bin", "java.exe")],
+    ]);
+    const expectedJavaProperties = [
+      "-Duser.language=en", "-Duser.country=US",
+      "-Djava.net.useSystemProxies=false", "-Dhttp.proxyHost=127.0.0.1", "-Dhttp.proxyPort=9",
+      "-Dhttps.proxyHost=127.0.0.1", "-Dhttps.proxyPort=9",
+      "-Djavax.xml.accessExternalDTD=", "-Djavax.xml.accessExternalSchema=", "-Djavax.xml.accessExternalStylesheet=",
+    ];
     const originalSpawn = childProcess.spawn;
     const records = [];
     const wrapper = function phase1gObservedMainSpawn(...args) {
@@ -2305,16 +2821,45 @@ async function installMainChildProcessObserver(application) {
           ? "CORE"
           : commandName === "madi-export-epub"
             ? "EXPORTER"
-            : null;
+            : commandName === "java"
+              ? "JAVA"
+              : null;
       if (role) {
+        const commandMatchesExpected = nodePath.isAbsolute(String(args[0])) &&
+          nodePath.resolve(String(args[0])).toLocaleLowerCase() ===
+            nodePath.resolve(expectedCommands.get(role)).toLocaleLowerCase();
+        const javaArguments = args[1];
+        const jarIndex = expectedJavaProperties.length;
+        const inputIndex = jarIndex + 2;
+        const javaPolicyMatched = role !== "JAVA" || (
+          Array.isArray(javaArguments) && javaArguments.length === inputIndex + 8 &&
+          expectedJavaProperties.every((argument, index) => javaArguments[index] === argument) &&
+          javaArguments[jarIndex] === "-jar" &&
+          nodePath.resolve(javaArguments[jarIndex + 1]).toLocaleLowerCase() ===
+            nodePath.join(validationDirectory, "epubcheck-5.3.0", "epubcheck.jar").toLocaleLowerCase() &&
+          nodePath.isAbsolute(javaArguments[inputIndex]) &&
+          javaArguments[inputIndex + 1] === "--profile" && javaArguments[inputIndex + 2] === "default" &&
+          javaArguments[inputIndex + 3] === "--json" && nodePath.isAbsolute(javaArguments[inputIndex + 4]) &&
+          javaArguments[inputIndex + 5] === "--locale" && javaArguments[inputIndex + 6] === "en" &&
+          javaArguments[inputIndex + 7] === "--quiet" &&
+          args[2]?.env !== null && typeof args[2]?.env === "object" &&
+          Object.keys(args[2]?.env ?? {}).every((name) =>
+            !["JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "JAVA_HOME"].includes(name.toUpperCase())) &&
+          args[2]?.shell === false && args[2]?.windowsHide === true
+        );
         const record = {
           recordId: records.length + 1,
           pid: null,
           ppid: process.pid,
           role,
+          commandMatchesExpected,
+          bundledPath: app.isPackaged && commandMatchesExpected,
+          javaPolicyMatched,
           spawned: false,
           exitReceived: false,
           closeReceived: false,
+          stdoutEndReceived: child.stdout === null,
+          stderrEndReceived: child.stderr === null,
         };
         records.push(record);
         child.once("spawn", () => {
@@ -2328,7 +2873,16 @@ async function installMainChildProcessObserver(application) {
         });
         child.once("close", () => {
           record.closeReceived = true;
+          if (role === "JAVA") {
+            console.log("[madi-phase1g-java-close] " + JSON.stringify({
+              recordId: record.recordId, pid: record.pid, ppid: record.ppid, role: "JAVA",
+              exitReceived: record.exitReceived, closeReceived: record.closeReceived,
+              stdoutEndReceived: record.stdoutEndReceived, stderrEndReceived: record.stderrEndReceived,
+            }));
+          }
         });
+        child.stdout?.once("end", () => { record.stdoutEndReceived = true; });
+        child.stderr?.once("end", () => { record.stderrEndReceived = true; });
       }
       return child;
     };
@@ -2343,7 +2897,7 @@ async function installMainChildProcessObserver(application) {
       installed: childProcess.spawn === wrapper,
       processId: process.pid,
     };
-  });
+  }, { core: coreBinary, exporter: epubExporterBinary });
   verify(
     status.installed === true &&
       Number.isSafeInteger(status.processId) &&
@@ -2362,7 +2916,8 @@ async function collectMainChildProcessObservations(run) {
     }
     const stillInstalled = observer.childProcess.spawn === observer.wrapper;
     observer.childProcess.spawn = observer.originalSpawn;
-    Reflect.deleteProperty(globalThis, observerKey);
+    // Keep the records reachable for the window-close probe. Spawn is already
+    // restored, and the test-only observer disappears with the main process.
     return {
       installed: stillInstalled,
       processId: process.pid,
@@ -2378,15 +2933,22 @@ async function collectMainChildProcessObservations(run) {
   const records = result.records.map((record, index) => {
     verify(
       Object.keys(record).sort().join(",") ===
-        "closeReceived,exitReceived,pid,ppid,recordId,role,spawned" &&
+        "bundledPath,closeReceived,commandMatchesExpected,exitReceived,javaPolicyMatched,pid,ppid,recordId,role,spawned,stderrEndReceived,stdoutEndReceived" &&
         record.recordId === index + 1 &&
         record.spawned === true &&
         Number.isSafeInteger(record.pid) &&
         record.pid > 0 &&
         record.ppid === result.processId &&
-        ["CORE", "EXPORTER"].includes(record.role) &&
+        spawnTappedSidecarRoles.includes(record.role) &&
+        record.commandMatchesExpected === true &&
+        record.bundledPath === packaged &&
+        record.javaPolicyMatched === true &&
         typeof record.exitReceived === "boolean" &&
         typeof record.closeReceived === "boolean" &&
+        typeof record.stdoutEndReceived === "boolean" &&
+        typeof record.stderrEndReceived === "boolean" &&
+        (record.role !== "JAVA" || !record.closeReceived ||
+          (record.stdoutEndReceived && record.stderrEndReceived)) &&
         (!record.closeReceived || record.exitReceived),
       "phase1g-main-child-process-observation-shape",
     );
@@ -2801,9 +3363,19 @@ async function closeWindowCleanly(run) {
   const windowClosed = run.page.waitForEvent("close", {
     timeout: WINDOW_CLOSE_TIMEOUT_MS,
   });
-  await run.application.evaluate(({ BrowserWindow }) => {
-    setTimeout(() => BrowserWindow.getAllWindows()[0]?.close(), 100);
-  });
+  await run.application.evaluate(({ BrowserWindow }, shutdownJavaRecordId) => {
+    setTimeout(() => {
+      if (shutdownJavaRecordId !== null) {
+        const observer = Reflect.get(globalThis, "__madiPhase1gMainChildProcessObserver");
+        const record = observer?.records.find((entry) => entry.role === "JAVA" && entry.recordId === shutdownJavaRecordId);
+        console.log("[madi-phase1g-java-window-close] " + JSON.stringify({
+          recordId: record?.recordId, pid: record?.pid, ppid: record?.ppid, role: "JAVA",
+          activeAtWindowClose: record?.spawned === true && !record.exitReceived && !record.closeReceived,
+        }));
+      }
+      BrowserWindow.getAllWindows()[0]?.close();
+    }, 100);
+  }, run.shutdownJavaRecordId ?? null);
   await windowClosed;
   run.closeAttemptEvidence = {
     productWindowClosed: true,
@@ -2843,6 +3415,28 @@ async function closeWindowCleanly(run) {
       finalWillQuitBeforeQuit: productLifecycle.finalWillQuitBeforeQuit,
     },
   );
+  const javaCloseReceipts = await poll(() => {
+    const receipts = run.processDiagnostics.evidence().javaCloseReceipts;
+    const children = run.processMonitor.observedChildren.filter((entry) => entry.role === "JAVA");
+    return children.every((entry) => receipts.some((receipt) =>
+      receipt.recordId === entry.recordId && receipt.pid === entry.pid && receipt.ppid === entry.ppid))
+      ? receipts : null;
+  }, "phase1g-product-java-close-drain-receipts", PROCESS_EXIT_TIMEOUT_MS);
+  for (const receipt of javaCloseReceipts) {
+    const matches = run.processMonitor.observedChildren.filter((entry) => entry.role === "JAVA" &&
+      entry.recordId === receipt.recordId && entry.pid === receipt.pid && entry.ppid === receipt.ppid);
+    verify(matches.length === 1, "phase1g-java-close-receipt-owned-association", { matchCount: matches.length });
+    Object.assign(matches[0], receipt);
+  }
+  if (run.shutdownJavaRecordId !== undefined) {
+    const children = run.processMonitor.observedChildren.filter((entry) =>
+      entry.role === "JAVA" && entry.recordId === run.shutdownJavaRecordId);
+    const requests = run.processDiagnostics.evidence().javaWindowCloseRequests.filter((entry) =>
+      entry.recordId === run.shutdownJavaRecordId && entry.activeAtWindowClose &&
+        children.some((child) => child.pid === entry.pid && child.ppid === entry.ppid &&
+          typeof child.instanceKey === "string"));
+    verify(children.length === 1 && requests.length === 1, "phase1g-java-active-at-product-window-close");
+  }
   const postProductQuitProcessDiagnostics = run.processDiagnostics.evidence();
   run.productProcessDiagnostics = postProductQuitProcessDiagnostics;
   const productCloseToQuitProcessDiagnostics = processDiagnosticDelta(
@@ -2907,6 +3501,7 @@ async function closeWindowCleanly(run) {
     "phase1g-test-transport-wrapper-cleanup-diagnostic-delta",
   );
   const processTracking = await assertNoOrphanProcesses(run.processMonitor);
+  run.processTracking = processTracking;
   run.closed = true;
   return {
     productGracefulQuit: true,
@@ -2993,6 +3588,7 @@ function securityEvidence(run) {
   const processDiagnostics = run.productProcessDiagnostics;
   verify(processDiagnostics !== null, "phase1g-product-process-diagnostics-unsealed");
   return {
+    processTracking: run.processTracking ?? null,
     runtime: run.runtime,
     requestCount: run.requestedUrls.length,
     externalRequestCount: externalUrls.length,
@@ -3008,6 +3604,19 @@ function securityEvidence(run) {
 }
 
 function assertSecurity(evidence) {
+  if (evidence.processTracking !== null) {
+    verify(
+      evidence.processTracking.ownedTcpPeerNonLoopbackObservationCount === 0 &&
+        evidence.processTracking.ownedNativeTcpRowObservationCount === 0 &&
+        evidence.processTracking.ownedTcpPeerBoundaryViolationCount === 0 &&
+        evidence.processTracking.ownedTcpListenerBoundaryViolationCount === 0 &&
+        evidence.processTracking.ownedTcpClassificationFailureCount === 0 &&
+        evidence.processTracking.ownedTcpIdentityRaceCount === 0 &&
+        evidence.processTracking.globalTcpParserRejectedRowCount === 0 &&
+        evidence.processTracking.ownedTcpBoundaryViolationRowCount === 0,
+      "phase1g-security-owned-tcp-boundary",
+    );
+  }
   verify(evidence.externalRequestCount === 0, "phase1g-external-runtime-request", {
     count: evidence.externalRequestCount,
     requests: evidence.externalRequests,
@@ -3175,6 +3784,8 @@ async function captureRunFailureContext(run) {
     if (run.page.isClosed()) {
       const diagnostics = run.processDiagnostics.evidence();
       return {
+        ownedTcpBoundary: run.processMonitor.boundaryEvidence ?? null,
+        nativeTcp: run.processMonitor.nativeTcpEvidence ?? null,
         rendererAvailable: false,
         pageClosed: true,
         lastActionability: run.lastActionability ?? null,
@@ -4064,7 +4675,8 @@ async function saveMarkdownReport(run, reportPath, expectedReport) {
   verify(markdown.includes(`- Profile: ${expectedReport.targetProfile}`), "phase1g-markdown-profile");
   verify(markdown.includes("- Blocks:"), "phase1g-markdown-blocks");
   verify(markdown.includes("- Characters:"), "phase1g-markdown-characters");
-  verify(markdown.includes("- EPUBCheck: UNAVAILABLE"), "phase1g-markdown-epubcheck");
+  verify(markdown.split(/\r?\n/u).includes("- Validation: VALID"), "phase1g-markdown-validation");
+  verify(markdown.split(/\r?\n/u).includes("- EPUBCheck: VALID (5.3.0)"), "phase1g-markdown-epubcheck");
   const privacy = assertReportPrivacy(
     markdown,
     "phase1g-markdown-private-content",
@@ -4128,19 +4740,26 @@ async function exerciseNoClobber(run, outputPath, expected) {
 async function exerciseCancel(run, outputPath) {
   verify(!(await fileExists(outputPath)), "phase1g-cancel-preexisting-output");
   await chooseOutput(run);
+  const baselineJavaRecordId = await lastJavaSpawnRecordId(run);
   const workspace = epubWorkspace(run);
   await workspace.getByRole("button", { name: "EPUB 내보내기", exact: true }).click();
   const phaseAtCancel = await poll(
     async () => {
       const phase = await workspace.getAttribute("data-epub-phase");
       const cancel = workspace.getByRole("button", { name: "취소", exact: true });
-      return phase !== "IDLE" && (await cancel.isEnabled()) ? phase : null;
+      const active = await activeJavaSpawnRecord(run, baselineJavaRecordId);
+      return active && phase !== "IDLE" && (await cancel.isEnabled()) ? phase : null;
     },
     "phase1g-cancel-enabled",
     30_000,
   );
   await workspace.getByRole("button", { name: "취소", exact: true }).click();
   await waitForWorkspaceIdle(run, OPERATION_TIMEOUT_MS);
+  const javaCloseReceipt = await poll(async () => {
+    const records = await javaSpawnRecords(run, baselineJavaRecordId);
+    return records.length === 1 && records[0].exitReceived && records[0].closeReceived &&
+      records[0].stdoutEndReceived && records[0].stderrEndReceived ? records[0] : null;
+  }, "phase1g-cancel-java-close-drain", PROCESS_EXIT_TIMEOUT_MS);
   await new Promise((resolveDelay) => setTimeout(resolveDelay, 750));
   verify(!(await fileExists(outputPath)), "phase1g-cancel-output-created");
   verify(
@@ -4153,6 +4772,10 @@ async function exerciseCancel(run, outputPath) {
   );
   return {
     accepted: true,
+    checkerStartedBeforeUiCancel: true,
+    checkerCommandPathMatched: javaCloseReceipt.commandMatchesExpected,
+    checkerOfflinePolicyMatched: javaCloseReceipt.javaPolicyMatched,
+    checkerExitedAndStreamsDrained: true,
     phaseAtCancel:
       phaseAtCancel === "PREPARING"
         ? "PREPARING"
@@ -4165,12 +4788,43 @@ async function exerciseCancel(run, outputPath) {
   };
 }
 
+async function javaSpawnRecords(run, afterRecordId = 0) {
+  const records = await run.application.evaluate((_electron, after) => {
+    const observer = Reflect.get(globalThis, "__madiPhase1gMainChildProcessObserver");
+    if (!observer) throw new Error("phase1g-java-spawn-observer-unavailable");
+    return observer.records.filter((entry) => entry.role === "JAVA" && entry.recordId > after)
+      .map((entry) => ({ ...entry }));
+  }, afterRecordId);
+  verify(Array.isArray(records) && records.every((entry) =>
+    Number.isSafeInteger(entry.recordId) && entry.recordId > afterRecordId &&
+      entry.role === "JAVA" && entry.ppid === run.mainProcessPid &&
+      entry.commandMatchesExpected === true && entry.javaPolicyMatched === true &&
+      entry.bundledPath === packaged), "phase1g-java-spawn-record-shape");
+  return records;
+}
+
+async function lastJavaSpawnRecordId(run) {
+  return Math.max(0, ...(await javaSpawnRecords(run)).map((entry) => entry.recordId));
+}
+
+async function activeJavaSpawnRecord(run, afterRecordId) {
+  const records = await javaSpawnRecords(run, afterRecordId);
+  const active = records.filter((entry) => entry.spawned && !entry.exitReceived && !entry.closeReceived);
+  if (active.length !== 1) return null;
+  const current = captureRelevantProcessSnapshot();
+  run.processMonitor.recordProcessSnapshot(current);
+  const matches = current.filter((entry) => entry.pid === active[0].pid && entry.role === "JAVA" &&
+    entry.parentInstanceKey === run.processMonitor.rootInstanceKey);
+  verify(matches.length === 1, "phase1g-active-java-process-instance", { matchCount: matches.length });
+  return active[0];
+}
+
 async function listGlobalEpubTempArtifacts() {
   const entries = await readdir(tmpdir(), { withFileTypes: true });
   return new Set(
     entries
       .filter((entry) =>
-        /^(?:madi-epub-validation-|madi-export-epub-|madi-phase1g-epubcheck-|\.madi-epub-)/u.test(
+        /^(?:madi-epub-validation-|madi-export-epub-|madi-phase1g-epubcheck-|madi-epubcheck-|\.madi-epub-)/u.test(
           entry.name,
         ),
       )
@@ -4731,6 +5385,13 @@ async function runNormalExportScenario({ fixture, projectPath, userDataPath, pat
         retained: true,
         hashMatched: true,
         profile: expected33.profile,
+        epubCheck: {
+          ...report33.evidence.validation.epubCheck,
+          targetProfile: expected33.profile,
+          elapsedMs: roundMilliseconds(report33.raw.timing.epubCheckMs),
+          fatalCount: report33.raw.validation.fatalCount,
+          errorCount: report33.raw.validation.errorCount,
+        },
       },
       lifecycle,
       security,
@@ -4758,7 +5419,7 @@ async function runLongExportScenario({ fixture, projectPath, userDataPath, paths
     userDataPath,
     dialogPlan: {
       coverPaths: [],
-      epubPaths: paths.outputs,
+      epubPaths: [...paths.outputs, paths.shutdownOutput],
       jsonReportPaths: paths.reports,
       markdownReportPaths: [],
     },
@@ -4807,11 +5468,22 @@ async function runLongExportScenario({ fixture, projectPath, userDataPath, paths
       "phase1g-long-logical-determinism",
     );
     await run.page.screenshot({ path: longScreenshotPath, fullPage: true });
+    // The completed five runs above remain the only performance/determinism
+    // samples. This extra export solely exercises checker shutdown through UI.
+    reportStage("long-export-unmeasured-checker-shutdown-start");
+    verify(!(await fileExists(paths.shutdownOutput)), "phase1g-shutdown-preexisting-output");
+    await chooseOutput(run);
+    const shutdownBaselineRecordId = await lastJavaSpawnRecordId(run);
+    await epubWorkspace(run).getByRole("button", { name: "EPUB 내보내기", exact: true }).click();
+    const shutdownJava = await poll(() => activeJavaSpawnRecord(run, shutdownBaselineRecordId),
+      "phase1g-shutdown-java-started", OPERATION_TIMEOUT_MS);
+    run.shutdownJavaRecordId = shutdownJava.recordId;
+    reportStage("long-export-unmeasured-checker-shutdown-close");
     const dialogs = await dialogEvidence(run);
     verify(
       dialogs?.calls.projectOpen === 1 &&
-        dialogs.calls.epubSave === measurementRuns &&
-        dialogs.calls.epubOverwriteConfirmationConfigured === measurementRuns &&
+        dialogs.calls.epubSave === measurementRuns + 1 &&
+        dialogs.calls.epubOverwriteConfirmationConfigured === measurementRuns + 1 &&
         dialogs.calls.jsonReportSave === measurementRuns &&
         dialogs.calls.reportOverwriteConfirmationConfigured === measurementRuns &&
         dialogs.remaining.epub === 0 &&
@@ -4819,6 +5491,7 @@ async function runLongExportScenario({ fixture, projectPath, userDataPath, paths
       "phase1g-long-dialog-contract",
     );
     const lifecycle = await closeWindowCleanly(run);
+    verify(!(await fileExists(paths.shutdownOutput)), "phase1g-shutdown-output-created");
     const security = securityEvidence(run);
     assertSecurity(security);
     const wallSamples = exports.map((entry) => entry.wallMs);
@@ -4888,6 +5561,15 @@ async function runLongExportScenario({ fixture, projectPath, userDataPath, paths
         byteDeterministicAcrossRuns: true,
         logicalDeterministicAcrossRuns: true,
       },
+      checkerShutdown: {
+        measured: false,
+        includedInPerformanceSamples: false,
+        checkerStartedBeforeWindowClose: true,
+        checkerActiveAtWindowClose: true,
+        checkerExitedAndStreamsDrainedBeforeWrapperCleanup: true,
+        outputAbsent: true,
+        productGracefulQuit: lifecycle.productGracefulQuit,
+      },
       lifecycle,
       security,
       dialogs,
@@ -4916,7 +5598,22 @@ async function removeKnownArtifact(filePath) {
 }
 
 function aggregateSecurity(runs) {
+  verify(runs.every((run) => run.processTracking !== null), "phase1g-aggregate-tcp-proof-complete");
+  const tcpCounts = Object.fromEntries([
+    "ownedTcpPeerNonLoopbackObservationCount",
+    "ownedNativeTcpRowObservationCount",
+    "ownedTcpPeerBoundaryViolationCount",
+    "ownedTcpListenerBoundaryViolationCount",
+    "ownedTcpClassificationFailureCount",
+    "ownedTcpIdentityRaceCount",
+    "globalTcpParserRejectedRowCount",
+    "ownedTcpBoundaryViolationRowCount",
+  ].map((key) => [key, runs.reduce((total, run) => total + run.processTracking[key], 0)]));
+  verify(Object.values(tcpCounts).every((count) => count === 0), "phase1g-aggregate-owned-tcp-boundary", tcpCounts);
   return {
+    networkCaptureMode: "RENDERER_EVENTS_AND_WIN32_NETSTAT_OWNED_PROCESS_INSTANCE_TCP_CLASSIFICATION",
+    ownedTcpProofLifecycleCount: runs.length,
+    ...tcpCounts,
     externalRequestCount: runs.reduce(
       (total, run) => total + run.externalRequestCount,
       0,
@@ -4966,6 +5663,7 @@ async function main() {
   ]) {
     await removeKnownArtifact(artifact);
   }
+  const bundleIdentity = await verifyEpubCheckBundleIdentity();
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   validateFixtureManifest(manifest);
   const baselineGlobalArtifacts = await listGlobalEpubTempArtifacts();
@@ -4998,6 +5696,7 @@ async function main() {
       normal33Markdown: resolve(temporaryRoot, "normal-33-report.md"),
     };
     const longPaths = {
+      shutdownOutput: resolve(temporaryRoot, "long-unmeasured-checker-shutdown.epub"),
       outputs: Array.from({ length: measurementRuns }, (_unused, index) =>
         resolve(temporaryRoot, `long-${index + 1}.epub`),
       ),
@@ -5009,6 +5708,7 @@ async function main() {
       ...Object.values(normalPaths),
       ...longPaths.outputs,
       ...longPaths.reports,
+      longPaths.shutdownOutput,
     ]) {
       verify(isWithin(filePath, temporaryRoot), "phase1g-operation-path-scope");
     }
@@ -5032,11 +5732,7 @@ async function main() {
       jpegCoverBytes,
     );
     normalState.coverCrud.persistence = coverPersistence;
-    reportStage("actual-madi-epubcheck-33");
-    const actualEpubCheck = await validateActualRepresentativeWithEpubCheck(
-      representativeEpubPath,
-    );
-    normalExport.representativeArtifact.epubCheck = actualEpubCheck;
+    const actualEpubCheck = normalExport.representativeArtifact.epubCheck;
     const longExport = await runLongExportScenario({
       ...longPrepared,
       userDataPath: resolve(temporaryRoot, "long-export-user-data"),
@@ -5095,14 +5791,16 @@ async function main() {
       cleanup: cleanupEvidence,
       security,
       runtimeEpubCheck: {
-        packaged: false,
+        packaged,
+        bundled: true,
+        bundleIdentity,
         status: actualEpubCheck.status,
         version: actualEpubCheck.version,
         targetProfile: actualEpubCheck.targetProfile,
         elapsedMs: actualEpubCheck.elapsedMs,
         fatalCount: actualEpubCheck.fatalCount,
         errorCount: actualEpubCheck.errorCount,
-        retainedArtifactLinked: actualEpubCheck.retainedArtifactHashMatched,
+        retainedArtifactLinked: normalExport.representativeArtifact.hashMatched,
         externalServerUsed: false,
         automaticDownloadUsed: false,
       },

@@ -1,5 +1,4 @@
 import {
-  sha256File,
   readVerifiedLocalTool,
   toolTreePath,
   verifyExtractedToolTree,
@@ -9,7 +8,6 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import {
-  lstat,
   mkdir,
   mkdtemp,
   readFile,
@@ -64,9 +62,7 @@ const javaOfflineProperties = [
   "-Djavax.xml.accessExternalSchema=",
   "-Djavax.xml.accessExternalStylesheet=",
 ];
-const actualEpubMode = process.argv[2] === "--actual-epub";
-
-if (process.argv.length !== (actualEpubMode ? 3 : 2)) {
+if (process.argv.length !== 2) {
   fail("phase1g-epubcheck-arguments-invalid", {
     argumentCount: process.argv.length - 2,
   });
@@ -155,7 +151,6 @@ function runBoundedProcess(executable, arguments_, options = {}) {
                 "JAVA_TOOL_OPTIONS",
                 "_JAVA_OPTIONS",
                 "JDK_JAVA_OPTIONS",
-                "MADI_PHASE1G_ACTUAL_EPUB",
               ].includes(name.toUpperCase()),
           ),
         ),
@@ -978,54 +973,6 @@ async function exportAndValidateFixture(
   };
 }
 
-async function resolveActualEpubInput() {
-  const configured = process.env.MADI_PHASE1G_ACTUAL_EPUB?.trim();
-  if (!configured) {
-    fail("phase1g-actual-epub-input-missing");
-  }
-  const artifactRoot = resolve(repositoryRoot, "output", "playwright");
-  const actualPath = resolve(configured);
-  const comparableArtifactRoot =
-    process.platform === "win32"
-      ? artifactRoot.toLocaleLowerCase()
-      : artifactRoot;
-  const comparableActualPath =
-    process.platform === "win32" ? actualPath.toLocaleLowerCase() : actualPath;
-  if (
-    !comparableActualPath.startsWith(`${comparableArtifactRoot}${sep}`) ||
-    !/^madi-(?:electron|packaged)-phase1g-representative\.epub$/u.test(
-      basename(actualPath),
-    )
-  ) {
-    fail("phase1g-actual-epub-input-scope");
-  }
-  let metadata;
-  try {
-    metadata = await lstat(actualPath);
-  } catch (error) {
-    fail("phase1g-actual-epub-input-missing", {
-      code: error?.code ?? "UNKNOWN",
-    });
-  }
-  if (
-    !metadata.isFile() ||
-    metadata.isSymbolicLink() ||
-    metadata.size <= 0 ||
-    metadata.size > MAX_EPUB_BYTES
-  ) {
-    fail("phase1g-actual-epub-input-invalid", {
-      regularFile: metadata.isFile(),
-      symbolicLink: metadata.isSymbolicLink(),
-      bytes: metadata.size,
-    });
-  }
-  return {
-    path: actualPath,
-    byteLength: metadata.size,
-    sha256: await sha256File(actualPath),
-  };
-}
-
 if (process.platform !== "win32") {
   fail("phase1g-epubcheck-platform-unsupported", {
     requiredPlatform: "win32",
@@ -1033,12 +980,12 @@ if (process.platform !== "win32") {
   });
 }
 
-const [epubCheckArchiveBytes, javaArchiveBytes, modeInput] = await Promise.all([
+const [epubCheckArchiveBytes, javaArchiveBytes, exporterMetadata] = await Promise.all([
   readVerifiedLocalTool(epubCheckDistribution),
   readVerifiedLocalTool(javaDistribution),
-  actualEpubMode ? resolveActualEpubInput() : stat(exporterExecutable),
+  stat(exporterExecutable),
 ]);
-if (!actualEpubMode && !modeInput.isFile()) {
+if (!exporterMetadata.isFile()) {
   fail("epub-exporter-missing");
 }
 
@@ -1173,67 +1120,29 @@ try {
       adversarialPreSpawnChecks: ["TRANSITIVE_JAR", "RUNTIME_DLL"],
     },
   };
-  let evidence;
-  if (actualEpubMode) {
-    const reportPath = resolve(temporaryDirectory, "epubcheck-actual.json");
-    const epubCheck = await runEpubCheck(modeInput.path, reportPath, toolPaths);
-    const finalMetadata = await lstat(modeInput.path);
-    const finalSha256 = await sha256File(modeInput.path);
-    if (
-      !finalMetadata.isFile() ||
-      finalMetadata.isSymbolicLink() ||
-      finalMetadata.size !== modeInput.byteLength ||
-      finalSha256 !== modeInput.sha256
-    ) {
-      fail("phase1g-actual-epub-input-changed", {
-        regularFile: finalMetadata.isFile(),
-        symbolicLink: finalMetadata.isSymbolicLink(),
-        byteLengthMatched: finalMetadata.size === modeInput.byteLength,
-        hashMatched: finalSha256 === modeInput.sha256,
-      });
-    }
-    evidence = {
-      check: "phase1g-actual-madi-epubcheck",
-      ...commonEvidence,
-      validationScope: "ACTUAL_MADI_DERIVED_EPUB",
-      targetProfile: "EPUB_3_3_COMPATIBILITY",
-      input: {
-        byteLength: modeInput.byteLength,
-        stableDuringValidation: true,
-        retainedArtifact: true,
-      },
-      epubCheck,
-      privacy: {
-        rawValidatorOutputPersisted: false,
-        outputPathsReported: false,
-        manuscriptReported: false,
-      },
-    };
-  } else {
-    const document = createPublicationDocument();
-    const fixtures = [];
-    for (const splitMode of ["CHAPTER", "SCENE"]) {
-      fixtures.push(
-        await exportAndValidateFixture(
-          temporaryDirectory,
-          document,
-          splitMode,
-          toolPaths,
-        ),
-      );
-    }
-    evidence = {
-      check: "phase1g-build-test-epubcheck",
-      ...commonEvidence,
-      validationScope: "BUILD_TEST_ONLY",
-      fixtures,
-      privacy: {
-        manuscriptInProcessArguments: false,
-        rawValidatorOutputPersisted: false,
-        outputPathsReported: false,
-      },
-    };
+  const document = createPublicationDocument();
+  const fixtures = [];
+  for (const splitMode of ["CHAPTER", "SCENE"]) {
+    fixtures.push(
+      await exportAndValidateFixture(
+        temporaryDirectory,
+        document,
+        splitMode,
+        toolPaths,
+      ),
+    );
   }
+  const evidence = {
+    check: "phase1g-build-test-epubcheck",
+    ...commonEvidence,
+    validationScope: "BUILD_TEST_ONLY",
+    fixtures,
+    privacy: {
+      manuscriptInProcessArguments: false,
+      rawValidatorOutputPersisted: false,
+      outputPathsReported: false,
+    },
+  };
   process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
 } finally {
   if (temporaryDirectoryIsSafe) {

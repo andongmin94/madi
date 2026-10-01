@@ -1104,7 +1104,8 @@ function parseProcessSnapshot(parsed, extraIds = []) {
       creationDate,
       instanceKey: processInstanceKey(pid, creationDate),
       parentInstanceKey:
-        ppid > 0 && parentCreationDate !== null
+        ppid > 0 && parentCreationDate !== null &&
+          BigInt(creationDate) >= BigInt(parentCreationDate)
           ? processInstanceKey(ppid, parentCreationDate)
           : null,
       electronSubtype,
@@ -1292,7 +1293,8 @@ async function startRelevantProcessMonitor() {
           creationDate,
           instanceKey: key,
           parentInstanceKey:
-            ppid > 0 && parentCreationDate
+            ppid > 0 && parentCreationDate &&
+              BigInt(creationDate) >= BigInt(parentCreationDate)
               ? processInstanceKey(ppid, parentCreationDate)
               : null,
           electronSubtype,
