@@ -5,13 +5,15 @@
 
 ```text
 Phase 1H performance verdict: TECHNICAL GO — HWPX / PRIVATE LOCAL ONLY
-Actual tested source: 660814c7745a5231038aba902fd7113022778238
-Reason: exact source660 full Windows development/fresh H passed
+Actual tested source: 5151f6a804cf1565a09211ea8f7a11e9f547fd34
+Reason: exact source5151 full Windows development/fresh H passed
 ```
 
 이 문서는 측정 계약과 실제 evidence를 분리한다. Unit test 시간, compile log, 구조적 package
 copy 시간은 제품 export 성능 표본이 아니다. Correctness gate를 통과하지 않은 run도 timing
 sample에서 제외한다.
+
+Source51/660 절의 판정은 당시 기록이며, 현재 결과와 수치는 section9의 source5151을 따른다.
 
 ## 1. Fixtures
 
@@ -179,3 +181,54 @@ runtime EPUBCheck/JRE distribution packaging 및 public/paid/customer/installer 
 `116da2ad688c0b3730a3050e8bd1c0715b3b3616d578cbd561c7bf3f3121810e`,
 `0316e71a2a6b710daf76c858bdd968c4e3a0759e346fc9d599406433b5cab920`다.
 문서 동기화 이후 docs-only HEAD와 실제 runtime-tested source660을 구분한다.
+
+## 9. Exact source5151 development/fresh actual
+
+실제 source `5151f6a804cf1565a09211ea8f7a11e9f547fd34`의 `full-verify-5151f6a-run1`은
+5256.600초/PASS/exit0·source clean before/after로 종료했고 development/fresh H가 같은 full에서 통과했다.
+Source51/660 표는 해당 source의 역사로 보존한다. 새 raw 연결·package/source/host 증거는
+[H 결과 section29](PHASE_1H_RESULT.md#29-2026-10-01-exact-source5151-full-windows-actual-완료)에 있다.
+현재 계획은 [PLANS](../PLANS.md), runtime·portable 준비는 [별도 결과](OFFLINE_RUNTIME_RELEASE_RESULT.md)를 따른다.
+
+두 환경의 각5회 모두450 source/exported sections·10 package sections,
+2411blocks(1961 exported+450fallback)/675000characters, omission/rejected0,
+VALID/fatal0/error0/warning451·ZIP/XML reopen·rich semantics를 유지했다.
+31867bytes 및 output/logical/runtime Publication IR/preset 네 hash는 각5회와 두 환경 사이 모두 같다.
+Correctness를 통과한 새 sample만 아래 표에 채택했다.
+
+| 장편 n5 metric, ms | Development samples; median/max | Fresh samples; median/max |
+| --- | --- | --- |
+| Native exporter total | 1075,906,932,822,810;906/1075 | 96,85,87,87,78;87/96 |
+| Runtime Publication IR | 67153.21,66039.96,65321.4,66850.41,64823.98;66039.96/67153.21 | 3467.85,3154.39,3320.5,2724.1,2693.77;3154.39/3467.85 |
+| Click→output read/reopen wall | 69619.29,68127.21,67463.89,68692.25,66587.74;68127.21/69619.29 | 4667.56,4088.66,4423.83,3843.11,3638.94;4088.66/4667.56 |
+| Maximum renderer frame gap | median/max52.4/166.7 | median/max50/60.2 |
+| Maximum heartbeat gap | median/max66.1/73.7 | median/max76.6/77 |
+
+| 일반 scope/split | Development wall/IR/exporter ms | Fresh wall/IR/exporter ms |
+| --- | --- | --- |
+| WORK/SINGLE | 50473.04/48921.32/267 | 2109.8/1166.08/26 |
+| WORK/SINGLE_OVERWRITE | 44775.45/43481.66/213 | 1974.13/1118.14/22 |
+| VOLUME/SINGLE | 18990.12/18079.29/121 | 1528.2/548.11/15 |
+| CHAPTER/SINGLE | 2439.57/1755.38/39 | 1419.59/64.81/9 |
+| SCENE/SINGLE | 2031.67/617.12/34 | 1587.82/32.72/9 |
+| WORK/VOLUME | 33028.96/32167.45/184 | 1941.53/1213.84/24 |
+
+일반6행은 별도 scope/split 입력이며 반복 median으로 합치지 않는다. 일반 IR 표시만 소수2자리로 반올림했다.
+Fresh 일반5000ms·장편15000ms hard target은 native EXPORTER_TOTAL_MS에 실제 적용했다.
+Development hardTargetApplied=false를 유지하며 wall을 exporter gate로 바꾸지 않는다.
+H IR은 실제 runtime report stage다. G fixture 생성 때 저장된 compileWork나 Java EPUBCheck 시간과 섞지 않는다.
+
+Memory5회 point 관측 max workingSet/private bytes는 development643047424/447950848,
+fresh665202688/466272256다. Peak/leak 증명은 아니며 warm-up/cancel latency/Hancom 변환을 측정했다고 주장하지 않는다.
+Rust jobs1/Vitest workers2·command-local CARGO_INCREMENTAL=0·dotnet --disable-build-servers,
+비활성 desktop·GPU 비활성화 환경에서 측정했다. Foreground 기본 GPU 성능으로 확대하지 않는다.
+
+양쪽 renderer HTTP/WS·owned TCP 위반/identity/parser·세 product/native/wrapper diagnostics0,
+wrapper 전 native alive0/exact exit·descendants0·temp/recovery/claim/symlink0을 확인했다.
+전체 host는 cleanup active0/강제 종료 없음/handles·desktop 제거지만 input10285 중36회error5로 이름 판독 불가였고,
+DefaultEverySample=null·inactiveEverySample=true를 보존한다. Known input을 전체 구간의 Default 증거로 바꾸지 않는다.
+
+새 dev/fresh raw SHA는 각각 `9757812c8cf6a0af7b27404048c1952767e2bcbff2eb28480e37585be34d3a70`,
+`8f711f39ec4e46f27d818102ec360428de2bf6180b5e7d4a03ebf2f2e923f815`이며 ignored same-run phaseefgh-proof-archive에 byte-exact 보존했다.
+수동 native Korean IME·Hancom module/licensing/실제 HWP conversion/reopen은 PENDING/HWPdisabled다.
+이 결과는 HWPX private-local 기술 GO이며 공개·유료·고객·installer 승인 또는 docs-only HEAD의 새 actual PASS가 아니다.

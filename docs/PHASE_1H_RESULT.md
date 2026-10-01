@@ -2,29 +2,32 @@
 
 기준일: 2026-08-13  
 후속 갱신일: 2026-10-01
-문서 상태: baseline/source51 history preserved; exact source660 full development/fresh actual PASS
+문서 상태: baseline/source51/source660 history preserved; exact source5151 full development/fresh actual PASS
 
 이 문서는 아래 기준일의 구현·실행 근거와 revision별 후속 actual을 보존한다. 현행 목표와
-작업 순서는 [PLANS.md](../PLANS.md)를 따른다. 현재 판정은 section28의 exact source660
+작업 순서는 [PLANS.md](../PLANS.md)를 따른다. 현재 판정은 section29의 exact source5151
 development/fresh 실제 검증에 근거하며 과거 `WITHHELD`와 source51 실패는 해당 시점의 기록으로 남긴다.
 
 ## 1. Phase 1H 최종 판정
 
 ```text
 Phase 1H verdict: TECHNICAL GO — HWPX / PRIVATE LOCAL ONLY
-Actual tested source: 660814c7745a5231038aba902fd7113022778238
-HWPX source660 actual: DEVELOPMENT PASS / FRESH-UNPACKED PASS
-Full pinned Windows aggregate source660: PASS / exit0 / 5333.110s
+Actual tested source: 5151f6a804cf1565a09211ea8f7a11e9f547fd34
+HWPX source5151 actual: DEVELOPMENT PASS / FRESH-UNPACKED PASS
+Full pinned Windows aggregate source5151: PASS / exit0 / 5256.600s
 HWP Automation: MANUAL VALIDATION PENDING
 Public/paid/customer/installer distribution: NOT APPROVED
 ```
 
 기준일에는 일반·675,000자 development/fresh actual이 미완료였다. Source51의 개별 actual
-성공과 full 실패는 section27, 이를 잇는 source660의 전체 실제 성공은 section28에 기록한다.
+성공과 full 실패는 section27, source660의 전체 실제 성공은 section28, 새 source5151은 section29에 기록한다.
 필수 6개 명령의 실행 범위와 package join을 구분하며 HWPX private-local 기술 성공을
-수동 Hancom 검증이나 배포 승인으로 해석하지 않는다. 최종 문서 commit과 실제 검증 source660도 구분한다.
+수동 Hancom 검증이나 배포 승인으로 해석하지 않는다. 최종 문서 commit과 실제 검증 source5151도 구분한다.
 
-## 2. Runtime EPUBCheck 재분류 결과
+## 2. Runtime EPUBCheck 재분류 결과 — 기준일 기록
+
+아래 DEFERRED는 기준일의 기록이다. Source5151의 bundled offline runtime과 배포 준비 결과는
+[오프라인 runtime·release 결과](OFFLINE_RUNTIME_RELEASE_RESULT.md)를 따른다.
 
 Runtime EPUBCheck/JRE bundle은 Phase 1H 구현 조건에서 배포 직전 hardening으로 재분류했다.
 EPUB exporter의 internal validator와 exact EPUBCheck 5.3.0 build/test gate는 유지한다.
@@ -517,3 +520,77 @@ Typie permission은 owner-confirmed이며 출시 범위는 외부 grant의 exact
 Public/paid/customer/installer 배포는 승인하지 않는다. Phase1I의 exact660 dev/fresh actual은 별도 I 결과 문서를 따른다.
 이 후속은 actual source660을 기록하는 문서 동기화다. 이후 docs-only HEAD의 정적 검사와 runtime-tested
 source660을 구분하고 문서 commit에 새 runtime PASS를 자동 부여하지 않는다.
+
+## 29. 2026-10-01 exact source5151 full Windows actual 완료
+
+실제 검증 source는 `5151f6a804cf1565a09211ea8f7a11e9f547fd34`다. `full-verify-5151f6a-run1`은
+UTC2026-10-01T03:15:31.9089127Z→04:43:08.5463271Z,5256.600초/PASS/exit0,
+source before/after tracked clean으로 종료했다. Development와 fresh-unpacked basic/D/E/F/G/H가
+같은 pinned Windows verify에서 통과했다. 이전 source51/660 수치는 위 이력으로 보존한다.
+Runtime bundle·G 취소 대기 정정·dotnet build-server 억제와 과거 실패/집중 실행은
+[오프라인 runtime·release 결과](OFFLINE_RUNTIME_RELEASE_RESULT.md)에 모으고, 현행 작업은 [PLANS](../PLANS.md)를 따른다.
+
+Node26.3.1/pnpm11.9.0/Rust1.97.1/.NET10.0.400, Rust jobs1/Vitest workers2,
+명령 process 한정 `CARGO_INCREMENTAL=0`과 세 dotnet 명령의 `--disable-build-servers`를 사용했다.
+두 H actual 모두 비활성 Win32 desktop·GPU 비활성화 실행임을 runtime flag로 확인했다.
+이 환경의 성능 관측을 foreground 기본 GPU 실행 또는 사람의 IME 검증으로 확대하지 않는다.
+
+| Same-run H raw archive | SHA-256 / bytes / receipt mtime UTC |
+| --- | --- |
+| Development | `9757812c8cf6a0af7b27404048c1952767e2bcbff2eb28480e37585be34d3a70` / 58144 / 2026-10-01T04:21:52.200Z |
+| Fresh-unpacked | `8f711f39ec4e46f27d818102ec360428de2bf6180b5e7d4a03ebf2f2e923f815` / 58194 / 2026-10-01T04:43:07.920Z |
+
+원본 JSON은 ignored `full-verify-5151f6a-run1/phaseefgh-proof-archive/`에 byte-exact 보존했다.
+두 mtime은 full 시작·종료 안이며 source63 원본/hash·terminal metadata·command log와 연결했다.
+Raw H는 PRIVACY_SAFE_SUMMARY_ONLY다. 임시 HWPX/원문 report나 screenshot을 보관했다고 주장하지 않는다.
+Terminal metadata SHA는 `31ba4cf8d25783908461b1f5e97374bb8c07dceb24e02048f612c8dfe80fa21c`,
+command-log SHA는 `178a5c85ba037287dcbda16685a4762871213b710bc53fa593afeb2cc63be27d`다.
+
+같은 full의 nested package:unpacked stdout 원본 receipt SHA
+`b86956227e6bf67b83a0e30f370d2233243eae0af089a5836e46962ed2eb05ea`와 whole tested-package inventory561파일/81디렉터리/
+549528995bytes를 연결했다. Inventory payload SHA는
+`6ca42b827431aba14d8e3315b1c3cc3621300e3b86b5b7cfd8fbd5af63b92e7f`, inventory 파일 SHA는
+`0608619fd9d2bf47ca29bbd2f4da47522a95e7ed0099a04532684033790b965a`다.
+Source/hash/package/raw archive의 acceptance=false는 보관 작업 자체를 actual gate로 판정하지 않는다는 뜻이다.
+원래 nested 실행을 별도 standalone 명령이나 독립 elapsed로 표현하지 않는다.
+
+Normal6 scope/split은 WORK/SINGLE·확인된 overwrite·VOLUME/CHAPTER/SCENE SINGLE·WORK/VOLUME다.
+각 source/exported characters180000/90000/9000/3000과 block balance를 보존했고
+VALID/fatal0/error0, 실제 fallback/omission/warning을 유지했다. 첫 custom scene의 configured omission1도 숨기지 않는다.
+Long dev/fresh 각5회는450/450 source/exported sections·10 package sections,
+2411=1961 exported+450fallback+0omission+0rejected,675000/675000 Unicode scalar characters,
+VALID/fatal0/error0/warning451과 ZIP/XML reopen·rich semantics를 확인했다.
+출력31867bytes와 아래 네 hash가 두 환경의 각5회 모두 같다. 과거 source의 PASS를 이전한 것이 아니라 새 raw에서 직접 비교했다.
+
+| Long artifact identity | SHA-256 |
+| --- | --- |
+| Output bytes | `0dd78a22ae530a85506bf05087e0ddc07f27d1d2704dd5a05be9bba52298afde` |
+| Logical package | `f09e22b7841aaee73a0a6445440f419b55cf55ed30461eb19eb175453652afe0` |
+| Runtime Publication IR | `eba872b8ce302e8ff54c9f3417a115768f0d0ebbaa1f33c87ed37f706854626b` |
+| ONE_OFF preset config | `5651a452f234acdf399e9ba3c3dd8007a888f46d1693740f59fff66230a17bbb` |
+
+Preset CRUD·snapshotv5/safety snapshot·새 process reopen·contact isolation, overwrite 결정성,
+no-clobber 목적지 보존·Markdown scope/node/revision exact-line·PREPARING UI 취소의 출력/늦은 성공/진행 표시 부재가 양쪽에서 통과했다.
+Fresh override canary는 renderer requests0·core/exporter/bridge/atomic overrides absent이며 실제 packaged path pinning도 일치했다.
+
+Renderer HTTP/WS·owned TCP nonloopback/peer/listener 위반·classification/identity/parser·process identity rejected0,
+page/renderer/process diagnostics0을 확인했다. 세 lifecycle 모두 product graceful quit,
+product close→quit/quit→native exit/wrapper diagnostics0, wrapper 전 native alive0,
+exact PID+Win32 birth exit·descendants0과 temp/recovery/claim/symlink0을 확인했다.
+H 취소는 PREPARING에서 수행했으며 G의 checker 실행 후 취소와 같은 시험으로 표현하지 않는다.
+
+Host job3533/cleanup active0, owned job/unassigned 강제 종료false, job empty,
+process/thread/job handles와 desktop 정리를 기록했다. Input samples10285 중36회는 error5로 이름 판독 불가였다.
+판독 가능한 input 이름은 Default였으나 `inputDefaultEverySample=null`을 그대로 유지한다.
+별도 UOI_IO 관측의 `desktopInactiveEverySample=true`는 유지됐다. Unknown 구간의 foreground 이름을 추정하지 않는다.
+
+Development exporter median/max906/1075ms, fresh87/96ms다.
+Fresh 일반5초·장편15초의 EXPORTER_TOTAL_MS 기준을 실제 적용해 모두 통과했다.
+IR·wall 및5회 수치는 [성능 문서 section9](HWPX_EXPORT_PERFORMANCE.md#9-exact-source5151-developmentfresh-actual)를 따른다.
+
+판정은 **TECHNICAL GO — HWPX / PRIVATE LOCAL ONLY**다. Hancom REGISTERED_UNVERIFIED,
+HWPdisabled/securityModuleVerified=false/COM-HWP attemptfalse/reopen NOT_RUN을 보존한다.
+Native Korean IME·Hancom licensing/security/conversion/reopen은 사람의 검증 PENDING이다.
+Typie 개발 permission owner-confirmed와 외부 grant의 정확한 출시 범위, signing/installer/공개·유료·고객 승인은 별개다.
+Phase1I actual은 별도 I 결과 문서를 따르며 이 H 성공으로 AI network 범위를 확대하지 않는다.
+이후 docs-only HEAD의 정적 검사와 runtime-tested source5151을 구분한다.

@@ -1,5 +1,23 @@
 # Phase 1G — EPUB Export & Validation 결과
 
+## 현재 판정 — 2026-10-01, exact source5151f6a
+
+```text
+Tested product source: 5151f6a804cf1565a09211ea8f7a11e9f547fd34
+Pinned full Windows verification: PASS / exit 0
+Development/fresh-unpacked EPUB runtime actual: PASS
+Final Phase 1G verdict: TECHNICAL GO — EPUB / PRIVATE LOCAL ONLY
+Runtime EPUBCheck 5.3.0 / Temurin JRE 21.0.11+10: BUNDLED AND ACTUALLY VERIFIED
+Windows native Korean IME / Hancom conversion: HUMAN VALIDATION PENDING
+Public/paid/customer/installer distribution: NOT AUTHORIZED
+```
+
+현재 판정은 아래 §16의 exact-source full actual에 적용한다. 후속 docs-only HEAD는 새로운
+runtime-tested source가 아니다. Runtime bundle packaging의 기술 검증은 완료됐으며, portable
+ZIP의 별도 기록과 배포 한계는 [오프라인 runtime·배포 준비 결과](./OFFLINE_RUNTIME_RELEASE_RESULT.md)에
+구분한다. Typie 허용 범위는 [license status](./TYPIE_LICENSE_STATUS.md)를 따른다.
+아래 2026-08-12 판정과 §1–15의 수치·제한은 당시 결과를 보존한 역사 기록이다.
+
 기준일: 2026-08-12
 
 ```text
@@ -252,6 +270,73 @@ Phase 1G actual은 content loss/nav/package/atomic failure 없이 끝났다. 따
 Phase 1H 기술 작업은 진행할 수 있다. 다만 runtime EPUBCheck/JRE packaging이 남아 최종
 판정은 **CONDITIONAL TECHNICAL GO — RUNTIME EPUBCHECK PACKAGING PENDING**이다. Invalid EPUB,
 block/character loss 또는 atomic 저장 실패는 이 조건부 판정으로 허용되지 않는다.
+
+## 16. 2026-10-01 source5151f6a runtime completion
+
+Exact source `5151f6a804cf1565a09211ea8f7a11e9f547fd34`의 pinned full Windows 경로는
+`2026-10-01T03:15:31.9089127Z`부터 `04:43:08.5463271Z`까지 5,256.600초 실행되어
+`PASS / exit 0`으로 끝났다. Desktop 105 files/705 tests와 native/CLI/build, development 및
+fresh-unpacked basic/D/E/F/G/H actual을 포함한다. 시작·종료 tracked source는 clean이었다.
+이 결과는 이전 source660814c의 성공이나 focused source4c47ec4/5151f6a의 결과를 전이한 것이 아니다.
+
+불변 evidence는 ignored `.tools/verification/full-verify-5151f6a-run1/phaseefgh-proof-archive/`에
+byte-exact로 보관되어 있다. 아래 경로는 해당 directory 기준이며 raw JSON은 재직렬화하지 않았다.
+
+| Actual | Archive file | Bytes | SHA-256 |
+| --- | --- | ---: | --- |
+| Development | `madi-electron-phase1g-evidence.json` | 71,279 | `c9591f57e7d6bf1a033b62f9e971e7b70e3f56e5f71a6b584088a0bf2715dac9` |
+| Fresh unpacked | `madi-packaged-phase1g-evidence.json` | 71,340 | `fd52d018145382ca7dcce4a7f96c41f71802222cdbeff2368f8dbe2a6f423a20` |
+
+Archive `receipt.json` SHA-256은
+`6e43c66169f47bbb2e083f47c38afcef654376fe71c353f1c70f67f082aaafea`, full host metadata SHA-256은
+`31ba4cf8d25783908461b1f5e97374bb8c07dceb24e02048f612c8dfe80fa21c`다.
+같은 full command의 Windows-unpacked receipt SHA-256
+`b86956227e6bf67b83a0e30f370d2233243eae0af089a5836e46962ed2eb05ea`와 whole tested-package
+inventory file SHA-256 `0608619fd9d2bf47ca29bbd2f4da47522a95e7ed0099a04532684033790b965a`를
+함께 읽는다. Inventory는 561 files/81 directories/549,528,995 B, canonical inventory digest는
+`6ca42b827431aba14d8e3315b1c3cc3621300e3b86b5b7cfd8fbd5af63b92e7f`다. Inventory 단독으로
+freshness를 추정하지 않으며 command/source/runtime-entrypoint hash join이 별도로 일치했다.
+
+앱의 사전 검사와 저장 경로가 fixed runtime을 실제 실행한다. Development는 pinned local bundle,
+fresh는 `resources/validation`의 bundle을 쓰며 system Java나 runtime download는 사용하지 않는다.
+두 환경에서 EPUBCheck `5.3.0`, Temurin JRE `21.0.11+10`, 364 files/187,794,843 B의 full-tree
+hash가 일치했다. Bundle digest는
+`bcabd009a2a10ec70499c1e239bef6c53df9580253cc2a19448d804cbaabcb0c`이며 package source-copy도
+일치했다. EPUBCheck/Temurin license·notice 원문은 bundle 안에 포함된다.
+
+일반 actual은 metadata/cover/preset CRUD, snapshot/reopen, 3.3 compatibility 및 3.4 draft,
+WORK/VOLUME/CHAPTER/SCENE scope, confirmed overwrite/no-clobber/cancel/report/reveal을 통과했다.
+3.4 결과의 `compatibilityOnly=true`는 공통 reflowable 3.3 subset 검사이며 완전한 3.4 인증이 아니다.
+보존된 3.3 대표 EPUB는 두 환경 모두 63,779 B와 SHA-256
+`527f55f49bcb465df8792e1af0e662664c4185ab5deccd0a6ed94f677503788c`가 일치했고 runtime
+EPUBCheck는 `VALID`, fatal/error 0이었다. 대표 단일 Java 시간은 dev 5,350.42 ms/fresh
+5,002.34 ms이며 장편 5회 Java 분포로 확대하지 않는다.
+
+장편은 각 환경 5회 모두 section 450/450, block 2,411/2,411, Unicode character
+675,000/675,000, fallback/rejected 0/0이었다. Scene break/ruby 각450, heading611을 보존했고,
+ZIP/XML reopen, mimetype-first Stored, OPF3.0, 155 entries/150 XHTML와 semantic coverage가
+통과했다. Output 254,784 B의 byte/logical determinism은 각 환경 5회 모두 true다.
+Native exporter median/max는 dev 653/767 ms, fresh 62/75 ms다. Fresh native exporter-total
+15초 hard gate는 5/5 PASS이며 wall/Java 시간에 적용한 기준이 아니다.
+
+실제 JVM 시작을 관측한 뒤 UI cancel을 실행했다. Checker 시작 대기는 dev 32,211.04 ms,
+fresh 2,874.01 ms였고 취소 뒤 exit/close 및 stdout/stderr drain, output 없음, late success/progress
+없음을 확인했다. 별도 active-JVM window-close 검사도 wrapper cleanup 전에 checker 종료·drain과
+output 없음이 true였다. 그 검사는 장편 5회 성능 표본에 포함되지 않는다.
+
+일반 state/export/장편의 세 lifecycle 모두 product graceful quit, pre-wrapper native sidecar exit,
+PID+Win32 birth identity 기반 종료와 짧은 child의 exit/close receipt가 통과했다. 종료 후 captured
+owned descendants는 0이었다. Product close→quit, quit→native-exit, wrapper cleanup의 strict
+unexpected diagnostic은 각각0이며 renderer HTTP/WS, owned non-loopback TCP, native TCP,
+identity race/classification/parser rejection은0이다. Local-file probe는 차단됐고 fresh override
+canary도 차단됐다. Owned temp/symlink/new-global-artifact는0이다.
+
+Full host는 job3,533/cleanup active0/forced termination 없음, job empty와 모든 owned handles·desktop
+제거를 기록했다. 입력 관측 10,285회 중 이름 불가36회(native error5)여서
+`inputDefaultEverySample=null`이며 all-Default로 보고하지 않는다. Owned desktop은 전 관측에서
+비활성이었다. Native 한국어 IME·Hancom 실제 변환·공개/유료/고객/installer 배포 승인은 이
+자동 technical GO에 포함되지 않는다. 성능의 정확한 경계는
+[EPUB export performance](./EPUB_EXPORT_PERFORMANCE.md)의 §13에 기록한다.
 
 ## 관련 문서
 

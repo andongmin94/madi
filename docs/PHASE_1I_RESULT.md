@@ -2,7 +2,7 @@
 
 This document preserves the narrow-workflow implementation and audit record. Current goals,
 progress, contract discrepancies, and next work are maintained in [PLANS.md](../PLANS.md).
-The latest completed runtime result applies to product source `660814c7745a5231038aba902fd7113022778238`.
+The latest completed runtime result applies to product source `5151f6a804cf1565a09211ea8f7a11e9f547fd34`.
 Subsequent documentation-only commits record that evidence; they are not additional runtime-tested
 product candidates. This record does not establish runtime acceptance for later product changes.
 
@@ -13,8 +13,8 @@ Repository implementation: COMPLETE FOR NARROW AI WORKFLOWS
 Exact same-block selection apply: IMPLEMENTED
 General proposal review: IMPLEMENTED
 Multi-block/project-wide apply: REMOVED, NOT AUTHORIZED
-Aggregate Windows verification source660814c: PASS — PRIVATE LOCAL TECHNICAL
-Actual loopback source660814c: DEVELOPMENT/PACKAGED PASS WITH DIAGNOSTIC WARNING
+Aggregate Windows verification source5151f6a: PASS — PRIVATE LOCAL TECHNICAL
+Actual loopback source5151f6a: DEVELOPMENT/PACKAGED PASS WITH DIAGNOSTIC WARNING
 Distribution: PRIVATE LOCAL ONLY; DISTRIBUTION GATES REMAIN
 ```
 
@@ -236,6 +236,70 @@ together. Inventory `package-inventory-660814c-2e909792-7af7-4f53-b925-9830d5d46
 files/233245115 bytes and joins the completed full host metadata hash and exact clean source.
 Inventory alone does not infer freshness. Preparation source21c9a9d records runtime preparation,
 not app source. Native Korean IME and the existing distribution/Hancom decisions remain human gates.
+
+## 2026-10-01 exact source5151f6a full and actual loopback completion
+
+Exact source `5151f6a804cf1565a09211ea8f7a11e9f547fd34` completed the pinned full Windows
+verification with exit 0 in 5256.600 seconds, including development/fresh-unpacked workflows and the
+bundled offline EPUBCheck/JRE runtime. This full result supersedes the current candidate status;
+source660814c measurements above remain historical. Subsequent docs-only HEADs record this source,
+not a separately runtime-tested candidate. The technical boundary remains private local.
+
+Both same-source actual loopback workflows returned
+`PASS_LOOPBACK_ACTUAL_WITH_DIAGNOSTIC_WARNING`. The diagnostic warning is
+`DIAGNOSTIC_UNEXPECTED_RESPONSE`: an actual provider response was received, exact `MADI_OK` was
+false, state was `UNEXPECTED_RESPONSE`, and error-message length was 0. Warning lengths were 61
+(development) and 60 (packaged); response text is omitted.
+
+| Mode | UTC start→finish, 2026-10-01 | Host seconds | actual.json SHA-256 |
+| --- | --- | ---: | --- |
+| Development | 04:44:39.2847858→04:45:20.0719416 | 40.787 | `b96938098655eda5bb5f15f37bb2c336323d6456e085abd11689d73e29a82174` |
+| Packaged | 04:45:20.4066577→04:45:59.5644457 | 39.158 | `2e3a4da60e614f550e21142f26fe71df970d42f7b2d23a59fc320a27281a854a` |
+
+Both guards recorded consent before general/selection requests, actual general-copy equality with
+canonical content unchanged, no mutation before acceptance, exact same-block apply, one exact
+Undo/Redo, exact save/reopen without another request, and provider/request settings outside
+canonical content. No credential was supplied or stored. Each selected one whole 11-character
+block, reviewed 2 hunks, and received 13-character general/rewrite responses. Diagnostic times were
+599/593 ms; rewrite→apply times 1686/1680 ms. This actual pair does not cover partial-block,
+duplicate/Unicode, multi-block or project-wide mutation; separate adapter tests retain their scope.
+
+First-app approved loopback main fetches were 3, reopen 0; unapproved main fetches and renderer
+HTTP/WS/page errors were 0. These counters were captured before close and are main-fetch/renderer
+observations, not a strict whole-owned-process TCP or through-quit diagnostic audit. The orchestrator
+probe recorded 2 non-stage stderr lines in each mode. The separate full offline Windows gate provides
+its own network/lifecycle evidence; it does not turn this AI probe into a strict TCP measurement.
+Clipboard API interception passed, with OS clipboard validation=false. Remote HTTPS/authentication,
+credential encryption, and native Korean IME remain unvalidated. Both app launches/reopens recorded
+isolated user data, sandboxed trusted preload, session spellchecker=false/languages0; packaged
+launches observed isPackaged=true.
+
+The owned temporary model used CPU threads 2/batch 2/GPU 0/parallel 1/context 2048. Archive/model and all 51
+prepared runtime-file hashes matched. Raw provider logging was disabled, credentials were not read,
+and no global install or persistent environment change occurred. Preparation source21c9a9d describes
+the cached model/runtime preparation, not app source. Model cleanup recorded owned SIGTERM,
+exited=true/exitCode=null; it is not claimed as normal exit 0. Both app windows/processes closed, with
+playwrightClosed=false preserved, and owned temporary app data was removed.
+
+Each isolated host recorded child exit 0, source5151f6a clean before/after, job 35/cleanup active 0/no
+forced termination, empty job and closed handles/desktop. Input Default samples were 80/77,
+unavailable 0, and the desktop remained inactive. This differs from the full host, which recorded
+input-name unavailability 36 and DefaultEverySample=null; that limitation is preserved separately.
+
+Evidence paths are relative to ignored `.tools/verification/`:
+
+- Development: `llm-development-5151f6a-run1/llm-loopback-runs/development-95536dea-7f3b-4b23-ae32-11d5be5f5630/`;
+  orchestrator.json SHA-256 `44420441fa9bc3178a60742b185acecabfdbe1eb2704f14e69ef4fa2dfe9d92d`.
+- Packaged: `llm-packaged-5151f6a-run1/llm-loopback-runs/packaged-5c9838c7-051a-4ea9-a1ab-c5c03ee86620/`;
+  orchestrator.json SHA-256 `ca9e3a26642bb086b67420000153f243f70920cf49067a1c447353fbe5b1a5ab`.
+
+Each directory retains actual/orchestrator and their source copies. Host metadata SHA-256 values are
+`103de55976213016db27480cdaf6bc7721c4d75cec066e2715ee5dfe3c371249` and
+`8a95d099ae6e571c5f662c236dbd8d7aef5a0bf15250699afeefa032130b322d`, respectively.
+The full same-command package receipt/source/archive/inventory binding is recorded in
+[offline runtime and release result](./OFFLINE_RUNTIME_RELEASE_RESULT.md). Inventory alone does not
+infer freshness. Native IME/Hancom and public/paid/customer/installer release decisions remain
+separate human gates; these actuals grant no distribution permission.
 
 ## Next stage
 

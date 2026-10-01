@@ -1,5 +1,21 @@
 # EPUB Export Performance
 
+## 현재 판정 — 2026-10-01, exact source5151f6a
+
+```text
+Tested product source: 5151f6a804cf1565a09211ea8f7a11e9f547fd34
+Pinned full Windows verification: PASS / exit 0 / 5256.600 seconds
+Current verdict: TECHNICAL GO — EPUB / PRIVATE LOCAL ONLY
+Development/fresh-unpacked actual with bundled EPUBCheck/JRE: PASS
+Public/paid/customer/installer distribution: NOT AUTHORIZED
+```
+
+현재 실제 수치는 §13에 기록한다. 아래 2026-08-10 기준 수치와 conditional verdict는 당시
+runtime에 Java/EPUBCheck가 없던 역사 기록으로 보존한다. 최신 source에서 측정한 runtime
+wall/Java를 이전 internal-only 표와 혼합하지 않는다. 최종 docs-only HEAD는 tested source5151f6a와
+구분하며 [오프라인 runtime·배포 준비 결과](./OFFLINE_RUNTIME_RELEASE_RESULT.md)가 package/ZIP
+증거와 남은 human distribution gate를 연결한다.
+
 기준일: 2026-08-10
 
 ```text
@@ -210,6 +226,83 @@ Typie는 계속 `HUMAN DECISION REQUIRED BEFORE DISTRIBUTION`, Windows native �
 `MANUAL VALIDATION PENDING`이다. pnpm/Cargo 전체 transitive license corpus는 완결되지
 않았고 실행 파일은 unsigned다. 이 조건들은 서로 독립적으로 public/paid/customer
 distribution을 차단한다.
+
+## 13. 2026-10-01 exact source5151f6a bundled-runtime actual
+
+Exact source `5151f6a804cf1565a09211ea8f7a11e9f547fd34`의 full Windows run은 5,256.600초에
+`PASS / exit 0`으로 끝났다. Development와 같은 full command가 만든 fresh-unpacked G actual은
+모두 PASS이며 각 장편 표본은5회다. 이전 focused source4c47ec4/5151f6a 표본을 이 표에 재사용하지
+않았다. Environment는 pinned Windows/Node26.3.1/pnpm11.9.0/Rust1.97.1/Electron37.10.3이다.
+
+| 장편 metric, ms | Development median / max | Fresh unpacked median / max |
+| --- | ---: | ---: |
+| Native exporter `totalMs` | 653 / 767 | 62 / 75 |
+| UI end-to-end wall | 74,911.76 / 79,496.18 | 10,047.57 / 10,319.12 |
+| Native internal validation | 123 / 141 | 14 / 16 |
+| XHTML generation | 66 / 86 | 8 / 10 |
+| ZIP packaging | 82 / 96 | 8 / 10 |
+| Maximum rAF frame gap | 18.90 / 23.10 | 16.90 / 17.00 |
+| Maximum heartbeat gap | 66.20 / 72.30 | 61.80 / 65.10 |
+
+Native exporter samples는 dev `[651,638,660,767,653]`, fresh `[75,63,62,61,58]` ms다.
+Wall samples는 dev `[71871.48,74911.76,76583.70,79496.18,74252.41]`, fresh
+`[10319.12,10073.73,9611.34,10047.57,9147.02]` ms다. Fresh의15초 hard gate는 native
+`EXPORTER_TOTAL`에만 적용되어5/5 PASS다. Development에는 같은 기준을 관측하지만 hard gate를
+적용하지 않는다. Wall은 실제 UI 실행부터 terminal idle/success까지로 core materialization,
+bundle verification, native exporter, Java 검사, commit/IPC/UI를 포함한다. Native `totalMs`는
+이 Java·core·UI 시간을 포함하지 않는다.
+
+| 별도 일반 workflow 관측 | Development | Fresh unpacked |
+| --- | ---: | ---: |
+| 3.3 대표 single runtime Java | 5,350.42 ms | 5,002.34 ms |
+| 3.3 native exporter / wall | 149 / 36,458.85 ms | 22 / 6,708.64 ms |
+| UI cancel 전 actual checker 시작 대기 | 32,211.04 ms | 2,874.01 ms |
+
+대표 Java는 한 3.3 EPUB의 단일 관측이며 장편5회 Java median/max가 아니다. Checker 시작 대기는
+materialize/hash/startup을 포함하고 Java 실행 시간이나 cancellation drain 시간으로 표시하지
+않는다. 별도 active-JVM window-close 검사는 measured=false/includedInPerformanceSamples=false다.
+
+Evidence의 Publication IR compile median/max는 dev62,551.99/65,841.64 ms, fresh
+101,582.08/117,004.74 ms다. **둘 다 실제 run 직전 regenerated fixture를 debug core로 구성한
+참조값이며 fresh product의 runtime IR compile 측정이 아니다.** Fresh wall에 더하거나 release
+IR 성능으로 주장하지 않는다.
+
+두 환경의 장편5회 모두 section450/450, block2,411/2,411, character675,000/675,000,
+fallback/rejected0/0, scene break/ruby 각450, heading611이었다. ZIP/XML reopen 및 semantic
+coverage가 통과했고 output254,784 B의 byte/logical determinism은 true다. Runtime bundle은
+EPUBCheck5.3.0/JRE21.0.11+10, 364 files/187,794,843 B이며 full-tree hash matched다.
+Bundle digest는 `bcabd009a2a10ec70499c1e239bef6c53df9580253cc2a19448d804cbaabcb0c`이고
+fresh package source-copy도 일치했다. 대표 EPUB63,779 B의 SHA-256은
+`527f55f49bcb465df8792e1af0e662664c4185ab5deccd0a6ed94f677503788c`이며 runtime 검사
+VALID/fatal0/error0였다. 3.4 draft의 compatibilityOnly=true는 공통3.3 subset 검사다.
+
+Byte-exact raw actual archive는 ignored
+`.tools/verification/full-verify-5151f6a-run1/phaseefgh-proof-archive/`에 있다.
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `madi-electron-phase1g-evidence.json` | 71,279 | `c9591f57e7d6bf1a033b62f9e971e7b70e3f56e5f71a6b584088a0bf2715dac9` |
+| `madi-packaged-phase1g-evidence.json` | 71,340 | `fd52d018145382ca7dcce4a7f96c41f71802222cdbeff2368f8dbe2a6f423a20` |
+
+Archive receipt SHA-256은 `6e43c66169f47bbb2e083f47c38afcef654376fe71c353f1c70f67f082aaafea`다.
+Same-command package receipt SHA-256은
+`b86956227e6bf67b83a0e30f370d2233243eae0af089a5836e46962ed2eb05ea`; whole-package inventory
+file SHA-256은 `0608619fd9d2bf47ca29bbd2f4da47522a95e7ed0099a04532684033790b965a`다.
+Inventory는561 files/549,528,995 B이며 exact clean source와 runtime entrypoints가 별도 join됐다.
+Freshness는 inventory 단독으로 추정하지 않는다.
+
+각 환경의 state/export/long 세 lifecycle에서 graceful quit, native/JVM pre-wrapper exit와
+PID+Win32 birth/short-child exit-close proof가 통과했다. Captured descendants/temp/symlink/artifact는0,
+close→quit/quit→native-exit/wrapper unexpected diagnostic은0이었다. Renderer HTTP/WS, owned
+non-loopback/native TCP, identity/classification/parser rejection은0이고 fresh override canary가
+차단됐다. Full host는 job3,533/cleanup active0/no force/handles·desktop removed다. Input10,285
+관측 중 이름 불가36회(native error5)여서 DefaultEverySample=null이며 desktopInactiveEverySample=true다.
+이 값은 all-Default나 native 한국어 IME 승인으로 해석하지 않는다.
+
+현재 runtime bundle 기술 gate는 통과했다. Native 한국어 IME, Hancom 실제 변환·licensing,
+공개/유료/고객/installer 배포 승인은 별도 human gate이며, exact 외부 Typie grant 범위는
+[license status](./TYPIE_LICENSE_STATUS.md)를 따른다. 이는 이 PC의 관측값이고 다른 hardware의
+성능 보장값이 아니다.
 
 ## 관련 문서
 
