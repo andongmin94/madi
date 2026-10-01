@@ -22,6 +22,49 @@ internal sealed class OwnedHancomProcess : IDisposable
     private const uint WaitObject = 0, WaitTimeout = 258;
     private const uint ExitWaitMs = 5_000;
 
+    // Closed diagnostic stages: no PID, path, document or user text.
+    private enum OwnershipStage
+    {
+        UNSPECIFIED,
+        CREATE_JOB,
+        CONFIGURE_JOB,
+        START_STATE,
+        START_EXECUTABLE,
+        START_INPUT,
+        START_CREATE,
+        START_BIRTH,
+        START_IMAGE,
+        START_ASSIGN,
+        START_MEMBERSHIP,
+        START_RESUME,
+        START_READY,
+        OBSERVE_STATE,
+        OBSERVE_LIVE,
+        OBSERVE_BIRTH,
+        OBSERVE_IMAGE,
+        OBSERVE_MEMBERSHIP,
+        OBSERVE_SINGLETON,
+        OBSERVE_THREAD_DESKTOP,
+        OBSERVE_DEFAULT_WINDOWS,
+        OBSERVE_PRIVATE_WINDOWS,
+        ENUMERATE_OPEN,
+        ENUMERATE_RESULT,
+        ENUMERATE_IDENTITY,
+        ENUMERATE_CLOSE,
+        INPUT_THREAD,
+        INPUT_FLAG,
+        INPUT_OPEN,
+        INPUT_DEFAULT,
+        INPUT_CLOSE,
+        REGISTERED_CLASS,
+        REGISTERED_COMMAND,
+        REGISTERED_EXE,
+        JOB_QUERY,
+        DESKTOP_HANDLE,
+        DESKTOP_NAME,
+        PROCESS_IMAGE
+    }
+
     internal OwnedHancomProcess(string expectedDesktop)
     {
         VerifyNativeLayout();
@@ -31,14 +74,14 @@ internal sealed class OwnedHancomProcess : IDisposable
         executable = ReadRegisteredExecutable();
         executableHash = FileHash(executable);
         job = CreateJobObjectW(IntPtr.Zero, null);
-        Require(job != IntPtr.Zero);
+        Require(job != IntPtr.Zero, OwnershipStage.CREATE_JOB, job == IntPtr.Zero ? Marshal.GetLastPInvokeError() : 0);
         try
         {
             var limits = new JobExtendedLimits();
             limits.basic.limitFlags = 0x2020; // KILL_ON_JOB_CLOSE | PRIORITY_CLASS.
             limits.basic.priorityClass = 0x4000; // BELOW_NORMAL, no breakaway.
-            Require(SetInformationJobObject(job, 9, ref limits,
-                (uint)Marshal.SizeOf<JobExtendedLimits>()));
+            RequireNative(SetInformationJobObject(job, 9, ref limits,
+                (uint)Marshal.SizeOf<JobExtendedLimits>()), OwnershipStage.CONFIGURE_JOB);
         }
         catch
         {
@@ -76,33 +119,37 @@ internal sealed class OwnedHancomProcess : IDisposable
         lock (sync)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Require(!disposed && !aborted && process == IntPtr.Zero);
+            Require(!disposed && !aborted && process == IntPtr.Zero, OwnershipStage.START_STATE);
             AssertPrivateInput(desktop);
             RequireNoHwp();
-            Require(FileHash(executable) == executableHash);
-            Require(Path.IsPathFullyQualified(input) && !input.Contains('"'));
+            Require(FileHash(executable) == executableHash, OwnershipStage.START_EXECUTABLE);
+            Require(Path.IsPathFullyQualified(input) && !input.Contains('"'), OwnershipStage.START_INPUT);
             var startup = new StartupInfo
             {
                 cb = (uint)Marshal.SizeOf<StartupInfo>(),
                 lpDesktop = desktop,
                 dwFlags = 0x80, // STARTF_FORCEOFFFEEDBACK.
             };
-            Require(CreateProcessW(executable,
+            RequireNative(CreateProcessW(executable,
                 new StringBuilder("\"" + executable + "\" \"" + input + "\""),
                 IntPtr.Zero, IntPtr.Zero, false, 0x08004004, IntPtr.Zero,
-                Path.GetDirectoryName(input), ref startup, out var created));
+                Path.GetDirectoryName(input), ref startup, out var created), OwnershipStage.START_CREATE);
             process = created.process;
             thread = created.thread;
             pid = created.pid;
             try
             {
-                Require(GetProcessTimes(process, out birth, out _, out _, out _));
-                Require(ExactPath(ProcessImage(process), executable));
-                Require(AssignProcessToJobObject(job, process));
+                RequireNative(GetProcessTimes(process, out birth, out _, out _, out _), OwnershipStage.START_BIRTH);
+                Require(ExactPath(ProcessImage(process), executable), OwnershipStage.START_IMAGE);
+                RequireNative(AssignProcessToJobObject(job, process), OwnershipStage.START_ASSIGN);
                 assigned = true;
-                Require(IsProcessInJob(process, job, out bool inOwnedJob) && inOwnedJob);
+                RequireNative(IsProcessInJob(process, job, out bool inOwnedJob), OwnershipStage.START_MEMBERSHIP);
+                Require(inOwnedJob, OwnershipStage.START_MEMBERSHIP);
                 cancellationToken.ThrowIfCancellationRequested();
-                Require(!aborted && ResumeThread(thread) == 1);
+                Require(!aborted, OwnershipStage.START_RESUME);
+                uint previousSuspendCount = ResumeThread(thread);
+                int resumeError = previousSuspendCount == uint.MaxValue ? Marshal.GetLastPInvokeError() : 0;
+                Require(previousSuspendCount == 1, OwnershipStage.START_RESUME, resumeError);
             }
             catch
             {
@@ -120,7 +167,7 @@ internal sealed class OwnedHancomProcess : IDisposable
             if (stable == 3) return;
             Thread.Sleep(500);
         }
-        throw Failure();
+        throw Failure(stage: OwnershipStage.START_READY);
     }
 
     // Cancellation callback: kernel-only, no RCW, ROT, window, or document API.
@@ -218,13 +265,17 @@ internal sealed class OwnedHancomProcess : IDisposable
         AssertPrivateInput(desktop);
         lock (sync)
         {
-            Require(!disposed && !aborted && assigned && process != IntPtr.Zero);
-            Require(WaitForSingleObject(process, 0) == WaitTimeout);
-            Require(GetProcessTimes(process, out long actualBirth, out _, out _, out _) && actualBirth == birth);
-            Require(ExactPath(ProcessImage(process), executable) && FileHash(executable) == executableHash);
-            Require(IsProcessInJob(process, job, out bool inOwnedJob) && inOwnedJob);
+            Require(!disposed && !aborted && assigned && process != IntPtr.Zero, OwnershipStage.OBSERVE_STATE);
+            uint liveWait = WaitForSingleObject(process, 0);
+            int liveError = liveWait == uint.MaxValue ? Marshal.GetLastPInvokeError() : 0;
+            Require(liveWait == WaitTimeout, OwnershipStage.OBSERVE_LIVE, liveError);
+            RequireNative(GetProcessTimes(process, out long actualBirth, out _, out _, out _), OwnershipStage.OBSERVE_BIRTH);
+            Require(actualBirth == birth, OwnershipStage.OBSERVE_BIRTH);
+            Require(ExactPath(ProcessImage(process), executable) && FileHash(executable) == executableHash, OwnershipStage.OBSERVE_IMAGE);
+            RequireNative(IsProcessInJob(process, job, out bool inOwnedJob), OwnershipStage.OBSERVE_MEMBERSHIP);
+            Require(inOwnedJob, OwnershipStage.OBSERVE_MEMBERSHIP);
             var all = Process.GetProcessesByName("hwp");
-            try { Require(all.Length == 1 && all[0].Id == (int)pid); }
+            try { Require(all.Length == 1 && all[0].Id == (int)pid, OwnershipStage.OBSERVE_SINGLETON); }
             finally { foreach (var value in all) value.Dispose(); }
             using var current = Process.GetProcessById((int)pid);
             foreach (ProcessThread value in current.Threads)
@@ -237,17 +288,18 @@ internal sealed class OwnedHancomProcess : IDisposable
                     {
                         // As in the accepted diagnostic: worker threads can lack
                         // a desktop with error0. Never claim all thread desktops.
-                        Require(Marshal.GetLastPInvokeError() == 0);
+                        int threadError = Marshal.GetLastPInvokeError();
+                        Require(threadError == 0, OwnershipStage.OBSERVE_THREAD_DESKTOP, threadError);
                     }
-                    else Require(DesktopName(valueDesktop) == desktop);
+                    else Require(DesktopName(valueDesktop) == desktop, OwnershipStage.OBSERVE_THREAD_DESKTOP);
                 }
             }
             int privateWindows = 0;
             Enumerate(desktop, _ => privateWindows++);
             int defaultWindows = 0;
             Enumerate("Default", _ => defaultWindows++);
-            Require(defaultWindows == 0);
-            if (requireWindows) Require(privateWindows > 0);
+            Require(defaultWindows == 0, OwnershipStage.OBSERVE_DEFAULT_WINDOWS);
+            if (requireWindows) Require(privateWindows > 0, OwnershipStage.OBSERVE_PRIVATE_WINDOWS);
             return privateWindows > 0;
         }
     }
@@ -259,7 +311,7 @@ internal sealed class OwnedHancomProcess : IDisposable
         IntPtr current = GetThreadDesktop(GetCurrentThreadId());
         bool borrowed = DesktopName(current) == name;
         IntPtr value = borrowed ? current : OpenDesktopW(name, 0, false, 0x41);
-        Require(value != IntPtr.Zero);
+        Require(value != IntPtr.Zero, OwnershipStage.ENUMERATE_OPEN, value == IntPtr.Zero ? Marshal.GetLastPInvokeError() : 0);
         Exception? primary = null;
         try
         {
@@ -278,12 +330,12 @@ internal sealed class OwnedHancomProcess : IDisposable
                 catch { windowIdentityFailed = true; }
                 return true;
             };
-            Require(EnumDesktopWindows(value, callback, IntPtr.Zero));
+            RequireNative(EnumDesktopWindows(value, callback, IntPtr.Zero), OwnershipStage.ENUMERATE_RESULT);
             GC.KeepAlive(callback);
-            Require(!windowIdentityFailed);
+            Require(!windowIdentityFailed, OwnershipStage.ENUMERATE_IDENTITY);
         }
         catch (Exception error) { primary = error; throw; }
-        finally { if (!borrowed && !CloseDesktop(value) && primary is null) throw Failure(); }
+        finally { if (!borrowed && !CloseDesktop(value) && primary is null) throw Failure(stage: OwnershipStage.ENUMERATE_CLOSE, nativeError: Marshal.GetLastPInvokeError()); }
     }
 
     internal static bool ExactPath(string? actual, string expected)
@@ -296,18 +348,19 @@ internal sealed class OwnedHancomProcess : IDisposable
     private static void AssertPrivateInput(string expected)
     {
         IntPtr current = GetThreadDesktop(GetCurrentThreadId());
-        Require(DesktopName(current) == expected);
-        Require(GetDesktopInputFlag(current, 6, out int inputFlag, 4, out _) && inputFlag == 0);
+        Require(DesktopName(current) == expected, OwnershipStage.INPUT_THREAD);
+        RequireNative(GetDesktopInputFlag(current, 6, out int inputFlag, 4, out _), OwnershipStage.INPUT_FLAG);
+        Require(inputFlag == 0, OwnershipStage.INPUT_FLAG);
         IntPtr input = OpenInputDesktop(0, false, 1);
-        Require(input != IntPtr.Zero);
+        Require(input != IntPtr.Zero, OwnershipStage.INPUT_OPEN, input == IntPtr.Zero ? Marshal.GetLastPInvokeError() : 0);
         Exception? primary = null;
         try
         {
             string name = DesktopName(input);
-            Require(name.Equals("Default", StringComparison.OrdinalIgnoreCase) && name != expected);
+            Require(name.Equals("Default", StringComparison.OrdinalIgnoreCase) && name != expected, OwnershipStage.INPUT_DEFAULT);
         }
         catch (Exception error) { primary = error; throw; }
-        finally { if (!CloseDesktop(input) && primary is null) throw Failure(); }
+        finally { if (!CloseDesktop(input) && primary is null) throw Failure(stage: OwnershipStage.INPUT_CLOSE, nativeError: Marshal.GetLastPInvokeError()); }
     }
 
     private static void RequireNoHwp()
@@ -321,23 +374,23 @@ internal sealed class OwnedHancomProcess : IDisposable
     {
         using var classes = RegistryKey.OpenBaseKey(RegistryHive.ClassesRoot, RegistryView.Registry32);
         using var progId = classes.OpenSubKey(@"HWPFrame.HwpObject.2\CLSID", false);
-        Require(Guid.TryParse(progId?.GetValue(null) as string, out Guid id));
+        Require(Guid.TryParse(progId?.GetValue(null) as string, out Guid id), OwnershipStage.REGISTERED_CLASS);
         using var server = classes.OpenSubKey($@"CLSID\{id:B}\LocalServer32", false);
         string command = server?.GetValue(null) as string ?? "";
         var match = Regex.Match(command, "^\"([^\"\\r\\n]+\\.exe)\"\\s+-Automation\\s*$", RegexOptions.IgnoreCase);
         if (!match.Success)
             match = Regex.Match(command, "^([^\"\\r\\n]+?\\.exe)\\s+-Automation\\s*$", RegexOptions.IgnoreCase);
-        Require(match.Success);
+        Require(match.Success, OwnershipStage.REGISTERED_COMMAND);
         string path = Path.GetFullPath(match.Groups[1].Value);
-        Require(Path.GetFileName(path).Equals("hwp.exe", StringComparison.OrdinalIgnoreCase));
+        Require(Path.GetFileName(path).Equals("hwp.exe", StringComparison.OrdinalIgnoreCase), OwnershipStage.REGISTERED_EXE);
         return path;
     }
 
     private uint ActiveCount()
     {
         Require(job != IntPtr.Zero);
-        Require(QueryInformationJobObject(job, 1, out var result,
-            (uint)Marshal.SizeOf<JobAccounting>(), IntPtr.Zero));
+        RequireNative(QueryInformationJobObject(job, 1, out var result,
+            (uint)Marshal.SizeOf<JobAccounting>(), IntPtr.Zero), OwnershipStage.JOB_QUERY);
         return result.activeProcesses;
     }
 
@@ -361,9 +414,9 @@ internal sealed class OwnedHancomProcess : IDisposable
 
     private static string DesktopName(IntPtr handle)
     {
-        Require(handle != IntPtr.Zero);
+        Require(handle != IntPtr.Zero, OwnershipStage.DESKTOP_HANDLE, handle == IntPtr.Zero ? Marshal.GetLastPInvokeError() : 0);
         var value = new StringBuilder(512);
-        Require(GetUserObjectInformationW(handle, 2, value, 1024, out _));
+        RequireNative(GetUserObjectInformationW(handle, 2, value, 1024, out _), OwnershipStage.DESKTOP_NAME);
         return value.ToString();
     }
 
@@ -371,7 +424,7 @@ internal sealed class OwnedHancomProcess : IDisposable
     {
         var value = new StringBuilder(32768);
         uint length = (uint)value.Capacity;
-        Require(QueryFullProcessImageNameW(handle, 0, value, ref length));
+        RequireNative(QueryFullProcessImageNameW(handle, 0, value, ref length), OwnershipStage.PROCESS_IMAGE);
         return value.ToString();
     }
 
@@ -381,9 +434,18 @@ internal sealed class OwnedHancomProcess : IDisposable
         return Convert.ToHexStringLower(SHA256.HashData(stream));
     }
 
-    private static void Require(bool value) { if (!value) throw Failure(); }
-    private static BridgeFailureException Failure(string code = "OWNERSHIP_FAILED") =>
-        new(code, code == "CLEANUP_FAILED" ? "The owned Hancom process did not finish safely." : "The private Hancom trial ownership could not be verified.");
+    private static void Require(bool value, OwnershipStage stage = OwnershipStage.UNSPECIFIED, int nativeError = 0)
+    {
+        if (!value) throw Failure(stage: stage, nativeError: nativeError);
+    }
+
+    private static void RequireNative(bool value, OwnershipStage stage) =>
+        Require(value, stage, value ? 0 : Marshal.GetLastPInvokeError());
+
+    private static BridgeFailureException Failure(string code = "OWNERSHIP_FAILED", OwnershipStage stage = OwnershipStage.UNSPECIFIED, int nativeError = 0) =>
+        new(code, code == "CLEANUP_FAILED" ? "The owned Hancom process did not finish safely." :
+            code == "OWNERSHIP_FAILED" ? FormattableString.Invariant($"OWNERSHIP_DIAGNOSTIC:{stage}:WIN32:{nativeError}") :
+            "The private Hancom trial ownership could not be verified.");
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct StartupInfo

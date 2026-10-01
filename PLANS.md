@@ -37,6 +37,7 @@ Publication IR만 Reader Lab과 exporter의 원고 입력으로 사용한다. Ty
 
 기본 실행: `.tools/verification/full-verify-20e8f3a-run1/`.
 정확한 기본 source: `20e8f3a970d321152940db47e26f9252b4524f26`.
+후속 sourcee636 실제 tiny 변환은 소유권 확인에서 실패했고, 일반 HWPX native 판독은 열린 시험 파일의 재해시에서 실패했다. 두 실행 모두 출력 통과 근거가 아니며 소유 process·job 정리와 module 부재를 확인했다. 소유권 실패의 고정 단계·Win32 코드 진단을 추가해 원인을 구분하고 재검증한다.
 Whole inventory·raw E/F/G/H archive·ZIP join은 이 run의 source와 실제 package receipt에 연결했다.
 이전 source5347/1ff 전체 FAIL과 graph 집중5회, source5151 기존 PASS는 각 revision의 결과로 보존한다.
 서로 다른 revision의 부분 성공을 합쳐 전체 통과로 표현하지 않는다.
