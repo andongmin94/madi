@@ -3784,6 +3784,7 @@ async function captureRunFailureContext(run) {
     if (run.page.isClosed()) {
       const diagnostics = run.processDiagnostics.evidence();
       return {
+        cancellationAttempt: run.cancellationAttemptEvidence ?? null,
         ownedTcpBoundary: run.processMonitor.boundaryEvidence ?? null,
         nativeTcp: run.processMonitor.nativeTcpEvidence ?? null,
         rendererAvailable: false,
@@ -3810,6 +3811,7 @@ async function captureRunFailureContext(run) {
     const workspaceCount = await workspace.count();
     if (workspaceCount !== 1) {
       return {
+        cancellationAttempt: run.cancellationAttemptEvidence ?? null,
         rendererAvailable: true,
         workspaceCount,
         lastActionability: run.lastActionability ?? null,
@@ -3900,6 +3902,7 @@ async function captureRunFailureContext(run) {
     });
     const snapshotCreateCount = await snapshotCreateControl.count();
     return {
+      cancellationAttempt: run.cancellationAttemptEvidence ?? null,
       rendererAvailable: true,
       workspaceCount,
       workspacePhase: allowedPhases.has(phaseValue) ? phaseValue : "OTHER",
@@ -3945,6 +3948,7 @@ async function captureRunFailureContext(run) {
     };
   } catch (error) {
     return {
+      cancellationAttempt: run.cancellationAttemptEvidence ?? null,
       rendererAvailable: !run.page.isClosed(),
       structuralCaptureFailed: true,
       captureError: summarizeError(error),
@@ -4740,19 +4744,57 @@ async function exerciseNoClobber(run, outputPath, expected) {
 async function exerciseCancel(run, outputPath) {
   verify(!(await fileExists(outputPath)), "phase1g-cancel-preexisting-output");
   await chooseOutput(run);
-  const baselineJavaRecordId = await lastJavaSpawnRecordId(run);
+  const baselineJavaRecords = await javaSpawnRecords(run);
+  const baselineJavaRecordId = Math.max(0, ...baselineJavaRecords.map((entry) => entry.recordId));
   const workspace = epubWorkspace(run);
   await workspace.getByRole("button", { name: "EPUB 내보내기", exact: true }).click();
-  const phaseAtCancel = await poll(
-    async () => {
-      const phase = await workspace.getAttribute("data-epub-phase");
-      const cancel = workspace.getByRole("button", { name: "취소", exact: true });
-      const active = await activeJavaSpawnRecord(run, baselineJavaRecordId);
-      return active && phase !== "IDLE" && (await cancel.isEnabled()) ? phase : null;
-    },
-    "phase1g-cancel-enabled",
-    30_000,
-  );
+  const checkerWaitStartedAt = performance.now();
+  const checkerWait = {
+    status: "WAITING_FOR_CHECKER",
+    baselineJavaCount: baselineJavaRecords.length,
+    checkerStartWaitMs: 0,
+    waitBudgetMs: OPERATION_TIMEOUT_MS,
+    progressStage: "NONE",
+    cancelEnabled: false,
+    javaObservationAvailable: false,
+    newJavaCount: 0,
+    activeJavaCount: 0,
+    closedJavaCount: 0,
+    drainedJavaCount: 0,
+    activeJavaInstanceMatched: false,
+    javaRecords: [],
+    javaRecordsTruncated: false,
+  };
+  run.cancellationAttemptEvidence = checkerWait;
+  let phaseAtCancel;
+  try {
+    phaseAtCancel = await poll(
+      async () => {
+        const phase = await workspace.getAttribute("data-epub-phase");
+        const cancel = workspace.getByRole("button", { name: "취소", exact: true });
+        checkerWait.cancelEnabled = await cancel.isEnabled();
+        checkerWait.progressStage = await workspace.evaluate((element) => {
+          const label = element.querySelector(".epub-export__progress progress")?.getAttribute("aria-label");
+          switch (label) {
+            case "Publication IR 생성 진행률": return "PUBLICATION_COMPILE";
+            case "XHTML 생성 진행률": return "XHTML_GENERATION";
+            case "EPUB package 생성 진행률": return "PACKAGE_GENERATION";
+            case "madi 내부 검증 진행률": return "INTERNAL_VALIDATION";
+            case "EPUBCheck 진행률": return "EPUBCHECK";
+            case "원자적 저장 진행률": return "FINALIZE";
+            default: return label === undefined ? "NONE" : "OTHER";
+          }
+        });
+        const active = await activeJavaSpawnRecord(run, baselineJavaRecordId, checkerWait);
+        return active && phase !== "IDLE" && checkerWait.cancelEnabled ? phase : null;
+      },
+      "phase1g-cancel-enabled",
+      OPERATION_TIMEOUT_MS,
+    );
+    checkerWait.status = "CHECKER_READY";
+  } finally {
+    checkerWait.checkerStartWaitMs = roundMilliseconds(performance.now() - checkerWaitStartedAt);
+  }
   await workspace.getByRole("button", { name: "취소", exact: true }).click();
   await waitForWorkspaceIdle(run, OPERATION_TIMEOUT_MS);
   const javaCloseReceipt = await poll(async () => {
@@ -4773,6 +4815,7 @@ async function exerciseCancel(run, outputPath) {
   return {
     accepted: true,
     checkerStartedBeforeUiCancel: true,
+    checkerStartWaitMs: checkerWait.checkerStartWaitMs,
     checkerCommandPathMatched: javaCloseReceipt.commandMatchesExpected,
     checkerOfflinePolicyMatched: javaCloseReceipt.javaPolicyMatched,
     checkerExitedAndStreamsDrained: true,
@@ -4807,15 +4850,33 @@ async function lastJavaSpawnRecordId(run) {
   return Math.max(0, ...(await javaSpawnRecords(run)).map((entry) => entry.recordId));
 }
 
-async function activeJavaSpawnRecord(run, afterRecordId) {
+async function activeJavaSpawnRecord(run, afterRecordId, checkerWait = null) {
   const records = await javaSpawnRecords(run, afterRecordId);
   const active = records.filter((entry) => entry.spawned && !entry.exitReceived && !entry.closeReceived);
+  if (checkerWait) {
+    checkerWait.javaObservationAvailable = true;
+    checkerWait.activeJavaInstanceMatched = false;
+    checkerWait.newJavaCount = records.length;
+    checkerWait.activeJavaCount = active.length;
+    checkerWait.closedJavaCount = records.filter((entry) => entry.exitReceived && entry.closeReceived).length;
+    checkerWait.drainedJavaCount = records.filter((entry) => entry.exitReceived && entry.closeReceived &&
+      entry.stdoutEndReceived && entry.stderrEndReceived).length;
+    checkerWait.javaRecords = records.slice(-8).map((entry) => ({
+      spawned: entry.spawned,
+      exitReceived: entry.exitReceived,
+      closeReceived: entry.closeReceived,
+      stdoutEndReceived: entry.stdoutEndReceived,
+      stderrEndReceived: entry.stderrEndReceived,
+    }));
+    checkerWait.javaRecordsTruncated = records.length > 8;
+  }
   if (active.length !== 1) return null;
   const current = captureRelevantProcessSnapshot();
   run.processMonitor.recordProcessSnapshot(current);
   const matches = current.filter((entry) => entry.pid === active[0].pid && entry.role === "JAVA" &&
     entry.parentInstanceKey === run.processMonitor.rootInstanceKey);
   verify(matches.length === 1, "phase1g-active-java-process-instance", { matchCount: matches.length });
+  if (checkerWait) checkerWait.activeJavaInstanceMatched = true;
   return active[0];
 }
 
