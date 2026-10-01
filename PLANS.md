@@ -3,6 +3,9 @@
 갱신일: 2026-10-01. 작업 위치: `main`.
 이 문서는 현재 목표·진척·완료 조건을 관리하는 유일한 실행 계획이다.
 
+**작업 중지:** 사용자가 재부팅을 위해 중지를 요청했다. 새 시험·개발은 시작하지 않는다.
+재개 시 아래 checkpoint와 원본 receipt부터 읽고, 현재 host 상태를 새로 확인한다.
+
 ## 현재 판정
 
 기존 자동 검증과 로컬 ZIP 준비는 완료했다. 후속 실제 한컴 시험에서는 HWPX 열기 실패가 확인돼
@@ -67,6 +70,22 @@ full package receipt·source archive·whole inventory·ZIP byte join을 함께 �
 | 공개 배포 | ZIP은 private-local 실행 자료다. Signing·installer·자동 update·공개/유료/고객 배포 승인 완료로 해석하지 않음 |
 
 ## 현재 이어갈 작업
+
+재부팅 전 checkpoint: clean source931fb5d에서 ROT 연결 자체는 두 번 성공했지만
+`RegisterModule`은 등록을 시작 전/후로 바꿔도 모두 false였다. Native blank Save·positive Open은 미실행이다.
+`Activator` 시험이 별도 생성한 PID18872는 사람의 특정 종료 승인 뒤 강제 종료했고,
+후속 읽기 검사에서 해당 desktop 부재(error2)를 확인했다. 이전 실패를 PASS로 바꾸지 않았다.
+중지 직전 Hwp0, HKCU32/64의 예제 module value 부재를 다시 확인했다. 제품·검증한 ZIP은 변경하지 않았다.
+
+- ROT after-start 실패: `.tools/verification/hancom-rot-diagnostic-run-7486438a-ae51-48f8-987c-1f1fdbea4b04/receipt.json`, SHA `b95813d8bbc3286669f515b0aab60a20ff83872acf0548e01015c62e0e1584bd`.
+- ROT before-start 실패: `.tools/verification/hancom-rot-diagnostic-run-f5418f39-0bfc-4cc1-800d-b6bc2207e84a/receipt.json`, SHA `4e6c025d55f6b8cc2d6c66874b2ee51834b18c246743e030dac173b83366ae56`.
+- 특정 process 정리: `.tools/verification/hancom18872-specific-cleanup-b525eef9-4130-4439-b6ae-a35f6df1ec2f/receipt.json`, SHA `e21a7ef211f91eac992790567ec25398181f6f2d534ca8fc469574da962fcbf9`.
+- 이후 desktop 부재: `.tools/verification/retired-hancom-desktop-readonly-7924d0d3-c130-4943-b289-343cefff013b/receipt.json`, SHA `976a30f95794761072ece39ab659f7146798f4311fa647aabfb39a1b38539cd8`.
+
+기존 승인 범위는 원본 unsigned module의 일시 등록·합성 로컬 시험이다. PID18872 종료 승인을
+다른 process에 확대하지 않으며, native IME 화면·키보드 사용 승인과 사람의15항목 판정은 아직 없다.
+재개 첫 작업은 기존 ROT 객체의 module 등록 false 원인 확인이다. 다른 registry namespace나
+새 COM activation으로 임의 우회하지 않는다. 소유권이 불명확한 process를 다시 만들지 않는 경로가 필요하다.
 
 1. 실행 중인 소유권 미확인 한컴을 조작하지 않는다. Hwp0가 확인되면 이미 승인한 비활성 desktop 시험에서
    한컴 자체 저장 HWPX·자동 감지 Open을 대조하고, 확인된 원인만 수정한다.
