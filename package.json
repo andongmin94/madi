@@ -38,6 +38,7 @@
     "test:atomic-output": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 test --manifest-path crates/madi-atomic-output/Cargo.toml",
     "test:hwp-bridge": "dotnet run --project sidecars/hwp-bridge/tests/Madi.HwpBridge.ContractTests.csproj --disable-build-servers --configuration Release --runtime win-x86 --no-self-contained",
     "test:epubcheck": "pnpm run build:epub && node scripts/test-phase1g-epubcheck.mjs",
+    "test:runtime-tcp-families": "node scripts/test-runtime-tcp-families.mjs",
     "test:core": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 test --manifest-path crates/madi-core/Cargo.toml",
     "test:desktop": "pnpm --filter @madi/desktop test",
     "test:bundle": "pnpm --filter @madi/desktop exec vitest run tests/lazy-bundle-boundary.test.ts",
@@ -59,6 +60,6 @@
     "test:package": "node scripts/electron-packaged-smoke.mjs && node scripts/electron-packaged-scale-smoke.mjs && node scripts/electron-phase1e-packaged-smoke.mjs && node scripts/electron-phase1f-packaged-smoke.mjs && node scripts/electron-phase1g-packaged-smoke.mjs && node scripts/electron-phase1h-packaged-smoke.mjs",
     "test:dev": "node scripts/test-dev-startup.mjs",
     "typecheck": "pnpm --filter @madi/desktop typecheck",
-    "verify": "pnpm run check:toolchain && pnpm run check:repository && pnpm run format:check && pnpm run prepare:epubcheck && pnpm run build:atomic-output && pnpm run typecheck && pnpm run test:desktop && pnpm run test:publication && pnpm run test:epub && pnpm run test:hwpx && pnpm run test:atomic-output && pnpm run test:hwp-bridge && pnpm run test:epubcheck && pnpm run test:core && pnpm run build:core && pnpm run build:epub && pnpm run build:hwpx && pnpm run build:hwp-bridge && pnpm run test:typie && pnpm run test:integration && pnpm run build && pnpm run test:bundle && pnpm run test:electron && pnpm run test:package"
+    "verify": "pnpm run check:toolchain && pnpm run check:repository && pnpm run format:check && pnpm run test:runtime-tcp-families && pnpm run prepare:epubcheck && pnpm run build:atomic-output && pnpm run typecheck && pnpm run test:desktop && pnpm run test:publication && pnpm run test:epub && pnpm run test:hwpx && pnpm run test:atomic-output && pnpm run test:hwp-bridge && pnpm run test:epubcheck && pnpm run test:core && pnpm run build:core && pnpm run build:epub && pnpm run build:hwpx && pnpm run build:hwp-bridge && pnpm run test:typie && pnpm run test:integration && pnpm run build && pnpm run test:bundle && pnpm run test:electron && pnpm run test:package"
   }
 }

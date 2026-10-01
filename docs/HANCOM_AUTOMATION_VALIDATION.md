@@ -352,3 +352,35 @@ HKCU32/64 예제 등록값 부재·module 불변·artifact/tool54개 hash/bytes�
 공식 XSD 조항이라는 주장은 하지 않는다. 새 compiled exporter의 native 출력, 전체 표시 coverage, HWP conversion/reopen,
 5회·no-clobber·취소/timeout/종료·network·사람의 layout/IME 승인까지 통과한 것으로 해석하지 않는다.
 HWP는 계속 disabled이며 새 제품 commit은 exact Windows gate 전까지 implementation-only다.
+
+## 13. 2026-10-02 compiled source5347 tiny native TEXT
+
+정확한 source는 clean `534756060e8f56ec2f58c307004013cde592ada3`다. 새 debug HWPX exporter와 기존
+source5151 packaged core/main wrapper로 동일한 합성 원고에서 출력2개를 만들었다. 각각4650bytes,
+SHA `157f90aaede4f92f1e4332dca8eeb77e5b0a07b756bde457012742cf79bed619`이며 ZIP9/XML8·CRC·
+결정성·오류/누락/fallback0과 원고 불변을 확인했다. IR body4블록/18자, 표시5문단/44 scalar/52 UTF-8 bytes다.
+혼합 backend 준비 경로이며 전체 source5347 package 검증이라고 표현하지 않는다.
+
+`hancom-compiled-tiny-text-5347560-run1` 실제 native 시험은12.621초/exit0다. Exact PID/birth/image/job/private
+HWND·captured/current Active Count1·FullName·nonempty/unmodified를 확인한 후 TEXT를 읽었다.
+Leading empty carrier를 포함한5문단의 길이는 `[0,12,7,7,18]`이며 기대 문단과 전체 문자 순서가 일치했다.
+TEXT는52 UTF-16/52 scalar/60 UTF-8 bytes, CRLF4·lone CR/LF0·trailing separator 없음이다.
+본문은 로그나 evidence에 저장하지 않고 counts와 hashes만 남겼다.
+
+| 근거 | SHA-256 |
+| --- | --- |
+| tiny exporter preparation receipt | `70300ae7447c351771d916c43f3f6efa735685d0c6dea3dc17295f7aec53e15d` |
+| native raw receipt | `bb139d14ba50919c523fa3c90f0af96d7ee7b7ace49d0b3fd439911e121af052` |
+| byte-exact actual join | `4ad64044677376177e4f816dc2c7890fdb00935bf34ff181a01cb3a3e388d669` |
+| native TEXT SHA | `888a81677e2415c65d30404b466d84840b1286078dbd8e9cc997461522f480d4` |
+| length-framed paragraph sequence SHA | `15bc71456c579d78facbec3017a568347f6e971200b6da4f4c12480ccad9ab71` |
+| fresh postguard receipt | `0d5304dc28d6af2eab85469b6c00b3b4a9d7e67b013e65ae09c20f36200209f3` |
+
+Close BOOL true와 전후 guard→Quit→native exit를 통과했고 outer job31/active0·강제 종료 없음·handles/desktop
+정리를 확인했다. Input23표본은 Default/비활성·unknown0이었다. Fresh postguard에서 Hwp0·양쪽 HKCU view의
+예제 등록값 부재·module/input 불변과 원본/보관30파일의 hash/bytes를 확인했다.
+이 호출에서는 Module registration·Automation Open/SaveAs·HWP conversion/reopen을 실행하지 않았다.
+TCP는 UNKNOWN이며 전체 원고·layout·5회·취소/timeout·network나 사람의 acceptance를 통과한 것은 아니다.
+
+Source5347의 별도 full Windows gate는 fresh scale graph reopen에서 FAIL했으므로 compiled tiny TEXT의
+좁은 PASS를 전체 GO로 이전하지 않는다. HWP는 disabled이며 소유권/취소 수정안은 제품 미반영이다.

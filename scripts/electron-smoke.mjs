@@ -2024,17 +2024,60 @@ async function runPhase1dScaleElectronSmoke(scaleFixturePath) {
               "data-phase"
             ) ?? "missing",
           alertCount: body.querySelectorAll('[role="alert"]').length,
-          worldGraphPresent: body.querySelector(".world-graph-workspace") !== null,
+          worldGraphPresent:
+            body.querySelector('[data-testid="world-graph-workspace"]') !== null,
+          workspaceCount:
+            body.querySelectorAll('[data-testid="world-graph-workspace"]').length,
+          graphHostCount:
+            body.querySelectorAll('[data-testid="world-graph-host"]').length,
           binderRowCount: body.querySelectorAll("[data-node-id]").length
         }))
       ]);
-      throw new Error(
-        `Phase 1D scale reopen readiness failed: ${JSON.stringify({
-          dataset,
-          evidence,
-          pageState
-        })}; ${JSON.stringify(redactError(error))}`
-      );
+      const numeric = (value) =>
+        typeof value === "number" && Number.isFinite(value) ? value : null;
+      const allowed = (value, values) =>
+        values.includes(value) ? value : "OTHER_OR_UNAVAILABLE";
+      const message = error instanceof Error ? error.message : "";
+      const context = {
+        errorKind: message.includes("strict mode violation")
+          ? "LOCATOR_STRICTNESS"
+          : message.includes("Timed out waiting for world graph")
+            ? "READINESS_TIMEOUT"
+            : /timeout/iu.test(message) ? "TIMEOUT" : "OTHER",
+        errorName: allowed(error?.name, ["Error", "TimeoutError", "TypeError"]),
+        errorMessageLength: message.length,
+        dataset: {
+          readFailed: Boolean(dataset?.error),
+          busy: typeof dataset?.busy === "boolean" ? dataset.busy : null,
+          mode: allowed(dataset?.mode, ["FULL", "FOCUSED"]),
+          layout: allowed(dataset?.layout, ["preset", "cose", "grid", "breadthfirst"]),
+          depth: numeric(dataset?.depth), positionCount: numeric(dataset?.positionCount),
+          totalNodes: numeric(dataset?.totalNodeCount), totalEdges: numeric(dataset?.totalEdgeCount),
+          visibleNodes: numeric(dataset?.visibleNodeCount), visibleEdges: numeric(dataset?.visibleEdgeCount)
+        },
+        evidence: {
+          readFailed: Boolean(evidence?.error),
+          accessibleNodes: numeric(evidence?.accessible?.nodeCount),
+          accessibleEdges: numeric(evidence?.accessible?.edgeCount),
+          canvasCount: numeric(evidence?.canvas?.elementCount),
+          hostWidth: numeric(evidence?.canvas?.hostWidth), hostHeight: numeric(evidence?.canvas?.hostHeight),
+          nonTransparentSamples: numeric(evidence?.canvas?.nonTransparentSamples),
+          performance: Object.fromEntries(
+            ["ipcMs", "elementConversionMs", "filterMs", "layoutMs", "displayMs"].map(
+              (key) => [key, numeric(evidence?.performance?.[key])]
+            )
+          )
+        },
+        pageState: {
+          savePhase: allowed(pageState?.savePhase, ["saved", "dirty", "saving", "error", "missing"]),
+          alertCount: numeric(pageState?.alertCount), workspaceCount: numeric(pageState?.workspaceCount),
+          graphHostCount: numeric(pageState?.graphHostCount),
+          worldGraphPresent: pageState?.worldGraphPresent === true,
+          binderRowCount: numeric(pageState?.binderRowCount)
+        }
+      };
+      process.stderr.write("[scale-reopen-failure-context] " + JSON.stringify(context) + "\n");
+      throw new Error("Phase 1D scale reopen readiness failed: " + JSON.stringify(context));
     }
     const reopenedEvidence = reopenedEntry.evidence;
     reportStage("Phase 1D scale reopened controls opening");

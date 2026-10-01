@@ -1,20 +1,21 @@
 # Phase 1H — HWPX Export & Optional Local HWP Bridge 결과
 
 기준일: 2026-08-13  
-후속 갱신일: 2026-10-01
-문서 상태: baseline/source51/source660 history preserved; exact source5151 full development/fresh actual PASS
+후속 갱신일: 2026-10-02
+문서 상태: previous source5151 actual preserved; source5347 full FAIL / current verdict WITHHELD
 
 이 문서는 아래 기준일의 구현·실행 근거와 revision별 후속 actual을 보존한다. 현행 목표와
-작업 순서는 [PLANS.md](../PLANS.md)를 따른다. 현재 판정은 section29의 exact source5151
-development/fresh 실제 검증에 근거하며 과거 `WITHHELD`와 source51 실패는 해당 시점의 기록으로 남긴다.
+작업 순서는 [PLANS.md](../PLANS.md)를 따른다. Source5151의 section29 development/fresh 판정은
+그 revision에만 적용한다. 후속 제품 source5347은 section31의 full 실패로 현행 판정을 WITHHELD로 둔다.
 
 ## 1. Phase 1H 최종 판정
 
 ```text
-Phase 1H verdict: TECHNICAL GO — HWPX / PRIVATE LOCAL ONLY
-Actual tested source: 5151f6a804cf1565a09211ea8f7a11e9f547fd34
-HWPX source5151 actual: DEVELOPMENT PASS / FRESH-UNPACKED PASS
-Full pinned Windows aggregate source5151: PASS / exit0 / 5256.600s
+Phase 1H current verdict: WITHHELD
+Latest full tested source: 534756060e8f56ec2f58c307004013cde592ada3
+Latest full pinned Windows aggregate: FAIL / exit1 / 5830.138s
+Source5347 HWPX: DEVELOPMENT PASS / FRESH-UNPACKED NOT RUN
+Previous source5151: PRIVATE LOCAL TECHNICAL GO / full PASS / 5256.600s
 HWP Automation: ACTUAL OPEN FAILURE / DISABLED / MANUAL ACCEPTANCE PENDING
 Public/paid/customer/installer distribution: NOT APPROVED
 ```
@@ -624,3 +625,27 @@ join SHA는 `495c20377414547f5e17da8d2cfb04af97929c263fd1389ce176f1a65c57b9d1`�
 implementation-only다. 이전 source5151의 full PASS·long artifact hashes를 새 제품 출력에 이전하지 않는다.
 HWP conversion/reopen·전체 native coverage·5회·no-clobber·취소/timeout/종료·network는 미완료, HWPdisabled를 유지한다.
 Native IME15항목은 사람이 확인해야 하며 public/paid/customer/installer 배포나 최종 layout 승인은 아니다.
+
+## 31. 2026-10-02 compiled tiny TEXT와 실패한 전체 재검증
+
+Clean source `534756060e8f56ec2f58c307004013cde592ada3`의 좁은 writer/validator 수정은 관련21개
+테스트를 통과했다. 새 debug exporter의 tiny 출력2개는 4650bytes와 SHA
+`157f90aaede4f92f1e4332dca8eeb77e5b0a07b756bde457012742cf79bed619`로 동일했고 ZIP9/XML8·CRC·
+IR body18자·표시5문단/44자·원고 불변을 확인했다. 준비 경로의 core/main wrapper는 기존5151 packaged
+구성이다. 이를 새 source5347의 전체 packaged 성공으로 해석하지 않는다.
+
+이 출력의 실제 native TEXT는 leading empty carrier를 포함한5문단과 전체44 표시 문자가 일치했다.
+Close BOOL true·Quit·native exit·job0/noForce·Hwp0·HKCU32/64 예제 등록값 부재를 확인했다.
+Module registration·Automation Open/SaveAs·HWP conversion/reopen은 실행하지 않았고 TCP는 UNKNOWN이다.
+원본 및 joins는 [한컴 section13](HANCOM_AUTOMATION_VALIDATION.md#13-2026-10-02-compiled-source5347-tiny-native-text)를 따른다.
+
+`full-verify-5347560-run1`은 development E/F/G/H와 package build·fresh basic을 통과한 뒤 별도
+fresh scale World Graph 재열기에서 exit1·5830.138초로 실패했다. Fresh E/F/G/H는 실행하지 않았다.
+Cleanup active1에 소유 job 강제 정리를 사용했고 이후 job empty·handles/desktop 정리를 기록했다.
+Source before/after는5347 clean,11382 input 표본은 모두 Default/비활성·unknown0이었다.
+같은 package의 focused scale5회는 모두 PASS했으나 원래 실패 원인은 미확정이며 full FAIL은 유지한다.
+
+기존 G/H `netstat -ano -p tcp`는 IPv4만 수집했다. 실제 loopback 대조에서 IPv6 LISTENING/ESTABLISHED가
+각0이었고 `-ano` 수정본은 IPv4/IPv6 각각1이었다. 기존 명령의 PASS를 바꾸지는 않지만 TCP 관측 범위를
+IPv4로 한정한다. 새 수집 명령·회귀·실패 진단 수정도 다음 exact-source full runtime 성공 전에는
+verification implementation-only다. 현재 verdict는 WITHHELD, HWP는 disabled다.

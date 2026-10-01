@@ -4,33 +4,40 @@
 이 문서는 현재 목표·진척·완료 조건을 관리하는 유일한 실행 계획이다.
 
 **작업 재개:** 사용자가 재부팅을 위해 중지한 뒤 계속 진행을 요청했다. 실제 재부팅 여부는 독립 확인하지 않았다.
-현재 host·등록·도구 identity를 새로 확인했다. 합성 대조로 HWPX 구역 설정의 좁은 수정 범위를 확인해
-exporter에 반영했다. 관련21개 테스트는 통과했으며 새 exact source의 전체 Windows gate는 실행 전이다.
-이전 실패와 정상 종료 재시험의 결과는 각각 보존한다.
+현재 host·등록·도구 identity를 새로 확인했다. HWPX 구역 설정을 수정한 source5347의 관련21개 테스트와
+compiled tiny 출력의 native TEXT 5문단 일치·정상 종료는 통과했다. 그러나 전체 Windows gate는 새 배포본의
+장편 World Graph 재열기에서 실패했다. 같은 배포본의 집중5회는 모두 통과했으며 원래 실패 원인은 미확정이다.
+IPv6 수집 누락을 실제 대조로 확인해 검증 명령과 회귀 검사를 수정했다. 다음 exact source의 전체 gate를 다시 실행한다.
 
 ## 현재 판정
 
-기존 자동 검증과 로컬 ZIP 준비는 완료했다. 후속 실제 한컴 시험에서는 HWPX 열기 실패가 확인돼
-HWP 변환·재열기와 한컴 호환성 판정은 아직 완료하지 못했다. Native IME도 사람의 확인이 남아 있다.
-실제 검증 제품 source는 `5151f6a804cf1565a09211ea8f7a11e9f547fd34`다.
-후속 문서 갱신 커밋은 이 source와 구분하며, 문서만 바뀐 HEAD에서 전체 actual을 재실행했다고 표현하지 않는다.
+**현재 계획은 미완료다.** 기존 source5151의 전체 자동 검증·로컬 ZIP은 보존한다. 후속 제품 source
+`534756060e8f56ec2f58c307004013cde592ada3`의 전체 검증은 FAIL이며 현행 제품 판정은 WITHHELD다.
+HWP 변환·재열기와 전체 native 내용·layout 검증, 사람의 Native IME 확인이 남아 있다.
+서로 다른 source의 부분 성공을 합쳐 현행 전체 통과로 표현하지 않는다.
 
 | 항목 | 상태와 완료 근거 |
 | --- | --- |
-| 필수 Windows 검증 | **PASS**. Frozen install·전체 verify·unpacked·repository·format·diff 실제 실행. Desktop105파일/705테스트, native·WASM·CLI·build, 개발판/새 배포본 basic/D/E/F/G/H 통과 |
+| 필수 Windows 검증 | **현재 WITHHELD**. source5151의 전체 PASS 보존. source5347 frozen install·개발판 basic/D/E/F/G/H·unpacked·새 배포본 basic은 통과했으나 별도 장편 graph reopen에서 full FAIL. Fresh E/F/G/H는 미실행 |
 | EPUBCheck/JRE | **COMPLETE**. 고정 오프라인 bundle364파일과 manifest 포함. 앱의 실제 Java 검사·UI 취소·검사 중 종료·출력 보호·runtime 외부 요청0 확인 |
-| EPUB·HWPX 내부 경로 | **PRIVATE LOCAL TECHNICAL GO**. 일반·675,000자 원고, 장편5회 exact coverage·ZIP/XML 재열기·결정성·no-clobber·취소·종료 정리 통과. 실제 한컴 열기 성공은 이 판정에 포함하지 않음 |
+| EPUB·HWPX 내부 경로 | **source5151 PRIVATE LOCAL TECHNICAL GO** 보존. 새 source5347 개발판은 통과했으나 fresh 전체 판정은 대기. Compiled tiny HWPX의 결정성·ZIP/XML와 native 5문단 TEXT 일치만 별도 확인 |
 | 같은 source의 AI 실증 | **PASS WITH DIAGNOSTIC WARNING**. 임시 로컬 모델로 양쪽 실제 요청·검토/복사·단일 블록 적용·Undo/Redo·저장/reopen 확인. 진단 지정 응답 불일치 경고 보존 |
 | 실행용 ZIP | **COMPLETE**. 검증한561파일/81폴더/549,528,995bytes와 ZIP 전체 내용 hash 일치, 새 폴더 압축 해제 대조 통과 |
 | 수동 시험 준비물 | **PREPARED / NOT TESTED**. 한글5,000자·IME15항목·한컴 결과 template·절차 문서11파일 준비. Native IME와 최종 한컴 검증 결과는 미완료 |
 | IME 보고서 경로 | **REPORT EXPORT/RESTART PASS ONLY**. 같은 source의 배포본에서 JSON/Markdown 저장·재실행 후 보존 확인. 입력15항목은 모두 NOT TESTED |
-| 실제 한컴 시험 | **NARROW HWPX CONTROL PASS / HWP DISABLED**. 기존 제품 bridge의 OPEN_FAILED 유지. 마디 자체 tiny 출력에 구역 자식3개만 추가한 대조본은 정확한 문서 식별·Close BOOL·Quit·native exit 통과. 새 compiled exporter·전체 native 본문·SaveAs·HWP 재열기는 아직 검증 전 |
+| 실제 한컴 시험 | **COMPILED TINY TEXT PASS / HWP DISABLED**. source5347 exporter 출력의 native 5문단·44 표시 문자 일치, Close BOOL·Quit·native exit 확인. HWP SaveAs·재열기·전체 원고는 미검증 |
+| HWP 소유권·취소 수정안 | **PREPARED / MOCK PASS ONLY**. 별도 사본의 C#24개·앱 client27개·RPC 오류분류16개 시험 통과. 제품에는 미반영. 기본 Windows gate 후 승인된 실제 변환으로 검증 |
 
-전체 Windows run은 `full-verify-5151f6a-run1`이며 exit0·5256.600초다.
+기존 전체 Windows run은 `full-verify-5151f6a-run1`이며 exit0·5256.600초다.
 소유 job cleanup active0·강제 종료 없음·handle/desktop 정리를 확인했다.
 검사 desktop은10285회 모두 비활성이었지만 input 이름36회 판독 불가/error5로
 `inputDefaultEverySample=null`을 보존한다. 모든 입력 표본이 Default였다고 주장하지 않는다.
 상세 실행·실패/수정 이력·source/package/ZIP 연결은 [오프라인 runtime·배포 준비 결과](docs/OFFLINE_RUNTIME_RELEASE_RESULT.md)에 있다.
+
+새 `full-verify-5347560-run1`은 exit1·5830.138초다. Cleanup active1의 소유 job 강제 정리를 사용했고
+최종 job empty·handles/desktop 정리를 기록했다. Input11382표본은 모두 Default/비활성·unknown0이다.
+집중 graph5회의 PASS는 이 전체 실패를 대체하지 않는다. 기존 G/H TCP 관측은 IPv4 범위였으며
+IPv6 포함 수정과 실제 loopback 회귀 성공을 새 exact source의 runtime network GO로 이전하지 않는다.
 
 ## 제품 범위
 
@@ -53,7 +60,7 @@ Publication IR은 Reader Lab과 출판 exporter의 유일한 원고 입력이다
 
 ## 실행 파일과 준비물
 
-- 현재 실행 파일: `output/madi-win32-x64/madi.exe`.
+- 현재 재검증 대상 실행 파일: `output/madi-win32-x64/madi.exe` (source5347 full 실패 실행에서 만든 unpacked).
 - ZIP: `output/releases/madi-0.0.1-win32-x64-5151f6a804cf1565a09211ea8f7a11e9f547fd34/`의 ZIP·README·manifest·SHA256SUMS.
 - 수동 kit: `output/releases/manual-validation/5151f6a-036f0b13-b04c-45e8-88b6-d153534d7a8e/`.
 
@@ -67,30 +74,30 @@ full package receipt·source archive·whole inventory·ZIP byte join을 함께 �
 | 항목 | 현재 상태와 완료 조건 |
 | --- | --- |
 | Windows native Korean IME | **MANUAL VALIDATION PENDING**. 사람이 [체크리스트](docs/MANUAL_KOREAN_IME_CHECKLIST.md)15항목과 실제 환경을 기록 |
-| 실제 HWP 변환 | **ACTUAL OPEN FAILURE / DISABLED**. 임시 모듈·합성 로컬 시험은 승인됨. 출처를 확인한 대조 HWPX와 비교해 실패 원인을 해결하고 conversion/reopen·내용·반복·정리 검증 필요. 영구 등록·공개 배포·최종 layout 승인 없음 |
+| 실제 HWP 변환 | **DISABLED / ACTUAL CONVERSION PENDING**. 임시 모듈·합성 로컬 시험은 승인됨. Compiled tiny HWPX 내용 판독은 통과했지만 bridge conversion/reopen·전체 내용·반복·취소·정리·network는 미완료. 영구 등록·공개 배포·최종 layout 승인 없음 |
 | Typie 배포 범위 | 개발 permission은 owner-confirmed. 공개 배포 전 저장소 밖 실제 grant 범위를 소유자가 확인 |
 | 공개 배포 | ZIP은 private-local 실행 자료다. Signing·installer·자동 update·공개/유료/고객 배포 승인 완료로 해석하지 않음 |
 
 ## 현재 이어갈 작업
 
-재개 후 좁은 진단은 clean `ccd406ef620eb5175e3ac2fd6671d6dff2550853`에서 실행했다.
-제품·검증한 ZIP은 source5151 그대로이며 CCD에서 전체 Windows gate를 다시 실행한 것은 아니다.
-독립 빈 대조군은 정확한 FullName·단일 현재 문서·empty/unmodified와 Close BOOL true→Quit→native exit를 통과했다.
-마디 원본과 버전 major0→5만 바꾼 시험본은 둘 다15초 안에 native FullName을 확인하지 못했다.
-빈 대조군 성공은 마디 호환성·본문 coverage·HWP 변환 성공이 아니다.
-실패·정리·관측 범위와 원본 hash는 [한컴 재개 후 검증 기록](docs/HANCOM_AUTOMATION_VALIDATION.md#10-2026-10-01-resumed-native-controls)에 보존한다.
+이전 구조 대조·실패·재시험과 compiled tiny TEXT 근거는
+[한컴 검증 기록](docs/HANCOM_AUTOMATION_VALIDATION.md#10-2026-10-01-resumed-native-controls)에 보존한다.
+현행 작업 순서와 완료 조건은 다음과 같다.
 
-1. **구조 대조·좁은 제품 수정 완료, 전체 gate 전.** 독립18자 대조군은 실제 TEXT18자 일치까지 통과했다.
-   마디 tiny 원본·재포장 baseline과 단일 version/본문 control 변경들은 실패했으며,
-   마디 자체 구역에 `grid`·`visibility`·`lineNumberShape`만 추가한 대조본은 정확한 FullName·현재 문서1개·
-   nonempty/unmodified·Close BOOL true·Quit·native exit를 통과했다. 원본 major0·header·geometry·본문은 유지했다.
-   이 세 자식과 좁은 validator 회귀만 제품에 반영했고 관련21개 테스트·debug build·Rust format·repository/format/diff를 실제 통과했다.
-   새 compiled exporter의 출력·native TEXT를 따로 검증한다.
-   대조본은 stdlib 재포장 기준이며 native format·전체 coverage·HWP 성공으로 확대하지 않는다.
-2. 제품을 수정하면 해당 exact source의 필수 Windows 검증과 development/fresh 경로를 다시 실행한다.
-   HWP는 conversion/reopen·전체 표시 coverage·5회·no-clobber·취소/timeout/종료·network gate를 통과하기 전 켜지 않는다.
-   현재 제품의 승인 결과 연결·Item(0) 소유권·STA cleanup도 해결해야 한다.
-3. Native IME15항목은 사람이 실제 환경을 기록해 완료한다. 화면·키보드 사용 승인 전에는 입력 시험을 진행하지 않는다.
+1. **진행 중 — 기본 Windows gate 복구.** 장편 graph reopen의 실패 조건을 본문·ID·경로 없이 기록하도록
+   검증을 보완하고 IPv4/IPv6 실제 수집 회귀를 전체 verify에 포함한다. 현행 exact source의 frozen install·
+   verify·unpacked·repository·format·diff와 development/fresh 경로를 실제 통과해야 다음 제품 수정을 적용한다.
+2. **준비됨 — HWP bridge 소유권·취소 수정.** 기본 gate 통과 뒤 별도 사본에서 검증한 수정안을 적용한다.
+   unchecked COM activation을 제거하고 소유 process·문서·native exit, 취소/commit 경합과 cleanup 오류를 묶는다.
+   적용한 exact source의 빌드·관련 실제 시험을 다시 실행한다.
+3. **대기 — 승인된 실제 HWP 검증.** 원본 예제 모듈만 임시 등록하고 합성 tiny conversion→fresh reopen→
+   no-clobber부터 확인한다. 이어 전체 표시 내용·장편5회·취소/timeout/종료·IPv4/IPv6 network와 등록 원복을 검증한다.
+   Outer job 중단 뒤에도 정확한 등록값의 postguard/원복을 확인한다. 완료 전 HWP는 disabled다.
+4. **대기 — 최종 source 연결.** 최종 제품의 전체 pinned Windows gate와 dev/fresh AI를 실행하고,
+   실제 검증한 unpacked 전체 inventory·ZIP·새 압축 해제본을 바이트로 연결한다. 검증 후 포장 전에 재빌드하지 않는다.
+   IME report/수동 kit도 최종 배포본에 연결한다.
+5. **사람의 확인 필요 — Native IME15항목·한컴 layout/라이선스.** 실제 환경과 결과를 사람이 기록한다.
+   화면·키보드 사용 승인 전에는 입력 시험을 진행하지 않으며 private-local 기술 성공을 공개 배포 승인으로 바꾸지 않는다.
 
 기존 승인은 원본 unsigned module의 일시 등록·합성 로컬 시험이다. 예전 PID18872 특정 종료 승인을
 다른 process에 확대하지 않는다. 다른 registry namespace나 소유권이 불명확한 새 COM activation으로 우회하지 않는다.

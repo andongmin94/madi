@@ -209,3 +209,34 @@ TCP는 UNKNOWN이다. 상세·이전 FAIL·후속 PASS·source/hash/fresh bounda
 writer/validator의 좁은 수정 뒤 새 exact source에서 필수 pinned Windows 명령과 development/fresh actual을 다시 실행한다.
 기존 ZIP은 source5151의 보관본이며 새 compiled 제품으로 자동 갱신된 것으로 표현하지 않는다.
 HWP는 승인 결과·소유권·cleanup과 실제 conversion/reopen gate 전까지 disabled다. Native IME15항목은 수동 pending이다.
+
+## 2026-10-02 source5347 full 실패와 검증 보완
+
+Clean `534756060e8f56ec2f58c307004013cde592ada3`에서 frozen install은 실제 exit0·2.010초였다.
+새 HWPX profile 관련21개 테스트와 compiled tiny ZIP/XML·native TEXT5문단 성공은
+[한컴 section13](HANCOM_AUTOMATION_VALIDATION.md#13-2026-10-02-compiled-source5347-tiny-native-text)을 따른다.
+전체 Windows gate는 `full-verify-5347560-run1`, UTC15:55:44.8522052Z→17:32:55.0221730Z,
+exit1·5830.138초다. 개발판 basic/D/E/F/G/H·package build·fresh basic 뒤 별도의 fresh scale graph
+재열기 단계에서 실패했다. Fresh E/F/G/H의 기존 output은 run 밖의 stale 자료로 분류하고 새 성공에 포함하지 않았다.
+
+Cleanup active1의 소유 job을 강제 정리했다. 최종 job empty·process/thread/job handles와 desktop 정리를
+기록했지만 무강제 종료로 주장하지 않는다.11382 input 표본은 모두 Default/비활성·unknown0이었다.
+원본 full metadata SHA는 `444dcb410f1bef5c1eebd829546c68290ffcc3838586c918c472c931eb404906`이다.
+개발판 E/F/G/H raw·source68개 등77파일의 byte-exact 보관 receipt SHA는
+`1abfd0cdec6ad86357d7bf2081d6071a9ca7bd7c955ac8e9f558d51240ba0436`이다. 원본/보관77개를 독립 재확인했다.
+
+진단 사본 첫 준비는 import용 넓은 치환이 state/stats 키까지 바꿔 무효였다. 중단 snapshot을 terminal PASS로
+바꾸지 않았고 child/madi 부재·desktop 부재를 별도 관측했다. 직접 job accounting/모든handle close 증명은 없다.
+수정 사본은 원본과4 hunks를 대조하고 같은 동작·판정·timeout으로5회 실행했다.
+Elapsed32.947/33.494/33.300/35.185/33.419초, 모두 exit0/job0/noForce/desktop 제거·Default/unknown0이다.
+원본30파일 aggregate SHA는 `a501fb557d7cd691304c0decc372584a4f2a47185fbee7e3acfae7f4059bbc71`다.
+5회에서는 원래 실패가 재현되지 않았으며 source5347 full FAIL과 미확정 원인을 유지한다.
+기존 실패 문맥의 class selector는 실제 DOM과 달랐다. 다음 후보는 실제 testid와 숫자/closed enum만 기록하며
+본문·IDs·private paths·raw 오류를 출력하지 않는다. Readiness 조건이나 동작을 완화하지 않았다.
+
+G/H의 기존 `netstat -ano -p tcp` 수집은IPv4만 관측했다. 실제 local listener와 accepted connection 대조에서
+두 수집기 모두IPv4 LISTENING/ESTABLISHED 각1·IPv6 각0이었다. `-ano` 수정 사본은 두 가족의 두 상태를 각각1씩
+관측했다. RED1.641초/exit1과GREEN1.612초/exit0, 모두job0/noForce·Default/비활성·unknown0이다.
+UDP는TCP parser에 들어가지 않았고 endpoint/body는 기록하지 않았다. 이 검사는 수집기 회귀이며 runtime
+network GO가 아니다. 기존 PASS의 관측 범위는IPv4로 한정하고, 수정 후 exact source의 development/fresh 전체
+gate 전까지 현행 판정은WITHHELD다. Source5151 ZIP은 기존 보관본이며 현행 새 제품의 release로 자동 갱신하지 않았다.
