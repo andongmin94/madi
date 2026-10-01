@@ -216,7 +216,7 @@ describe("Phase 1H local HWP bridge process boundary", () => {
     await bridge.dispose();
   });
 
-  it("terminates its owned child immediately after a typed bridge error", async () => {
+  it("preserves a typed error while allowing its owned child to close naturally", async () => {
     const child = createChild((source, current) => {
       const request = JSON.parse(source) as Record<string, unknown>;
       current.stdout.write(
@@ -228,7 +228,7 @@ describe("Phase 1H local HWP bridge process boundary", () => {
           message: "The bridge operation failed."
         })}\n`
       );
-      queueMicrotask(() => current.emit("close", 1));
+      queueMicrotask(() => current.emit("close", 0));
     });
     returnChild(child);
     const bridge = new ProcessHwpBridge("fixture-hwp-bridge.exe");
@@ -236,7 +236,7 @@ describe("Phase 1H local HWP bridge process boundary", () => {
     await expect(bridge.probe()).rejects.toMatchObject({
       code: "AUTOMATION_FAILED"
     });
-    expect(child.kill).toHaveBeenCalledTimes(1);
+    expect(child.kill).not.toHaveBeenCalled();
     await bridge.dispose();
   });
 
@@ -284,7 +284,7 @@ describe("Phase 1H local HWP bridge process boundary", () => {
       command: "cancel",
       targetRequestId: OPERATION_ID
     });
-    expect(child.kill).toHaveBeenCalledTimes(1);
+    expect(child.kill).not.toHaveBeenCalled();
     await bridge.dispose();
   });
 
@@ -397,8 +397,8 @@ describe("Phase 1H local HWP bridge process boundary", () => {
     expect(child.kill).toHaveBeenCalledTimes(1);
     child.emit("close", null);
 
-    await expect(cancellation).resolves.toBe(true);
-    await expect(conversion).rejects.toThrow("cancelled");
+    await expect(cancellation).resolves.toBe(false);
+    await expect(conversion).rejects.toMatchObject({ code: "INPUT_WRITE_FAILED" });
     await bridge.dispose();
   });
 });

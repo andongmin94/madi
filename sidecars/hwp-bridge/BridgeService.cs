@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
+using System.Runtime.ExceptionServices;
+using System.Diagnostics;
 using Microsoft.Win32.SafeHandles;
 
 namespace Madi.HwpBridge;
@@ -9,6 +11,9 @@ public sealed class HwpBridgeService
     private const long MaximumConvertedFileBytes = 512L * 1024 * 1024;
     private readonly IHancomInstallationProbe installationProbe;
     private readonly IHancomAutomationFactory automationFactory;
+    private OperationControl? activeOperation;
+    // One drain bound includes the owned native 5000ms exit wait and STA completion.
+    private const int WorkerCleanupBudgetMs = 6_000;
 
     public HwpBridgeService(
         IHancomInstallationProbe installationProbe,
@@ -22,35 +27,88 @@ public sealed class HwpBridgeService
         BridgeRequest request,
         CancellationToken cancellationToken)
     {
-        var workerCancellation = new CancellationTokenSource();
-        var worker = StaWorker.Start(
-            () => ExecuteOnSta(request, workerCancellation.Token));
-        var timeout = Task.Delay(request.TimeoutMs);
-        var cancelled = CancellationSignal(cancellationToken);
-        var completed = await Task.WhenAny(worker, timeout, cancelled).ConfigureAwait(false);
-
-        if (completed == worker)
+        var control = new OperationControl(request.RequestId, request.TimeoutMs);
+        if (Interlocked.CompareExchange(ref activeOperation, control, null) is not null)
         {
-            workerCancellation.Dispose();
-            return await worker.ConfigureAwait(false);
+            control.Dispose();
+            return Error(request, "BUSY", "The bridge is already processing another operation.");
         }
-
-        workerCancellation.Cancel();
-        workerCancellation.Dispose();
-        return completed == cancelled
-            ? Error(request, "CANCELLED", "The bridge operation was cancelled.")
-            : Error(request, "TIMEOUT", "The bridge operation timed out.");
-    }
-
-    private BridgeResponse ExecuteOnSta(BridgeRequest request, CancellationToken cancellationToken)
-    {
+        using var externalCancellation = cancellationToken.Register(
+            () => control.TryStop("CANCELLED"));
+        using var deadlineCancellation = new CancellationTokenSource();
+        var worker = StaWorker.Start(() => ExecuteOnSta(request, control));
+        Task drained = worker;
         try
         {
-            return request switch
+            var timeout = Task.Delay(request.TimeoutMs, deadlineCancellation.Token);
+            var winner = await Task.WhenAny(worker, timeout, control.Stopped).ConfigureAwait(false);
+            if (winner != worker)
             {
-                ProbeRequest probe => Probe(probe, cancellationToken),
-                ConvertRequest convert => Convert(convert, cancellationToken),
-                ReopenVerifyRequest reopen => Reopen(reopen, cancellationToken),
+                if (winner == timeout)
+                {
+                    control.TryStop("TIMEOUT");
+                }
+            }
+            // Even a completed worker may race an already-started Abort callback.
+            // Both must drain before a terminal response or CTS disposal.
+            var cancellationCompletion = control.CancellationCompletion;
+            drained = Task.WhenAll(worker, cancellationCompletion);
+            if (await Task.WhenAny(drained, Task.Delay(WorkerCleanupBudgetMs))
+                    .ConfigureAwait(false) != drained)
+            {
+                control.SealFailure();
+                return Error(
+                    request,
+                    control.PrimaryCode ?? control.StopCode ?? "COMMIT_OUTCOME_UNKNOWN",
+                    "The bridge operation could not finish safely.",
+                    "WORKER_CLEANUP_TIMEOUT");
+            }
+            if (cancellationCompletion.IsFaulted)
+            {
+                _ = cancellationCompletion.Exception;
+                return Error(
+                    request,
+                    control.PrimaryCode ?? control.StopCode ?? "INTERNAL_ERROR",
+                    "The bridge operation could not finish safely.",
+                    "OWNED_ABORT_FAILED");
+            }
+            return await worker.ConfigureAwait(false);
+        }
+        finally
+        {
+            deadlineCancellation.Cancel();
+            Interlocked.CompareExchange(ref activeOperation, null, control);
+            if (drained.IsCompleted)
+            {
+                _ = drained.Exception;
+                control.Dispose();
+            }
+            else
+            {
+                _ = drained.ContinueWith(
+                    completed => { _ = completed.Exception; control.Dispose(); },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+            }
+        }
+    }
+
+    public bool TryCancel(string targetRequestId) =>
+        Volatile.Read(ref activeOperation) is { } operation &&
+        string.Equals(operation.RequestId, targetRequestId, StringComparison.Ordinal) &&
+        operation.TryStop("CANCELLED");
+
+    private BridgeResponse ExecuteOnSta(BridgeRequest request, OperationControl control)
+    {
+        BridgeResponse response;
+        try
+        {
+            response = request switch
+            {
+                ProbeRequest probe => Probe(probe, control.Token),
+                ConvertRequest convert => Convert(convert, control),
+                ReopenVerifyRequest reopen => Reopen(reopen, control),
                 CancelRequest cancel => Error(
                     cancel,
                     "NO_ACTIVE_OPERATION",
@@ -63,16 +121,28 @@ public sealed class HwpBridgeService
         }
         catch (BridgeFailureException failure)
         {
-            return Error(request, failure.Code, failure.SafeMessage);
+            control.RecordPrimary(failure);
+            response = Error(request, failure.Code, failure.SafeMessage);
         }
         catch (OperationCanceledException)
         {
-            return Error(request, "CANCELLED", "The bridge operation was cancelled.");
+            response = Error(
+                request, control.PrimaryCode ?? control.StopCode ?? "CANCELLED",
+                "The bridge operation was stopped.");
         }
-        catch (Exception)
+        catch (Exception failure)
         {
-            return Error(request, "INTERNAL_ERROR", "The bridge operation failed safely.");
+            control.RecordPrimary(failure);
+            response = Error(request, "INTERNAL_ERROR", "The bridge operation failed safely.");
         }
+        if (control.CleanupErrorCode is { } cleanupCode)
+        {
+            response = response.Status == "SUCCESS"
+                ? Error(request, "CLEANUP_FAILED", "The bridge could not finish cleanup safely.", cleanupCode)
+                : response with { CleanupErrorCode = cleanupCode };
+        }
+        control.Finish();
+        return response;
     }
 
     private BridgeResponse Probe(ProbeRequest request, CancellationToken cancellationToken)
@@ -108,8 +178,9 @@ public sealed class HwpBridgeService
             null);
     }
 
-    private BridgeResponse Convert(ConvertRequest request, CancellationToken cancellationToken)
+    private BridgeResponse Convert(ConvertRequest request, OperationControl control)
     {
+        var cancellationToken = control.Token;
         var input = BridgePathPolicy.ExistingInput(request.InputHwpx, ".hwpx");
         var output = BridgePathPolicy.Output(request.OutputHwp, ".hwp");
         ValidateOutputState(output);
@@ -120,67 +191,105 @@ public sealed class HwpBridgeService
         var committed = false;
         try
         {
-            using (var session = automationFactory.Create(installation))
+            var version = RunSession(installation, control, session =>
             {
-                try
-                {
-                    session.Open(input, "HWPX", cancellationToken);
-                    session.SaveAs(temporaryOutput, "HWP", cancellationToken);
-                }
-                finally
-                {
-                    session.CloseOpenedDocument();
-                }
-
-                ValidateConvertedFile(temporaryOutput);
-                cancellationToken.ThrowIfCancellationRequested();
-                var (byteLength, sha256) = HashFile(
-                    temporaryOutput,
-                    cancellationToken);
-                Commit(temporaryOutput, output);
-                committed = true;
-                return BridgeResponse.Conversion(
-                    request,
-                    output,
-                    byteLength,
-                    sha256,
-                    session.Version);
+                session.Open(input, "HWPX", cancellationToken);
+                session.SaveAs(temporaryOutput, "HWP", cancellationToken);
+            });
+            ValidateConvertedFile(temporaryOutput);
+            var (byteLength, sha256) = HashFile(temporaryOutput, cancellationToken);
+            if (!control.TryBeginCommit())
+            {
+                throw new OperationCanceledException(cancellationToken);
             }
+            Commit(temporaryOutput, output);
+            committed = true;
+            return BridgeResponse.Conversion(request, output, byteLength, sha256, version);
         }
         finally
         {
             if (!committed)
             {
-                DeleteTemporaryFile(temporaryOutput);
+                if (DeleteTemporaryFile(temporaryOutput) is { } cleanupCode)
+                {
+                    control.RecordCleanup(cleanupCode);
+                }
             }
         }
     }
 
     private BridgeResponse Reopen(
         ReopenVerifyRequest request,
-        CancellationToken cancellationToken)
+        OperationControl control)
     {
+        var cancellationToken = control.Token;
         var input = BridgePathPolicy.ExistingInput(request.InputHwp, ".hwp");
         cancellationToken.ThrowIfCancellationRequested();
         var installation = RequireAvailableInstallation();
-        using var session = automationFactory.Create(installation);
+        var version = RunSession(installation, control, session =>
+        {
+            try
+            {
+                session.Open(input, "HWP", cancellationToken);
+            }
+            catch (BridgeFailureException failure) when (failure.Code == "OPEN_FAILED")
+            {
+                throw new BridgeFailureException(
+                    "REOPEN_FAILED",
+                    "Hancom Office could not reopen the converted document.",
+                    failure.CleanupErrorCode);
+            }
+        });
+        if (!control.TryBeginCommit())
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+        return BridgeResponse.Reopen(request, version);
+    }
+
+    private string? RunSession(
+        HancomInstallation installation,
+        OperationControl control,
+        Action<IHancomAutomationSession> operation)
+    {
+        IHancomAutomationSession? session = null;
+        Exception? primaryFailure = null;
+        string? version = null;
         try
         {
-            session.Open(input, "HWP", cancellationToken);
+            session = automationFactory.Create(installation, control.Token);
+            operation(session);
+            version = session.Version;
         }
-        catch (BridgeFailureException failure) when (failure.Code == "OPEN_FAILED")
+        catch (Exception failure)
         {
-            throw new BridgeFailureException(
-                "REOPEN_FAILED",
-                "Hancom Office could not reopen the converted document.");
+            primaryFailure = failure;
+            control.RecordPrimary(failure);
         }
         finally
         {
-            session.CloseOpenedDocument();
+            if (session is not null)
+            {
+                try { session.CloseOpenedDocument(); }
+                catch (Exception failure) { control.RecordCleanup(SafeCleanupCode(failure)); }
+                try { session.Dispose(); }
+                catch (Exception failure) { control.RecordCleanup(SafeCleanupCode(failure)); }
+            }
         }
-
-        return BridgeResponse.Reopen(request, session.Version);
+        if (primaryFailure is not null)
+        {
+            ExceptionDispatchInfo.Capture(primaryFailure).Throw();
+        }
+        if (control.CleanupErrorCode is not null)
+        {
+            throw new BridgeFailureException("CLEANUP_FAILED", "The bridge cleanup failed safely.");
+        }
+        control.Token.ThrowIfCancellationRequested();
+        return version;
     }
+
+    private static string SafeCleanupCode(Exception failure) =>
+        failure is BridgeFailureException typed ? typed.Code : "CLEANUP_FAILED";
 
     private HancomInstallation RequireAvailableInstallation()
     {
@@ -355,7 +464,7 @@ public sealed class HwpBridgeService
         }
     }
 
-    private static void DeleteTemporaryFile(string path)
+    private static string? DeleteTemporaryFile(string path)
     {
         try
         {
@@ -367,31 +476,91 @@ public sealed class HwpBridgeService
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException)
         {
-            // Never replace the requested output after a failed cleanup.
+            return "TEMPORARY_OUTPUT_CLEANUP_FAILED";
         }
+        return null;
     }
 
-    private static Task CancellationSignal(CancellationToken cancellationToken)
+    private sealed class OperationControl : IDisposable
     {
-        if (!cancellationToken.CanBeCanceled)
-        {
-            return Task.Delay(Timeout.InfiniteTimeSpan);
-        }
-
-        var signal = new TaskCompletionSource<bool>(
+        private readonly object gate = new();
+        private readonly CancellationTokenSource cancellation = new();
+        private readonly Stopwatch elapsed = Stopwatch.StartNew();
+        private readonly int timeoutMs;
+        private readonly TaskCompletionSource<bool> stopped = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        cancellationToken.Register(static state =>
+        private Task cancellationCompletion = Task.CompletedTask;
+        private string? stopCode;
+        private string? primaryCode;
+        private string? cleanupErrorCode;
+        private bool commitReserved;
+        private bool finished;
+
+        public OperationControl(string requestId, int timeoutMs)
         {
-            ((TaskCompletionSource<bool>)state!).TrySetResult(true);
-        }, signal);
-        return signal.Task;
+            RequestId = requestId;
+            this.timeoutMs = timeoutMs;
+        }
+        public string RequestId { get; }
+        public CancellationToken Token => cancellation.Token;
+        public Task Stopped => stopped.Task;
+        public Task CancellationCompletion { get { lock (gate) return cancellationCompletion; } }
+        public string? StopCode { get { lock (gate) return stopCode; } }
+        public string? PrimaryCode { get { lock (gate) return primaryCode; } }
+        public string? CleanupErrorCode { get { lock (gate) return cleanupErrorCode; } }
+
+        public bool TryStop(string code)
+        {
+            lock (gate)
+            {
+                if (commitReserved || finished) return false;
+                if (stopCode is not null) return true;
+                stopCode = code;
+                cancellationCompletion = cancellation.CancelAsync();
+                stopped.TrySetResult(true);
+                return true;
+            }
+        }
+        public bool TryBeginCommit()
+        {
+            lock (gate)
+            {
+                if (stopCode is not null || finished || commitReserved) return false;
+                if (elapsed.ElapsedMilliseconds >= timeoutMs)
+                {
+                    TryStop("TIMEOUT");
+                    return false;
+                }
+                commitReserved = true;
+                return true;
+            }
+        }
+        public void RecordPrimary(Exception failure)
+        {
+            lock (gate)
+            {
+                primaryCode ??= failure switch
+                {
+                    BridgeFailureException typed => typed.Code,
+                    OperationCanceledException => stopCode ?? "CANCELLED",
+                    _ => "INTERNAL_ERROR",
+                };
+                if (failure is BridgeFailureException { CleanupErrorCode: { } code })
+                    cleanupErrorCode ??= code;
+            }
+        }
+        public void RecordCleanup(string code) { lock (gate) cleanupErrorCode ??= code; }
+        public void SealFailure() { lock (gate) finished = true; }
+        public void Finish() { lock (gate) finished = true; }
+        public void Dispose() => cancellation.Dispose();
     }
 
     private static BridgeResponse Error(
         BridgeRequest request,
         string code,
-        string message) =>
-        BridgeResponse.Error(request.RequestId, request.Command, code, message);
+        string message,
+        string? cleanupErrorCode = null) =>
+        BridgeResponse.Error(request.RequestId, request.Command, code, message, cleanupErrorCode);
 }
 
 internal readonly record struct FileIdentity(

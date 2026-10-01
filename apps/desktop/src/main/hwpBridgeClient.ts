@@ -8,6 +8,7 @@ const PROBE_TIMEOUT_MS = 10_000;
 const CONVERT_TIMEOUT_MS = 300_000;
 const REOPEN_TIMEOUT_MS = 120_000;
 const PROCESS_TIMEOUT_GRACE_MS = 2_000;
+const REQUEST_CLEANUP_GRACE_MS = 8_000;
 const PROCESS_CLOSE_TIMEOUT_MS = 15_000;
 const PROCESS_FORCE_CLOSE_TIMEOUT_MS = 5_000;
 const STRICT_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
@@ -56,7 +57,10 @@ export interface HwpBridgePort {
 }
 
 export class HwpBridgeOperationError extends Error {
-  public constructor(public readonly code: string) {
+  public constructor(
+    public readonly code: string,
+    public readonly cleanupErrorCode: string | null = null
+  ) {
     super("The local HWP bridge could not complete the operation");
     this.name = "HwpBridgeOperationError";
   }
@@ -74,15 +78,18 @@ interface ActiveBridgeProcess {
   readonly requestId: string;
   readonly command: BridgeCommand;
   readonly child: ChildProcessWithoutNullStreams;
-  readonly timeout: NodeJS.Timeout;
+  timeout: NodeJS.Timeout;
   readonly closed: Promise<void>;
   readonly resolveClosed: () => void;
   readonly cancelAcknowledged: Promise<boolean>;
   readonly resolveCancelAcknowledged: (cancelled: boolean) => void;
+  readonly rejectOperation: (error: Error) => void;
   cancelRequestId: string | null;
   forceKillTimeout: NodeJS.Timeout | null;
+  forceFailureTimeout: NodeJS.Timeout | null;
   closedFlag: boolean;
   cancellationRequested: boolean;
+  cancelAcknowledgementReceived: boolean;
   terminalReceived: boolean;
   terminalError: Error | null;
 }
@@ -200,11 +207,13 @@ function parseError(
   response: Record<string, unknown>,
   request: { readonly requestId: string; readonly command: string }
 ): Error {
-  exact(
-    response,
-    ["requestId", "command", "status", "errorCode", "message"],
-    "HWP bridge error"
-  );
+  const required = ["requestId", "command", "status", "errorCode", "message"];
+  if (
+    required.some((key) => !Object.prototype.hasOwnProperty.call(response, key)) ||
+    Object.keys(response).some((key) => !required.includes(key) && key !== "cleanupErrorCode")
+  ) {
+    throw new Error("Invalid HWP bridge error");
+  }
   if (
     response.requestId !== request.requestId ||
     response.command !== request.command ||
@@ -213,10 +222,17 @@ function parseError(
     throw new Error("Invalid HWP bridge error identity");
   }
   const code = text(response.errorCode, "HWP bridge error code", 128);
+  const cleanupErrorCode = "cleanupErrorCode" in response
+    ? text(response.cleanupErrorCode, "HWP bridge cleanup error code", 128)
+    : null;
+  if (!/^[A-Z][A-Z0-9_]*$/u.test(code) ||
+      (cleanupErrorCode !== null && !/^[A-Z][A-Z0-9_]*$/u.test(cleanupErrorCode))) {
+    throw new Error("Invalid HWP bridge error code");
+  }
   text(response.message, "HWP bridge error message", 2_000);
-  return code === "CANCELLED"
+  return code === "CANCELLED" && cleanupErrorCode === null
     ? new HwpBridgeCancelledError()
-    : new HwpBridgeOperationError(code);
+    : new HwpBridgeOperationError(code, cleanupErrorCode);
 }
 
 function parseProbe(
@@ -377,6 +393,22 @@ export class ProcessHwpBridge implements HwpBridgePort {
         } catch {
           // The close bound below reports a child that cannot be stopped.
         }
+        active.forceFailureTimeout ??= setTimeout(() => {
+          if (!active.closedFlag) {
+            const failure = new HwpBridgeOperationError(
+              active.terminalError instanceof HwpBridgeOperationError
+                ? active.terminalError.code
+                : active.terminalError instanceof HwpBridgeCancelledError
+                  ? "CANCELLED"
+                  : "PROCESS_SHUTDOWN_TIMEOUT",
+              "PROCESS_SHUTDOWN_TIMEOUT"
+            );
+            active.terminalError = failure;
+            // Reject the request without inventing a close event or deleting
+            // the retained child. Disposal must still report missing cleanup.
+            active.rejectOperation(failure);
+          }
+        }, PROCESS_FORCE_CLOSE_TIMEOUT_MS);
       }
     }, PROCESS_CLOSE_TIMEOUT_MS);
   }
@@ -446,7 +478,7 @@ export class ProcessHwpBridge implements HwpBridgePort {
             new HwpBridgeOperationError("PROCESS_TIMEOUT")
           );
         }
-      }, timeoutMs + PROCESS_TIMEOUT_GRACE_MS);
+      }, timeoutMs + REQUEST_CLEANUP_GRACE_MS);
       const active: ActiveBridgeProcess = {
         operationId,
         requestId: requestId(text(request.requestId, "HWP bridge request id", 64)),
@@ -457,10 +489,13 @@ export class ProcessHwpBridge implements HwpBridgePort {
         resolveClosed,
         cancelAcknowledged,
         resolveCancelAcknowledged,
+        rejectOperation: reject,
         cancelRequestId: null,
         forceKillTimeout: null,
+        forceFailureTimeout: null,
         closedFlag: false,
         cancellationRequested: false,
+        cancelAcknowledgementReceived: false,
         terminalReceived: false,
         terminalError: null
       };
@@ -468,6 +503,7 @@ export class ProcessHwpBridge implements HwpBridgePort {
       let stdout = Buffer.alloc(0);
       let stdoutBytes = 0;
       let result: T | null = null;
+      let resultError: Error | null = null;
       const fail = (error: Error): void => this.terminate(active, error);
       const parseLine = (line: Buffer): void => {
         if (line.byteLength === 0 || active.closedFlag || active.terminalError) {
@@ -492,11 +528,13 @@ export class ProcessHwpBridge implements HwpBridgePort {
               active.cancelRequestId === null ||
               message.requestId !== active.cancelRequestId ||
               message.status !== "SUCCESS" ||
-              message.cancelled !== true
+              typeof message.cancelled !== "boolean" ||
+              active.cancelAcknowledgementReceived
             ) {
               throw new Error("Invalid HWP bridge cancellation response");
             }
-            active.resolveCancelAcknowledged(true);
+            active.cancelAcknowledgementReceived = true;
+            active.resolveCancelAcknowledged(message.cancelled);
             return;
           }
           if (active.terminalReceived) {
@@ -510,11 +548,23 @@ export class ProcessHwpBridge implements HwpBridgePort {
               error instanceof HwpBridgeOperationError ||
               error instanceof HwpBridgeCancelledError
             ) {
-              this.terminate(active, error);
-              return;
+              resultError = error;
+              active.terminalReceived = true;
+            } else {
+              throw error;
             }
-            throw error;
           }
+          // A typed terminal response promises that owned cleanup completed.
+          // Keep validating stdout/stderr while awaiting natural process close.
+          clearTimeout(active.timeout);
+          active.timeout = setTimeout(() => {
+            fail(new HwpBridgeOperationError(
+              resultError instanceof HwpBridgeOperationError
+                ? resultError.code
+                : resultError instanceof HwpBridgeCancelledError ? "CANCELLED" : "PROCESS_SHUTDOWN_TIMEOUT",
+              "PROCESS_SHUTDOWN_TIMEOUT"
+            ));
+          }, PROCESS_CLOSE_TIMEOUT_MS);
         } catch (error) {
           fail(new HwpBridgeOperationError("INVALID_RESPONSE"));
         }
@@ -551,20 +601,26 @@ export class ProcessHwpBridge implements HwpBridgePort {
       );
       child.on("close", (code) => {
         try {
-          clearTimeout(timeout);
+          clearTimeout(active.timeout);
           if (active.forceKillTimeout) {
             clearTimeout(active.forceKillTimeout);
+          }
+          if (active.forceFailureTimeout) {
+            clearTimeout(active.forceFailureTimeout);
           }
           if (!active.terminalError && stdout.byteLength > 0) {
             parseLine(stdout);
           }
           const terminal =
             active.terminalError ??
-            (active.cancellationRequested
-              ? new HwpBridgeCancelledError()
-              : code !== 0 || !active.terminalReceived || result === null
+            (code !== 0
+              ? new HwpBridgeOperationError(
+                  resultError instanceof HwpBridgeOperationError ? resultError.code : "PROCESS_EXIT",
+                  "PROCESS_EXIT"
+                )
+              : resultError ?? (!active.terminalReceived || result === null
                 ? new HwpBridgeOperationError("PROCESS_EXIT")
-                : null);
+                : null));
           if (terminal) {
             reject(terminal);
           } else {
@@ -573,6 +629,13 @@ export class ProcessHwpBridge implements HwpBridgePort {
         } catch {
           reject(new HwpBridgeOperationError("PROCESS_SHUTDOWN_FAILED"));
         } finally {
+          clearTimeout(active.timeout);
+          if (active.forceKillTimeout) {
+            clearTimeout(active.forceKillTimeout);
+          }
+          if (active.forceFailureTimeout) {
+            clearTimeout(active.forceFailureTimeout);
+          }
           active.closedFlag = true;
           if (this.active.get(operationId) === active) {
             this.active.delete(operationId);
@@ -686,45 +749,46 @@ export class ProcessHwpBridge implements HwpBridgePort {
     ) {
       return false;
     }
-    if (active.cancellationRequested) {
-      await this.waitForClosed(active);
-      return true;
-    }
-    active.cancellationRequested = true;
-    active.cancelRequestId = `cancel-${randomUUID()}`;
-    const cancelRequestId = active.cancelRequestId;
-    try {
-      active.child.stdin.write(
-        `${JSON.stringify({
-          requestId: cancelRequestId,
-          command: "cancel",
-          targetRequestId: active.requestId
-        })}\n`,
-        "utf8",
-        (error) => {
-          if (
-            !error ||
-            active.closedFlag ||
-            this.active.get(operationId) !== active ||
-            active.cancelRequestId !== cancelRequestId
-          ) {
-            return;
+    if (!active.cancellationRequested) {
+      active.cancellationRequested = true;
+      active.cancelRequestId = `cancel-${randomUUID()}`;
+      const cancelRequestId = active.cancelRequestId;
+      try {
+        active.child.stdin.write(
+          `${JSON.stringify({
+            requestId: cancelRequestId,
+            command: "cancel",
+            targetRequestId: active.requestId
+          })}\n`,
+          "utf8",
+          (error) => {
+            if (
+              !error ||
+              active.closedFlag ||
+              active.terminalReceived ||
+              this.active.get(operationId) !== active ||
+              active.cancelRequestId !== cancelRequestId
+            ) {
+              return;
+            }
+            this.terminate(active, new HwpBridgeOperationError("INPUT_WRITE_FAILED"));
           }
-          this.terminate(active, new HwpBridgeCancelledError());
+        );
+      } catch {
+        if (
+          !active.closedFlag &&
+          !active.terminalReceived &&
+          this.active.get(operationId) === active &&
+          active.cancelRequestId === cancelRequestId
+        ) {
+          this.terminate(active, new HwpBridgeOperationError("INPUT_WRITE_FAILED"));
         }
-      );
-    } catch {
-      if (
-        !active.closedFlag &&
-        this.active.get(operationId) === active &&
-        active.cancelRequestId === cancelRequestId
-      ) {
-        this.terminate(active, new HwpBridgeCancelledError());
       }
     }
     let acknowledgementTimeout: NodeJS.Timeout | null = null;
+    let cancelled = false;
     try {
-      await Promise.race([
+      cancelled = await Promise.race([
         active.cancelAcknowledged,
         active.closed.then(() => false),
         new Promise<never>((_resolve, reject) => {
@@ -735,14 +799,16 @@ export class ProcessHwpBridge implements HwpBridgePort {
         })
       ]);
     } catch {
-      this.terminate(active, new HwpBridgeCancelledError());
+      if (!active.terminalReceived) {
+        this.terminate(active, new HwpBridgeOperationError("CANCEL_ACK_TIMEOUT"));
+      }
     } finally {
       if (acknowledgementTimeout) {
         clearTimeout(acknowledgementTimeout);
       }
     }
     await this.waitForClosed(active);
-    return true;
+    return cancelled;
   }
 
   public async dispose(): Promise<void> {

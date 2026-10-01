@@ -37,6 +37,9 @@ public sealed record BridgeResponse
     public string? ErrorCode { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CleanupErrorCode { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Message { get; init; }
 
     public static BridgeResponse Probe(
@@ -92,12 +95,14 @@ public sealed record BridgeResponse
         string requestId,
         string command,
         string errorCode,
-        string message) => new()
+        string message,
+        string? cleanupErrorCode = null) => new()
         {
             RequestId = requestId,
             Command = command,
             Status = "ERROR",
             ErrorCode = errorCode,
+            CleanupErrorCode = cleanupErrorCode,
             Message = message,
         };
 }

@@ -25,7 +25,7 @@ public static class Program
             ("convert rejects relative paths", ConvertRejectsRelativePath),
             ("convert rejects wrong extensions", ConvertRejectsWrongExtension),
             ("convert enforces no-clobber", ConvertEnforcesNoClobber),
-            ("convert timeout returns without killing a process", ConvertTimesOutSafely),
+            ("convert timeout waits for owned abort and worker cleanup", ConvertTimesOutSafely),
             ("convert cancellation cleans up", ConvertCancellationCleansUp),
             ("conversion failure preserves HWPX", ConversionFailurePreservesInput),
             ("conversion rejects oversized output before hashing", ConversionRejectsOversizedOutput),
@@ -33,6 +33,13 @@ public static class Program
             ("mock reopen verifies exact HWP contract", MockReopenSucceeds),
             ("JSONL host accepts only targeted cancel", HostAcceptsTargetedCancel),
             ("JSONL host cancels an operation when stdin closes", HostCancelsOnInputEof),
+            ("conversion cannot commit before disposal finishes", CommitWaitsForDisposal),
+            ("cleanup failure prevents commit", CleanupFailurePreventsCommit),
+            ("primary operation error preserves separate cleanup error", PrimaryFailurePreservesCleanupFailure),
+            ("targeted stop during disposal prevents late commit", StopDuringDisposalPreventsCommit),
+            ("worker completion still drains the cancellation callback", CompletedWorkerDrainsAbortCallback),
+            ("cleanup deadline cannot allow a late commit", CleanupTimeoutPreventsLateCommit),
+            ("foreign output created during disposal is not clobbered", OutputCreatedDuringDisposalIsPreserved),
         };
 
         var failures = 0;
@@ -335,6 +342,7 @@ public static class Program
         var session = new FakeAutomationSession
         {
             OpenBlock = release,
+            AbortReleasesBlockingCall = true,
         };
         var service = Service(
             AvailableInstallation,
@@ -348,8 +356,8 @@ public static class Program
         Error(response, "TIMEOUT");
         True(stopwatch.ElapsedMilliseconds < 1_000);
         False(File.Exists(output));
-        release.Set();
-        True(SpinWait.SpinUntil(() => session.Disposed, 2_000));
+        True(session.AbortCalled);
+        True(session.Disposed);
         False(Directory.EnumerateFiles(directory.Path, ".madi-hwp-*.hwp").Any());
     }
 
@@ -375,7 +383,7 @@ public static class Program
         var response = await operation.ConfigureAwait(false);
 
         Error(response, "CANCELLED");
-        True(SpinWait.SpinUntil(() => session.Disposed, 2_000));
+        True(session.Disposed);
         True(session.CloseCalled);
         False(File.Exists(output));
         False(Directory.EnumerateFiles(directory.Path, ".madi-hwp-*.hwp").Any());
@@ -561,6 +569,178 @@ public static class Program
         Equal("ERROR", terminal.RootElement.GetProperty("status").GetString());
         Equal("CANCELLED", terminal.RootElement.GetProperty("errorCode").GetString());
         True(SpinWait.SpinUntil(() => session.CloseCalled && session.Disposed, 2_000));
+    }
+
+    private static async Task CommitWaitsForDisposal()
+    {
+        using var directory = new TemporaryDirectory();
+        var input = directory.File("input.hwpx");
+        var output = directory.File("output.hwp");
+        File.WriteAllBytes(input, [1, 2, 3]);
+        using var release = new ManualResetEventSlim(false);
+        var session = new FakeAutomationSession { DisposeBlock = release };
+        var operation = Service(AvailableInstallation, new FakeAutomationFactory(() => session))
+            .ExecuteAsync(ConvertRequest(input, output, "dispose_barrier"), CancellationToken.None);
+        try
+        {
+            True(session.DisposeStarted.Wait(2_000));
+            False(operation.IsCompleted);
+            False(File.Exists(output));
+            Equal(1, Directory.EnumerateFiles(directory.Path, ".madi-hwp-*.hwp").Count());
+        }
+        finally { release.Set(); }
+        var response = await operation.ConfigureAwait(false);
+        Equal("SUCCESS", response.Status);
+        True(session.Disposed);
+        SequenceEqual(session.ConvertedBytes, File.ReadAllBytes(output));
+        Equal("12.0-mock", response.HancomVersion);
+    }
+
+    private static async Task CleanupFailurePreventsCommit()
+    {
+        using var directory = new TemporaryDirectory();
+        var input = directory.File("input.hwpx");
+        var output = directory.File("output.hwp");
+        byte[] source = [1, 2, 3];
+        File.WriteAllBytes(input, source);
+        var session = new FakeAutomationSession
+        {
+            DisposeFailure = new BridgeFailureException("NATIVE_EXIT_FAILED", "Cleanup failed safely."),
+        };
+        var response = await Service(AvailableInstallation, new FakeAutomationFactory(() => session))
+            .ExecuteAsync(ConvertRequest(input, output, "cleanup_failure"), CancellationToken.None)
+            .ConfigureAwait(false);
+        Error(response, "CLEANUP_FAILED");
+        Equal("NATIVE_EXIT_FAILED", response.CleanupErrorCode);
+        False(File.Exists(output));
+        SequenceEqual(source, File.ReadAllBytes(input));
+        False(Directory.EnumerateFiles(directory.Path, ".madi-hwp-*.hwp").Any());
+    }
+
+    private static async Task PrimaryFailurePreservesCleanupFailure()
+    {
+        using var directory = new TemporaryDirectory();
+        var input = directory.File("input.hwpx");
+        var output = directory.File("output.hwp");
+        File.WriteAllBytes(input, [1, 2, 3]);
+        var session = new FakeAutomationSession
+        {
+            SaveFailure = new BridgeFailureException("SAVE_FAILED", "Save failed safely."),
+            CloseFailure = new BridgeFailureException("NATIVE_CLOSE_FAILED", "Close failed safely."),
+            DisposeFailure = new BridgeFailureException("NATIVE_EXIT_FAILED", "Exit failed safely."),
+        };
+        var response = await Service(AvailableInstallation, new FakeAutomationFactory(() => session))
+            .ExecuteAsync(ConvertRequest(input, output, "primary_and_cleanup"), CancellationToken.None)
+            .ConfigureAwait(false);
+        Error(response, "SAVE_FAILED");
+        Equal("NATIVE_CLOSE_FAILED", response.CleanupErrorCode);
+        True(session.DisposeStarted.IsSet);
+        False(File.Exists(output));
+    }
+
+    private static async Task StopDuringDisposalPreventsCommit()
+    {
+        using var directory = new TemporaryDirectory();
+        var input = directory.File("input.hwpx");
+        var output = directory.File("output.hwp");
+        File.WriteAllBytes(input, [1, 2, 3]);
+        using var release = new ManualResetEventSlim(false);
+        var session = new FakeAutomationSession { DisposeBlock = release, AbortReleasesBlockingCall = true };
+        var service = Service(AvailableInstallation, new FakeAutomationFactory(() => session));
+        var operation = service.ExecuteAsync(
+            new ConvertRequest("dispose_cancel", input, output, false, 5_000), CancellationToken.None);
+        True(session.DisposeStarted.Wait(2_000));
+        False(service.TryCancel("unrelated_request"));
+        False(operation.IsCompleted);
+        True(service.TryCancel("dispose_cancel"));
+        var response = await operation.ConfigureAwait(false);
+        Error(response, "CANCELLED");
+        Equal<string?>(null, response.CleanupErrorCode);
+        True(session.AbortCalled);
+        True(session.Disposed);
+        False(File.Exists(output));
+        False(Directory.EnumerateFiles(directory.Path, ".madi-hwp-*.hwp").Any());
+    }
+
+    private static async Task CompletedWorkerDrainsAbortCallback()
+    {
+        using var directory = new TemporaryDirectory();
+        var input = directory.File("input.hwpx");
+        var output = directory.File("output.hwp");
+        File.WriteAllBytes(input, [1, 2, 3]);
+        using var callbackRelease = new ManualResetEventSlim(false);
+        var session = new FakeAutomationSession
+        {
+            WaitForCancellationInOpen = true,
+            AbortBlock = callbackRelease,
+            SkipRegistrationDrain = true,
+        };
+        var service = Service(AvailableInstallation, new FakeAutomationFactory(() => session));
+        var operation = service.ExecuteAsync(
+            new ConvertRequest("callback_drain", input, output, false, 5_000), CancellationToken.None);
+        try
+        {
+            True(session.OpenStarted.Wait(2_000));
+            True(service.TryCancel("callback_drain"));
+            True(session.AbortStarted.Wait(2_000));
+            True(SpinWait.SpinUntil(() => session.Disposed, 2_000));
+            False(operation.IsCompleted);
+        }
+        finally { callbackRelease.Set(); }
+        var response = await operation.ConfigureAwait(false);
+        session.DisposeRegistration();
+        Error(response, "CANCELLED");
+        Equal<string?>(null, response.CleanupErrorCode);
+        False(File.Exists(output));
+    }
+
+    private static async Task CleanupTimeoutPreventsLateCommit()
+    {
+        using var directory = new TemporaryDirectory();
+        var input = directory.File("input.hwpx");
+        var output = directory.File("output.hwp");
+        File.WriteAllBytes(input, [1, 2, 3]);
+        using var release = new ManualResetEventSlim(false);
+        var session = new FakeAutomationSession { OpenBlock = release };
+        var stopwatch = Stopwatch.StartNew();
+        var operation = Service(AvailableInstallation, new FakeAutomationFactory(() => session))
+            .ExecuteAsync(new ConvertRequest("stuck_worker", input, output, false, 100), CancellationToken.None);
+        BridgeResponse response;
+        try
+        {
+            response = await operation.ConfigureAwait(false);
+            Error(response, "TIMEOUT");
+            Equal("WORKER_CLEANUP_TIMEOUT", response.CleanupErrorCode);
+            True(stopwatch.ElapsedMilliseconds >= 6_000 && stopwatch.ElapsedMilliseconds < 8_000);
+            False(session.Disposed);
+            False(File.Exists(output));
+        }
+        finally { release.Set(); }
+        True(SpinWait.SpinUntil(() => session.Disposed, 2_000));
+        False(File.Exists(output));
+        False(Directory.EnumerateFiles(directory.Path, ".madi-hwp-*.hwp").Any());
+    }
+
+    private static async Task OutputCreatedDuringDisposalIsPreserved()
+    {
+        using var directory = new TemporaryDirectory();
+        var input = directory.File("input.hwpx");
+        var output = directory.File("output.hwp");
+        File.WriteAllBytes(input, [1, 2, 3]);
+        using var release = new ManualResetEventSlim(false);
+        var session = new FakeAutomationSession { DisposeBlock = release };
+        var operation = Service(AvailableInstallation, new FakeAutomationFactory(() => session))
+            .ExecuteAsync(ConvertRequest(input, output, "foreign_commit"), CancellationToken.None);
+        byte[] foreign = [9, 8, 7];
+        try
+        {
+            True(session.DisposeStarted.Wait(2_000));
+            File.WriteAllBytes(output, foreign);
+        }
+        finally { release.Set(); }
+        Error(await operation.ConfigureAwait(false), "OUTPUT_EXISTS");
+        SequenceEqual(foreign, File.ReadAllBytes(output));
+        False(Directory.EnumerateFiles(directory.Path, ".madi-hwp-*.hwp").Any());
     }
 
     private static HwpBridgeService Service(
@@ -760,9 +940,10 @@ internal sealed class FakeAutomationFactory : IHancomAutomationFactory
     public List<FakeAutomationSession> Sessions { get; } = [];
     public int CreateCount => Sessions.Count;
 
-    public IHancomAutomationSession Create(HancomInstallation installation)
+    public IHancomAutomationSession Create(HancomInstallation installation, CancellationToken cancellationToken)
     {
         var session = create();
+        session.AttachCancellation(cancellationToken);
         Sessions.Add(session);
         return session;
     }
@@ -770,17 +951,43 @@ internal sealed class FakeAutomationFactory : IHancomAutomationFactory
 
 internal sealed class FakeAutomationSession : IHancomAutomationSession
 {
-    public string? Version => "12.0-mock";
+    private CancellationTokenRegistration cancellationRegistration;
+    public string? Version => Disposed ? throw new InvalidOperationException() : "12.0-mock";
     public List<(string Path, string Format)> OpenCalls { get; } = [];
     public List<string> SaveFormats { get; } = [];
     public ManualResetEventSlim OpenStarted { get; } = new(initialState: false);
     public ManualResetEventSlim? OpenBlock { get; init; }
+    public ManualResetEventSlim DisposeStarted { get; } = new(false);
+    public ManualResetEventSlim AbortStarted { get; } = new(false);
+    public ManualResetEventSlim? DisposeBlock { get; init; }
+    public ManualResetEventSlim? AbortBlock { get; init; }
+    public bool AbortReleasesBlockingCall { get; init; }
+    public bool SkipRegistrationDrain { get; init; }
+    public bool AbortCalled { get; private set; }
     public bool WaitForCancellationInOpen { get; init; }
     public BridgeFailureException? SaveFailure { get; init; }
+    public BridgeFailureException? CloseFailure { get; init; }
+    public BridgeFailureException? DisposeFailure { get; init; }
     public byte[] ConvertedBytes { get; init; } = [7, 8, 9];
     public long? ConvertedLength { get; init; }
     public bool CloseCalled { get; private set; }
     public bool Disposed { get; private set; }
+
+    public void AttachCancellation(CancellationToken token)
+    {
+        cancellationRegistration = token.Register(() =>
+        {
+            AbortCalled = true;
+            AbortStarted.Set();
+            AbortBlock?.Wait();
+            if (AbortReleasesBlockingCall)
+            {
+                OpenBlock?.Set();
+                DisposeBlock?.Set();
+            }
+        });
+    }
+    public void DisposeRegistration() => cancellationRegistration.Dispose();
 
     public void Open(string path, string format, CancellationToken cancellationToken)
     {
@@ -823,11 +1030,16 @@ internal sealed class FakeAutomationSession : IHancomAutomationSession
     public void CloseOpenedDocument()
     {
         CloseCalled = true;
+        if (CloseFailure is not null) throw CloseFailure;
     }
 
     public void Dispose()
     {
         CloseCalled = true;
+        DisposeStarted.Set();
+        DisposeBlock?.Wait();
+        if (!SkipRegistrationDrain) cancellationRegistration.Dispose();
+        if (DisposeFailure is not null) throw DisposeFailure;
         Disposed = true;
     }
 }

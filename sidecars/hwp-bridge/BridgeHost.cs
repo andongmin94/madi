@@ -113,10 +113,10 @@ public sealed class BridgeHost
                     request.RequestId,
                     StringComparison.Ordinal))
             {
-                operationCancellation.Cancel();
+                var accepted = service.TryCancel(cancel.TargetRequestId);
                 await WriteAsync(
                     output,
-                    BridgeResponse.CancelledRequest(cancel, cancelled: true)).ConfigureAwait(false);
+                    BridgeResponse.CancelledRequest(cancel, cancelled: accepted)).ConfigureAwait(false);
                 continue;
             }
 
