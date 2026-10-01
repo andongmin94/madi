@@ -178,7 +178,11 @@ internal sealed class HancomComAutomationSession : IHancomAutomationSession
             EnsureDocument(expectedName);
             CheckCancellation(cancellationToken);
             object? registered = OwnedCall(() => (object?)Root.RegisterModule("FilePathCheckDLL", "FilePathCheckerModuleExample"));
-            if (registered is not true) throw Failure("SECURITY_MODULE_REQUIRED");
+            if (registered is not true)
+            {
+                string kind = registered switch { false => "BOOL_FALSE", null => "NULL", _ => "OTHER" };
+                throw new BridgeFailureException("SECURITY_MODULE_REQUIRED", $"Hancom did not accept the approved file-path security module. MODULE_RETURN:{kind}");
+            }
             EnsureDocument(expectedName);
             Version = OwnedCall(() => (string?)Root.Version);
             CheckCancellation(cancellationToken);
@@ -452,7 +456,6 @@ internal sealed class HancomComAutomationSession : IHancomAutomationSession
 
     private static BridgeFailureException Failure(string code) => new(code, code switch
     {
-        "SECURITY_MODULE_REQUIRED" => "Hancom did not accept the approved file-path security module.",
         "SAVE_FAILED" => "Hancom could not save the known trial document safely.",
         "OPEN_FAILED" => "Hancom could not bind the known trial document safely.",
         "CLEANUP_FAILED" => "The owned Hancom session did not finish safely.",

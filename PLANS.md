@@ -30,14 +30,15 @@ Publication IR만 Reader Lab과 exporter의 원고 입력으로 사용한다. Ty
 | EPUB·HWPX | **기본 source20e8 PRIVATE LOCAL TECHNICAL PASS**. dev/fresh 결정성·ZIP/XML·취소·출력 보호·재열기와 수정된 IPv4/IPv6 TCP 수집 경로 확인. TCP 표본을 연속 packet/UDP 관측으로 확대하지 않음 |
 | EPUBCheck/JRE | **기본 source20e8 PASS**. 고정 오프라인 bundle 포함, 실제 Java 검사·취소·검사 중 종료·출력 보호 확인 |
 | 기본 ZIP | **source20e8 WHOLE PAYLOAD JOIN PASS**. 실제 검증한561파일/81폴더/549,533,091bytes를 재빌드 없이 ZIP으로 포장하고 새 압축 해제본까지 hash 대조 |
-| 한컴 시험 원고 | **source20e8 BACKEND PASS ONLY**. tiny·일반18만자·장편67.5만자 각2회 결정성·전체 IR 내용 대조. 일반324/장편2412 표시 문단 포함. 한컴 변환·native 판독은 아직 미실행 |
-| HWP 소유권·취소 | **제품 반영·계약 시험 PASS / 실제 한컴 검증 대기**. unchecked COM activation 제거, 소유 process·문서·native 종료와 취소/commit 경합·cleanup 오류 처리. 제품 C#24개·앱27개·typecheck·repository·format·diff 통과. Mock 성공을 native 성공으로 이전하지 않음 |
+| 한컴 시험 원고 | **source20e8 BACKEND PASS ONLY**. tiny·일반18만자·장편67.5만자 각2회 결정성·전체 IR 내용 대조. 일반324/장편2412 표시 문단 포함. 한컴 HWP 변환은 등록 단계에서 실패했으며, 일반·장편 HWPX native 판독은 아래 별도 근거로 확인 |
+| HWPX native 내용 | **sourcef464 PRIVATE LOCAL TEXT PASS**. 일반324·장편2412 문단 전체를 한컴에서 대조하고 Close·Quit·native exit·job0·등록 부재 확인. layout·HWP 변환·최종 제품 전체 gate를 대신하지 않음 |
+| HWP 소유권·취소 | **제품 반영·계약 시험 PASS / 실제 한컴 검증 대기**. unchecked COM activation 제거, 소유 process·문서·native 종료와 취소/commit 경합·cleanup 오류 처리. 제품 C#25개·앱27개·typecheck·repository·format·diff 통과. Mock 성공을 native 성공으로 이전하지 않음 |
 | AI | 기존 source5151 dev/fresh **PASS WITH DIAGNOSTIC WARNING** 보존. 최종 제품에서 실제 로컬 제공자 재실행 필요 |
 | Native IME·한컴 layout | **사람의 확인 대기**. 수동 kit와 report 경로 준비, 입력15항목은 NOT TESTED |
 
 기본 실행: `.tools/verification/full-verify-20e8f3a-run1/`.
 정확한 기본 source: `20e8f3a970d321152940db47e26f9252b4524f26`.
-후속 sourcee636 실제 tiny 변환은 소유권 확인에서 실패했고, 일반 HWPX native 판독은 열린 시험 파일의 재해시에서 실패했다. Source dbff 진단 실행에서 초기 창 열거의 false/error0를 확인했다. 창이 없는 초기 표본은 기존 제한 시간 안에서 NOT_READY로 처리하며 실제 창·문서 확인은 계속 요구한다. 실패 실행은 통과 근거로 사용하지 않고 process·job 정리와 module 부재를 확인했다. 수정 뒤 실제 변환과 파일 재해시를 재검증한다.
+후속 sourcee636 실제 tiny 변환은 소유권 확인에서 실패했고, 일반 HWPX native 판독은 열린 시험 파일의 재해시에서 실패했다. Source dbff 진단 실행에서 초기 창 열거의 false/error0를 확인했다. 창이 없는 초기 표본은 기존 제한 시간 안에서 NOT_READY로 처리하며 실제 창·문서 확인은 계속 요구한다. 실패 실행은 통과 근거로 사용하지 않고 process·job 정리와 module 부재를 확인했다. Sourcef464에서 창·문서 소유권 확인 뒤 RegisterModule nontrue 반환을 확인했다. 실제 공유 위반(error32)에 따라 시험 파일만 ReadWrite 공유로 재해시했고, 실행되지 않던 검증 스크립트 검사도 수정했다. 일반·장편 HWPX 전체 문단 판독을 자연 종료로 통과했으며, 기존 실패 실행은 그대로 보존한다. 등록 실패는 BOOL_FALSE/NULL/OTHER만 기록하는 제한된 제품 진단으로 이어서 확인한다.
 Whole inventory·raw E/F/G/H archive·ZIP join은 이 run의 source와 실제 package receipt에 연결했다.
 이전 source5347/1ff 전체 FAIL과 graph 집중5회, source5151 기존 PASS는 각 revision의 결과로 보존한다.
 서로 다른 revision의 부분 성공을 합쳐 전체 통과로 표현하지 않는다.
