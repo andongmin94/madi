@@ -1,16 +1,16 @@
 # EPUB Validation Strategy
 
-기준일: 2026-08-13
+기준일: 2026-10-01. 현재 실행 결과는 [PLANS.md](../PLANS.md)를 따른다.
 
 ## 1. 이중 검증
 
-Phase 1G의 export success gate는 Madi internal validator다. EPUBCheck 5.3.0은 exact pinned
-build/test validator이며 packaged runtime에는 포함하지 않는다.
+Export는 Madi internal validator와 exact pinned EPUBCheck 5.3.0을 모두 통과해야 한다.
+EPUBCheck와 Temurin JRE는 개발판과 unpacked runtime에 고정된 별도 bundle로 포함한다.
 
 | Profile | Runtime success gate | Build/test 보조 gate |
 |---|---|---|
-| EPUB 3.3 compatibility | Madi internal validator + completeness | EPUBCheck 5.3.0 fatal/error 0 |
-| EPUB 3.4 Draft | Madi draft-target internal validator + completeness | EPUBCheck 5.3.0은 호환성 보조 도구로만 분류; mandatory harness는 3.3 output만 실행 |
+| EPUB 3.3 compatibility | Internal validator + completeness + EPUBCheck fatal/error 0 | 별도 CHAPTER/SCENE 합성 fixture 검사 |
+| EPUB 3.4 Draft | Draft-target internal validator + completeness + 공통 subset EPUBCheck 검사 | 5.3.0 결과는 전체 3.4 conformance가 아님 |
 
 EPUBCheck 결과를 3.4 전체 conformance로 표현하지 않는다.
 
@@ -82,8 +82,8 @@ Validator는 XML external entity/DTD resolution이나 network fetch를 사용하
 | `java.exe` | 50,344 | `5e0fab9f07952ceb6e71eb9fd33e1ed69959904ca00cf70869b7baf516a98016` |
 
 JRE metadata는 Eclipse Adoptium Temurin 21.0.11+10-LTS Windows x64 HotSpot JRE다. 이
-JRE/EPUBCheck/JAR/lib tree는 test machine의 ignored tool cache이며 source control이나
-unpacked app에 복사하지 않는다.
+JRE/EPUBCheck/JAR/lib 원본 ZIP은 ignored tool cache이며 source control에 넣지 않는다.
+`prepare:epubcheck`는 고정 archive를 검증·추출해 개발용 runtime을 준비한다.
 
 Harness는 Java proxy를 loopback refusal address로 고정하고 external DTD/schema/stylesheet
 access를 끈다. Process timeout은 120초, kill grace 5초, combined output 32 MiB, JSON report
@@ -101,30 +101,32 @@ Phase 1H에서 runtime EPUBCheck/JRE bundle은 HWPX 기능의 선행 조건이 �
 verdict를 소급해 `PASS`로 바꾸거나 public/paid/customer distribution을 승인하지 않는다.
 배포 전에는 아래 7절 gate를 별도 완료해야 한다.
 
-현재 채택 방식은 우선순위 3, 즉 runtime internal validator + build/test EPUBCheck다. Runtime에
-Java/JAR를 넣으면 package 약 80 MiB 이상 증가뿐 아니라 JRE security update, exact
-transitive license, process lifecycle과 release patch 책임이 생긴다. 현재 private-local
-단계에서는 이 부담을 앱 기능에 넣지 않는다.
+개발판은 `.tools/phase1g-validation/runtime`, 배포본은 `resources/validation`만 사용한다.
+전체 364파일·187,794,843 bytes와 manifest를 포함하며, 고정 files 배열 digest는
+`bcabd009a2a10ec70499c1e239bef6c53df9580253cc2a19448d804cbaabcb0c`다.
+준비·package copy·실제 Java spawn 전에 path set와 전체 file hash를 확인한다. System Java,
+environment path override, 실행 중 download 또는 외부 validator 서버를 사용하지 않는다.
 
-App report의 EPUBCheck status는 runtime 실행이 없으므로 `NOT_RUN` 또는 `UNAVAILABLE`이다.
-3.4에서는 `compatibilityOnly=true`로 표시해 향후 보조 검사도 완전한 3.4 validation으로
-오인하지 않게 한다.
+`검사`도 owned temporary EPUB를 생성해 checker를 실행한 뒤 정리하며 output path를
+공개 결과에 남기지 않는다. Export는 staged EPUB의 identity를 검증하고 checker가 통과한
+후 destination을 commit한다. Checker 실행은 취소와 app shutdown에 포함한다.
+Raw report/stdout/stderr는 UI·원고·영구 report에 복사하지 않고 severity/code/count만 사용한다.
 
-Unpacked package에는 `madi-export-epub.exe`, Third-Party Notices와 EPUBCheck BSD 3-Clause
-원문이 있지만 EPUBCheck executable, Java runtime과 EPUBCheck transitive JAR는 없다.
-License 원문 포함은 runtime integration을 의미하지 않으며 향후 distribution 판단을
-승인하지 않는다.
+성공 report는 `VALID/5.3.0`과 `epubCheckMs`를 보존한다. 3.4에서는
+`compatibilityOnly=true`로 표시한다. `totalMs`는 기존 native exporter timing이며 checker
+시간과 전체 작업 wall time은 분리한다. Bundle 누락·변조·checker 실패는 성공으로 우회하지 않는다.
 
 ## 6. License 근거
 
 EPUBCheck distribution의 `THIRD-PARTY.txt`는 exact transitive component/version과
 Apache-2.0, BSD-3-Clause, MIT, MPL-2.0, W3C, Unicode-3.0/SAX 항목을 열거한다. 현재 tool
 cache는 upstream `LICENSE.txt`, `THIRD-PARTY.txt`, `licenses/`를 그대로 보존한다.
-저장소 고지는 [Third-Party Notices](../THIRD_PARTY_NOTICES.md)에 버전/역할/비번들 경계를
-기록하고 unpacked package에는 EPUBCheck 본체의 BSD 원문을 복사한다.
+저장소 고지는 [Third-Party Notices](../THIRD_PARTY_NOTICES.md)에 버전·역할·고정 tree를
+기록한다. Unpacked package는 EPUBCheck 전체 고지/JAR corpus와 Temurin `NOTICE/legal`
+원문을 수정 없이 포함한다.
 
 ## 7. 배포 전 runtime 통합 gate
 
-Runtime EPUBCheck를 도입하려면 exact JRE vendor/version, 전체 archive hash, updater/security
-owner, 모든 JAR/license corpus, package 증가량, offline/no-network test, timeout/cancel/cleanup,
-3.4 support 표시와 packaged actual을 별도 결정으로 승인해야 한다.
+저장소 유지보수자는 JRE·checker 갱신 때 archive/tree pin, 전체 license corpus, package
+증가량, offline/network·timeout/cancel/cleanup·fresh-unpacked gate를 같은 exact source에서
+다시 검증한다. 구현이나 고지 복사만으로 actual PASS 또는 public 배포 승인으로 바꾸지 않는다.

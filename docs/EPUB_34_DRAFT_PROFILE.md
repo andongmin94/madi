@@ -24,10 +24,10 @@ madi EPUB 3.4 Draft 내부 검증
 EPUBCheck 5.3.0 보조 호환성 검사
 ```
 
-EPUBCheck 5.3.0은 3.4 전체 검증기가 아니다. 현재 앱 runtime에는 EPUBCheck를 넣지
-않았으므로 app report는 `NOT_RUN` 또는 `UNAVAILABLE`과 `보조 호환성 검사` 경계를
-표시한다. 필수 `pnpm test:epubcheck` actual은 3.3 CHAPTER/SCENE output을 검증하며 3.4
-profile output에 대한 EPUBCheck 실행을 PASS로 주장하지 않는다.
+EPUBCheck 5.3.0은 3.4 전체 검증기가 아니다. 앱은 공통 subset을 bundled checker로 검사하며
+report의 `compatibilityOnly=true`와 `보조 호환성 검사` 경계를 보존한다.
+필수 `pnpm test:epubcheck` 합성 actual은 3.3 CHAPTER/SCENE output을 검증한다.
+새 runtime의 실제 실행은 해당 source 결과로 구분하며 전체 3.4 인증을 주장하지 않는다.
 
 ## 생성 subset
 
@@ -67,7 +67,6 @@ Madi internal validator는 container/package/nav/XHTML/assets/coverage의 공통
 
 - 3.4 전용 feature conformance를 주장하지 않는다.
 - Publisher/유통처별 acceptance policy를 검사하지 않는다.
-- Runtime EPUBCheck와 bundled Java는 없다.
 - Imported EPUB, fixed layout, vertical writing, embedded font와 scripting은 지원하지 않는다.
 
 ## 관련 문서

@@ -17,6 +17,7 @@ import type {
   EpubUtilityResult
 } from "../src/main/epubExportClient";
 import { EpubExportCancelledError } from "../src/main/epubExportClient";
+import type { EpubCheckPort, EpubCheckResult } from "../src/main/epubCheckClient";
 import { ProjectSessionRegistry } from "../src/main/projectSessions";
 import type {
   EpubExportPresetConfig,
@@ -286,11 +287,19 @@ function createHarness(transform: UtilityTransform = (result) => result) {
     cancel,
     dispose: vi.fn(async () => undefined)
   };
+  const check = vi.fn(async (_operationId: string, epubPath: string): Promise<EpubCheckResult> => {
+    if (!existsSync(epubPath)) throw new Error("Expected a materialized EPUB");
+    return { status: "VALID", version: "5.3.0", elapsedMs: 7, fatalCount: 0, errorCount: 0, warningCount: 0, infoCount: 0, messages: [] };
+  });
+  const cancelCheck = vi.fn(async () => false);
+  const checker: EpubCheckPort = { run: check, cancel: cancelCheck, dispose: vi.fn(async () => undefined) };
   const send = vi.fn();
   const window = { webContents: { send } } as unknown as BrowserWindow;
   const shell: ShellPort = { showItemInFolder: vi.fn() };
   return {
     cancel,
+    check,
+    cancelCheck,
     dialog,
     document,
     exporter,
@@ -308,7 +317,14 @@ function createHarness(transform: UtilityTransform = (result) => result) {
       sessions,
       "0.0.1",
       exporter,
-      shell
+      shell,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      checker
     )
   };
 }
@@ -367,6 +383,99 @@ afterEach(async () => {
 });
 
 describe("Phase 1G DesktopService EPUB trust boundary", () => {
+  it("materializes preflight in an owned directory and checks it without publishing output", async () => {
+    const harness = createHarness();
+    const result = await harness.service.validateEpubExport(validateRequest(harness.session.sessionId, OPERATION_1));
+    const generated = harness.run.mock.calls[0]![0];
+    expect(generated.mode).toBe("EXPORT");
+    expect(harness.check).toHaveBeenCalledWith(OPERATION_1, generated.outputPath);
+    expect(existsSync(path.dirname(generated.outputPath))).toBe(false);
+    expect(result.report).toMatchObject({ epubSha256: null, byteLength: null, validation: { status: "VALID", epubCheck: { status: "VALID", version: "5.3.0", compatibilityOnly: false } }, timing: { epubCheckMs: 7, totalMs: 5 } });
+  });
+
+  it("returns invalid EPUBCheck preflight messages without leaking validator details", async () => {
+    const harness = createHarness();
+    harness.check.mockResolvedValueOnce({ status: "INVALID", version: "5.3.0", elapsedMs: 9, fatalCount: 0, errorCount: 1, warningCount: 0, infoCount: 0, messages: [{ severity: "ERROR", code: "RSC-005" }] });
+    const result = await harness.service.validateEpubExport(validateRequest(harness.session.sessionId, OPERATION_1));
+    expect(result.report.validation).toMatchObject({ status: "INVALID", errorCount: 1, epubCheck: { status: "INVALID", version: "5.3.0" }, messages: [{ code: "RSC-005", description: "EPUBCheck validation message", epubPath: null, sourceNodeId: null }] });
+    expect(existsSync(path.dirname(harness.run.mock.calls[0]![0].outputPath))).toBe(false);
+  });
+
+  it("checks the 3.4 common subset while retaining the compatibility-only boundary", async () => {
+    const harness = createHarness();
+    const result = await harness.service.validateEpubExport({ ...validateRequest(harness.session.sessionId, OPERATION_1), config: { ...CONFIG, targetProfile: "EPUB_3_4_DRAFT_2026_08" } });
+    expect(harness.check).toHaveBeenCalledTimes(1);
+    expect(result.report.validation.epubCheck).toEqual({ status: "VALID", version: "5.3.0", compatibilityOnly: true });
+  });
+
+  it("keeps the confirmed destination when EPUBCheck rejects the staged output", async () => {
+    const directory = await makeTemporaryDirectory();
+    const destination = path.join(directory, "publication.epub");
+    const previous = Buffer.from("previous content-free owner");
+    await writeFile(destination, previous);
+    const harness = createHarness();
+    const selectionId = await chooseOutput(harness, destination);
+    harness.check.mockResolvedValueOnce({ status: "INVALID", version: "5.3.0", elapsedMs: 9, fatalCount: 1, errorCount: 0, warningCount: 0, infoCount: 0, messages: [{ severity: "FATAL", code: "PKG-004" }] });
+    await expect(harness.service.runEpubExport({ ...validateRequest(harness.session.sessionId, OPERATION_1), outputSelectionId: selectionId })).rejects.toThrow("EPUBCheck rejected");
+    expect(await readFile(destination)).toEqual(previous);
+    expect(existsSync(path.join(directory, `.madi-epub-operation-${OPERATION_1}`))).toBe(false);
+  });
+
+  it("rejects staged bytes changed during the checker before atomic publication", async () => {
+    const directory = await makeTemporaryDirectory();
+    const destination = path.join(directory, "publication.epub");
+    const harness = createHarness();
+    const selectionId = await chooseOutput(harness, destination);
+    harness.check.mockImplementationOnce(async (_operationId, filePath) => {
+      await writeFile(filePath, "changed content-free bytes");
+      return { status: "VALID", version: "5.3.0", elapsedMs: 7, fatalCount: 0, errorCount: 0, warningCount: 0, infoCount: 0, messages: [] };
+    });
+    await expect(harness.service.runEpubExport({ ...validateRequest(harness.session.sessionId, OPERATION_1), outputSelectionId: selectionId })).rejects.toThrow("does not match");
+    expect(existsSync(destination)).toBe(false);
+  });
+
+  it("drains checker cancellation before deleting the staged EPUB during shutdown", async () => {
+    const harness = createHarness();
+    const started = deferred<string>();
+    const completion = deferred<EpubCheckResult>();
+    const cancellation = deferred<boolean>();
+    harness.check.mockImplementationOnce(async (_operationId, filePath) => { started.resolve(filePath); return completion.promise; });
+    harness.cancelCheck.mockImplementationOnce(() => cancellation.promise);
+    const operation = harness.service.validateEpubExport(validateRequest(harness.session.sessionId, OPERATION_1));
+    void operation.catch(() => undefined);
+    const stagedPath = await started.promise;
+    let shutdownDone = false;
+    const shutdown = harness.service.prepareEpubShutdown().then(() => { shutdownDone = true; });
+    await Promise.resolve();
+    expect(harness.cancelCheck).toHaveBeenCalledWith(OPERATION_1);
+    expect(existsSync(stagedPath)).toBe(true);
+    expect(shutdownDone).toBe(false);
+    cancellation.resolve(true);
+    await Promise.resolve();
+    expect(existsSync(stagedPath)).toBe(true);
+    completion.reject(new EpubExportCancelledError());
+    await expect(operation).rejects.toThrow("cancelled");
+    await shutdown;
+    expect(existsSync(path.dirname(stagedPath))).toBe(false);
+    expect(shutdownDone).toBe(true);
+  });
+
+  it("does not publish when the user cancels during checker execution", async () => {
+    const directory = await makeTemporaryDirectory();
+    const destination = path.join(directory, "publication.epub");
+    const harness = createHarness();
+    const selectionId = await chooseOutput(harness, destination);
+    const started = deferred<string>();
+    const completion = deferred<EpubCheckResult>();
+    harness.check.mockImplementationOnce(async (_operationId, filePath) => { started.resolve(filePath); return completion.promise; });
+    harness.cancelCheck.mockImplementationOnce(async () => { completion.reject(new EpubExportCancelledError()); return true; });
+    const operation = harness.service.runEpubExport({ ...validateRequest(harness.session.sessionId, OPERATION_1), outputSelectionId: selectionId });
+    await started.promise;
+    await expect(harness.service.cancelEpubExport({ sessionId: harness.session.sessionId, operationId: OPERATION_1 })).resolves.toBe(true);
+    await expect(operation).resolves.toEqual({ status: "CANCELLED", operationId: OPERATION_1 });
+    expect(existsSync(destination)).toBe(false);
+  });
+
   it.each([
     {
       label: "different editable content",

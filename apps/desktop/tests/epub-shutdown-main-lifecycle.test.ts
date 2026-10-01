@@ -40,8 +40,10 @@ describe("EPUB shutdown main lifecycle", () => {
     const coreDispose = vi.fn();
     const serviceCleanup = deferred();
     const exporterCleanup = deferred();
+    const checkerCleanup = deferred();
     const prepareEpubShutdown = vi.fn(() => serviceCleanup.promise);
     const disposeExporter = vi.fn(() => exporterCleanup.promise);
+    const disposeChecker = vi.fn(() => checkerCleanup.promise);
     const initializeHwpxRecovery = vi.fn(async () => undefined);
     const services: FakeDesktopService[] = [];
     const exporters: FakeEpubExporter[] = [];
@@ -75,6 +77,10 @@ describe("EPUB shutdown main lifecycle", () => {
       constructor(..._args: unknown[]) {
         exporters.push(this);
       }
+    }
+
+    class FakeEpubCheck {
+      readonly dispose = disposeChecker;
     }
 
     class FakeHwpxCrashRecoveryRegistry {
@@ -130,6 +136,10 @@ describe("EPUB shutdown main lifecycle", () => {
       resolveEpubExporterBinary: vi.fn(
         () => "C:/madi/madi-export-epub.exe"
       )
+    }));
+    vi.doMock("../src/main/epubCheckClient", () => ({
+      ProcessEpubCheck: FakeEpubCheck,
+      resolveEpubCheckBundle: vi.fn(() => "C:/madi/validation")
     }));
     vi.doMock("../src/main/hwpxCrashRecovery", () => ({
       FileHwpxCrashRecoveryRegistry: FakeHwpxCrashRecoveryRegistry
@@ -210,6 +220,7 @@ describe("EPUB shutdown main lifecycle", () => {
     await vi.waitFor(() => {
       expect(prepareEpubShutdown).toHaveBeenCalledTimes(1);
       expect(disposeExporter).toHaveBeenCalledTimes(1);
+      expect(disposeChecker).toHaveBeenCalledTimes(1);
     });
     expect(coreDispose).toHaveBeenCalledTimes(1);
     expect(appQuit).not.toHaveBeenCalled();
@@ -219,6 +230,10 @@ describe("EPUB shutdown main lifecycle", () => {
     expect(appQuit).not.toHaveBeenCalled();
 
     exporterCleanup.resolve();
+    await Promise.resolve();
+    expect(getAllWindows).not.toHaveBeenCalled();
+    expect(appQuit).not.toHaveBeenCalled();
+    checkerCleanup.resolve();
     await vi.waitFor(() => {
       expect(getAllWindows).toHaveBeenCalledTimes(1);
     });
@@ -235,6 +250,7 @@ describe("EPUB shutdown main lifecycle", () => {
     expect(scheduleNextTurn).toHaveBeenCalledTimes(1);
     expect(prepareEpubShutdown).toHaveBeenCalledTimes(1);
     expect(disposeExporter).toHaveBeenCalledTimes(1);
+    expect(disposeChecker).toHaveBeenCalledTimes(1);
     expect(coreDispose).toHaveBeenCalledTimes(1);
     expect(appQuit).toHaveBeenCalledTimes(1);
   });

@@ -262,6 +262,7 @@ import {
   EpubExportCancelledError,
   EpubUtilityValidationError
 } from "./epubExportClient";
+import type { EpubCheckPort, EpubCheckResult } from "./epubCheckClient";
 import type {
   CancelHwpxExportRequest,
   ChooseHwpxOutputRequest,
@@ -3389,7 +3390,8 @@ function reportFromUtility(
   document: CompilePublicationResult["document"],
   config: EpubExportPresetConfig,
   sourceProjectRevision: number,
-  appVersion: string
+  appVersion: string,
+  includeOutputIdentity = utility.mode === "EXPORT"
 ): EpubExportReport {
   const { summary } = utility;
   const statistics = summary.statistics;
@@ -3439,9 +3441,9 @@ function reportFromUtility(
     targetProfile: summary.targetProfile,
     sourceProjectRevision,
     sourcePublicationHash: summary.sourcePublicationHash,
-    epubSha256: utility.mode === "EXPORT" ? summary.sha256 : null,
+    epubSha256: includeOutputIdentity ? summary.sha256 : null,
     logicalPackageHash: summary.logicalPackageHash,
-    byteLength: utility.mode === "EXPORT" ? summary.byteLength : null,
+    byteLength: includeOutputIdentity ? summary.byteLength : null,
     fileCount: statistics.fileCount,
     xhtmlCount: statistics.xhtmlCount,
     coverage: {
@@ -3469,7 +3471,7 @@ function reportFromUtility(
         document
       ),
       epubCheck: {
-        status: "UNAVAILABLE",
+        status: "NOT_RUN",
         version: null,
         compatibilityOnly:
           summary.targetProfile === "EPUB_3_4_DRAFT_2026_08"
@@ -3489,6 +3491,33 @@ function reportFromUtility(
   };
 }
 
+function reportWithEpubCheck(report: EpubExportReport, result: EpubCheckResult): EpubExportReport {
+  return {
+    ...report,
+    validation: {
+      ...report.validation,
+      status: result.status,
+      fatalCount: report.validation.fatalCount + result.fatalCount,
+      errorCount: report.validation.errorCount + result.errorCount,
+      warningCount: report.validation.warningCount + result.warningCount,
+      infoCount: report.validation.infoCount + result.infoCount,
+      messages: [
+        ...report.validation.messages,
+        ...result.messages.map((message) => ({
+          ...message,
+          description: "EPUBCheck validation message",
+          suggestion: null,
+          sourceNodeId: null,
+          sectionId: null,
+          epubPath: null
+        }))
+      ],
+      epubCheck: { status: result.status, version: result.version, compatibilityOnly: report.targetProfile === "EPUB_3_4_DRAFT_2026_08" }
+    },
+    timing: { ...report.timing, epubCheckMs: result.elapsedMs }
+  };
+}
+
 function markdownExportReport(report: EpubExportReport): string {
   const lines = [
     "# madi EPUB export report",
@@ -3504,7 +3533,7 @@ function markdownExportReport(report: EpubExportReport): string {
     `- Characters: ${report.coverage.exportedCharacterCount}/${report.coverage.sourceCharacterCount}`,
     `- Scene breaks/Ruby: ${report.coverage.sceneBreakCount}/${report.coverage.rubyCount}`,
     `- Cover: ${report.coverIncluded ? "included" : "not included"}`,
-    `- Internal validation: ${report.validation.status}`,
+    `- Validation: ${report.validation.status}`,
     `- EPUBCheck: ${report.validation.epubCheck.status} (${report.validation.epubCheck.version ?? "not available"})`,
     `- Validation F/E/W/I: ${report.validation.fatalCount}/${report.validation.errorCount}/${report.validation.warningCount}/${report.validation.infoCount}`,
     `- Total: ${report.timing.totalMs} ms`,
@@ -4234,7 +4263,7 @@ export class DesktopService {
     string,
     {
       readonly sessionId: string;
-      readonly phase: "PREPARING" | "EXPORTING" | "FINALIZING";
+      readonly phase: "PREPARING" | "EXPORTING" | "CHECKING" | "FINALIZING";
     }
   >();
   private readonly cancelledEpubOperations = new Set<string>();
@@ -4299,7 +4328,8 @@ export class DesktopService {
       new WindowsFontInstallationDetector(),
     private readonly runtimePlatform: NodeJS.Platform = process.platform,
     private readonly hwpxCrashRecovery?: HwpxCrashRecoveryPort,
-    private readonly atomicOutput?: AtomicOutputPort
+    private readonly atomicOutput?: AtomicOutputPort,
+    private readonly epubChecker?: EpubCheckPort
   ) {}
 
   public async createProject(
@@ -6219,6 +6249,9 @@ export class DesktopService {
     if (!this.epubExporter) {
       throw new Error("The local EPUB utility is unavailable");
     }
+    if (!this.epubChecker) {
+      throw new Error("The local EPUBCheck runtime is unavailable");
+    }
     const sessionId = validateSessionId(input?.sessionId);
     const operationId = validateEpubOperationId(input.operationId);
     const session = this.sessions.require(sessionId);
@@ -6471,6 +6504,39 @@ export class DesktopService {
     }
   }
 
+  private async checkStagedEpub(
+    operationId: string,
+    sessionId: string,
+    stagedPath: string,
+    utility: EpubUtilityResult,
+    report: EpubExportReport
+  ): Promise<EpubExportReport> {
+    if (!this.epubChecker || utility.outputPath !== stagedPath) {
+      throw new Error("The EPUB utility did not produce a valid output");
+    }
+    const checkIdentity = async (): Promise<void> => {
+      const identity = await existingEpubIdentity(stagedPath);
+      if (identity.byteLength < 1 || identity.byteLength > MAX_EPUB_FILE_BYTES ||
+          identity.byteLength !== utility.summary.byteLength || identity.sha256 !== utility.summary.sha256) {
+        throw new Error("The generated EPUB does not match the export result");
+      }
+    };
+    await checkIdentity();
+    if (this.epubShuttingDown || this.cancelledEpubOperations.delete(operationId)) {
+      throw new EpubExportCancelledError();
+    }
+    this.activeEpubOperations.set(operationId, { sessionId, phase: "CHECKING" });
+    this.window.webContents.send(IPC_EVENTS.epubExportProgress, { operationId, stage: "EPUBCHECK", completed: 0, total: 1 });
+    const result = await this.epubChecker.run(operationId, stagedPath);
+    await checkIdentity();
+    if (this.epubShuttingDown || this.cancelledEpubOperations.delete(operationId)) {
+      throw new EpubExportCancelledError();
+    }
+    this.window.webContents.send(IPC_EVENTS.epubExportProgress, { operationId, stage: "EPUBCHECK", completed: 1, total: 1 });
+    this.activeEpubOperations.set(operationId, { sessionId, phase: "FINALIZING" });
+    return reportWithEpubCheck(report, result);
+  }
+
   private async commitStagedEpub(
     stagedPath: string,
     stagedDirectory: string,
@@ -6573,11 +6639,17 @@ export class DesktopService {
     const sessionId = validateSessionId(input?.sessionId);
     this.sessions.require(sessionId);
     this.beginEpubOperation(operationId, sessionId);
+    const stagedDirectory = path.join(tmpdir(), `.madi-epub-validation-${operationId}`);
+    const stagedPath = stagedEpubPath(stagedDirectory);
+    let stagedDirectoryOwned = false;
     try {
+      await mkdir(stagedDirectory);
+      stagedDirectoryOwned = true;
+      this.ownedEpubTemporaryPaths.set(stagedDirectory, "DIRECTORY");
       const prepared = await this.prepareEpubUtilityInput(
         input,
-        "VALIDATE_ONLY",
-        path.join(tmpdir(), `madi-epub-validation-${operationId}.epub`),
+        "EXPORT",
+        stagedPath,
         false
       );
       try {
@@ -6587,17 +6659,15 @@ export class DesktopService {
           (progress) =>
             this.window.webContents.send(IPC_EVENTS.epubExportProgress, progress)
         );
-        this.activeEpubOperations.set(operationId, {
-          sessionId,
-          phase: "FINALIZING"
-        });
-        const report = reportFromUtility(
+        const nativeReport = reportFromUtility(
           utility,
           prepared.document,
           prepared.utilityInput.config,
           prepared.revision,
-          this.appVersion
+          this.appVersion,
+          false
         );
+        const report = await this.checkStagedEpub(operationId, sessionId, stagedPath, utility, nativeReport);
         this.rememberEpubOperation(operationId, {
           sessionId: input.sessionId,
           report,
@@ -6633,7 +6703,15 @@ export class DesktopService {
         };
       }
     } finally {
-      this.finishEpubOperation(operationId);
+      let cleanupFailed = false;
+      try {
+        if (stagedDirectoryOwned) await this.cleanupOwnedEpubTemporaryPath(stagedDirectory);
+      } catch {
+        cleanupFailed = true;
+        throw new Error("The EPUB validation temporary file could not be removed");
+      } finally {
+        this.finishEpubOperation(operationId, cleanupFailed);
+      }
     }
   }
 
@@ -6676,28 +6754,19 @@ export class DesktopService {
         (progress) =>
           this.window.webContents.send(IPC_EVENTS.epubExportProgress, progress)
       );
-      this.activeEpubOperations.set(operationId, {
-        sessionId,
-        phase: "FINALIZING"
-      });
-      const report = reportFromUtility(
+      const nativeReport = reportFromUtility(
         utility,
         prepared.document,
         prepared.utilityInput.config,
         prepared.revision,
         this.appVersion
       );
-      if (report.validation.status !== "VALID" || utility.outputPath === null) {
+      if (nativeReport.validation.status !== "VALID" || utility.outputPath === null) {
         throw new Error("The EPUB utility did not produce a valid output");
       }
-      const stagedIdentity = await existingEpubIdentity(stagedPath);
-      if (
-        stagedIdentity.byteLength < 1 ||
-        stagedIdentity.byteLength > MAX_EPUB_FILE_BYTES ||
-        stagedIdentity.byteLength !== utility.summary.byteLength ||
-        stagedIdentity.sha256 !== utility.summary.sha256
-      ) {
-        throw new Error("The generated EPUB does not match the export result");
+      const report = await this.checkStagedEpub(operationId, sessionId, stagedPath, utility, nativeReport);
+      if (report.validation.status !== "VALID") {
+        throw new Error("EPUBCheck rejected the generated EPUB");
       }
       await this.commitStagedEpub(
         stagedPath,
@@ -6781,9 +6850,10 @@ export class DesktopService {
         }
         if (active.phase === "PREPARING") {
           this.cancelledEpubOperations.add(operationId);
-        } else if (active.phase === "EXPORTING") {
+        } else if (active.phase === "EXPORTING" || active.phase === "CHECKING") {
+          this.cancelledEpubOperations.add(operationId);
           try {
-            await this.epubExporter?.cancel(operationId);
+            await (active.phase === "CHECKING" ? this.epubChecker : this.epubExporter)?.cancel(operationId);
           } catch {
             // Exporter disposal runs concurrently at application shutdown and
             // owns its process-scoped cleanup backlog.
@@ -6825,8 +6895,10 @@ export class DesktopService {
       this.cancelledEpubOperations.add(operationId);
       return true;
     }
-    if (active.phase === "EXPORTING") {
-      return this.epubExporter?.cancel(operationId) ?? false;
+    if (active.phase === "EXPORTING" || active.phase === "CHECKING") {
+      this.cancelledEpubOperations.add(operationId);
+      await (active.phase === "CHECKING" ? this.epubChecker : this.epubExporter)?.cancel(operationId);
+      return true;
     }
     return false;
   }

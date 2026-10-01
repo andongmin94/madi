@@ -1,6 +1,6 @@
 # EPUB Export Architecture
 
-기준일: 2026-08-09
+기준일: 2026-10-01
 
 ## 1. 소유권과 의존 방향
 
@@ -63,6 +63,11 @@ Renderer는 metadata를 먼저 저장하고 current project revision을 얻는�
 - internal report `VALID`, fatal/error 0
 - source/exported section, block, character, scene-break, ruby와 heading coverage
 - staged file의 bounded streamed size/SHA-256
+- 고정 bundled EPUBCheck의 fatal/error 0과 검사 후 staged identity
+
+`검사`는 operation-owned temp에 EPUB를 materialize해 같은 checker를 실행하고 정리한다.
+공개 validation 결과는 outputPath=null을 유지한다. Export는 checker가 끝나기 전에
+destination을 commit하지 않는다.
 
 Output picker에서 기존 파일을 고르면 그 시점의 size/SHA-256 identity를 보관한다. Export
 완료 전에 identity를 다시 비교하므로 선택 이후 다른 process가 바꾼 파일을 덮어쓰지
@@ -75,8 +80,8 @@ Output picker에서 기존 파일을 고르면 그 시점의 size/SHA-256 identi
 
 ## 5. 취소와 종료
 
-Main은 operation을 `PREPARING`, `EXPORTING`, `FINALIZING`으로 추적한다. PREPARING cancel은
-utility spawn 전에 표시되고, EXPORTING cancel은 child를 종료한다. Utility client의 run
+Main은 operation을 `PREPARING`, `EXPORTING`, `CHECKING`, `FINALIZING`으로 추적한다. PREPARING cancel은
+utility spawn 전에 표시되고, EXPORTING/CHECKING cancel은 해당 child를 종료한다. Utility client의 run
 promise는 child `close`와 temp cleanup이 끝난 뒤에만 settle한다. Timeout은 10분이며
 15초 close grace 뒤 강제 종료하고 5초를 더 기다린다.
 
@@ -94,7 +99,7 @@ snapshot 또는 mode 전환 전에 dirty metadata와 active auxiliary/export ope
 
 JSON과 Markdown report는 profile, project revision, Publication hash, EPUB hash, file/XHTML,
 coverage, cover, validation, timing, 생성 시각, Madi/EPUBCheck version을 담되 원고 본문은
-담지 않는다. EPUBCheck field는 build/test-only 전략을 명시한다.
+담지 않는다. EPUBCheck field는 실제 runtime status/version/time과 3.4 보조 검사 경계를 명시한다.
 
 ## 7. 보안 경계
 

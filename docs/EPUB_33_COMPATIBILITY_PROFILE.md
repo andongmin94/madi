@@ -13,8 +13,8 @@ EPUB 3.3 호환
 현재 안정 규격과 EPUBCheck production validator를 기준으로 생성합니다.
 ```
 
-Validation 표시는 `EPUBCheck 5.3.0 검증`이다. 이 문구는 Phase 1G의 pinned build/test
-validator 결과를 뜻하며 앱 runtime에서 Java를 실행한다는 뜻이 아니다.
+Validation 표시는 `EPUBCheck 5.3.0 검증`이다. 앱은 고정 bundled Java/checker를 실제 실행한다.
+과거 Phase 1G build/test-only 결과와 새 runtime actual은 해당 source 기록으로 구분한다.
 
 ## 생성 contract
 
@@ -33,8 +33,8 @@ logical order와 stable key의 SHA-256 12자리 suffix로 만든다.
 
 ## validation gate
 
-Export success 자체는 Madi internal validator의 PASS와 block/character completeness를
-요구한다. 별도 `pnpm test:epubcheck`는 exact EPUBCheck 5.3.0 distribution과 exact Temurin
+Export success는 Madi internal validator의 PASS, block/character completeness와 bundled
+EPUBCheck fatal/error 0을 요구한다. 별도 `pnpm test:epubcheck`는 exact EPUBCheck 5.3.0 distribution과 exact Temurin
 JRE 21.0.11+10의 size/SHA-256을 먼저 확인한 뒤, CHAPTER와 SCENE fixture를 각각 실제
 `.epub`으로 생성해 EPUBCheck JSON report의 fatal/error 0을 확인한다.
 

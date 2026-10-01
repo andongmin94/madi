@@ -21,6 +21,7 @@ import {
   ProcessEpubExporter,
   resolveEpubExporterBinary
 } from "./epubExportClient";
+import { ProcessEpubCheck, resolveEpubCheckBundle } from "./epubCheckClient";
 import {
   ProcessHwpxExporter,
   resolveHwpxExporterBinary
@@ -74,6 +75,7 @@ let atomicOutput: ProcessAtomicOutput | undefined;
 
 class ProcessExportRuntime {
   public readonly epub: ProcessEpubExporter;
+  public readonly epubCheck: ProcessEpubCheck;
   public readonly hwpx: ProcessHwpxExporter;
   public readonly hwpBridge: ProcessHwpBridge;
 
@@ -84,6 +86,7 @@ class ProcessExportRuntime {
       isPackaged: app.isPackaged
     };
     this.epub = new ProcessEpubExporter(resolveEpubExporterBinary(options));
+    this.epubCheck = new ProcessEpubCheck(resolveEpubCheckBundle(options));
     this.hwpx = new ProcessHwpxExporter(resolveHwpxExporterBinary(options));
     this.hwpBridge = new ProcessHwpBridge(resolveHwpBridgeBinary(options));
   }
@@ -91,6 +94,7 @@ class ProcessExportRuntime {
   public async dispose(): Promise<void> {
     const results = await Promise.allSettled([
       this.epub.dispose(),
+      this.epubCheck.dispose(),
       this.hwpx.dispose(),
       this.hwpBridge.dispose()
     ]);
@@ -230,7 +234,8 @@ async function openApplicationWindow(): Promise<void> {
     undefined,
     process.platform,
     hwpxCrashRecovery,
-    atomicOutput
+    atomicOutput,
+    exportRuntime.epubCheck
   );
   epubShutdown.registerService(service);
   disposeIpc = registerMadiIpc({
