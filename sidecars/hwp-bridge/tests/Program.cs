@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -18,6 +19,7 @@ public static class Program
         {
             ("protocol parse is closed and typed", ProtocolParseIsClosed),
             ("registry classification never dereferences path values", RegistryClassificationIsDataOnly),
+            ("native window readiness rejects partial enumeration and errors", WindowEnumerationReadinessIsNarrow),
             ("probe is registry-only and never activates automation", ProbeIsRegistryOnly),
             ("probe reports Hancom not installed", ProbeReportsNotInstalled),
             ("JSONL host returns a probe while stdin stays open", HostReturnsProbeWithOpenInput),
@@ -111,6 +113,45 @@ public static class Program
             "  ");
         True(missingModule.ComRegistrationPresent);
         False(missingModule.SecurityModuleRegistrationPresent);
+        return Task.CompletedTask;
+    }
+
+    private static Task WindowEnumerationReadinessIsNarrow()
+    {
+        var owner = typeof(HwpBridgeService).Assembly.GetType(
+            "Madi.HwpBridge.OwnedHancomProcess", throwOnError: true)!;
+        var classify = owner.GetMethod(
+            "ClassifyWindowEnumeration", BindingFlags.Static | BindingFlags.NonPublic)!;
+
+        bool Classify(bool completed, int nativeError, int callbacks)
+        {
+            try { return (bool)classify.Invoke(null, [completed, nativeError, callbacks])!; }
+            catch (TargetInvocationException exception) when (exception.InnerException is BridgeFailureException failure)
+            {
+                throw failure;
+            }
+        }
+
+        void Reject(int nativeError, int callbacks)
+        {
+            try
+            {
+                Classify(false, nativeError, callbacks);
+                throw new InvalidOperationException();
+            }
+            catch (BridgeFailureException failure)
+            {
+                Equal("OWNERSHIP_FAILED", failure.Code);
+                Equal($"OWNERSHIP_DIAGNOSTIC:ENUMERATE_RESULT:WIN32:{nativeError}", failure.SafeMessage);
+            }
+        }
+
+        False(Classify(false, 0, 0));
+        True(Classify(true, 0, 0));
+        True(Classify(true, 0, 3));
+        Reject(5, 0);
+        Reject(0, 1);
+        Reject(87, 2);
         return Task.CompletedTask;
     }
 

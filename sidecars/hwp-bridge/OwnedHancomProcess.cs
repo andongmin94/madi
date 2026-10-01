@@ -251,7 +251,7 @@ internal sealed class OwnedHancomProcess : IDisposable
         Require(windowThread != 0 && windowPid == pid);
         Require(DesktopName(GetThreadDesktop(windowThread)) == desktop);
         bool found = false;
-        Enumerate(desktop, owned => { if (owned == window) found = true; });
+        Require(Enumerate(desktop, owned => { if (owned == window) found = true; }), OwnershipStage.ENUMERATE_RESULT);
         Require(found);
         GuardProcess();
     }
@@ -295,18 +295,19 @@ internal sealed class OwnedHancomProcess : IDisposable
                 }
             }
             int privateWindows = 0;
-            Enumerate(desktop, _ => privateWindows++);
+            bool privateEnumerationComplete = Enumerate(desktop, _ => privateWindows++);
             int defaultWindows = 0;
-            Enumerate("Default", _ => defaultWindows++);
+            Require(Enumerate("Default", _ => defaultWindows++), OwnershipStage.OBSERVE_DEFAULT_WINDOWS);
             Require(defaultWindows == 0, OwnershipStage.OBSERVE_DEFAULT_WINDOWS);
-            if (requireWindows) Require(privateWindows > 0, OwnershipStage.OBSERVE_PRIVATE_WINDOWS);
-            return privateWindows > 0;
+            bool ready = privateEnumerationComplete && privateWindows > 0;
+            if (requireWindows) Require(ready, OwnershipStage.OBSERVE_PRIVATE_WINDOWS);
+            return ready;
         }
     }
 
     internal void AssertInput() => AssertPrivateInput(desktop);
 
-    private void Enumerate(string name, Action<IntPtr> inspect)
+    private bool Enumerate(string name, Action<IntPtr> inspect)
     {
         IntPtr current = GetThreadDesktop(GetCurrentThreadId());
         bool borrowed = DesktopName(current) == name;
@@ -316,8 +317,10 @@ internal sealed class OwnedHancomProcess : IDisposable
         try
         {
             bool windowIdentityFailed = false;
+            int callbackCount = 0;
             WindowCallback callback = (window, _) =>
             {
+                callbackCount++;
                 uint windowThread = GetWindowThreadProcessId(window, out uint windowPid);
                 if (windowThread == 0) { windowIdentityFailed = true; return true; }
                 if (windowPid != pid) return true;
@@ -330,12 +333,24 @@ internal sealed class OwnedHancomProcess : IDisposable
                 catch { windowIdentityFailed = true; }
                 return true;
             };
-            RequireNative(EnumDesktopWindows(value, callback, IntPtr.Zero), OwnershipStage.ENUMERATE_RESULT);
+            Marshal.SetLastPInvokeError(0);
+            bool enumerated = EnumDesktopWindows(value, callback, IntPtr.Zero);
+            int nativeError = enumerated ? 0 : Marshal.GetLastPInvokeError();
             GC.KeepAlive(callback);
             Require(!windowIdentityFailed, OwnershipStage.ENUMERATE_IDENTITY);
+            return ClassifyWindowEnumeration(enumerated, nativeError, callbackCount);
         }
         catch (Exception error) { primary = error; throw; }
         finally { if (!borrowed && !CloseDesktop(value) && primary is null) throw Failure(stage: OwnershipStage.ENUMERATE_CLOSE, nativeError: Marshal.GetLastPInvokeError()); }
+    }
+
+    internal static bool ClassifyWindowEnumeration(bool enumerated, int nativeError, int callbackCount)
+    {
+        if (enumerated) return true;
+        // The private desktop can have no GUI yet during startup. This is an
+        // unavailable sample, never evidence that a partial enumeration passed.
+        Require(nativeError == 0 && callbackCount == 0, OwnershipStage.ENUMERATE_RESULT, nativeError);
+        return false;
     }
 
     internal static bool ExactPath(string? actual, string expected)
