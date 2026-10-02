@@ -713,8 +713,16 @@ export class DocumentSessionController {
     }
 
     const previous = this.state;
-    this.patch({ savePhase: "restoring", errorMessage: "" });
+    const previousGeneration = this.changeGeneration;
+    const previousSignature = this.lastSavedContentSignature;
+    let originalSnapshot: Uint8Array | undefined;
+    let editorTouched = false;
+    let acquiredEditorLock = false;
     try {
+      this.beginExclusiveEditorOperation();
+      acquiredEditorLock = true;
+      this.patch({ savePhase: "restoring", errorMessage: "" });
+      originalSnapshot = await this.editor.getSnapshot();
       const document = await this.api.loadSceneDocument({
         sessionId: session.sessionId,
         sceneId
@@ -729,11 +737,13 @@ export class DocumentSessionController {
         this.editorSchemaVersion
       );
       const isInitialPlaceholder = document.snapshot.byteLength === 0;
+      editorTouched = true;
       await this.withSuppressedChanges(() =>
         this.editor.open(
           isInitialPlaceholder ? undefined : document.snapshot
         )
       );
+      this.assertExclusiveEditorOperationClean();
       this.sessionToken += 1;
       this.changeGeneration = 0;
       this.lastSavedContentSignature = isInitialPlaceholder
@@ -763,16 +773,35 @@ export class DocumentSessionController {
         lastSavedAt: document.updatedAt,
         errorMessage: ""
       });
-      this.editor.focus();
-      return true;
     } catch (error) {
+      let message = publicError(error);
+      if (editorTouched) {
+        try {
+          await this.withSuppressedChanges(() =>
+            this.editor.open(originalSnapshot)
+          );
+        } catch {
+          this.fatalEditorLock = true;
+          message += " 이전 편집기를 복구하지 못했습니다. 앱을 닫고 다시 여세요.";
+        }
+      }
+      this.changeGeneration = previousGeneration;
+      this.lastSavedContentSignature = previousSignature;
       this.setState({
         ...previous,
-        savePhase: "error",
-        errorMessage: publicError(error)
+        savePhase: this.fatalEditorLock ? "restoring" : "error",
+        canUndo: editorTouched ? false : previous.canUndo,
+        canRedo: editorTouched ? false : previous.canRedo,
+        errorMessage: message
       });
       return false;
+    } finally {
+      if (acquiredEditorLock && !this.fatalEditorLock) {
+        this.endExclusiveEditorOperation();
+      }
     }
+    this.focusAfterSwitch();
+    return true;
   }
 
   public selectEntityNote(
@@ -828,8 +857,16 @@ export class DocumentSessionController {
     }
 
     const previous = this.state;
-    this.patch({ savePhase: "restoring", errorMessage: "" });
+    const previousGeneration = this.changeGeneration;
+    const previousSignature = this.lastSavedContentSignature;
+    let originalSnapshot: Uint8Array | undefined;
+    let editorTouched = false;
+    let acquiredEditorLock = false;
     try {
+      this.beginExclusiveEditorOperation();
+      acquiredEditorLock = true;
+      this.patch({ savePhase: "restoring", errorMessage: "" });
+      originalSnapshot = await this.editor.getSnapshot();
       const document = await this.api.loadEntityNote({
         sessionId: session.sessionId,
         ownerKind: "ENTITY",
@@ -850,11 +887,13 @@ export class DocumentSessionController {
         this.editorSchemaVersion
       );
       const isInitialPlaceholder = document.snapshot.byteLength === 0;
+      editorTouched = true;
       await this.withSuppressedChanges(() =>
         this.editor.open(
           isInitialPlaceholder ? undefined : document.snapshot
         )
       );
+      this.assertExclusiveEditorOperationClean();
       this.sessionToken += 1;
       this.changeGeneration = 0;
       this.lastSavedContentSignature = isInitialPlaceholder
@@ -887,15 +926,42 @@ export class DocumentSessionController {
         lastSavedAt: document.updatedAt,
         errorMessage: ""
       });
-      this.editor.focus();
-      return true;
     } catch (error) {
+      let message = publicError(error);
+      if (editorTouched) {
+        try {
+          await this.withSuppressedChanges(() =>
+            this.editor.open(originalSnapshot)
+          );
+        } catch {
+          this.fatalEditorLock = true;
+          message += " 이전 편집기를 복구하지 못했습니다. 앱을 닫고 다시 여세요.";
+        }
+      }
+      this.changeGeneration = previousGeneration;
+      this.lastSavedContentSignature = previousSignature;
       this.setState({
         ...previous,
-        savePhase: "error",
-        errorMessage: publicError(error)
+        savePhase: this.fatalEditorLock ? "restoring" : "error",
+        canUndo: editorTouched ? false : previous.canUndo,
+        canRedo: editorTouched ? false : previous.canRedo,
+        errorMessage: message
       });
       return false;
+    } finally {
+      if (acquiredEditorLock && !this.fatalEditorLock) {
+        this.endExclusiveEditorOperation();
+      }
+    }
+    this.focusAfterSwitch();
+    return true;
+  }
+
+  private focusAfterSwitch(): void {
+    try {
+      this.editor.focus();
+    } catch (error) {
+      this.patch({ errorMessage: publicError(error) });
     }
   }
 

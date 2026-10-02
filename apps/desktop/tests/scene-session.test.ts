@@ -449,6 +449,140 @@ describe("Phase 1A scene session safety", () => {
     expect(controller.getState().activeSceneId).toBe("scene-c");
   });
 
+  it.each(["SCENE", "ENTITY"] as const)(
+    "restores the original graph and save generation after a partial %s installation",
+    async (targetKind) => {
+      const api = createApi({
+        loadEntityNote: vi.fn(async ({ ownerId }) => loadedEntityNote(ownerId, 2)),
+        saveEntityNote: vi.fn(async (request) => ({
+          ownerKind: "ENTITY" as const,
+          ownerId: request.ownerId,
+          documentId: request.documentId,
+          revision: 3,
+          updatedAt: "2026-08-02T00:03:00.000Z",
+          generation: request.generation,
+          saveSequence: request.saveSequence
+        }))
+      });
+      const editor = new SceneEditor();
+      const controller = new DocumentSessionController(api, editor, "fixed-commit", 1);
+      await controller.createProject();
+      await controller.save();
+      if (targetKind === "SCENE") {
+        await controller.selectEntityNote("entity-a");
+        editor.snapshot = Uint8Array.from([2, 7]);
+        editor.plainText = "entity-a 상세 노트";
+      }
+      const previous = controller.getState();
+      const originalSnapshot = Uint8Array.from(editor.snapshot);
+      const originalText = editor.plainText;
+      const open = vi.spyOn(editor, "open");
+      open.mockImplementationOnce(async () => {
+        editor.snapshot = Uint8Array.from([8, 8]);
+        editor.plainText = "실패한 대상 원고";
+        throw new Error("editor installation failed after graph replacement");
+      }).mockImplementationOnce(async (snapshot) => {
+        editor.snapshot = Uint8Array.from(snapshot!);
+        editor.plainText = originalText;
+      });
+
+      const switched = targetKind === "SCENE"
+        ? await controller.selectScene("scene-b")
+        : await controller.selectEntityNote("entity-b");
+
+      expect(switched).toBe(false);
+      expect(open.mock.calls[1]![0]).toEqual(originalSnapshot);
+      expect(controller.getState()).toMatchObject({
+        session: previous.session,
+        activeOwnerKind: previous.activeOwnerKind,
+        activeOwnerId: previous.activeOwnerId,
+        revision: previous.revision,
+        snapshotFingerprint: previous.snapshotFingerprint,
+        savePhase: "error",
+        canUndo: false,
+        canRedo: false
+      });
+      expect(controller.isEditorFailClosed()).toBe(false);
+      expect(editor.interactionStates.slice(-2)).toEqual([false, true]);
+      editor.emitContentChange();
+      expect(await controller.save()).toBe(true);
+      expect(api.saveSceneDocument).toHaveBeenCalledTimes(1);
+      expect(api.saveEntityNote).not.toHaveBeenCalled();
+
+      editor.snapshot = Uint8Array.from([...originalSnapshot, 4]);
+      editor.plainText = `${originalText} 수정`;
+      editor.emitContentChange();
+      expect(await controller.save()).toBe(true);
+      const save = targetKind === "SCENE" ? api.saveEntityNote : api.saveSceneDocument;
+      expect(save).toHaveBeenLastCalledWith(expect.objectContaining({
+        documentId: previous.session!.documentId,
+        generation: targetKind === "SCENE" ? 2 : 3,
+        snapshot: editor.snapshot,
+        plainTextRecovery: editor.plainText
+      }));
+    }
+  );
+
+  it.each(["SCENE", "ENTITY"] as const)(
+    "keeps the editor locked when failed %s installation cannot restore the original graph",
+    async (targetKind) => {
+      const api = createApi({
+        loadEntityNote: vi.fn(async ({ ownerId }) => loadedEntityNote(ownerId, 2))
+      });
+      const editor = new SceneEditor();
+      const controller = new DocumentSessionController(api, editor, "fixed-commit", 1);
+      await controller.createProject();
+      await controller.save();
+      editor.interactionStates.length = 0;
+      vi.spyOn(editor, "open").mockRejectedValue(new Error("graph installation failed"));
+
+      expect(targetKind === "SCENE"
+        ? await controller.selectScene("scene-b")
+        : await controller.selectEntityNote("entity-b")).toBe(false);
+      expect(controller.getState()).toMatchObject({
+        activeOwnerId: "scene-a",
+        savePhase: "restoring"
+      });
+      expect(controller.isEditorFailClosed()).toBe(true);
+      expect(editor.interactionStates).toEqual([false]);
+      editor.emitContentChange();
+      expect(await controller.save()).toBe(false);
+      controller.undo();
+      expect(editor.undoCalls).toBe(0);
+      expect(await controller.selectScene("scene-c")).toBe(false);
+      expect(await controller.prepareForClose()).toBe(true);
+      expect(api.saveSceneDocument).toHaveBeenCalledTimes(1);
+      expect(api.saveEntityNote).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["SCENE", "ENTITY"] as const)(
+    "retains the successfully installed %s owner when focus fails",
+    async (targetKind) => {
+      const api = createApi({
+        loadEntityNote: vi.fn(async ({ ownerId }) => loadedEntityNote(ownerId, 2))
+      });
+      const editor = new SceneEditor();
+      const controller = new DocumentSessionController(api, editor, "fixed-commit", 1);
+      await controller.createProject();
+      vi.spyOn(editor, "focus").mockImplementation(() => {
+        expect(editor.interactionStates.at(-1)).toBe(true);
+        throw new Error("input focus failed");
+      });
+
+      expect(targetKind === "SCENE"
+        ? await controller.selectScene("scene-b")
+        : await controller.selectEntityNote("entity-b")).toBe(true);
+      expect(controller.getState()).toMatchObject({
+        activeOwnerKind: targetKind,
+        activeOwnerId: targetKind === "SCENE" ? "scene-b" : "entity-b",
+        savePhase: "saved",
+        errorMessage: "input focus failed"
+      });
+      expect(controller.isEditorFailClosed()).toBe(false);
+    }
+  );
+
   it("keeps scene A mounted when its save fails", async () => {
     const api = createApi({
       saveSceneDocument: vi.fn(async () => {
