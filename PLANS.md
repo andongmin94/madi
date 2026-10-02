@@ -3,9 +3,17 @@
 갱신일: 2026-10-02. 작업 위치: `main`.
 현재 목표·진척·다음 작업·완료 조건은 이 문서에서만 관리한다.
 
-## 현재 작업 — 코드 정밀진단과 정리
+## 현재 작업 — 사용자 요청으로 중단
 
-최신 사용자 요청으로 작업을 재개했다. 현재 우선순위는 실제 미사용 소스·잔재와 중복을 추적하고,
+2026-10-02 퇴근을 위한 사용자 요청으로 작업을 중단했다. 소유 시험 job과 비활성 desktop은 정리했고, 자동 재개하지 않는다.
+최신 제품 코드 commit은 `cde2145cf7f3b7465939a99ed11a8b5d80a6bea2`다. HWP 제거와 정밀진단 개선은 구현했으며 제품 소스는 기준 e2 대비4,031줄 줄었다.
+Source52 전체 Windows 검증4599.511초·로컬 ZIP 대조·실제 AI 연결은 해당 source의 완료 근거다. Source52에는 이후 별도 시험에서 확인한 창 종료 예외가 있으므로 최신 코드의 완료 판정으로 이전하지 않는다.
+닫힌 창의 `webContents` 접근 예외를 최소 guard로 수정했다. 회귀시험2개 실제 RED 뒤 종료 관련14개 GREEN, typecheck·repository·format·diff를 통과했다.
+Source cde의 전체 시험은 사용자 요청으로2335.000초에 중단했다. Desktop102파일/710시험·bundle4시험과 dev 기본·D/E/F 경로까지 통과하고 장편 EPUB 시험 중이었다. HWPX·새 unpacked·fresh 경로는 이 실행에서 완료하지 않았다. **전체 PASS가 아니며 최신 runtime 판정은 PENDING이다.**
+중단 근거는 `.tools/verification/full-verify-cde2145-run2/intentional-abort.json`과 실제 terminal metadata에 보존했다. job1316/cleanup 시 active18은 소유 job 안에서 종료해 empty로 확인했고 handles·desktop을 닫았다. Input4556회 unknown0·소유 desktop inactive=true다. 강제 중단으로 없는 sourceAfter 필드를 성공값으로 채우지 않았다.
+재개하면 그때의 정확한 clean main source에서 명시적 command-only `CARGO_INCREMENTAL=0`으로 전체 pinned Windows 검증을 다시 실행한다. 통과한 unpacked를 재빌드 없이 ZIP으로 묶고 전체 byte join, 실제 AI·자연 종료/보고서 재시작 시험, 최종 결과 문서 갱신을 마친다. 준비 helper와 이전 결과는 `.tools/verification/`에 보존했다.
+
+현재 범위는 실제 미사용 소스·잔재와 중복을 추적하고,
 동작상 결함이 확인된 구현을 작게 개선해 복잡도를 줄이는 것이다. 의존성을 추가하지 않고 기존 타입·계약·호출·시험을 근거로 판단한다.
 HWPX 검증 성공을 근거로 사용자 요청에 따라 binary HWP 기능을 제품 범위에서 제거한다.
 HWP 앱·계약·C# sidecar·.NET/CI/배포 경로 제거와 미사용 선언·반사 선택 shim 정리를 구현했다.
@@ -55,7 +63,7 @@ Source5347/1ff full FAIL, source20e 기본 PASS, 기존 AI source5151과 첫 e2 
 
 1. **완료 — 기본 gate 복구와 HWP 구현 고정.** graph·IPv4/IPv6 수집·초기화 시험 수정, HWP 소유권·취소·최소 진단을 반영하고 최종 exact source 전체 경로를 통과했다.
 2. **완료 — 최종 자동 검증·포장.** 개발판/새 배포본 AI, IME report와 수동 kit, whole package·ZIP·새 압축 해제본 대조와 결과 기록을 완료했다. 검증한 제품을 포장 전에 재빌드하지 않았다.
-3. **검증 진행 — HWP 제거와 코드 정리.** 실제 미사용 소스·중복과 확인된 결함을 수정했다. 작은 main commit 뒤 정확한 source에서 필수 Windows 경로를 실행하고 결과와 새 배포본을 연결한다.
+3. **사용자 요청으로 중단 — HWP 제거와 코드 정리의 최종 검증.** 구현과 집중 회귀검사를 마쳤다. 재개 시 정확한 clean main source에서 필수 Windows 경로를 다시 실행하고 결과와 새 배포본을 연결한다. 중단한 부분 실행을 전체 PASS로 합치지 않는다.
 4. **사람의 확인 — Native IME15항목·HWPX layout·배포.** 실제 환경·입력·서식을 사람이 기록하고 배포 범위를 결정한다. 미완료 항목은 NOT TESTED/PENDING을 유지한다.
 
 ## 실행 자료와 사람에게 남는 조건
