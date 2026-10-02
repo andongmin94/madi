@@ -5,11 +5,7 @@ import {
   createRegisteredTypieEditorAdapter,
   registerTypieRuntimeFactory
 } from "./runtimeRegistry";
-import { bindTypieTextSelection } from "./selectionAwarePort";
-
-registerTypieRuntimeFactory(async () =>
-  bindTypieTextSelection(await createTypieEnginePort())
-);
+registerTypieRuntimeFactory(createTypieEnginePort);
 
 /**
  * The renderer composition root receives only madi-owned adapter metadata.

@@ -17,7 +17,8 @@ import fontManifestUrl from "@madi/typie-runtime/browser/font-manifest.zst?url";
 import fontChunkUrl from "@madi/typie-runtime/browser/font-chunk-0.zst?url";
 import type {
   EditorReplacementDocument,
-  EditorTextReplacement
+  EditorTextReplacement,
+  EditorTextSelection
 } from "../MadiEditorAdapter";
 import type {
   TypieEnginePort,
@@ -30,6 +31,7 @@ import {
 } from "./input/ime-context";
 import { ImeInputAdapter } from "./input/ime-input-adapter";
 import { TYPIE_SCENE_BREAK_MAPPING } from "./sceneBreakMapping";
+import { readMappedTextSelection } from "./selectionMapping";
 
 const EMPTY_DOCUMENT = {
   root: {
@@ -167,7 +169,6 @@ class BrowserTypieEnginePort implements TypieEnginePort {
   private editor: Editor | undefined;
   private mountElement: HTMLElement | undefined;
   private surfaceElement: HTMLDivElement | undefined;
-  private canvas: HTMLCanvasElement | undefined;
   private readonly canvases = new Map<number, HTMLCanvasElement>();
   private input: HTMLTextAreaElement | undefined;
   private resizeObserver: ResizeObserver | undefined;
@@ -332,6 +333,13 @@ class BrowserTypieEnginePort implements TypieEnginePort {
     // Annotated prose preserves semantic horizontal rules as `***`, making
     // the recovery copy useful even without the binary Typie graph.
     return this.requireEditor().prose_text_annotated();
+  }
+
+  public readTextSelection(): EditorTextSelection | null {
+    if (this.compositionActive || !this.editor) {
+      return null;
+    }
+    return readMappedTextSelection(this.editor);
   }
 
   public async replaceTextRanges(
@@ -816,7 +824,6 @@ class BrowserTypieEnginePort implements TypieEnginePort {
       }
     }
 
-    this.canvas = this.canvases.get(0);
     surface.style.width = `${surfaceWidth}px`;
     surface.style.height = `${Math.max(0, offset - pageGap)}px`;
     this.updateSceneBreakDiagnostic();
