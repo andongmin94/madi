@@ -238,6 +238,56 @@ describe("JsonRpcCoreClient sequential transport", () => {
     client.dispose();
   });
 
+  it.each<[string, unknown]>([
+    ["null", null],
+    ["array", []],
+    ["number", 1],
+    ["string", "unexpected"],
+    ["missing payload", { jsonrpc: "2.0", id: 1 }],
+    ["both payloads", { jsonrpc: "2.0", id: 1, result: null, error: { code: -1 } }],
+    ["null error", { jsonrpc: "2.0", id: 1, error: null }],
+    ["array error", { jsonrpc: "2.0", id: 1, error: [] }],
+    ["missing error code", { jsonrpc: "2.0", id: 1, error: {} }],
+    ["invalid error code", { jsonrpc: "2.0", id: 1, error: { code: "-1" } }]
+  ])("rejects malformed %s without escaping the stdout event", async (_label, response) => {
+    const child = new FakeCoreProcess();
+    const client = new JsonRpcCoreClient("madi-core", {
+      spawnProcess: () => child.asChildProcess()
+    });
+    const active = client.request("load_ui_state", { key: "reader" });
+    const queued = client.request("save_ui_state", { state: "reader" });
+    const activeRejection = expect(active).rejects.toThrow("invalid response");
+    const queuedRejection = expect(queued).rejects.toThrow("invalid response");
+
+    expect(() => child.stdout.write(`${JSON.stringify(response)}\n`)).not.toThrow();
+
+    await activeRejection;
+    await queuedRejection;
+    expect(child.requests).toHaveLength(1);
+    expect(child.kill).toHaveBeenCalledOnce();
+    child.emit("close", 1, null);
+    client.dispose();
+  });
+
+  it("accepts null results and reports valid core errors without exposing their message", async () => {
+    const child = new FakeCoreProcess();
+    const client = new JsonRpcCoreClient("madi-core", {
+      spawnProcess: () => child.asChildProcess()
+    });
+    const active = client.request("load_ui_state", { key: "reader" });
+    child.respond(0, null);
+    await expect(active).resolves.toBeNull();
+    const failed = client.request("load_ui_state", { key: "reader" });
+    child.stdout.write(`${JSON.stringify({
+      jsonrpc: "2.0",
+      id: child.requests[1]?.id,
+      error: { code: -32603, message: "private diagnostic" }
+    })}\n`);
+    await expect(failed).rejects.toThrow("Core command load_ui_state failed (-32603)");
+    expect(child.kill).not.toHaveBeenCalled();
+    client.dispose();
+  });
+
   it("rejects malformed UTF-8 before JSON-RPC parsing", async () => {
     const child = new FakeCoreProcess();
     const client = new JsonRpcCoreClient("madi-core", {

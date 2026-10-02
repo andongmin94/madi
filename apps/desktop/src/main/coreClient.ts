@@ -125,8 +125,32 @@ interface RpcResponse {
   readonly id: number;
   readonly result?: unknown;
   readonly error?: {
-    readonly code?: number;
+    readonly code: number;
   };
+}
+
+function isRpcResponse(value: unknown): value is RpcResponse {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value)
+  ) {
+    return false;
+  }
+  const response = value as Record<string, unknown>;
+  if (response.jsonrpc !== "2.0" || !Number.isSafeInteger(response.id)) {
+    return false;
+  }
+  if (Object.hasOwn(response, "result")) {
+    return !Object.hasOwn(response, "error");
+  }
+  const error = response.error;
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    !Array.isArray(error) &&
+    Number.isSafeInteger((error as Record<string, unknown>).code)
+  );
 }
 
 export interface ResolveCoreBinaryOptions {
@@ -425,9 +449,9 @@ export class JsonRpcCoreClient implements CoreClient {
   }
 
   private consumeLine(line: string): void {
-    let response: RpcResponse;
+    let response: unknown;
     try {
-      response = JSON.parse(line) as RpcResponse;
+      response = JSON.parse(line);
     } catch {
       this.failTransport(
         new Error("The local core returned invalid JSON"),
@@ -436,10 +460,7 @@ export class JsonRpcCoreClient implements CoreClient {
       return;
     }
 
-    if (
-      response.jsonrpc !== "2.0" ||
-      !Number.isSafeInteger(response.id)
-    ) {
+    if (!isRpcResponse(response)) {
       this.failTransport(
         new Error("The local core returned an invalid response"),
         this.child
@@ -460,13 +481,8 @@ export class JsonRpcCoreClient implements CoreClient {
     this.activeRequest = undefined;
 
     if (response.error) {
-      const code =
-        typeof response.error.code === "number" &&
-        Number.isSafeInteger(response.error.code)
-        ? ` (${response.error.code})`
-        : "";
       pending.reject(
-        new Error(`Core command ${pending.method} failed${code}`)
+        new Error(`Core command ${pending.method} failed (${response.error.code})`)
       );
     } else {
       pending.resolve(response.result);
