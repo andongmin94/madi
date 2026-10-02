@@ -84,19 +84,8 @@ export interface HwpxExportState {
   readonly metadata: PublicationExportMetadata;
   readonly presets: readonly HwpxExportPresetRecord[];
   readonly duplicatePresetNames: readonly string[];
-  readonly hancom: HancomAutomationAvailability;
   readonly revision: number;
 }
-
-export type HancomAutomationAvailability =
-  | {
-      readonly status: "UNAVAILABLE";
-      readonly reason: "NOT_WINDOWS" | "NOT_INSTALLED" | "BRIDGE_UNAVAILABLE";
-    }
-  | {
-      readonly status: "REGISTERED_UNVERIFIED" | "AVAILABLE";
-      readonly version: string | null;
-    };
 
 export interface CreateHwpxExportPresetRequest {
   readonly sessionId: string;
@@ -138,14 +127,12 @@ export interface DeleteHwpxExportPresetResult {
 export interface ChooseHwpxOutputRequest {
   readonly sessionId: string;
   readonly suggestedFileName: string;
-  readonly outputType: "HWPX" | "HWP";
 }
 
 /** Opaque main-process selection; the renderer never receives an absolute path. */
 export interface HwpxOutputSelection {
   readonly selectionId: string;
   readonly fileName: string;
-  readonly outputType: "HWPX" | "HWP";
 }
 
 export type HwpxValidationSeverity = "FATAL" | "ERROR" | "WARNING" | "INFO";
@@ -202,8 +189,6 @@ export interface HwpxExportTiming {
   readonly sourceCoverageMs: number;
   readonly exporterTotalMs: number;
   readonly totalMs: number;
-  readonly hwpConversionMs: number | null;
-  readonly hwpReopenMs: number | null;
 }
 
 export interface HwpxReportPageConfig {
@@ -230,7 +215,7 @@ export interface HwpxReportPageConfig {
 
 export interface HwpxExportReport {
   readonly formatVersion: 1;
-  readonly outputType: "HWPX" | "HWP";
+  readonly outputType: "HWPX";
   readonly packageProfile: "HANCOM_OFFICIAL_MODEL_1_31";
   readonly sourceScope: PublicationScopeKind;
   readonly sourceScopeNodeId: string;
@@ -240,8 +225,6 @@ export interface HwpxExportReport {
   readonly presetContentHash: string;
   readonly hwpxSha256: string | null;
   readonly outputSha256: string | null;
-  /** Basename only; present when HWP output keeps its validated HWPX source. */
-  readonly preservedHwpxFileName: string | null;
   readonly logicalPackageHash: string;
   readonly byteLength: number | null;
   readonly coverage: HwpxCoverage;
@@ -249,8 +232,6 @@ export interface HwpxExportReport {
   readonly fontFamily: string;
   readonly fontInstalled: boolean | null;
   readonly page: HwpxReportPageConfig;
-  readonly hancomReopen: "NOT_RUN" | "PASSED" | "FAILED";
-  readonly hwpConverted: boolean;
   readonly timing: HwpxExportTiming;
   readonly generatedAt: string;
   readonly madiVersion: string;
@@ -262,8 +243,6 @@ export type HwpxExportStage =
   | "SECTION_XML"
   | "HWPX_PACKAGE"
   | "INTERNAL_VALIDATION"
-  | "HWP_CONVERSION"
-  | "REOPEN_VERIFICATION"
   | "FINALIZE";
 
 export interface HwpxExportProgress {
@@ -301,7 +280,6 @@ export interface ValidateHwpxExportResult {
 
 export interface RunHwpxExportRequest extends ValidateHwpxExportRequest {
   readonly outputSelectionId: string;
-  readonly outputType: "HWPX" | "HWP";
 }
 
 export type RunHwpxExportResult =
@@ -316,35 +294,15 @@ export type RunHwpxExportResult =
     }
   | { readonly status: "CANCELLED"; readonly operationId: string }
   | {
-      readonly status: "CANCELLED";
-      readonly operationId: string;
-      readonly preservedHwpxFileName: string;
-      readonly report: HwpxExportReport;
-    }
-  | {
       readonly status: "FAILED";
       readonly operationId: string;
-      readonly code: "DESTINATION_CHANGED" | "HWP_CONVERSION_UNAVAILABLE";
+      readonly code: "DESTINATION_CHANGED";
     }
   | {
       readonly status: "FAILED";
       readonly operationId: string;
       readonly code: "RECOVERY_REQUIRED";
       readonly recoveryFileName: string | null;
-    }
-  | {
-      readonly status: "FAILED";
-      readonly operationId: string;
-      readonly code: "DESTINATION_CHANGED";
-      readonly preservedHwpxFileName: string;
-      readonly report: HwpxExportReport;
-    }
-  | {
-      readonly status: "FAILED";
-      readonly operationId: string;
-      readonly code: "HWP_CONVERSION_FAILED" | "HWP_OUTPUT_FAILED";
-      readonly preservedHwpxFileName: string;
-      readonly report: HwpxExportReport;
     };
 
 export interface CancelHwpxExportRequest {

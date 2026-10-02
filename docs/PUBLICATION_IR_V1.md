@@ -409,9 +409,8 @@ HWPX package로 매핑한다. Source coverage 계약은 exporter 종류와 무�
 - rejected block, source/export set mismatch, dangling reference 또는 malformed XML/ZIP이면
   success가 아니다.
 
-HWP conversion은 IR exporter가 아니다. Optional local bridge가 성공한 generated HWPX를
-한컴 Automation으로 열어 별도 `.hwp` derived artifact로 저장하는 후처리다. Generated
-HWPX/HWP, output path, validation cache와 report는 IR이나 named snapshot에 넣지 않는다.
+Generated HWPX, output path, validation cache와 report는 IR이나 named snapshot에 넣지 않는다.
+Binary HWP 변환은 2026-10-02 사용자 결정으로 제품 범위에서 제거했다.
 이 profile은 `KS X 6101:2024` 전체 적합성을 선언하지 않는다.
 
 ## 17. 관련 문서
@@ -429,5 +428,4 @@ HWPX/HWP, output path, validation cache와 report는 IR이나 named snapshot에 
 - [Phase 1H result](./PHASE_1H_RESULT.md)
 - [HWPX export architecture](./HWPX_EXPORT_ARCHITECTURE.md)
 - [HWPX semantic mapping](./HWPX_SEMANTIC_MAPPING.md)
-- [Optional local HWP bridge](./HWP_LOCAL_BRIDGE.md)
 - [ADR-0009: HWPX exporter consumes Publication IR only](./decisions/ADR-0009-hwpx-exporter-consumes-publication-ir-only.md)

@@ -22,7 +22,6 @@ import {
   DEFAULT_WORLD_GRAPH_UI_STATE,
   WORLD_GRAPH_ENTITY_KINDS,
   WORLD_GRAPH_ENTITY_STATUSES,
-  type FilteredWorldGraph,
   type WorldGraphDetailRelationView,
   type WorldGraphEdgeView,
   type WorldGraphEntityDetailView,

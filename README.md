@@ -11,7 +11,7 @@
 저장된 Typie 원고는 Madi 소유의 engine-independent Publication IR로 파생되고, Reader
 Lab과 EPUB·HWPX exporter가 같은 IR을 소비한다. World Graph는 Story Bible의 읽기 전용
 파생 화면이고, Plot Canvas는 작가가 만든 독립 planning data다. Canvas 연결선은 Story
-Bible 관계를 만들지 않는다. 생성된 EPUB·HWPX·HWP와 report는 canonical 원고에 섞지 않는다.
+Bible 관계를 만들지 않는다. 생성된 EPUB·HWPX와 report는 canonical 원고에 섞지 않는다.
 
 ## 현재 할 수 있는 일
 
@@ -79,7 +79,6 @@ Bible 관계를 만들지 않는다. 생성된 EPUB·HWPX·HWP와 report는 cano
 - 제목·본문·heading·blockquote·list·scene break와 inline emphasis/underline/strike 의미 매핑
 - source coverage, exported/fallback/configured-omission/rejected block과 ruby text fallback을
   보존하는 JSON/Markdown report
-- 한컴 설치가 있고 명시적 security module이 준비된 경우에만 사용하는 optional local HWP bridge
 
 그래프 canonical 관계 편집, Canvas edge의 Story Bible relation 자동 승격, docking
 workspace, 시간축/지식 시점 graph, EPUB/HWPX import/edit, binary HWP 직접 생성,
@@ -302,7 +301,7 @@ EPUBCheck 5.3.0·Temurin JRE는 앱에 고정 bundle로 포함된다. 검사와 
 [`docs/EPUB_EXPORT_ARCHITECTURE.md`](docs/EPUB_EXPORT_ARCHITECTURE.md)와
 [`docs/EPUB_VALIDATION_STRATEGY.md`](docs/EPUB_VALIDATION_STRATEGY.md)를 따른다.
 
-### 12. HWPX와 선택적 HWP 내보내기
+### 12. HWPX 내보내기
 
 `출판 내보내기`의 HWPX 탭은 EPUB과 동일한 Publication IR을 사용하고 Typie/Reader DOM을
 직접 읽지 않는다.
@@ -313,17 +312,10 @@ EPUBCheck 5.3.0·Temurin JRE는 앱에 고정 bundle로 포함된다. 검사와 
 3. `검사`로 ZIP/XML/reference/source-coverage internal validation report를 확인한다.
 4. `HWPX 내보내기`에서 destination을 고르고 progress/cancel과 JSON/Markdown report를
    확인한다.
-5. HWP는 HWPX가 성공한 뒤 별도 수동 검증으로 local bridge가 안전하다고 승인된 경우에만
-   선택할 수 있다. 현재 자동 probe는 Automation을 활성화하지 않고
-   `REGISTERED_UNVERIFIED`까지만 보고하므로 HWP 선택은 비활성 상태다.
-
 현재 HWPX profile은 한컴 공식 `hwpx-owpml-model` XML 1.31 세대 상호운용 target이며
-`KS X 6101:2024` 전체 적합성 선언이 아니다. 현재 검증 PC에는 한컴오피스가 있지만
-Automation file-path security module이 없어 probe가 `SECURITY_MODULE_REQUIRED`를 반환했다.
-COM activation/open/SaveAs는 실행하지 않았고 HWP 실제 검증은 `MANUAL VALIDATION PENDING`이다.
+`KS X 6101:2024` 전체 적합성 선언이 아니다. Binary HWP 변환은 현재 제품 범위에서 제거했다.
 자세한 경계는 [`docs/HWPX_EXPORT_ARCHITECTURE.md`](docs/HWPX_EXPORT_ARCHITECTURE.md),
-[`docs/HWPX_VALIDATION_STRATEGY.md`](docs/HWPX_VALIDATION_STRATEGY.md)와
-[`docs/HWP_LOCAL_BRIDGE.md`](docs/HWP_LOCAL_BRIDGE.md)를 따른다.
+[`docs/HWPX_VALIDATION_STRATEGY.md`](docs/HWPX_VALIDATION_STRATEGY.md)를 따른다.
 
 ### 13. 종료와 재열기
 
@@ -546,8 +538,6 @@ script는 clean/pinned submodule을 확인하고
 - pnpm `11.9.0` (`package.json#packageManager`)
 - Rust `1.97.1` MSVC (`rust-toolchain.toml`)
 - Rust targets `x86_64-pc-windows-msvc`, `wasm32-unknown-unknown`
-- HWP local bridge build용 .NET SDK `10.0.400` (`global.json`, roll-forward disabled)
-- HWP local bridge 실행용 compatible x86 .NET 10 runtime; HWPX export 자체에는 필요 없음
 - Visual Studio 2022 Build Tools의 C++ desktop workload와 Windows SDK
 
 EPUB 검사 자산은 `.tools/phase1g-validation/`에 `epubcheck-5.3.0.zip`과
@@ -593,7 +583,6 @@ pnpm build
 pnpm run test:publication
 pnpm run test:hwpx
 pnpm run test:atomic-output
-pnpm run test:hwp-bridge
 pnpm run test:core
 pnpm run typecheck
 pnpm run test:desktop
@@ -619,7 +608,7 @@ pnpm test:dev
 ```
 
 `pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust Publication/EPUB/HWPX test,
-atomic-output helper build/test, C# bridge contract test, pinned EPUBCheck fixture와 runtime,
+atomic-output helper build/test, pinned EPUBCheck fixture와 runtime,
 실제 Typie probe, `.madi` integration, production build, build 뒤 lazy bundle artifact
 test, 일반·scale development Electron과 fresh unpacked packaged smoke를 순서대로
 실행한다. Phase 1F smoke는 일반·675,000자 장편 Reader fixture를 각각 5회 측정하고 새
@@ -635,21 +624,15 @@ output/madi-win32-x64/resources/bin/madi-core.exe
 output/madi-win32-x64/resources/bin/madi-export-epub.exe
 output/madi-win32-x64/resources/bin/madi-export-hwpx.exe
 output/madi-win32-x64/resources/bin/madi-atomic-output.exe
-output/madi-win32-x64/resources/bin/hwp-bridge/
 output/madi-win32-x64/resources/validation/
 output/madi-win32-x64/resources/licenses/
 ```
-
-`hwp-bridge/`에는 Madi가 빌드한 bridge와 framework-dependent .NET runtime metadata만
-들어간다. 한컴 binary와 Automation security module은 포함하거나 재배포하지 않는다. 이
-폴더는 installer, code signing 또는 자동 update가 아니다.
 
 `pnpm package:portable`은 새 unpacked build를 ZIP으로 만들고 fresh extraction의 모든
 path·size·SHA-256을 원본과 대조한다. ZIP·manifest·checksum·실행/수동 업데이트 안내는
 `output/releases/`에 source별로 보관하며 기존 release를 덮어쓰지 않는다. 앱을 실행하거나
 설치하지 않는다. `pnpm prepare:manual-validation`은 별도 시험 profile 안내·합성 한글
-5,000자·미검증 결과 template을 준비하고 창을 열지 않는다. 실제 IME·한컴 PASS는 사람의
-검증 결과로만 기록한다.
+5,000자·미검증 결과 template을 준비하고 창을 열지 않는다. 실제 IME PASS는 사람의 검증 결과로만 기록한다.
 
 ### 검증 결과 확인
 
@@ -737,7 +720,7 @@ Typie 사용 permission은 [owner-confirmed](docs/TYPIE_LICENSE_STATUS.md)이며
 사유는 해소됐다. 각 release의 범위는 저장소 밖의 실제 grant 조건을 확인해야 한다.
 과거 라이선스 분석 문서는 당시의 기록이며 현재 권한을 새로 해석하는 근거로 쓰지 않는다.
 
-한컴 Automation·실제 HWP 변환, exact runtime gate, signing·license 검증과
+Exact runtime gate, signing·license 검증과
 외부 배포 조건은 [개발 계획](PLANS.md)에서 별도로 관리한다. 비공개 로컬 기술검증 성공을
 public download, 유료·고객 전달 또는 installer 배포 승인으로 취급하지 않는다.
 
@@ -763,10 +746,7 @@ public download, 유료·고객 전달 또는 installer 배포 승인으로 취�
 - [HWPX validation strategy](docs/HWPX_VALIDATION_STRATEGY.md)
 - [HWPX export preset format v1](docs/HWPX_EXPORT_PRESET_FORMAT_V1.md)
 - [HWPX export performance](docs/HWPX_EXPORT_PERFORMANCE.md)
-- [Optional local HWP bridge](docs/HWP_LOCAL_BRIDGE.md)
-- [Hancom Automation validation](docs/HANCOM_AUTOMATION_VALIDATION.md)
 - [ADR-0009: HWPX exporter consumes Publication IR only](docs/decisions/ADR-0009-hwpx-exporter-consumes-publication-ir-only.md)
-- [ADR-0010: HWP output uses local Hancom conversion](docs/decisions/ADR-0010-hwp-output-uses-local-hancom-conversion.md)
 - [Phase 1G 범위](docs/PHASE_1G_SCOPE.md)
 - [Phase 1G 저장소/actual 결과](docs/PHASE_1G_RESULT.md)
 - [EPUB export architecture](docs/EPUB_EXPORT_ARCHITECTURE.md)

@@ -10,13 +10,11 @@ import {
 } from "react";
 import type {
   CompilePublicationResult,
-  PublicationDocument,
   PublicationSourceReference,
   ReaderLabUiState,
   ReaderPaneOverrides,
   ReaderPresetRecord,
-  ReaderRenderConfig,
-  ReaderSettings
+  ReaderRenderConfig
 } from "../../../shared/publication";
 import { validatePublicationDocument } from "../../../shared/publicationValidation";
 import { validateReaderRenderConfig } from "../../../shared/readerConfigValidation";

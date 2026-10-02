@@ -1,6 +1,6 @@
 # HWPX Export Architecture
 
-기준일: 2026-09-07
+기준일: 2026-09-07. HWP 제거 반영일: 2026-10-02.
 
 ## 1. 소유권 경계
 
@@ -19,7 +19,7 @@ renderer (untrusted request)
   → same-directory staged replacement with persistent compensation journal
 ```
 
-Generated HWPX/HWP는 derived delivery artifact다. `.madi` 또는 named snapshot에는 closed
+Generated HWPX는 derived delivery artifact다. `.madi` 또는 named snapshot에는 closed
 HWPX preset만 canonical data로 들어간다.
 
 ## 2. Rust compiler 층
@@ -73,7 +73,6 @@ ownership boundary와 동일하다.
 - Main은 selection 당시 destination의 존재/size/hash와 commit 직전 identity를 비교한다.
 - Packaged app은 `resources/bin/madi-export-hwpx.exe`를 고정 사용하고 development env
   override를 무시한다.
-- HWP 요청은 HWPX validation/commit 이후 별도 bridge capability로 진행한다.
 - Report에는 one-shot contact와 원고 본문을 넣지 않는다.
 
 ## 5. Atomic output
@@ -97,9 +96,6 @@ artifact를 random no-clobber recovery sibling으로 복사·flush·재검증한
 실패 배치와 startup crash recovery도 동일 상태표를 쓰며 unknown/corrupt state는 registry와
 staging cleanup을 금지한다.
 
-HWP 변환은 이미 검증된 HWPX를 input으로 별도 operation-owned `.hwp` temporary file에
-저장한 뒤 commit한다. 변환/재열기 실패는 HWPX를 rollback하거나 삭제하지 않는다.
-
 ## 6. Determinism
 
 Deterministic input은 Publication hash, canonical preset hash와 metadata다. Entry order,
@@ -107,7 +103,7 @@ path, XML element/attribute generation order, source-derived IDs, ZIP timestamp,
 method와 permission을 고정한다. `sha256`은 실제 ZIP bytes, `logicalPackageHash`는
 `madi-hwpx-logical-package-v1` domain separator와 ordered `(path,length,bytes)`의 SHA-256다.
 
-Hancom이 HWPX를 다시 저장하거나 HWP로 변환하면 producer metadata/compression/binary
+외부 편집기가 HWPX를 다시 저장하면 producer metadata/compression/package
 layout이 달라질 수 있으므로 그 결과에 Madi ZIP byte determinism을 주장하지 않는다.
 
 ## 7. 관련 결정
@@ -116,4 +112,3 @@ layout이 달라질 수 있으므로 그 결과에 Madi ZIP byte determinism을 
 - [Package layout](./HWPX_PACKAGE_LAYOUT.md)
 - [Validation strategy](./HWPX_VALIDATION_STRATEGY.md)
 - [ADR-0009](./decisions/ADR-0009-hwpx-exporter-consumes-publication-ir-only.md)
-- [ADR-0010](./decisions/ADR-0010-hwp-output-uses-local-hancom-conversion.md)

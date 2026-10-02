@@ -26,11 +26,11 @@ pnpm --filter @madi/desktop typecheck
 focused transport/LLM Vitest files
 ```
 
-The focused Vitest set covers the local-core restart barrier, atomic-output shutdown, EPUB/HWP process boundaries, and the narrow LLM transport/IPC paths that are safe to exercise without launching Electron. The install intentionally uses `--ignore-scripts`; this quality gate therefore does not provision or validate an Electron runtime.
+The focused Vitest set covers the local-core restart barrier, atomic-output shutdown, EPUB/HWPX process boundaries, and the narrow LLM transport/IPC paths that are safe to exercise without launching Electron. The install intentionally uses `--ignore-scripts`; this quality gate therefore does not provision or validate an Electron runtime.
 
-This cross-platform gate is deliberately smaller than the Windows product-verification contract. A green `quality.yml` result means the repository/static contracts, desktop TypeScript typecheck, and the listed focused tests passed on that GitHub-hosted Linux runner. It does **not** prove Windows native IME behavior, Electron runtime or packaged behavior, HWPX/HWP actuals, Hancom Automation, runtime EPUBCheck packaging, or the full root `pnpm verify` path.
+This cross-platform gate is deliberately smaller than the Windows product-verification contract. A green `quality.yml` result means the repository/static contracts, desktop TypeScript typecheck, and the listed focused tests passed on that GitHub-hosted Linux runner. It does **not** prove Windows native IME behavior, Electron runtime or packaged behavior, HWPX actuals, runtime EPUBCheck packaging, or the full root `pnpm verify` path.
 
-`windows-gate.yml` provisions pinned Node/pnpm, Rust, .NET SDK, and the x86 .NET runtime on Windows,
+`windows-gate.yml` provisions pinned Node/pnpm and Rust on Windows,
 then invokes the full verification and unpacked-package path. Commit `a0c1366` adds official
 EPUBCheck/JRE archive preparation with the existing size/hash pins and an always-written summary
 that identifies the source SHA and actual step outcomes. It also installs pnpm `11.9.0` explicitly,
@@ -59,7 +59,6 @@ Repository normalization does not authorize public, paid, customer, or installer
 ```text
 Typie permission: OWNER-CONFIRMED; release scope must follow the external grant
 Windows native Korean IME: MANUAL VALIDATION PENDING
-Hancom Automation and real HWP conversion/reopen: PENDING
 Runtime EPUBCheck packaging: DEFERRED TO PRE-RELEASE HARDENING
 Executable signing and complete transitive license audit: PENDING
 ```

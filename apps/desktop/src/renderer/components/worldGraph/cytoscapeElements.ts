@@ -189,7 +189,6 @@ export function toCytoscapeElements(
   ];
 }
 
-export const WORLD_GRAPH_KIND_COLORS = KIND_COLORS;
 export const WORLD_GRAPH_KIND_SHAPES = KIND_SHAPES;
 
 export const WORLD_GRAPH_CYTOSCAPE_STYLES = [

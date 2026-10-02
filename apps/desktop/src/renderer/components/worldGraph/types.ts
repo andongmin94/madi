@@ -1,10 +1,8 @@
 import type {
   EntityGraphDetail,
   EntityGraphRelationDetail,
-  EntityGraphRelationPerspective,
   EntityKind,
   EntitySceneContext,
-  EntitySceneContextLink,
   EntityStatus,
   WorldGraphDepth as MadiWorldGraphDepth,
   WorldGraphDiagnostic,
@@ -15,8 +13,6 @@ import type {
   WorldGraphPoint as MadiWorldGraphPoint,
   WorldGraphReadModel,
   WorldGraphRelationDirection as MadiWorldGraphRelationDirection,
-  WorldGraphStats,
-  WorldGraphTag,
   WorldGraphTagMode as MadiWorldGraphTagMode,
   WorldGraphUiState as MadiWorldGraphUiState,
   WorldGraphViewport as MadiWorldGraphViewport
@@ -43,20 +39,15 @@ export const WORLD_GRAPH_ENTITY_STATUSES = [
 
 export type WorldGraphEntityStatus = EntityStatus;
 
-export type WorldGraphTagView = WorldGraphTag;
-
 /**
  * Renderer-facing structural view of the madi-owned DTO. Cytoscape types are
  * deliberately absent so this object can cross the preload boundary safely.
  */
 export type WorldGraphNodeView = WorldGraphNode;
 export type WorldGraphEdgeView = WorldGraphEdge;
-export type WorldGraphStatsView = WorldGraphStats;
 export type WorldGraphReadModelView = WorldGraphReadModel;
-export type WorldGraphRelationPerspective = EntityGraphRelationPerspective;
 export type WorldGraphDetailRelationView = EntityGraphRelationDetail;
 export type WorldGraphEntityDetailView = EntityGraphDetail;
-export type WorldGraphSceneLinkView = EntitySceneContextLink;
 export type WorldGraphSceneContextView = EntitySceneContext;
 export type WorldGraphDepth = MadiWorldGraphDepth;
 export type WorldGraphMode = MadiWorldGraphMode;

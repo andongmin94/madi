@@ -35,7 +35,6 @@ const hwpxExporterRoot = resolve(
   "madi-export-hwpx",
   "src",
 );
-const hwpBridgeRoot = resolve(repositoryRoot, "sidecars", "hwp-bridge");
 const atomicOutputRoot = resolve(
   repositoryRoot,
   "crates",
@@ -57,10 +56,7 @@ async function walkWithoutBuildOutput(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const paths = await Promise.all(
     entries.map(async (entry) => {
-      if (
-        entry.isDirectory() &&
-        (entry.name === "bin" || entry.name === "obj" || entry.name === "target")
-      ) {
+      if (entry.isDirectory() && entry.name === "target") {
         return [];
       }
       const path = join(directory, entry.name);
@@ -194,7 +190,6 @@ if (
   throw new Error("HWPX exporter Cargo manifest directly depends on Typie internals");
 }
 
-const hwpBridgeFiles = await walkWithoutBuildOutput(hwpBridgeRoot);
 const atomicOutputFiles = await walkWithoutBuildOutput(atomicOutputRoot);
 for (const path of atomicOutputFiles) {
   if (/\.(?:dll|exe|msi|ocx)$/iu.test(path)) {
@@ -217,25 +212,6 @@ if (
 ) {
   throw new Error("Atomic output helper must not depend on editor internals");
 }
-for (const path of hwpBridgeFiles.filter((entry) => entry.endsWith(".csproj"))) {
-  const manifest = await readFile(path, "utf8");
-  if (/<(?:PackageReference|Reference|COMReference)\b/iu.test(manifest)) {
-    throw new Error(
-      "HWP bridge must not compile or package a third-party or Hancom assembly",
-    );
-  }
-}
-for (const path of hwpBridgeFiles) {
-  if (/\.(?:dll|exe|msi|ocx|hwp)$/iu.test(path)) {
-    throw new Error(
-      `HWP bridge source contains a forbidden binary: ${relative(
-        repositoryRoot,
-        path,
-      )}`,
-    );
-  }
-}
-
 const buildInfoPath = resolve(
   repositoryRoot,
   "packages",
@@ -374,10 +350,7 @@ const hygieneFiles = (
   await Promise.all(hygieneRoots.map((directory) => walk(directory)))
 )
   .flat()
-  .concat(
-    hwpBridgeFiles.filter((path) => /\.(?:cs|csproj)$/iu.test(path)),
-  )
-  .filter((path) => /\.(?:ts|tsx|js|mjs|rs|cs|csproj)$/.test(path));
+  .filter((path) => /\.(?:ts|tsx|js|mjs|rs)$/.test(path));
 for (const path of hygieneFiles) {
   const source = await readFile(path, "utf8");
   if (source.includes("\u0000") || /[ \t]+$/m.test(source)) {
@@ -397,7 +370,6 @@ process.stdout.write(
       rustCoreFilesScanned: coreFiles.length,
       epubExporterFilesScanned: epubExporterFiles.length,
       hwpxExporterFilesScanned: hwpxExporterFiles.length,
-      hwpBridgeSourceFilesScanned: hwpBridgeFiles.length,
       atomicOutputFilesScanned: atomicOutputFiles.length,
       negativeBoundaryFixture: "rejected",
       sourceHygieneFilesScanned: hygieneFiles.length,

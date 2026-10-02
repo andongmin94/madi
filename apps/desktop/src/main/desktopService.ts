@@ -1,9 +1,7 @@
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
-import { constants as fsConstants } from "node:fs";
 import {
-  copyFile,
   link,
   lstat,
   mkdir,
@@ -77,9 +75,6 @@ import type {
   ReaderPresetMutationResult,
   ReaderPresetRecord,
   ReaderPresetSourceKind,
-  ReaderLabUiState,
-  ReaderPaneOverrides,
-  ReaderPaneUiState,
   ReaderRenderConfig,
   ReaderVerificationStatus,
   RecoverPlainTextRequest,
@@ -300,11 +295,6 @@ import {
   HwpxExportCancelledError,
   HwpxUtilityValidationError
 } from "./hwpxExportClient";
-import type { HwpBridgePort } from "./hwpBridgeClient";
-import {
-  HwpBridgeCancelledError,
-  HwpBridgeOperationError
-} from "./hwpBridgeClient";
 import type { FontInstallationPort } from "./fontInstallation";
 import { WindowsFontInstallationDetector } from "./fontInstallation";
 import type { HwpxCrashRecoveryPort } from "./hwpxCrashRecovery";
@@ -3046,7 +3036,6 @@ interface HwpxOutputSelectionRecord {
   readonly sessionId: string;
   readonly filePath: string;
   readonly fileName: string;
-  readonly outputType: "HWPX" | "HWP";
   readonly replaceExisting: boolean;
   readonly maximumBytes: number;
   readonly existingFile: {
@@ -3106,11 +3095,8 @@ function safeEpubFileName(value: unknown): string {
   return safe;
 }
 
-function safeHwpxFileName(
-  value: unknown,
-  outputType: "HWPX" | "HWP"
-): string {
-  const extension = outputType === "HWPX" ? ".hwpx" : ".hwp";
+function safeHwpxFileName(value: unknown): string {
+  const extension = ".hwpx";
   const raw = typeof value === "string" ? value.trim() : "";
   const base = path
     .basename(raw || `작품${extension}`)
@@ -3136,25 +3122,6 @@ function stagedHwpxDirectory(destination: string, operationId: string): string {
 
 function stagedHwpxPath(stagedDirectory: string): string {
   return path.join(stagedDirectory, "publication.hwpx");
-}
-
-function stagedHwpPath(stagedDirectory: string): string {
-  return path.join(stagedDirectory, "publication.hwp");
-}
-
-function stagedPreservedHwpxPath(stagedDirectory: string): string {
-  return path.join(stagedDirectory, "preserved-publication.hwpx");
-}
-
-function stagedRecoveryHwpxPath(stagedDirectory: string): string {
-  return path.join(stagedDirectory, "recovery-publication.hwpx");
-}
-
-function preservedHwpxCompanionPath(hwpDestination: string): string {
-  return path.join(
-    path.dirname(hwpDestination),
-    `${path.basename(hwpDestination, path.extname(hwpDestination))}.hwpx`
-  );
 }
 
 async function removeOwnedHwpxDirectory(directoryPath: string): Promise<void> {
@@ -3980,7 +3947,6 @@ function hwpxReportFromUtility(
     presetContentHash,
     hwpxSha256: utility.mode === "EXPORT" ? summary.sha256 : null,
     outputSha256: utility.mode === "EXPORT" ? summary.sha256 : null,
-    preservedHwpxFileName: null,
     logicalPackageHash: summary.logicalPackageHash,
     byteLength: utility.mode === "EXPORT" ? summary.byteLength : null,
     coverage: {
@@ -4020,8 +3986,6 @@ function hwpxReportFromUtility(
     fontFamily: summary.fontFamily,
     fontInstalled: null,
     page: hwpxReportPage(config),
-    hancomReopen: "NOT_RUN",
-    hwpConverted: false,
     timing: {
       publicationIrCompileMs,
       semanticMappingMs: summary.exportTiming.semanticMappingMs,
@@ -4034,9 +3998,7 @@ function hwpxReportFromUtility(
       sourceCoverageMs: summary.exportTiming.sourceCoverageMs,
       exporterTotalMs: summary.exportTiming.exporterTotalMs,
       totalMs:
-        publicationIrCompileMs + summary.exportTiming.exporterTotalMs,
-      hwpConversionMs: null,
-      hwpReopenMs: null
+        publicationIrCompileMs + summary.exportTiming.exporterTotalMs
     },
     generatedAt: new Date().toISOString(),
     madiVersion: appVersion
@@ -4076,7 +4038,6 @@ function hwpxValidationFailureReport(
     presetContentHash,
     hwpxSha256: null,
     outputSha256: null,
-    preservedHwpxFileName: null,
     logicalPackageHash: "0".repeat(64),
     byteLength: null,
     coverage: {
@@ -4108,8 +4069,6 @@ function hwpxValidationFailureReport(
     fontFamily: config.fontFamilyToken,
     fontInstalled: null,
     page: hwpxReportPage(config),
-    hancomReopen: "NOT_RUN",
-    hwpConverted: false,
     timing: {
       publicationIrCompileMs,
       semanticMappingMs: 0,
@@ -4121,9 +4080,7 @@ function hwpxValidationFailureReport(
       internalValidationMs: 0,
       sourceCoverageMs: 0,
       exporterTotalMs: 0,
-      totalMs: publicationIrCompileMs,
-      hwpConversionMs: null,
-      hwpReopenMs: null
+      totalMs: publicationIrCompileMs
     },
     generatedAt: new Date().toISOString(),
     madiVersion: appVersion
@@ -4176,38 +4133,6 @@ function hwpxReportWithFontInstallation(
   };
 }
 
-function hwpxReportForHwp(
-  report: HwpxExportReport,
-  options: {
-    readonly preservedHwpxFileName: string;
-    readonly outputSha256: string | null;
-    readonly byteLength: number | null;
-    readonly hwpConverted: boolean;
-    readonly hancomReopen: "NOT_RUN" | "PASSED" | "FAILED";
-    readonly hwpConversionMs: number;
-    readonly hwpReopenMs: number | null;
-  }
-): HwpxExportReport {
-  return {
-    ...report,
-    outputType: "HWP",
-    outputSha256: options.outputSha256,
-    preservedHwpxFileName: options.preservedHwpxFileName,
-    byteLength: options.byteLength,
-    hwpConverted: options.hwpConverted,
-    hancomReopen: options.hancomReopen,
-    timing: {
-      ...report.timing,
-      totalMs:
-        report.timing.totalMs +
-        options.hwpConversionMs +
-        (options.hwpReopenMs ?? 0),
-      hwpConversionMs: options.hwpConversionMs,
-      hwpReopenMs: options.hwpReopenMs
-    }
-  };
-}
-
 function markdownHwpxExportReport(report: HwpxExportReport): string {
   const lines = [
     "# madi HWPX export report",
@@ -4219,7 +4144,6 @@ function markdownHwpxExportReport(report: HwpxExportReport): string {
     `- Preset/hash: ${report.presetId}/${report.presetContentHash}`,
     `- HWPX SHA-256: ${report.hwpxSha256 ?? "not written"}`,
     `- Output SHA-256: ${report.outputSha256 ?? "not written"}`,
-    `- Preserved HWPX: ${report.preservedHwpxFileName ?? "not applicable"}`,
     `- Logical package SHA-256: ${report.logicalPackageHash}`,
     `- Publication IR sections: ${report.coverage.exportedSectionCount}/${report.coverage.sourceSectionCount}`,
     `- Physical HWPX sections: ${report.coverage.packageSectionCount}`,
@@ -4231,7 +4155,6 @@ function markdownHwpxExportReport(report: HwpxExportReport): string {
     `- Validation F/E/W/I: ${report.validation.fatalCount}/${report.validation.errorCount}/${report.validation.warningCount}/${report.validation.infoCount}`,
     `- Font installed: ${report.fontFamily}/${report.fontInstalled === null ? "unverified" : report.fontInstalled}`,
     `- Page config: ${JSON.stringify(report.page)}`,
-    `- Hancom reopen/HWP converted: ${report.hancomReopen}/${report.hwpConverted}`,
     `- Publication IR compile: ${report.timing.publicationIrCompileMs} ms`,
     `- HWPX semantic mapping: ${report.timing.semanticMappingMs} ms`,
     `- HWPX exporter: ${report.timing.exporterTotalMs} ms`,
@@ -4312,7 +4235,6 @@ export class DesktopService {
   private readonly preservedHwpxRecoveryDirectories = new Set<string>();
   private hwpxShuttingDown = false;
   private hwpxShutdownPromise: Promise<void> | null = null;
-  private hancomProbePromise: Promise<HwpxExportState["hancom"]> | null = null;
 
   public constructor(
     private readonly window: BrowserWindow,
@@ -4323,10 +4245,8 @@ export class DesktopService {
     private readonly epubExporter?: EpubExporterPort,
     private readonly shellPort?: ShellPort,
     private readonly hwpxExporter?: HwpxExporterPort,
-    private readonly hwpBridge?: HwpBridgePort,
     private readonly fontInstallation: FontInstallationPort =
       new WindowsFontInstallationDetector(),
-    private readonly runtimePlatform: NodeJS.Platform = process.platform,
     private readonly hwpxCrashRecovery?: HwpxCrashRecoveryPort,
     private readonly atomicOutput?: AtomicOutputPort,
     private readonly epubChecker?: EpubCheckPort
@@ -5502,44 +5422,6 @@ export class DesktopService {
     };
   }
 
-  private getHancomAutomationAvailability(): Promise<HwpxExportState["hancom"]> {
-    if (this.runtimePlatform !== "win32") {
-      return Promise.resolve({ status: "UNAVAILABLE", reason: "NOT_WINDOWS" });
-    }
-    if (!this.hwpBridge) {
-      return Promise.resolve({
-        status: "UNAVAILABLE",
-        reason: "BRIDGE_UNAVAILABLE"
-      });
-    }
-    if (!this.hancomProbePromise) {
-      this.hancomProbePromise = this.hwpBridge
-        .probe()
-        .then((probe): HwpxExportState["hancom"] => {
-          if (probe.available) {
-            return { status: "AVAILABLE", version: probe.hancomVersion };
-          }
-          if (probe.availabilityCode === "NOT_INSTALLED") {
-            return { status: "UNAVAILABLE", reason: "NOT_INSTALLED" };
-          }
-          return {
-            status: "REGISTERED_UNVERIFIED",
-            version: probe.hancomVersion
-          };
-        })
-        .catch((error): HwpxExportState["hancom"] => {
-          if (
-            error instanceof HwpBridgeOperationError &&
-            error.code === "NOT_INSTALLED"
-          ) {
-            return { status: "UNAVAILABLE", reason: "NOT_INSTALLED" };
-          }
-          return { status: "UNAVAILABLE", reason: "BRIDGE_UNAVAILABLE" };
-        });
-    }
-    return this.hancomProbePromise;
-  }
-
   private async reportWithFontInstallation(
     report: HwpxExportReport
   ): Promise<HwpxExportReport> {
@@ -5588,7 +5470,6 @@ export class DesktopService {
       metadata,
       presets,
       duplicatePresetNames: duplicateNames(presets),
-      hancom: await this.getHancomAutomationAvailability(),
       revision
     };
   }
@@ -7027,17 +6908,14 @@ export class DesktopService {
   ): Promise<HwpxOutputSelection | null> {
     const sessionId = validateSessionId(input?.sessionId);
     this.sessions.require(sessionId);
-    if (input.outputType !== "HWPX" && input.outputType !== "HWP") {
-      throw new Error("Unsupported HWPX output type");
-    }
-    const extension = input.outputType === "HWPX" ? "hwpx" : "hwp";
-    const fileName = safeHwpxFileName(input.suggestedFileName, input.outputType);
+    const extension = "hwpx";
+    const fileName = safeHwpxFileName(input.suggestedFileName);
     const selection = await this.dialog.showSaveDialog(this.window, {
-      title: input.outputType === "HWPX" ? "HWPX 내보내기" : "HWP 내보내기",
+      title: "HWPX 내보내기",
       defaultPath: fileName,
       filters: [
         {
-          name: input.outputType === "HWPX" ? "HWPX publication" : "HWP document",
+          name: "HWPX publication",
           extensions: [extension]
         }
       ],
@@ -7084,7 +6962,6 @@ export class DesktopService {
       sessionId,
       filePath: resolvedPath,
       fileName: path.basename(resolvedPath),
-      outputType: input.outputType,
       replaceExisting,
       maximumBytes: MAX_HWPX_FILE_BYTES,
       existingFile,
@@ -7098,7 +6975,6 @@ export class DesktopService {
     return {
       selectionId,
       fileName: path.basename(resolvedPath),
-      outputType: input.outputType
     };
   }
 
@@ -7650,9 +7526,6 @@ export class DesktopService {
     const operationId = validateHwpxOperationId(input?.operationId);
     const sessionId = validateSessionId(input?.sessionId);
     this.sessions.require(sessionId);
-    if (input.outputType !== "HWPX" && input.outputType !== "HWP") {
-      throw new Error("Unsupported HWPX output type");
-    }
     const selectionId = validateHwpxIdentifier(
       input.outputSelectionId,
       "HWPX output selection id"
@@ -7660,128 +7533,19 @@ export class DesktopService {
     const selection = this.hwpxOutputSelections.get(selectionId);
     if (
       !selection ||
-      selection.sessionId !== sessionId ||
-      selection.outputType !== input.outputType
+      selection.sessionId !== sessionId
     ) {
       throw new Error("HWPX output selection is missing or belongs to another project");
     }
     this.beginHwpxOperation(operationId, sessionId);
     this.hwpxOutputSelections.delete(selectionId);
-    if (input.outputType === "HWP") {
-      let hancom: HwpxExportState["hancom"];
-      try {
-        hancom = await this.getHancomAutomationAvailability();
-        this.ensureHwpxOperationContinues(operationId);
-      } catch (error) {
-        this.finishHwpxOperation(operationId);
-        if (error instanceof HwpxExportCancelledError) {
-          return { status: "CANCELLED", operationId };
-        }
-        throw new Error("The local HWP bridge availability check failed");
-      }
-      if (hancom.status !== "AVAILABLE" || !this.hwpBridge) {
-        this.finishHwpxOperation(operationId);
-        return {
-          status: "FAILED",
-          operationId,
-          code: "HWP_CONVERSION_UNAVAILABLE"
-        };
-      }
-    }
     const stagedDirectory = stagedHwpxDirectory(
       selection.filePath,
       operationId
     );
     const stagedPath = stagedHwpxPath(stagedDirectory);
-    const stagedHwp = stagedHwpPath(stagedDirectory);
-    const stagedPreservedHwpx = stagedPreservedHwpxPath(stagedDirectory);
-    const stagedRecoveryHwpx = stagedRecoveryHwpxPath(stagedDirectory);
-    const hwpOutput = input.outputType === "HWP";
-    let preservedHwpxPath = hwpOutput
-      ? preservedHwpxCompanionPath(selection.filePath)
-      : null;
     let stagedDirectoryOwned = false;
     let committed = false;
-    let hwpxPreserved = false;
-    let trustedHwpxIdentity: NonNullable<
-      HwpxOutputSelectionRecord["existingFile"]
-    > | null = null;
-    let reportForFailure: HwpxExportReport | null = null;
-    const publishAlternatePreservedHwpx = async (
-      expected: NonNullable<HwpxOutputSelectionRecord["existingFile"]>
-    ): Promise<void> => {
-      if (!preservedHwpxPath) {
-        throw new Error("The preserved HWPX destination is unavailable");
-      }
-      const extension = path.extname(preservedHwpxPath);
-      const base = path.basename(preservedHwpxPath, extension);
-      for (let attempt = 0; attempt < 8; attempt += 1) {
-        const candidate = path.join(
-          path.dirname(preservedHwpxPath),
-          `${base}.madi-preserved-${randomUUID()}${extension}`
-        );
-        try {
-          await link(stagedRecoveryHwpx, candidate);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-            continue;
-          }
-          try {
-            await copyFile(
-              stagedRecoveryHwpx,
-              candidate,
-              fsConstants.COPYFILE_EXCL
-            );
-          } catch (copyError) {
-            if ((copyError as NodeJS.ErrnoException).code === "EEXIST") {
-              continue;
-            }
-            throw copyError;
-          }
-        }
-        const candidateHandle = await open(candidate, "r+");
-        try {
-          await candidateHandle.sync();
-        } finally {
-          await candidateHandle.close();
-        }
-        const visible = await existingEpubIdentity(
-          candidate,
-          MAX_HWPX_FILE_BYTES
-        );
-        if (
-          visible.byteLength !== expected.byteLength ||
-          visible.sha256 !== expected.sha256
-        ) {
-          throw new Error("The preserved HWPX output identity changed");
-        }
-        preservedHwpxPath = candidate;
-        return;
-      }
-      throw new Error("A no-clobber HWPX recovery name is unavailable");
-    };
-    const ensurePreservedHwpxIdentity = async (
-      expected: NonNullable<HwpxOutputSelectionRecord["existingFile"]>
-    ): Promise<void> => {
-      if (!hwpxPreserved || !preservedHwpxPath) {
-        return;
-      }
-      try {
-        const visible = await existingEpubIdentity(
-          preservedHwpxPath,
-          MAX_HWPX_FILE_BYTES
-        );
-        if (
-          visible.byteLength === expected.byteLength &&
-          visible.sha256 === expected.sha256
-        ) {
-          return;
-        }
-      } catch {
-        // Publish an alternate no-clobber copy below.
-      }
-      await publishAlternatePreservedHwpx(expected);
-    };
     try {
       await mkdir(stagedDirectory);
       stagedDirectoryOwned = true;
@@ -7796,12 +7560,10 @@ export class DesktopService {
       const utility = await this.hwpxExporter!.run(
         prepared.utilityInput,
         (progress) => {
-          if (!hwpOutput || progress.stage !== "FINALIZE") {
-            this.window.webContents.send(
-              IPC_EVENTS.hwpxExportProgress,
-              progress
-            );
-          }
+          this.window.webContents.send(
+            IPC_EVENTS.hwpxExportProgress,
+            progress
+          );
         }
       );
       this.transitionHwpxOperationToProcessing(operationId, sessionId);
@@ -7836,323 +7598,29 @@ export class DesktopService {
       ) {
         throw new Error("The generated HWPX does not match the export result");
       }
-      trustedHwpxIdentity = stagedIdentity;
-
-      let outputPath = stagedPath;
-      let outputIdentity = stagedIdentity;
-      let report = hwpxReport;
-      if (hwpOutput) {
-        const bridge = this.hwpBridge!;
-        let conversionMs = 0;
-        let reopenMs: number | null = null;
-        await copyFile(
-          stagedPath,
-          stagedPreservedHwpx,
-          fsConstants.COPYFILE_EXCL
-        );
-        await copyFile(
-          stagedPath,
-          stagedRecoveryHwpx,
-          fsConstants.COPYFILE_EXCL
-        );
-        const preservedStagedHandle = await open(stagedPreservedHwpx, "r+");
-        try {
-          await preservedStagedHandle.sync();
-        } finally {
-          await preservedStagedHandle.close();
-        }
-        const recoveryStagedHandle = await open(stagedRecoveryHwpx, "r+");
-        try {
-          await recoveryStagedHandle.sync();
-        } finally {
-          await recoveryStagedHandle.close();
-        }
-        const preservedStagedIdentity = await existingEpubIdentity(
-          stagedPreservedHwpx,
-          MAX_HWPX_FILE_BYTES
-        );
-        const recoveryStagedIdentity = await existingEpubIdentity(
-          stagedRecoveryHwpx,
-          MAX_HWPX_FILE_BYTES
-        );
-        if (
-          preservedStagedIdentity.byteLength !== stagedIdentity.byteLength ||
-          preservedStagedIdentity.sha256 !== stagedIdentity.sha256 ||
-          recoveryStagedIdentity.byteLength !== stagedIdentity.byteLength ||
-          recoveryStagedIdentity.sha256 !== stagedIdentity.sha256
-        ) {
-          throw new Error("The preserved HWPX staging copy does not match the export");
-        }
-        try {
-          await link(stagedPreservedHwpx, preservedHwpxPath!);
-        } catch (error) {
-          if (
-            error instanceof Error &&
-            (error as NodeJS.ErrnoException).code === "EEXIST"
-          ) {
-            await publishAlternatePreservedHwpx(stagedIdentity);
-          } else {
-            throw error;
-          }
-        }
-        hwpxPreserved = true;
-        await ensurePreservedHwpxIdentity(stagedIdentity);
-        const preservedHwpxFileName = path.basename(preservedHwpxPath!);
-        reportForFailure = hwpxReportForHwp(hwpxReport, {
-          preservedHwpxFileName,
-          outputSha256: null,
-          byteLength: null,
-          hwpConverted: false,
-          hancomReopen: "NOT_RUN",
-          hwpConversionMs: 0,
-          hwpReopenMs: null
-        });
-        this.rememberHwpxOperation(operationId, {
-          sessionId,
-          report: reportForFailure,
-          outputPath: preservedHwpxPath
-        });
-        this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
-          operationId,
-          stage: "HWP_CONVERSION",
-          completed: 0,
-          total: 1
-        });
-        this.ensureHwpxOperationContinues(operationId);
-        const bridgeInputIdentity = await existingEpubIdentity(
-          stagedPath,
-          MAX_HWPX_FILE_BYTES
-        );
-        if (
-          bridgeInputIdentity.byteLength !== stagedIdentity.byteLength ||
-          bridgeInputIdentity.sha256 !== stagedIdentity.sha256
-        ) {
-          throw new HwpBridgeOperationError("INPUT_IDENTITY_MISMATCH");
-        }
-        this.ensureHwpxOperationContinues(operationId);
-        this.transitionHwpxOperationToExporting(operationId, sessionId);
-        const conversionStartedAt = Date.now();
-        let conversion: Awaited<ReturnType<HwpBridgePort["convert"]>>;
-        try {
-          conversion = await bridge.convert(operationId, stagedPath, stagedHwp);
-        } catch (error) {
-          conversionMs = Math.max(0, Date.now() - conversionStartedAt);
-          reportForFailure = hwpxReportForHwp(hwpxReport, {
-            preservedHwpxFileName,
-            outputSha256: null,
-            byteLength: null,
-            hwpConverted: false,
-            hancomReopen: "NOT_RUN",
-            hwpConversionMs: conversionMs,
-            hwpReopenMs: null
-          });
-          throw error instanceof HwpBridgeCancelledError ||
-            error instanceof HwpBridgeOperationError
-            ? error
-            : new HwpBridgeOperationError("CONVERSION_FAILED");
-        }
-        conversionMs = Math.max(0, Date.now() - conversionStartedAt);
-        this.transitionHwpxOperationToProcessing(operationId, sessionId);
-        const postConversionInputIdentity = await existingEpubIdentity(
-          stagedPath,
-          MAX_HWPX_FILE_BYTES
-        );
-        if (
-          postConversionInputIdentity.byteLength !== stagedIdentity.byteLength ||
-          postConversionInputIdentity.sha256 !== stagedIdentity.sha256
-        ) {
-          throw new HwpBridgeOperationError("INPUT_IDENTITY_MISMATCH");
-        }
-        reportForFailure = hwpxReportForHwp(hwpxReport, {
-          preservedHwpxFileName,
-          outputSha256: null,
-          byteLength: null,
-          hwpConverted: false,
-          hancomReopen: "NOT_RUN",
-          hwpConversionMs: conversionMs,
-          hwpReopenMs: null
-        });
-        this.ensureHwpxOperationContinues(operationId);
-        let convertedIdentity: Awaited<ReturnType<typeof existingEpubIdentity>>;
-        try {
-          convertedIdentity = await existingEpubIdentity(
-            stagedHwp,
-            MAX_HWPX_FILE_BYTES
-          );
-          if (
-            convertedIdentity.byteLength < 1 ||
-            convertedIdentity.byteLength !== conversion.byteLength ||
-            convertedIdentity.sha256 !== conversion.sha256
-          ) {
-            throw new HwpBridgeOperationError("OUTPUT_IDENTITY_MISMATCH");
-          }
-        } catch (error) {
-          throw error instanceof HwpBridgeOperationError
-            ? error
-            : new HwpBridgeOperationError("OUTPUT_IDENTITY_MISMATCH");
-        }
-        reportForFailure = hwpxReportForHwp(hwpxReport, {
-          preservedHwpxFileName,
-          outputSha256: convertedIdentity.sha256,
-          byteLength: convertedIdentity.byteLength,
-          hwpConverted: true,
-          hancomReopen: "NOT_RUN",
-          hwpConversionMs: conversionMs,
-          hwpReopenMs: null
-        });
-        this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
-          operationId,
-          stage: "HWP_CONVERSION",
-          completed: 1,
-          total: 1
-        });
-        this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
-          operationId,
-          stage: "REOPEN_VERIFICATION",
-          completed: 0,
-          total: 1
-        });
-        this.ensureHwpxOperationContinues(operationId);
-        this.transitionHwpxOperationToExporting(operationId, sessionId);
-        const reopenStartedAt = Date.now();
-        try {
-          await bridge.reopen(operationId, stagedHwp);
-        } catch (error) {
-          reopenMs = Math.max(0, Date.now() - reopenStartedAt);
-          reportForFailure = hwpxReportForHwp(hwpxReport, {
-            preservedHwpxFileName,
-            outputSha256: convertedIdentity.sha256,
-            byteLength: convertedIdentity.byteLength,
-            hwpConverted: true,
-            hancomReopen: "FAILED",
-            hwpConversionMs: conversionMs,
-            hwpReopenMs: reopenMs
-          });
-          throw error instanceof HwpBridgeCancelledError ||
-            error instanceof HwpBridgeOperationError
-            ? error
-            : new HwpBridgeOperationError("REOPEN_FAILED");
-        }
-        reopenMs = Math.max(0, Date.now() - reopenStartedAt);
-        this.transitionHwpxOperationToProcessing(operationId, sessionId);
-        const reopenedIdentity = await existingEpubIdentity(
-          stagedHwp,
-          MAX_HWPX_FILE_BYTES
-        );
-        if (
-          reopenedIdentity.byteLength !== convertedIdentity.byteLength ||
-          reopenedIdentity.sha256 !== convertedIdentity.sha256
-        ) {
-          throw new HwpBridgeOperationError("REOPEN_IDENTITY_MISMATCH");
-        }
-        await ensurePreservedHwpxIdentity(stagedIdentity);
-        const finalPreservedHwpxFileName = path.basename(preservedHwpxPath!);
-        this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
-          operationId,
-          stage: "REOPEN_VERIFICATION",
-          completed: 1,
-          total: 1
-        });
-        outputPath = stagedHwp;
-        outputIdentity = reopenedIdentity;
-        report = hwpxReportForHwp(hwpxReport, {
-          preservedHwpxFileName: finalPreservedHwpxFileName,
-          outputSha256: reopenedIdentity.sha256,
-          byteLength: reopenedIdentity.byteLength,
-          hwpConverted: true,
-          hancomReopen: "PASSED",
-          hwpConversionMs: conversionMs,
-          hwpReopenMs: reopenMs
-        });
-        reportForFailure = report;
-      }
-
       this.transitionHwpxOperationToFinalizing(operationId, sessionId);
-      if (hwpOutput) {
-        this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
-          operationId,
-          stage: "FINALIZE",
-          completed: 0,
-          total: 1
-        });
-      }
-      await this.commitStagedHwpx(outputPath, selection);
+      await this.commitStagedHwpx(stagedPath, selection);
       committed = true;
-      if (hwpOutput) {
-        this.window.webContents.send(IPC_EVENTS.hwpxExportProgress, {
-          operationId,
-          stage: "FINALIZE",
-          completed: 1,
-          total: 1
-        });
-      }
       this.rememberHwpxOperation(operationId, {
         sessionId,
-        report,
+        report: hwpxReport,
         outputPath: selection.filePath
       });
       return {
         status: "COMPLETED",
         operationId,
         fileName: selection.fileName,
-        byteLength: outputIdentity.byteLength,
-        sha256: outputIdentity.sha256,
-        report,
+        byteLength: stagedIdentity.byteLength,
+        sha256: stagedIdentity.sha256,
+        report: hwpxReport,
         revision: prepared.revision
       };
     } catch (error) {
-      if (hwpxPreserved) {
-        try {
-          if (!trustedHwpxIdentity) {
-            throw new Error("The trusted HWPX identity is unavailable");
-          }
-          await ensurePreservedHwpxIdentity(trustedHwpxIdentity);
-          if (reportForFailure && preservedHwpxPath) {
-            reportForFailure = {
-              ...reportForFailure,
-              preservedHwpxFileName: path.basename(preservedHwpxPath)
-            };
-          }
-        } catch {
-          throw new Error("A verified public HWPX recovery copy could not be preserved");
-        }
-      }
-      if (hwpxPreserved && reportForFailure && preservedHwpxPath) {
-        this.rememberHwpxOperation(operationId, {
-          sessionId,
-          report: reportForFailure,
-          outputPath: preservedHwpxPath
-        });
-      }
-      if (
-        error instanceof HwpxExportCancelledError ||
-        error instanceof HwpBridgeCancelledError
-      ) {
-        if (hwpxPreserved && reportForFailure && preservedHwpxPath) {
-          return {
-            status: "CANCELLED",
-            operationId,
-            preservedHwpxFileName: path.basename(preservedHwpxPath),
-            report: reportForFailure
-          };
-        }
+      if (error instanceof HwpxExportCancelledError) {
         return { status: "CANCELLED", operationId };
       }
       if (error instanceof HwpxDestinationChangedError) {
-        if (hwpxPreserved && reportForFailure && preservedHwpxPath) {
-          return {
-            status: "FAILED",
-            operationId,
-            code: "DESTINATION_CHANGED",
-            preservedHwpxFileName: path.basename(preservedHwpxPath),
-            report: reportForFailure
-          };
-        }
-        return {
-          status: "FAILED",
-          operationId,
-          code: "DESTINATION_CHANGED"
-        };
+        return { status: "FAILED", operationId, code: "DESTINATION_CHANGED" };
       }
       if (error instanceof HwpxRecoveryRequiredError) {
         return {
@@ -8160,27 +7628,6 @@ export class DesktopService {
           operationId,
           code: "RECOVERY_REQUIRED",
           recoveryFileName: error.recoveryFileName
-        };
-      }
-      if (error instanceof HwpBridgeOperationError) {
-        if (!hwpxPreserved || !reportForFailure || !preservedHwpxPath) {
-          throw error;
-        }
-        return {
-          status: "FAILED",
-          operationId,
-          code: "HWP_CONVERSION_FAILED",
-          preservedHwpxFileName: path.basename(preservedHwpxPath),
-          report: reportForFailure
-        };
-      }
-      if (hwpxPreserved && reportForFailure && preservedHwpxPath) {
-        return {
-          status: "FAILED",
-          operationId,
-          code: "HWP_OUTPUT_FAILED",
-          preservedHwpxFileName: path.basename(preservedHwpxPath),
-          report: reportForFailure
         };
       }
       throw error;
@@ -8192,8 +7639,8 @@ export class DesktopService {
         }
       } catch {
         cleanupFailed = true;
-        if (!committed && !hwpxPreserved) {
-          throw new Error("The staged HWPX/HWP files could not be removed");
+        if (!committed) {
+          throw new Error("The staged HWPX files could not be removed");
         }
       } finally {
         this.finishHwpxOperation(operationId, cleanupFailed);
@@ -8244,16 +7691,11 @@ export class DesktopService {
         if (!completion) {
           throw new Error("The HWPX completion state is missing");
         }
-        if (active.phase === "PREPARING") {
-          this.cancelledHwpxOperations.add(operationId);
-        } else if (active.phase === "PROCESSING") {
+        if (active.phase === "PREPARING" || active.phase === "PROCESSING") {
           this.cancelledHwpxOperations.add(operationId);
         } else if (active.phase === "EXPORTING") {
           this.cancelledHwpxOperations.add(operationId);
-          await Promise.allSettled([
-            this.hwpxExporter?.cancel(operationId),
-            this.hwpBridge?.cancel(operationId)
-          ]);
+          await this.hwpxExporter?.cancel(operationId).catch(() => false);
         }
         return this.waitForHwpxCompletion(
           completion,
@@ -8289,22 +7731,13 @@ export class DesktopService {
     if (!active || active.sessionId !== sessionId) {
       return false;
     }
-    if (active.phase === "PREPARING") {
-      this.cancelledHwpxOperations.add(operationId);
-      return true;
-    }
-    if (active.phase === "PROCESSING") {
+    if (active.phase === "PREPARING" || active.phase === "PROCESSING") {
       this.cancelledHwpxOperations.add(operationId);
       return true;
     }
     if (active.phase === "EXPORTING") {
-      const results = await Promise.allSettled([
-        this.hwpxExporter?.cancel(operationId) ?? Promise.resolve(false),
-        this.hwpBridge?.cancel(operationId) ?? Promise.resolve(false)
-      ]);
-      const accepted = results.some(
-        (result) => result.status === "fulfilled" && result.value === true
-      );
+      const accepted =
+        (await this.hwpxExporter?.cancel(operationId).catch(() => false)) === true;
       if (accepted) {
         this.cancelledHwpxOperations.add(operationId);
       }
@@ -8396,7 +7829,6 @@ export class DesktopService {
         sessionId,
         filePath,
         fileName: path.basename(filePath),
-        outputType: "HWPX",
         replaceExisting,
         maximumBytes: MAX_HWPX_REPORT_BYTES,
         existingFile,

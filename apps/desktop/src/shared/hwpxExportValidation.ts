@@ -34,15 +34,12 @@ const EXPORT_STAGES = new Set([
   "SECTION_XML",
   "HWPX_PACKAGE",
   "INTERNAL_VALIDATION",
-  "HWP_CONVERSION",
-  "REOPEN_VERIFICATION",
   "FINALIZE"
 ]);
-const OUTPUT_TYPES = new Set(["HWPX", "HWP"]);
+const OUTPUT_TYPES = new Set(["HWPX"]);
 const SCOPE_KINDS = new Set(["WORK", "VOLUME", "CHAPTER", "SCENE"]);
 const VALIDATION_STATUSES = new Set(["VALID", "INVALID", "CANCELLED"]);
 const VALIDATION_SEVERITIES = new Set(["FATAL", "ERROR", "WARNING", "INFO"]);
-const REOPEN_STATUSES = new Set(["NOT_RUN", "PASSED", "FAILED"]);
 const HASH_PATTERN = /^[0-9a-f]{64}$/u;
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -441,7 +438,7 @@ export function validateHwpxExportState(value: unknown): HwpxExportState {
   const input = record(value, "HWPX export state");
   exactKeys(
     input,
-    ["metadata", "presets", "duplicatePresetNames", "hancom", "revision"],
+    ["metadata", "presets", "duplicatePresetNames", "revision"],
     "HWPX export state"
   );
   const metadataInput = record(input.metadata, "HWPX publication metadata");
@@ -491,31 +488,6 @@ export function validateHwpxExportState(value: unknown): HwpxExportState {
   if (new Set(duplicatePresetNames).size !== duplicatePresetNames.length) {
     throw new Error("Duplicate HWPX duplicate-preset name");
   }
-  const hancomInput = record(input.hancom, "Hancom availability");
-  let hancom: HwpxExportState["hancom"];
-  if (hancomInput.status === "UNAVAILABLE") {
-    exactKeys(hancomInput, ["status", "reason"], "Hancom availability");
-    if (
-      hancomInput.reason !== "NOT_WINDOWS" &&
-      hancomInput.reason !== "NOT_INSTALLED" &&
-      hancomInput.reason !== "BRIDGE_UNAVAILABLE"
-    ) {
-      throw new Error("Invalid Hancom unavailable reason");
-    }
-    hancom = { status: "UNAVAILABLE", reason: hancomInput.reason };
-  } else {
-    exactKeys(hancomInput, ["status", "version"], "Hancom availability");
-    if (
-      hancomInput.status !== "REGISTERED_UNVERIFIED" &&
-      hancomInput.status !== "AVAILABLE"
-    ) {
-      throw new Error("Invalid Hancom availability status");
-    }
-    hancom = {
-      status: hancomInput.status,
-      version: nullableText(hancomInput.version, "Hancom version", 256)
-    };
-  }
   return {
     metadata: {
       projectId: text(metadataInput.projectId, "HWPX metadata project id", 256),
@@ -537,7 +509,6 @@ export function validateHwpxExportState(value: unknown): HwpxExportState {
     },
     presets,
     duplicatePresetNames,
-    hancom,
     revision: integer(input.revision, "HWPX state revision")
   };
 }
@@ -620,69 +591,30 @@ export function validateHwpxExportProgress(value: unknown): HwpxExportProgress {
   };
 }
 
-type HwpxReportSemanticContext =
-  | "ANY"
-  | "VALIDATION_ONLY"
-  | "COMPLETED_HWPX"
-  | "COMPLETED_HWP"
-  | "PRESERVED_HWP";
+type HwpxReportSemanticContext = "ANY" | "VALIDATION_ONLY" | "COMPLETED_HWPX";
 
 function validateHwpxReportSemanticState(
   report: HwpxExportReport,
   context: HwpxReportSemanticContext
 ): void {
-  const hasWrittenHwpx = report.hwpxSha256 !== null;
-  const hasOutput = report.outputSha256 !== null && report.byteLength !== null;
-  const hasNoOutput = report.outputSha256 === null && report.byteLength === null;
-
-  if (report.outputType === "HWPX") {
-    const isValidationOnly = !hasWrittenHwpx && hasNoOutput;
-    const isCompleted =
-      hasWrittenHwpx &&
-      hasOutput &&
-      report.hwpxSha256 === report.outputSha256 &&
-      report.validation.status === "VALID";
-    if (
-      (!isValidationOnly && !isCompleted) ||
-      report.hwpConverted ||
-      report.hancomReopen !== "NOT_RUN" ||
-      report.timing.hwpConversionMs !== null ||
-      report.timing.hwpReopenMs !== null
-    ) {
-      throw new Error("Invalid HWPX report semantic state");
-    }
-    if (
-      (context === "VALIDATION_ONLY" && !isValidationOnly) ||
-      (context === "COMPLETED_HWPX" && !isCompleted) ||
-      context === "COMPLETED_HWP" ||
-      context === "PRESERVED_HWP"
-    ) {
-      throw new Error("Mismatched HWPX report semantic state");
-    }
-    return;
-  }
-
-  const conversionCompleted = report.hwpConverted;
-  const reopenAttempted = report.hancomReopen !== "NOT_RUN";
-  if (
-    !hasWrittenHwpx ||
-    report.validation.status !== "VALID" ||
-    report.timing.hwpConversionMs === null ||
-    (conversionCompleted ? !hasOutput : !hasNoOutput) ||
-    (reopenAttempted
-      ? !conversionCompleted || report.timing.hwpReopenMs === null
-      : report.timing.hwpReopenMs !== null) ||
-    (report.hancomReopen === "PASSED" && !conversionCompleted)
-  ) {
-    throw new Error("Invalid HWP report semantic state");
+  const isValidationOnly =
+    report.hwpxSha256 === null &&
+    report.outputSha256 === null &&
+    report.byteLength === null;
+  const isCompleted =
+    report.hwpxSha256 !== null &&
+    report.outputSha256 !== null &&
+    report.byteLength !== null &&
+    report.hwpxSha256 === report.outputSha256 &&
+    report.validation.status === "VALID";
+  if (!isValidationOnly && !isCompleted) {
+    throw new Error("Invalid HWPX report semantic state");
   }
   if (
-    context === "VALIDATION_ONLY" ||
-    context === "COMPLETED_HWPX" ||
-    (context === "COMPLETED_HWP" &&
-      (!conversionCompleted || report.hancomReopen !== "PASSED"))
+    (context === "VALIDATION_ONLY" && !isValidationOnly) ||
+    (context === "COMPLETED_HWPX" && !isCompleted)
   ) {
-    throw new Error("Mismatched HWP report semantic state");
+    throw new Error("Mismatched HWPX report semantic state");
   }
 }
 
@@ -691,36 +623,6 @@ export function validateRunHwpxExportResult(
 ): RunHwpxExportResult {
   const input = record(value, "HWPX export result");
   if (input.status === "CANCELLED") {
-    if ("preservedHwpxFileName" in input || "report" in input) {
-      exactKeys(
-        input,
-        ["status", "operationId", "preservedHwpxFileName", "report"],
-        "cancelled HWP conversion result"
-      );
-      const operationId = validateHwpxOperationId(input.operationId);
-      const preservedHwpxFileName = text(
-        input.preservedHwpxFileName,
-        "preserved HWPX file name",
-        1_000
-      );
-      const report = validateHwpxExportReport(input.report);
-      validateHwpxReportSemanticState(report, "PRESERVED_HWP");
-      if (
-        /[\\/:]/u.test(preservedHwpxFileName) ||
-        !preservedHwpxFileName.toLocaleLowerCase().endsWith(".hwpx") ||
-        report.outputType !== "HWP" ||
-        report.preservedHwpxFileName !== preservedHwpxFileName ||
-        report.hwpxSha256 === null
-      ) {
-        throw new Error("Mismatched preserved HWPX cancellation identity");
-      }
-      return {
-        status: "CANCELLED",
-        operationId,
-        preservedHwpxFileName,
-        report
-      };
-    }
     exactKeys(input, ["status", "operationId"], "cancelled HWPX result");
     return {
       status: "CANCELLED",
@@ -729,82 +631,6 @@ export function validateRunHwpxExportResult(
   }
   if (input.status === "FAILED") {
     const operationId = validateHwpxOperationId(input.operationId);
-    if (
-      input.code === "HWP_CONVERSION_FAILED" ||
-      input.code === "HWP_OUTPUT_FAILED"
-    ) {
-      exactKeys(
-        input,
-        [
-          "status",
-          "operationId",
-          "code",
-          "preservedHwpxFileName",
-          "report"
-        ],
-        "failed HWP conversion result"
-      );
-      const preservedHwpxFileName = text(
-        input.preservedHwpxFileName,
-        "preserved HWPX file name",
-        1_000
-      );
-      if (
-        /[\\/:]/u.test(preservedHwpxFileName) ||
-        !preservedHwpxFileName.toLocaleLowerCase().endsWith(".hwpx")
-      ) {
-        throw new Error("Invalid preserved HWPX file identity");
-      }
-      const report = validateHwpxExportReport(input.report);
-      validateHwpxReportSemanticState(report, "PRESERVED_HWP");
-      if (
-        report.outputType !== "HWP" ||
-        report.preservedHwpxFileName !== preservedHwpxFileName ||
-        report.hwpxSha256 === null
-      ) {
-        throw new Error("Mismatched preserved HWPX report identity");
-      }
-      return {
-        status: "FAILED",
-        operationId,
-        code: input.code,
-        preservedHwpxFileName,
-        report
-      };
-    }
-    if (
-      input.code === "DESTINATION_CHANGED" &&
-      ("preservedHwpxFileName" in input || "report" in input)
-    ) {
-      exactKeys(
-        input,
-        ["status", "operationId", "code", "preservedHwpxFileName", "report"],
-        "changed HWP destination result"
-      );
-      const preservedHwpxFileName = text(
-        input.preservedHwpxFileName,
-        "preserved HWPX file name",
-        1_000
-      );
-      const report = validateHwpxExportReport(input.report);
-      validateHwpxReportSemanticState(report, "PRESERVED_HWP");
-      if (
-        /[\\/:]/u.test(preservedHwpxFileName) ||
-        !preservedHwpxFileName.toLocaleLowerCase().endsWith(".hwpx") ||
-        report.outputType !== "HWP" ||
-        report.preservedHwpxFileName !== preservedHwpxFileName ||
-        report.hwpxSha256 === null
-      ) {
-        throw new Error("Mismatched preserved HWPX destination identity");
-      }
-      return {
-        status: "FAILED",
-        operationId,
-        code: "DESTINATION_CHANGED",
-        preservedHwpxFileName,
-        report
-      };
-    }
     if (input.code === "RECOVERY_REQUIRED") {
       exactKeys(
         input,
@@ -826,10 +652,7 @@ export function validateRunHwpxExportResult(
       };
     }
     exactKeys(input, ["status", "operationId", "code"], "failed HWPX result");
-    if (
-      input.code !== "DESTINATION_CHANGED" &&
-      input.code !== "HWP_CONVERSION_UNAVAILABLE"
-    ) {
+    if (input.code !== "DESTINATION_CHANGED") {
       throw new Error("Invalid HWPX export failure code");
     }
     return {
@@ -849,8 +672,7 @@ export function validateRunHwpxExportResult(
   const fileName = text(input.fileName, "HWPX output file name", 1_000);
   if (
     /[\\/:]/u.test(fileName) ||
-    (!fileName.toLocaleLowerCase().endsWith(".hwpx") &&
-      !fileName.toLocaleLowerCase().endsWith(".hwp"))
+    !fileName.toLocaleLowerCase().endsWith(".hwpx")
   ) {
     throw new Error("Invalid HWPX output file name");
   }
@@ -866,17 +688,11 @@ export function validateRunHwpxExportResult(
     throw new Error("Invalid HWPX output identity");
   }
   const report = validateHwpxExportReport(input.report);
-  validateHwpxReportSemanticState(
-    report,
-    report.outputType === "HWP" ? "COMPLETED_HWP" : "COMPLETED_HWPX"
-  );
+  validateHwpxReportSemanticState(report, "COMPLETED_HWPX");
   if (
     report.byteLength !== input.byteLength ||
     report.outputSha256 !== input.sha256 ||
-    report.sourceProjectRevision !== input.revision ||
-    (fileName.toLocaleLowerCase().endsWith(".hwp")
-      ? report.outputType !== "HWP"
-      : report.outputType !== "HWPX")
+    report.sourceProjectRevision !== input.revision
   ) {
     throw new Error("Mismatched HWPX export report identity");
   }
@@ -900,27 +716,19 @@ export function validateHwpxOutputSelection(
   const input = record(value, "HWPX output selection");
   exactKeys(
     input,
-    ["selectionId", "fileName", "outputType"],
+    ["selectionId", "fileName"],
     "HWPX output selection"
   );
   const fileName = text(input.fileName, "HWPX output file name", 1_000);
-  const outputType = enumValue<"HWPX" | "HWP">(
-    input.outputType,
-    OUTPUT_TYPES,
-    "HWPX output type"
-  );
   if (
     /[\\/:]/u.test(fileName) ||
-    !fileName.toLocaleLowerCase().endsWith(
-      outputType === "HWPX" ? ".hwpx" : ".hwp"
-    )
+    !fileName.toLocaleLowerCase().endsWith(".hwpx")
   ) {
     throw new Error("Invalid HWPX output file name");
   }
   return {
     selectionId: text(input.selectionId, "HWPX output selection id", 256),
-    fileName,
-    outputType
+    fileName
   };
 }
 
@@ -970,7 +778,6 @@ export function validateHwpxExportReport(value: unknown): HwpxExportReport {
       "presetContentHash",
       "hwpxSha256",
       "outputSha256",
-      "preservedHwpxFileName",
       "logicalPackageHash",
       "byteLength",
       "coverage",
@@ -978,8 +785,6 @@ export function validateHwpxExportReport(value: unknown): HwpxExportReport {
       "fontFamily",
       "fontInstalled",
       "page",
-      "hancomReopen",
-      "hwpConverted",
       "timing",
       "generatedAt",
       "madiVersion"
@@ -1193,33 +998,18 @@ export function validateHwpxExportReport(value: unknown): HwpxExportReport {
     "internalValidationMs",
     "sourceCoverageMs",
     "exporterTotalMs",
-    "totalMs",
-    "hwpConversionMs",
-    "hwpReopenMs"
+    "totalMs"
   ] as const;
   exactKeys(timingInput, timingKeys, "HWPX report timing");
   const generatedAt = text(input.generatedAt, "HWPX generated time", 64);
   if (!Number.isFinite(Date.parse(generatedAt))) {
     throw new Error("Invalid HWPX generated time");
   }
-  const outputType = enumValue<"HWPX" | "HWP">(
+  const outputType = enumValue<"HWPX">(
     input.outputType,
     OUTPUT_TYPES,
     "HWPX output type"
   );
-  const preservedHwpxFileName =
-    input.preservedHwpxFileName === null
-      ? null
-      : text(input.preservedHwpxFileName, "preserved HWPX file name", 1_000);
-  if (
-    (preservedHwpxFileName !== null &&
-      (/[\\/:]/u.test(preservedHwpxFileName) ||
-        !preservedHwpxFileName.toLocaleLowerCase().endsWith(".hwpx"))) ||
-    (outputType === "HWP") !== (preservedHwpxFileName !== null)
-  ) {
-    throw new Error("Invalid preserved HWPX file identity");
-  }
-
   const report: HwpxExportReport = {
     formatVersion: 1,
     outputType,
@@ -1241,7 +1031,6 @@ export function validateHwpxExportReport(value: unknown): HwpxExportReport {
     presetContentHash: hash(input.presetContentHash, "HWPX preset content hash"),
     hwpxSha256: nullableHash(input.hwpxSha256, "HWPX SHA-256"),
     outputSha256: nullableHash(input.outputSha256, "HWPX output SHA-256"),
-    preservedHwpxFileName,
     logicalPackageHash: hash(input.logicalPackageHash, "HWPX logical package hash"),
     byteLength:
       input.byteLength === null
@@ -1287,12 +1076,6 @@ export function validateHwpxExportReport(value: unknown): HwpxExportReport {
       includeFooter,
       footerHasText
     },
-    hancomReopen: enumValue(
-      input.hancomReopen,
-      REOPEN_STATUSES,
-      "Hancom reopen status"
-    ),
-    hwpConverted: boolean(input.hwpConverted, "HWP converted"),
     timing: {
       publicationIrCompileMs: number(
         timingInput.publicationIrCompileMs,
@@ -1321,15 +1104,7 @@ export function validateHwpxExportReport(value: unknown): HwpxExportReport {
         timingInput.exporterTotalMs,
         "exporter total time"
       ),
-      totalMs: number(timingInput.totalMs, "total export time", 0, 1_000_000_000),
-      hwpConversionMs:
-        timingInput.hwpConversionMs === null
-          ? null
-          : integer(timingInput.hwpConversionMs, "HWP conversion time"),
-      hwpReopenMs:
-        timingInput.hwpReopenMs === null
-          ? null
-          : integer(timingInput.hwpReopenMs, "HWP reopen time")
+      totalMs: number(timingInput.totalMs, "total export time", 0, 1_000_000_000)
     },
     generatedAt,
     madiVersion: text(input.madiVersion, "madi version", 128)
@@ -1344,10 +1119,7 @@ export function validateHwpxExportReport(value: unknown): HwpxExportReport {
     report.timing.internalValidationMs +
     report.timing.sourceCoverageMs;
   const expectedTotalMs =
-    report.timing.publicationIrCompileMs +
-    report.timing.exporterTotalMs +
-    (report.timing.hwpConversionMs ?? 0) +
-    (report.timing.hwpReopenMs ?? 0);
+    report.timing.publicationIrCompileMs + report.timing.exporterTotalMs;
   if (
     report.timing.exporterTotalMs < measuredExporterStageTotal ||
     report.timing.totalMs !== expectedTotalMs

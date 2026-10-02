@@ -322,8 +322,6 @@ function createHarness(transform: UtilityTransform = (result) => result) {
       undefined,
       undefined,
       undefined,
-      undefined,
-      undefined,
       checker
     )
   };

@@ -3,6 +3,8 @@
 기준일: 2026-08-13  
 Profile ID: `HWPX_HANCOM_MODEL_1_31_INTEROP`
 
+현재 제품 범위 갱신: 2026-10-02에 사용자는 binary HWP 변환을 제거했다. 아래 Automation 관련 source audit·설치 조사·gate는 당시 계약의 기록이며 현행 기능이나 차후 작업이 아니다. HWPX package profile·namespace·mapping 계약은 유지한다.
+
 ## 상태와 범위
 
 이 문서는 Madi HWPX exporter와 선택적 한글 Automation bridge의 구현 근거를

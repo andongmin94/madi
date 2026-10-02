@@ -7,7 +7,6 @@ vi.mock("electron", () => ({
 
 import { resolveCoreBinary } from "../src/main/coreClient";
 import { resolveEpubExporterBinary } from "../src/main/epubExportClient";
-import { resolveHwpBridgeBinary } from "../src/main/hwpBridgeClient";
 import { resolveHwpxExporterBinary } from "../src/main/hwpxExportClient";
 import { resolveWindowTarget } from "../src/main/window";
 import { resolveAtomicOutputBinary } from "../src/main/atomicOutputClient";
@@ -89,26 +88,6 @@ describe("packaged runtime boundary", () => {
     );
 
     expect(
-      resolveHwpBridgeBinary({
-        appPath,
-        resourcesPath,
-        isPackaged: false,
-        platform: "win32",
-        environment: {}
-      })
-    ).toBe(
-      path.resolve(
-        "sidecars",
-        "hwp-bridge",
-        "bin",
-        "Debug",
-        "net10.0-windows",
-        "win-x86",
-        "madi-hwp-bridge.exe"
-      )
-    );
-
-    expect(
       resolveAtomicOutputBinary({
         appPath,
         resourcesPath,
@@ -141,29 +120,6 @@ describe("packaged runtime boundary", () => {
         }
       })
     ).toBe(path.join(resourcesPath, "bin", "madi-export-hwpx.exe"));
-  });
-
-  it("pins the packaged HWP bridge before inspecting development overrides", () => {
-    const resourcesPath = path.resolve("packaged-resources");
-
-    expect(
-      resolveHwpBridgeBinary({
-        appPath: path.resolve("packaged-app"),
-        resourcesPath,
-        isPackaged: true,
-        platform: "win32",
-        environment: {
-          MADI_HWP_BRIDGE_BIN: path.resolve("malicious-hwp-bridge.exe")
-        }
-      })
-    ).toBe(
-      path.join(
-        resourcesPath,
-        "bin",
-        "hwp-bridge",
-        "madi-hwp-bridge.exe"
-      )
-    );
   });
 
   it("pins the packaged atomic output helper before inspecting development overrides", () => {

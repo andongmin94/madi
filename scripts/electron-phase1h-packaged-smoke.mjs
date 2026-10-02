@@ -102,11 +102,6 @@ async function main() {
     "output",
     "phase1h-packaged-exporter-override-must-not-run.exe",
   );
-  const bridgeOverrideCanaryPath = resolve(
-    repositoryRoot,
-    "output",
-    "phase1h-packaged-bridge-override-must-not-run.exe",
-  );
   const atomicOutputOverrideCanaryPath = resolve(
     repositoryRoot,
     "output",
@@ -115,7 +110,6 @@ async function main() {
   if (
     existsSync(coreOverrideCanaryPath) ||
     existsSync(exporterOverrideCanaryPath) ||
-    existsSync(bridgeOverrideCanaryPath) ||
     existsSync(atomicOutputOverrideCanaryPath)
   ) {
     throw new Error("Packaged Phase 1H override canary path must not exist");
@@ -158,7 +152,6 @@ async function main() {
     process.env.MADI_RENDERER_URL = `http://127.0.0.1:${address.port}`;
     process.env.MADI_CORE_BIN = coreOverrideCanaryPath;
     process.env.MADI_HWPX_EXPORT_BIN = exporterOverrideCanaryPath;
-    process.env.MADI_HWP_BRIDGE_BIN = bridgeOverrideCanaryPath;
     process.env.MADI_ATOMIC_OUTPUT_BIN = atomicOutputOverrideCanaryPath;
     Reflect.set(
       globalThis,
@@ -172,7 +165,6 @@ async function main() {
           rendererRequestCount: rendererCanaryRequestCount,
           coreOverridePresent: existsSync(coreOverrideCanaryPath),
           exporterOverridePresent: existsSync(exporterOverrideCanaryPath),
-          bridgeOverridePresent: existsSync(bridgeOverrideCanaryPath),
           atomicOutputOverridePresent: existsSync(
             atomicOutputOverrideCanaryPath,
           ),
@@ -185,7 +177,6 @@ async function main() {
           evidence.rendererRequestCount !== 0 ||
           evidence.coreOverridePresent ||
           evidence.exporterOverridePresent ||
-          evidence.bridgeOverridePresent ||
           evidence.atomicOutputOverridePresent
         ) {
           throw new Error("Packaged Phase 1H development override canary changed");
@@ -226,7 +217,6 @@ async function main() {
   if (
     existsSync(coreOverrideCanaryPath) ||
     existsSync(exporterOverrideCanaryPath) ||
-    existsSync(bridgeOverrideCanaryPath) ||
     existsSync(atomicOutputOverrideCanaryPath)
   ) {
     throw new Error("Packaged Phase 1H binary override canary changed");
@@ -260,8 +250,6 @@ async function main() {
     evidence.security.packagedDevelopmentOverrides?.coreOverridePresent !== false ||
     evidence.security.packagedDevelopmentOverrides?.exporterOverridePresent !==
       false ||
-    evidence.security.packagedDevelopmentOverrides?.bridgeOverridePresent !==
-      false ||
     evidence.security.packagedDevelopmentOverrides
       ?.atomicOutputOverridePresent !== false
   ) {
@@ -273,7 +261,6 @@ async function main() {
       rendererRequestCount: rendererCanaryRequestCount,
       coreOverridePresent: false,
       exporterOverridePresent: false,
-      bridgeOverridePresent: false,
       atomicOutputOverridePresent: false,
     })}\n`,
   );

@@ -42,17 +42,13 @@ function stageLabel(stage: HwpxExportProgress["stage"]): string {
       return "HWPX package 생성";
     case "INTERNAL_VALIDATION":
       return "madi 내부 검증";
-    case "HWP_CONVERSION":
-      return "로컬 한/글 HWP 변환";
-    case "REOPEN_VERIFICATION":
-      return "한/글 reopen 검증";
     case "FINALIZE":
       return "원자적 저장";
   }
 }
 
-function suggestedName(title: string, outputType: "HWPX" | "HWP"): string {
-  return `${title.trim() || "작품"}.${outputType.toLocaleLowerCase()}`;
+function suggestedName(title: string): string {
+  return `${title.trim() || "작품"}.hwpx`;
 }
 
 function sameConfig(left: HwpxExportPresetConfig, right: HwpxExportPresetConfig): boolean {
@@ -100,7 +96,6 @@ export const HwpxExportWorkspace = forwardRef<
       projectTree.nodes[0]?.id ??
       ""
   );
-  const [outputType, setOutputType] = useState<"HWPX" | "HWP">("HWPX");
   const [output, setOutput] = useState<HwpxOutputSelection | null>(null);
   const [titlePage, setTitlePage] = useState({
     subtitle: "",
@@ -113,12 +108,6 @@ export const HwpxExportWorkspace = forwardRef<
     useState<ValidateHwpxExportResult | null>(null);
   const [exportResult, setExportResult] = useState<
     Extract<RunHwpxExportResult, { status: "COMPLETED" }> | null
-  >(null);
-  const [failedConversion, setFailedConversion] = useState<
-    Extract<
-      RunHwpxExportResult,
-      { readonly preservedHwpxFileName: string }
-    > | null
   >(null);
   const [resultKey, setResultKey] = useState<string | null>(null);
   const [validationKey, setValidationKey] = useState<string | null>(null);
@@ -165,11 +154,9 @@ export const HwpxExportWorkspace = forwardRef<
     scopeNodeId,
     config,
     titlePage,
-    outputType,
     preset: effectivePreset
   });
   const busy = phase !== "IDLE" || auxiliaryBusy;
-  const hancomAvailable = state?.hancom.status === "AVAILABLE";
 
   useEffect(() => {
     onOperationBusyChange(busy);
@@ -188,6 +175,9 @@ export const HwpxExportWorkspace = forwardRef<
           generation !== loadGenerationRef.current
         ) {
           return true;
+        }
+        if (next.metadata.projectId !== projectId) {
+          throw new Error("현재 프로젝트의 HWPX 내보내기 상태가 아닙니다.");
         }
         setState(next);
         onProjectRevisionRef.current(next.revision);
@@ -217,7 +207,7 @@ export const HwpxExportWorkspace = forwardRef<
     loadTasksRef.current.add(task);
     void task.finally(() => loadTasksRef.current.delete(task));
     return task;
-  }, [api, initialBuiltIn, sessionId]);
+  }, [api, initialBuiltIn, projectId, sessionId]);
 
   useEffect(() => {
     closeBarrierRef.current = false;
@@ -338,7 +328,6 @@ export const HwpxExportWorkspace = forwardRef<
     setPhase("PREPARING");
     setProgress(null);
     setError(null);
-    setFailedConversion(null);
     return operationId;
   };
 
@@ -370,6 +359,9 @@ export const HwpxExportWorkspace = forwardRef<
       activeOperationRef.current !== operationId
     ) {
       return null;
+    }
+    if (canonical.metadata.projectId !== projectId) {
+      throw new Error("현재 프로젝트의 HWPX 내보내기 상태가 아닙니다.");
     }
     setState(canonical);
     onProjectRevision(canonical.revision);
@@ -424,10 +416,8 @@ export const HwpxExportWorkspace = forwardRef<
         const selection = await api.chooseHwpxOutput({
           sessionId,
           suggestedFileName: suggestedName(
-            state?.metadata.publicationTitle ?? "작품",
-            outputType
+            state?.metadata.publicationTitle ?? "작품"
           ),
-          outputType
         });
         setOutput(selection);
       });
@@ -457,32 +447,14 @@ export const HwpxExportWorkspace = forwardRef<
       const result = await api.runHwpxExport({
         ...request,
         outputSelectionId: output.selectionId,
-        outputType
       });
       if (activeOperationRef.current !== operationId) {
         return;
       }
       if (result.status === "CANCELLED") {
-        if ("preservedHwpxFileName" in result) {
-          setFailedConversion(result);
-          setError(
-            `HWP 변환을 취소했습니다. 검증된 HWPX '${result.preservedHwpxFileName}'은(는) 보존했습니다.`
-          );
-        }
         return;
       }
       if (result.status === "FAILED") {
-        if ("preservedHwpxFileName" in result) {
-          setFailedConversion(result);
-          setError(
-            result.code === "HWP_CONVERSION_FAILED"
-              ? `HWP 변환에 실패했습니다. 검증된 HWPX '${result.preservedHwpxFileName}'은(는) 보존했습니다.`
-              : result.code === "DESTINATION_CHANGED"
-                ? `HWP 출력 파일이 변경되어 저장하지 않았습니다. 검증된 HWPX '${result.preservedHwpxFileName}'은(는) 보존했습니다.`
-                : `HWP 출력 저장에 실패했습니다. 검증된 HWPX '${result.preservedHwpxFileName}'은(는) 보존했습니다.`
-          );
-          return;
-        }
         if (result.code === "RECOVERY_REQUIRED") {
           setError(
             result.recoveryFileName
@@ -492,9 +464,7 @@ export const HwpxExportWorkspace = forwardRef<
           return;
         }
         setError(
-          result.code === "HWP_CONVERSION_UNAVAILABLE"
-            ? "HWP 변환을 사용할 수 없습니다. HWPX로 내보내세요."
-            : "선택 이후 출력 파일이 변경되어 저장하지 않았습니다."
+          "선택 이후 출력 파일이 변경되어 저장하지 않았습니다."
         );
         return;
       }
@@ -651,52 +621,17 @@ export const HwpxExportWorkspace = forwardRef<
       aria-busy={busy}
       data-hwpx-phase={phase}
       data-hwpx-validation={visibleValidation?.report.validation.status ?? "NONE"}
-      data-hwpx-output-type={outputType}
-      data-hwpx-hancom-status={state.hancom.status}
-      data-hwpx-hancom-reason={
-        state.hancom.status === "UNAVAILABLE" ? state.hancom.reason : "NONE"
-      }
+      data-hwpx-output-type="HWPX"
     >
       <header>
         <h2>한글 문서</h2>
         <p>
-          HWPX는 madi 내부 검증기로 검사합니다. HWP 변환에는 Windows용 한컴오피스
-          한/글과 로컬 Automation이 필요합니다.
+          HWPX 파일을 만들고 madi 내부 검증기로 검사합니다.
         </p>
       </header>
       {error && <p role="alert">{error}</p>}
       <fieldset disabled={busy || interactionBlocked}>
-        <legend>출력 형식과 범위</legend>
-        <label>
-          출력 형식
-          <select
-            value={outputType}
-            onChange={(event) => {
-              const next = event.target.value as "HWPX" | "HWP";
-              setOutputType(next);
-              setOutput(null);
-              setValidationResult(null);
-              setValidationKey(null);
-              setExportResult(null);
-              setResultKey(null);
-              setFailedConversion(null);
-              setError(null);
-            }}
-          >
-            <option value="HWPX">HWPX</option>
-            <option value="HWP" disabled={!hancomAvailable}>
-              HWP {hancomAvailable ? "" : "(한컴 Automation 사용 불가)"}
-            </option>
-          </select>
-        </label>
-        {!hancomAvailable && (
-          <p>
-            {state.hancom.status === "REGISTERED_UNVERIFIED"
-              ? "한컴오피스는 감지됐지만 안전한 Automation 사용 조건을 확인하지 못했습니다. "
-              : "HWP 변환을 사용하려면 Windows용 한컴오피스 한/글이 필요합니다. "}
-            HWPX 파일은 그대로 내보낼 수 있습니다.
-          </p>
-        )}
+        <legend>내보내기 범위</legend>
         <label>
           범위
           <select value={scopeNodeId} onChange={(event) => setScopeNodeId(event.target.value)}>
@@ -1244,7 +1179,7 @@ export const HwpxExportWorkspace = forwardRef<
           }
           onClick={() => void runExport()}
         >
-          {outputType === "HWPX" ? "HWPX 내보내기" : "HWP 내보내기"}
+          HWPX 내보내기
         </button>
         <button
           type="button"
@@ -1293,61 +1228,9 @@ export const HwpxExportWorkspace = forwardRef<
           report={visibleExport.report}
         />
       )}
-      {failedConversion && (
-        <PreservedHwpxFailure
-          api={api}
-          sessionId={sessionId}
-          result={failedConversion}
-        />
-      )}
     </section>
   );
 });
-
-function PreservedHwpxFailure({
-  api,
-  sessionId,
-  result
-}: {
-  readonly api: PublicationExportModeProps["api"];
-  readonly sessionId: string;
-  readonly result: Extract<
-    RunHwpxExportResult,
-    { readonly preservedHwpxFileName: string }
-  >;
-}) {
-  return (
-    <section role="status" aria-label="HWP 변환 실패와 HWPX 보존 결과">
-      <h3>HWPX 보존됨</h3>
-      <p>{result.preservedHwpxFileName}</p>
-      <div className="hwpx-export__actions">
-        <button
-          type="button"
-          onClick={() =>
-            void api.revealHwpxExport({
-              sessionId,
-              operationId: result.operationId
-            })
-          }
-        >
-          보존된 HWPX 위치 열기
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            void api.saveHwpxExportReport({
-              sessionId,
-              operationId: result.operationId,
-              format: "JSON"
-            })
-          }
-        >
-          실패 report 저장
-        </button>
-      </div>
-    </section>
-  );
-}
 
 function ValidationMessage({
   message,

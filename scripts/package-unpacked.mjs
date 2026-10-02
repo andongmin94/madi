@@ -61,27 +61,7 @@ const atomicOutput = resolve(
   "release",
   "madi-atomic-output.exe",
 );
-const hwpBridgePublishDirectory = resolve(
-  repositoryRoot,
-  "sidecars",
-  "hwp-bridge",
-  "bin",
-  "package",
-  "win-x86",
-);
-const hwpBridgeFiles = [
-  "madi-hwp-bridge.exe",
-  "madi-hwp-bridge.dll",
-  "madi-hwp-bridge.deps.json",
-  "madi-hwp-bridge.runtimeconfig.json",
-];
-const forbiddenHancomBinaryName =
-  /(?:^|[-_.])(?:hancom|hwpobject|filepathcheckermoduleexample)(?:[-_.]|$)/iu;
 const packagedBinaryAllowlist = [
-  "hwp-bridge/madi-hwp-bridge.deps.json",
-  "hwp-bridge/madi-hwp-bridge.dll",
-  "hwp-bridge/madi-hwp-bridge.exe",
-  "hwp-bridge/madi-hwp-bridge.runtimeconfig.json",
   "madi-atomic-output.exe",
   "madi-core.exe",
   "madi-export-epub.exe",
@@ -173,16 +153,6 @@ const pinnedLicenseCopies = [
     name: "EPUBCHECK-5.3.0-BSD-3-CLAUSE.txt",
     sha256: "851180aaf3e14dddafb23f62abf46123aa354cc9379c650952073823ee6b128e",
   },
-  {
-    source: resolve(
-      repositoryRoot,
-      "docs",
-      "licenses",
-      "DOTNET-RUNTIME-MIT.txt",
-    ),
-    name: "DOTNET-RUNTIME-MIT.txt",
-    sha256: "cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310",
-  },
 ];
 
 function sha256(bytes) {
@@ -246,39 +216,7 @@ await Promise.all([
   stat(epubExporter),
   stat(hwpxExporter),
   stat(atomicOutput),
-  ...hwpBridgeFiles.map((name) =>
-    stat(resolve(hwpBridgePublishDirectory, name)),
-  ),
 ]);
-const hwpBridgeRuntimeConfig = JSON.parse(
-  await readFile(
-    resolve(
-      hwpBridgePublishDirectory,
-      "madi-hwp-bridge.runtimeconfig.json",
-    ),
-    "utf8",
-  ),
-);
-const hwpBridgeDependencies = JSON.parse(
-  await readFile(
-    resolve(hwpBridgePublishDirectory, "madi-hwp-bridge.deps.json"),
-    "utf8",
-  ),
-);
-const hwpBridgeRuntimeOptions = hwpBridgeRuntimeConfig.runtimeOptions;
-if (
-  hwpBridgeRuntimeOptions?.tfm !== "net10.0" ||
-  hwpBridgeRuntimeOptions.framework?.name !== "Microsoft.NETCore.App" ||
-  hwpBridgeRuntimeOptions.framework?.version !== "10.0.0" ||
-  hwpBridgeDependencies.runtimeTarget?.name !==
-    ".NETCoreApp,Version=v10.0/win-x86" ||
-  Object.keys(hwpBridgeDependencies.libraries ?? {}).length !== 1 ||
-  !("madi-hwp-bridge/1.0.0" in (hwpBridgeDependencies.libraries ?? {}))
-) {
-  throw new Error(
-    "The HWP bridge publish output is not the pinned framework-dependent win-x86 deployment",
-  );
-}
 await mkdir(outputRoot, { recursive: true });
 if ((await lstat(outputRoot)).isSymbolicLink()) {
   throw new Error("The package output must not be a symbolic link");
@@ -335,11 +273,6 @@ await cp(
   atomicOutput,
   resolve(resourcesDirectory, "bin", "madi-atomic-output.exe"),
 );
-const packagedHwpBridgeDirectory = resolve(
-  resourcesDirectory,
-  "bin",
-  "hwp-bridge",
-);
 const packagedValidationDirectory = resolve(resourcesDirectory, "validation");
 await cp(validationBundle.directory, packagedValidationDirectory, {
   recursive: true,
@@ -350,15 +283,6 @@ await verifyExtractedToolTree(
   packagedValidationDirectory,
   validationBundle.tree,
   "packaged-runtime-bundle-verify",
-);
-await mkdir(packagedHwpBridgeDirectory, { recursive: true });
-await Promise.all(
-  hwpBridgeFiles.map((name) =>
-    cp(
-      resolve(hwpBridgePublishDirectory, name),
-      resolve(packagedHwpBridgeDirectory, name),
-    ),
-  ),
 );
 await mkdir(resolve(resourcesDirectory, "licenses"), { recursive: true });
 await Promise.all([
@@ -446,15 +370,6 @@ const atomicOutputCopy = await exactCopyEvidence(
   resolve(resourcesDirectory, "bin", "madi-atomic-output.exe"),
   "resources/bin/madi-atomic-output.exe",
 );
-const packagedHwpBridgeFiles = await Promise.all(
-  hwpBridgeFiles.map(async (name) => {
-    return exactCopyEvidence(
-      resolve(hwpBridgePublishDirectory, name),
-      resolve(packagedHwpBridgeDirectory, name),
-      `resources/bin/hwp-bridge/${name}`,
-    );
-  }),
-);
 const packagedBinaryNames = await listPackagedBinaryFiles(
   resolve(resourcesDirectory, "bin"),
 );
@@ -463,9 +378,6 @@ if (
   JSON.stringify([...packagedBinaryAllowlist].sort())
 ) {
   throw new Error("The unpacked package binary allowlist does not match");
-}
-if (packagedBinaryNames.some((name) => forbiddenHancomBinaryName.test(name))) {
-  throw new Error("The unpacked package must not contain a Hancom binary");
 }
 const executableSize = (await stat(executable)).size;
 
@@ -511,14 +423,6 @@ process.stdout.write(
           "resources/validation/jdk-21.0.11+10-jre/legal",
         ],
       },
-      hwpBridge: {
-        deployment: "framework-dependent .NET 10 win-x86",
-        runtimeFramework: "Microsoft.NETCore.App/10.0.0",
-        executable:
-          "resources/bin/hwp-bridge/madi-hwp-bridge.exe",
-        files: packagedHwpBridgeFiles,
-        hancomBinariesBundled: false,
-      },
       notices: [
         "resources/licenses/THIRD_PARTY_NOTICES.md",
         "resources/licenses/TYPIE-AGPL-3.0.txt",
@@ -538,7 +442,6 @@ process.stdout.write(
         "resources/licenses/TEMPFILE-MIT.txt",
         "resources/licenses/ZIP-MIT.txt",
         "resources/licenses/EPUBCHECK-5.3.0-BSD-3-CLAUSE.txt",
-        "resources/licenses/DOTNET-RUNTIME-MIT.txt",
       ],
     },
     null,

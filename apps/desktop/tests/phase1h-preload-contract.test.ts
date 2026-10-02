@@ -23,7 +23,6 @@ function report(): HwpxExportReport {
     presetContentHash: "b".repeat(64),
     hwpxSha256: "c".repeat(64),
     outputSha256: "c".repeat(64),
-    preservedHwpxFileName: null,
     logicalPackageHash: "d".repeat(64),
     byteLength: 1024,
     coverage: {
@@ -85,8 +84,6 @@ function report(): HwpxExportReport {
       includeFooter: false,
       footerHasText: false
     },
-    hancomReopen: "NOT_RUN",
-    hwpConverted: false,
     timing: {
       publicationIrCompileMs: 1,
       semanticMappingMs: 1,
@@ -99,8 +96,6 @@ function report(): HwpxExportReport {
       sourceCoverageMs: 1,
       exporterTotalMs: 8,
       totalMs: 9,
-      hwpConversionMs: null,
-      hwpReopenMs: null
     },
     generatedAt: "2026-08-13T00:00:00.000Z",
     madiVersion: "0.0.1"
@@ -143,6 +138,18 @@ const validateRequest: ValidateHwpxExportRequest = {
 };
 
 describe("Phase 1H preload HWPX boundary", () => {
+  it("rejects obsolete output selectors in the opaque selection response", async () => {
+    const api = createMadiDesktopApi(vi.fn(async () => ({
+      selectionId: "selection-1",
+      fileName: "publication.hwpx",
+      outputType: "HWP"
+    })));
+    await expect(api.chooseHwpxOutput({
+      sessionId: "session-1",
+      suggestedFileName: "publication.hwpx"
+    })).rejects.toThrow(/output selection fields/u);
+  });
+
   it("preserves the canonical zero revision of a newly created preset", async () => {
     const preset = {
       id: "preset-1",
@@ -179,7 +186,6 @@ describe("Phase 1H preload HWPX boundary", () => {
         return {
           selectionId: "selection-1",
           fileName: "긴-밤.hwpx",
-          outputType: "HWPX"
         };
       }
       if (channel === IPC_CHANNELS.validateHwpxExport) {
@@ -199,12 +205,10 @@ describe("Phase 1H preload HWPX boundary", () => {
     const choose = {
       sessionId: "session-1",
       suggestedFileName: "긴-밤.hwpx",
-      outputType: "HWPX" as const
     };
     const run: RunHwpxExportRequest = {
       ...validateRequest,
       outputSelectionId: "selection-1",
-      outputType: "HWPX"
     };
 
     await api.chooseHwpxOutput(choose);
@@ -296,7 +300,6 @@ describe("Phase 1H preload HWPX boundary", () => {
       hostile.runHwpxExport({
         ...validateRequest,
         outputSelectionId: "selection-1",
-        outputType: "HWPX"
       })
     ).rejects.toThrow(/message fields/u);
   });
@@ -335,14 +338,7 @@ describe("Phase 1H preload HWPX boundary", () => {
         sha256: "c".repeat(64),
         report: {
           ...report(),
-          hancomReopen: "PASSED",
-          hwpConverted: true,
-          timing: {
-            ...report().timing,
-            totalMs: 24,
-            hwpConversionMs: 10,
-            hwpReopenMs: 5
-          }
+          byteLength: null
         },
         revision: 7
       }))
@@ -351,7 +347,6 @@ describe("Phase 1H preload HWPX boundary", () => {
       impossibleCompleted.runHwpxExport({
         ...validateRequest,
         outputSelectionId: "selection-1",
-        outputType: "HWPX"
       })
     ).rejects.toThrow(/semantic state/u);
 
@@ -370,52 +365,7 @@ describe("Phase 1H preload HWPX boundary", () => {
       mismatchedCompletedRevision.runHwpxExport({
         ...validateRequest,
         outputSelectionId: "selection-1",
-        outputType: "HWPX"
       })
     ).rejects.toThrow(/report identity/u);
-  });
-
-  it("accepts only basename-only typed HWP conversion preservation failures", async () => {
-    const failedReport: HwpxExportReport = {
-      ...report(),
-      outputType: "HWP",
-      outputSha256: null,
-      preservedHwpxFileName: "긴-밤.hwpx",
-      byteLength: null,
-      timing: {
-        ...report().timing,
-        totalMs: 34,
-        hwpConversionMs: 25
-      }
-    };
-    const run: RunHwpxExportRequest = {
-      ...validateRequest,
-      outputSelectionId: "selection-1",
-      outputType: "HWP"
-    };
-    const api = createMadiDesktopApi(
-      vi.fn(async () => ({
-        status: "FAILED",
-        operationId: OPERATION_ID,
-        code: "HWP_CONVERSION_FAILED",
-        preservedHwpxFileName: "긴-밤.hwpx",
-        report: failedReport
-      }))
-    );
-    await expect(api.runHwpxExport(run)).resolves.toMatchObject({
-      code: "HWP_CONVERSION_FAILED",
-      preservedHwpxFileName: "긴-밤.hwpx"
-    });
-
-    const hostile = createMadiDesktopApi(
-      vi.fn(async () => ({
-        status: "FAILED",
-        operationId: OPERATION_ID,
-        code: "HWP_CONVERSION_FAILED",
-        preservedHwpxFileName: "C:\\private\\긴-밤.hwpx",
-        report: failedReport
-      }))
-    );
-    await expect(hostile.runHwpxExport(run)).rejects.toThrow(/preserved HWPX/u);
   });
 });

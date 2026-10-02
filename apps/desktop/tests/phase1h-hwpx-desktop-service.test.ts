@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BrowserWindow } from "electron";
@@ -15,8 +15,6 @@ import type {
   HwpxExporterRunInput,
   HwpxUtilityResult
 } from "../src/main/hwpxExportClient";
-import type { HwpBridgePort } from "../src/main/hwpBridgeClient";
-import { HwpBridgeOperationError } from "../src/main/hwpBridgeClient";
 import type { FontInstallationPort } from "../src/main/fontInstallation";
 import type { HwpxCrashRecoveryPort } from "../src/main/hwpxCrashRecovery";
 import { ProjectSessionRegistry } from "../src/main/projectSessions";
@@ -34,19 +32,11 @@ const LOGICAL_HASH = "b".repeat(64);
 const OPERATION_1 = "123e4567-e89b-42d3-a456-426614174000";
 const OPERATION_2 = "123e4567-e89b-42d3-a456-426614174001";
 const OPERATION_3 = "123e4567-e89b-42d3-a456-426614174002";
-const OPERATION_4 = "123e4567-e89b-42d3-a456-426614174003";
-const OPERATION_5 = "123e4567-e89b-42d3-a456-426614174004";
 const OPERATION_6 = "123e4567-e89b-42d3-a456-426614174005";
 const OPERATION_7 = "123e4567-e89b-42d3-a456-426614174006";
-const OPERATION_8 = "123e4567-e89b-42d3-a456-426614174007";
-const OPERATION_9 = "123e4567-e89b-42d3-a456-426614174008";
-const OPERATION_10 = "123e4567-e89b-42d3-a456-426614174009";
-const OPERATION_11 = "123e4567-e89b-42d3-a456-426614174010";
 const OPERATION_12 = "123e4567-e89b-42d3-a456-426614174011";
 const OPERATION_13 = "123e4567-e89b-42d3-a456-426614174012";
-const OPERATION_14 = "123e4567-e89b-42d3-a456-426614174013";
 const GENERATED_HWPX = Buffer.from("content-free HWPX fixture", "utf8");
-const GENERATED_HWP = Buffer.from("content-free HWP fixture", "utf8");
 const CONFIG = BUILT_IN_HWPX_PRESETS[0]!.config;
 const temporaryDirectories: string[] = [];
 
@@ -223,7 +213,6 @@ function utilityResult(
 }
 
 function createHarness(options: {
-  readonly bridge?: HwpBridgePort;
   readonly fontInstallation?: FontInstallationPort;
   readonly preset?: Record<string, unknown>;
 } = {}) {
@@ -310,9 +299,7 @@ function createHarness(options: {
     undefined,
     shell,
     exporter,
-    options.bridge,
     fontInstallation,
-    "win32",
     crashRecovery
   );
   return {
@@ -347,7 +334,6 @@ function runRequest(
     config: CONFIG,
     titlePage: { subtitle: null, genre: null, contact: null },
     outputSelectionId,
-    outputType: "HWPX",
     ...overrides
   };
 }
@@ -408,7 +394,6 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
       });
       const {
         outputSelectionId: _outputSelectionId,
-        outputType: _outputType,
         ...validationRequest
       } = runRequest(harness.session.sessionId, OPERATION_1, "unused", {
         presetId: "custom-hwpx",
@@ -438,7 +423,6 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
       });
       const {
         outputSelectionId: _outputSelectionId,
-        outputType: _outputType,
         ...validationRequest
       } = runRequest(harness.session.sessionId, OPERATION_1, "unused", {
         presetId: "custom-hwpx",
@@ -467,7 +451,6 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
     const selection = await harness.service.chooseHwpxOutput({
       sessionId: harness.session.sessionId,
       suggestedFileName: "submission.hwpx",
-      outputType: "HWPX"
     });
     if (!selection) {
       throw new Error("expected HWPX selection");
@@ -555,7 +538,6 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
     const selection = await harness.service.chooseHwpxOutput({
       sessionId: harness.session.sessionId,
       suggestedFileName: "submission.hwpx",
-      outputType: "HWPX"
     });
     if (!selection) {
       throw new Error("expected HWPX selection");
@@ -607,7 +589,6 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
     const selection = await harness.service.chooseHwpxOutput({
       sessionId: harness.session.sessionId,
       suggestedFileName: "submission.hwpx",
-      outputType: "HWPX"
     });
     if (!selection) {
       throw new Error("expected HWPX selection");
@@ -689,7 +670,6 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
     const selection = await harness.service.chooseHwpxOutput({
       sessionId: harness.session.sessionId,
       suggestedFileName: "submission.hwpx",
-      outputType: "HWPX"
     });
     if (!selection) {
       throw new Error("expected HWPX selection");
@@ -709,201 +689,6 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
     await expect(readFile(outputPath)).resolves.toEqual(foreign);
   });
 
-  it("keeps validated HWPX staged, converts and reopens HWP, then commits only verified bytes", async () => {
-    const convert = vi.fn(
-      async (
-        _operationId: string,
-        inputHwpx: string,
-        outputHwp: string
-      ) => {
-        await expect(readFile(inputHwpx)).resolves.toEqual(GENERATED_HWPX);
-        await writeFile(outputHwp, GENERATED_HWP);
-        return {
-          outputPath: outputHwp,
-          byteLength: GENERATED_HWP.byteLength,
-          sha256: sha256(GENERATED_HWP),
-          hancomVersion: "Hancom 2024"
-        };
-      }
-    );
-    const reopen = vi.fn(async () => ({
-      verified: true as const,
-      hancomVersion: "Hancom 2024"
-    }));
-    const bridge: HwpBridgePort = {
-      probe: vi.fn(async () => ({
-        available: true,
-        availabilityCode: "AVAILABLE",
-        hancomVersion: "Hancom 2024"
-      })),
-      convert,
-      reopen,
-      cancel: vi.fn(async () => false),
-      dispose: vi.fn(async () => undefined)
-    };
-    const harness = createHarness({ bridge });
-    const directory = await makeTemporaryDirectory();
-    const outputPath = path.join(directory, "submission.hwp");
-    vi.mocked(harness.dialog.showSaveDialog).mockResolvedValueOnce({
-      canceled: false,
-      filePath: outputPath
-    });
-    const selection = await harness.service.chooseHwpxOutput({
-      sessionId: harness.session.sessionId,
-      suggestedFileName: "submission.hwp",
-      outputType: "HWP"
-    });
-    if (!selection) {
-      throw new Error("expected HWP selection");
-    }
-
-    const result = await harness.service.runHwpxExport(
-      runRequest(harness.session.sessionId, OPERATION_4, selection.selectionId, {
-        outputType: "HWP"
-      })
-    );
-    expect(result).toMatchObject({
-      status: "COMPLETED",
-      operationId: OPERATION_4,
-      byteLength: GENERATED_HWP.byteLength,
-      sha256: sha256(GENERATED_HWP),
-      report: {
-        outputType: "HWP",
-        hwpxSha256: sha256(GENERATED_HWPX),
-        outputSha256: sha256(GENERATED_HWP),
-        preservedHwpxFileName: "submission.hwpx",
-        byteLength: GENERATED_HWP.byteLength,
-        hancomReopen: "PASSED",
-        hwpConverted: true,
-        timing: {
-          hwpConversionMs: expect.any(Number),
-          hwpReopenMs: expect.any(Number)
-        }
-      }
-    });
-    if (result.status !== "COMPLETED") {
-      throw new Error("expected completed HWP export");
-    }
-    expect(result.report.timing.totalMs).toBe(
-      result.report.timing.publicationIrCompileMs +
-        result.report.timing.exporterTotalMs +
-        (result.report.timing.hwpConversionMs ?? 0) +
-        (result.report.timing.hwpReopenMs ?? 0)
-    );
-    expect(convert).toHaveBeenCalledWith(
-      OPERATION_4,
-      expect.stringMatching(/publication\.hwpx$/u),
-      expect.stringMatching(/publication\.hwp$/u)
-    );
-    expect(reopen).toHaveBeenCalledWith(
-      OPERATION_4,
-      expect.stringMatching(/publication\.hwp$/u)
-    );
-    expect(
-      harness.send.mock.calls.map(([, progress]) => progress)
-    ).toEqual([
-      {
-        operationId: OPERATION_4,
-        stage: "PUBLICATION_COMPILE",
-        completed: 0,
-        total: 1
-      },
-      {
-        operationId: OPERATION_4,
-        stage: "PUBLICATION_COMPILE",
-        completed: 1,
-        total: 1
-      },
-      {
-        operationId: OPERATION_4,
-        stage: "HWP_CONVERSION",
-        completed: 0,
-        total: 1
-      },
-      {
-        operationId: OPERATION_4,
-        stage: "HWP_CONVERSION",
-        completed: 1,
-        total: 1
-      },
-      {
-        operationId: OPERATION_4,
-        stage: "REOPEN_VERIFICATION",
-        completed: 0,
-        total: 1
-      },
-      {
-        operationId: OPERATION_4,
-        stage: "REOPEN_VERIFICATION",
-        completed: 1,
-        total: 1
-      },
-      {
-        operationId: OPERATION_4,
-        stage: "FINALIZE",
-        completed: 0,
-        total: 1
-      },
-      {
-        operationId: OPERATION_4,
-        stage: "FINALIZE",
-        completed: 1,
-        total: 1
-      }
-    ]);
-    await expect(readFile(outputPath)).resolves.toEqual(GENERATED_HWP);
-    await expect(
-      readFile(path.join(directory, "submission.hwpx"))
-    ).resolves.toEqual(GENERATED_HWPX);
-  });
-
-  it("reports registered-but-unverified Hancom and does not start an HWP export", async () => {
-    const bridge: HwpBridgePort = {
-      probe: vi.fn(async () => ({
-        available: false,
-        availabilityCode: "SECURITY_MODULE_REQUIRED",
-        hancomVersion: "Hancom 2024"
-      })),
-      convert: vi.fn(),
-      reopen: vi.fn(),
-      cancel: vi.fn(async () => false),
-      dispose: vi.fn(async () => undefined)
-    };
-    const harness = createHarness({ bridge });
-    await expect(
-      harness.service.getHwpxExportState({
-        sessionId: harness.session.sessionId
-      })
-    ).resolves.toMatchObject({
-      hancom: { status: "REGISTERED_UNVERIFIED", version: "Hancom 2024" }
-    });
-    const directory = await makeTemporaryDirectory();
-    vi.mocked(harness.dialog.showSaveDialog).mockResolvedValueOnce({
-      canceled: false,
-      filePath: path.join(directory, "submission.hwp")
-    });
-    const selection = await harness.service.chooseHwpxOutput({
-      sessionId: harness.session.sessionId,
-      suggestedFileName: "submission.hwp",
-      outputType: "HWP"
-    });
-    if (!selection) {
-      throw new Error("expected HWP selection");
-    }
-    await expect(
-      harness.service.runHwpxExport(
-        runRequest(harness.session.sessionId, OPERATION_5, selection.selectionId, {
-          outputType: "HWP"
-        })
-      )
-    ).resolves.toEqual({
-      status: "FAILED",
-      operationId: OPERATION_5,
-      code: "HWP_CONVERSION_UNAVAILABLE"
-    });
-    expect(harness.run).not.toHaveBeenCalled();
-  });
-
   it("adds a warning when the exact selected font is not installed", async () => {
     const fontInstallation: FontInstallationPort = {
       isInstalled: vi.fn(async () => false)
@@ -917,7 +702,6 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
     const selection = await harness.service.chooseHwpxOutput({
       sessionId: harness.session.sessionId,
       suggestedFileName: "font-warning.hwpx",
-      outputType: "HWPX"
     });
     if (!selection) {
       throw new Error("expected HWPX selection");
@@ -950,7 +734,6 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
     const harness = createHarness({ fontInstallation });
     const {
       outputSelectionId: _outputSelectionId,
-      outputType: _outputType,
       ...validationRequest
     } = runRequest(harness.session.sessionId, OPERATION_7, "unused");
     const result = await harness.service.validateHwpxExport(validationRequest);
@@ -989,7 +772,6 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
     });
     const {
       outputSelectionId: _outputSelectionId,
-      outputType: _outputType,
       ...validationRequest
     } = runRequest(harness.session.sessionId, OPERATION_12, "unused");
     const result = await harness.service.validateHwpxExport(validationRequest);
@@ -1012,307 +794,10 @@ describe("Phase 1H DesktopService HWPX trust boundary", () => {
     });
     const {
       outputSelectionId: _outputSelectionId,
-      outputType: _outputType,
       ...validationRequest
     } = runRequest(harness.session.sessionId, OPERATION_13, "unused");
     await expect(
       harness.service.validateHwpxExport(validationRequest)
     ).rejects.toThrow("publication content loss");
-  });
-
-  it("honors cancellation while the safe Hancom probe is still pending", async () => {
-    let resolveProbe!: () => void;
-    const probeGate = new Promise<void>((resolve) => {
-      resolveProbe = resolve;
-    });
-    const bridge: HwpBridgePort = {
-      probe: vi.fn(async () => {
-        await probeGate;
-        return {
-          available: true,
-          availabilityCode: "AVAILABLE",
-          hancomVersion: "Hancom 2024"
-        };
-      }),
-      convert: vi.fn(),
-      reopen: vi.fn(),
-      cancel: vi.fn(async () => false),
-      dispose: vi.fn(async () => undefined)
-    };
-    const harness = createHarness({ bridge });
-    const directory = await makeTemporaryDirectory();
-    vi.mocked(harness.dialog.showSaveDialog).mockResolvedValueOnce({
-      canceled: false,
-      filePath: path.join(directory, "cancelled.hwp")
-    });
-    const selection = await harness.service.chooseHwpxOutput({
-      sessionId: harness.session.sessionId,
-      suggestedFileName: "cancelled.hwp",
-      outputType: "HWP"
-    });
-    if (!selection) {
-      throw new Error("expected HWP selection");
-    }
-    const run = harness.service.runHwpxExport(
-      runRequest(harness.session.sessionId, OPERATION_8, selection.selectionId, {
-        outputType: "HWP"
-      })
-    );
-    await Promise.resolve();
-    await expect(
-      harness.service.cancelHwpxExport({
-        sessionId: harness.session.sessionId,
-        operationId: OPERATION_8
-      })
-    ).resolves.toBe(true);
-    resolveProbe();
-
-    await expect(run).resolves.toEqual({
-      status: "CANCELLED",
-      operationId: OPERATION_8
-    });
-    expect(harness.run).not.toHaveBeenCalled();
-  });
-
-  it("preserves and reveals a no-clobber HWPX companion when conversion fails", async () => {
-    const bridge: HwpBridgePort = {
-      probe: vi.fn(async () => ({
-        available: true,
-        availabilityCode: "AVAILABLE",
-        hancomVersion: "Hancom 2024"
-      })),
-      convert: vi.fn(async () => {
-        throw new HwpBridgeOperationError("CONVERSION_FAILED");
-      }),
-      reopen: vi.fn(),
-      cancel: vi.fn(async () => false),
-      dispose: vi.fn(async () => undefined)
-    };
-    const harness = createHarness({ bridge });
-    const directory = await makeTemporaryDirectory();
-    const outputPath = path.join(directory, "failed.hwp");
-    const companionPath = path.join(directory, "failed.hwpx");
-    vi.mocked(harness.dialog.showSaveDialog).mockResolvedValueOnce({
-      canceled: false,
-      filePath: outputPath
-    });
-    const selection = await harness.service.chooseHwpxOutput({
-      sessionId: harness.session.sessionId,
-      suggestedFileName: "failed.hwp",
-      outputType: "HWP"
-    });
-    if (!selection) {
-      throw new Error("expected HWP selection");
-    }
-
-    const result = await harness.service.runHwpxExport(
-      runRequest(harness.session.sessionId, OPERATION_9, selection.selectionId, {
-        outputType: "HWP"
-      })
-    );
-    expect(result).toMatchObject({
-      status: "FAILED",
-      operationId: OPERATION_9,
-      code: "HWP_CONVERSION_FAILED",
-      preservedHwpxFileName: "failed.hwpx",
-      report: {
-        outputType: "HWP",
-        preservedHwpxFileName: "failed.hwpx",
-        hwpxSha256: sha256(GENERATED_HWPX),
-        outputSha256: null,
-        hwpConverted: false,
-        hancomReopen: "NOT_RUN"
-      }
-    });
-    await expect(readFile(companionPath)).resolves.toEqual(GENERATED_HWPX);
-    await expect(readFile(outputPath)).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(
-      harness.service.revealHwpxExport({
-        sessionId: harness.session.sessionId,
-        operationId: OPERATION_9
-      })
-    ).resolves.toBe(true);
-    expect(harness.shell.showItemInFolder).toHaveBeenCalledWith(companionPath);
-  });
-
-  it("never overwrites an unconfirmed HWPX companion", async () => {
-    const bridge: HwpBridgePort = {
-      probe: vi.fn(async () => ({
-        available: true,
-        availabilityCode: "AVAILABLE",
-        hancomVersion: "Hancom 2024"
-      })),
-      convert: vi.fn(async () => {
-        throw new HwpBridgeOperationError("CONVERSION_FAILED");
-      }),
-      reopen: vi.fn(),
-      cancel: vi.fn(async () => false),
-      dispose: vi.fn(async () => undefined)
-    };
-    const harness = createHarness({ bridge });
-    const directory = await makeTemporaryDirectory();
-    const outputPath = path.join(directory, "occupied.hwp");
-    const companionPath = path.join(directory, "occupied.hwpx");
-    const foreign = Buffer.from("foreign companion owner", "utf8");
-    await writeFile(companionPath, foreign);
-    vi.mocked(harness.dialog.showSaveDialog).mockResolvedValueOnce({
-      canceled: false,
-      filePath: outputPath
-    });
-    const selection = await harness.service.chooseHwpxOutput({
-      sessionId: harness.session.sessionId,
-      suggestedFileName: "occupied.hwp",
-      outputType: "HWP"
-    });
-    if (!selection) {
-      throw new Error("expected HWP selection");
-    }
-
-    const result = await harness.service.runHwpxExport(
-      runRequest(
-        harness.session.sessionId,
-        OPERATION_10,
-        selection.selectionId,
-        { outputType: "HWP" }
-      )
-    );
-    expect(result).toMatchObject({
-      status: "FAILED",
-      operationId: OPERATION_10,
-      code: "HWP_CONVERSION_FAILED"
-    });
-    await expect(readFile(companionPath)).resolves.toEqual(foreign);
-    if (!("preservedHwpxFileName" in result)) {
-      throw new Error("expected a preserved HWPX result");
-    }
-    expect(result.preservedHwpxFileName).toMatch(
-      /^occupied\.madi-preserved-[0-9a-f-]+\.hwpx$/
-    );
-    await expect(
-      readFile(path.join(directory, result.preservedHwpxFileName))
-    ).resolves.toEqual(GENERATED_HWPX);
-    expect(bridge.convert).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps the bridge input isolated from the public HWPX companion", async () => {
-    const directory = await makeTemporaryDirectory();
-    const outputPath = path.join(directory, "isolated.hwp");
-    const companionPath = path.join(directory, "isolated.hwpx");
-    const foreign = Buffer.from("external companion mutation", "utf8");
-    const bridge: HwpBridgePort = {
-      probe: vi.fn(async () => ({
-        available: true,
-        availabilityCode: "AVAILABLE",
-        hancomVersion: "Hancom 2024"
-      })),
-      convert: vi.fn(async (_operationId, inputHwpx) => {
-        await writeFile(companionPath, foreign);
-        expect(await readFile(inputHwpx)).toEqual(GENERATED_HWPX);
-        throw new HwpBridgeOperationError("CONVERSION_FAILED");
-      }),
-      reopen: vi.fn(),
-      cancel: vi.fn(async () => false),
-      dispose: vi.fn(async () => undefined)
-    };
-    const harness = createHarness({ bridge });
-    vi.mocked(harness.dialog.showSaveDialog).mockResolvedValueOnce({
-      canceled: false,
-      filePath: outputPath
-    });
-    const selection = await harness.service.chooseHwpxOutput({
-      sessionId: harness.session.sessionId,
-      suggestedFileName: "isolated.hwp",
-      outputType: "HWP"
-    });
-    if (!selection) {
-      throw new Error("expected HWP selection");
-    }
-
-    await expect(
-      harness.service.runHwpxExport(
-        runRequest(
-          harness.session.sessionId,
-          OPERATION_11,
-          selection.selectionId,
-          { outputType: "HWP" }
-        )
-      )
-    ).resolves.toMatchObject({
-      status: "FAILED",
-      operationId: OPERATION_11,
-      code: "HWP_CONVERSION_FAILED",
-      preservedHwpxFileName: expect.stringMatching(
-        /^isolated\.madi-preserved-[0-9a-f-]{36}\.hwpx$/u
-      )
-    });
-    await expect(readFile(companionPath)).resolves.toEqual(foreign);
-    const recovered = (await readdir(directory)).find((name) =>
-      /^isolated\.madi-preserved-[0-9a-f-]{36}\.hwpx$/u.test(name)
-    );
-    expect(recovered).toBeTypeOf("string");
-    await expect(readFile(path.join(directory, recovered!))).resolves.toEqual(
-      GENERATED_HWPX
-    );
-    expect(bridge.convert).toHaveBeenCalledTimes(1);
-  });
-
-  it("reports the preserved HWPX when another writer claims the final HWP name", async () => {
-    const directory = await makeTemporaryDirectory();
-    const outputPath = path.join(directory, "claimed.hwp");
-    const companionPath = path.join(directory, "claimed.hwpx");
-    const foreign = Buffer.from("concurrent HWP owner", "utf8");
-    const bridge: HwpBridgePort = {
-      probe: vi.fn(async () => ({
-        available: true,
-        availabilityCode: "AVAILABLE",
-        hancomVersion: "Hancom 2024"
-      })),
-      convert: vi.fn(async (_operationId, _inputHwpx, stagedHwp) => {
-        await writeFile(stagedHwp, GENERATED_HWP);
-        return {
-          outputPath: stagedHwp,
-          byteLength: GENERATED_HWP.byteLength,
-          sha256: sha256(GENERATED_HWP),
-          hancomVersion: "Hancom 2024"
-        };
-      }),
-      reopen: vi.fn(async () => {
-        await writeFile(outputPath, foreign);
-        return { verified: true as const, hancomVersion: "Hancom 2024" };
-      }),
-      cancel: vi.fn(async () => false),
-      dispose: vi.fn(async () => undefined)
-    };
-    const harness = createHarness({ bridge });
-    vi.mocked(harness.dialog.showSaveDialog).mockResolvedValueOnce({
-      canceled: false,
-      filePath: outputPath
-    });
-    const selection = await harness.service.chooseHwpxOutput({
-      sessionId: harness.session.sessionId,
-      suggestedFileName: "claimed.hwp",
-      outputType: "HWP"
-    });
-    if (!selection) {
-      throw new Error("expected HWP selection");
-    }
-
-    await expect(
-      harness.service.runHwpxExport(
-        runRequest(
-          harness.session.sessionId,
-          OPERATION_14,
-          selection.selectionId,
-          { outputType: "HWP" }
-        )
-      )
-    ).resolves.toMatchObject({
-      status: "FAILED",
-      operationId: OPERATION_14,
-      code: "DESTINATION_CHANGED",
-      preservedHwpxFileName: "claimed.hwpx"
-    });
-    await expect(readFile(outputPath)).resolves.toEqual(foreign);
-    await expect(readFile(companionPath)).resolves.toEqual(GENERATED_HWPX);
   });
 });

@@ -26,10 +26,6 @@ import {
   ProcessHwpxExporter,
   resolveHwpxExporterBinary
 } from "./hwpxExportClient";
-import {
-  ProcessHwpBridge,
-  resolveHwpBridgeBinary
-} from "./hwpBridgeClient";
 import { FileHwpxCrashRecoveryRegistry } from "./hwpxCrashRecovery";
 import {
   ProcessAtomicOutput,
@@ -77,7 +73,6 @@ class ProcessExportRuntime {
   public readonly epub: ProcessEpubExporter;
   public readonly epubCheck: ProcessEpubCheck;
   public readonly hwpx: ProcessHwpxExporter;
-  public readonly hwpBridge: ProcessHwpBridge;
 
   public constructor() {
     const options = {
@@ -88,15 +83,13 @@ class ProcessExportRuntime {
     this.epub = new ProcessEpubExporter(resolveEpubExporterBinary(options));
     this.epubCheck = new ProcessEpubCheck(resolveEpubCheckBundle(options));
     this.hwpx = new ProcessHwpxExporter(resolveHwpxExporterBinary(options));
-    this.hwpBridge = new ProcessHwpBridge(resolveHwpBridgeBinary(options));
   }
 
   public async dispose(): Promise<void> {
     const results = await Promise.allSettled([
       this.epub.dispose(),
       this.epubCheck.dispose(),
-      this.hwpx.dispose(),
-      this.hwpBridge.dispose()
+      this.hwpx.dispose()
     ]);
     if (results.some((result) => result.status === "rejected")) {
       throw new Error("One or more export utilities did not shut down cleanly");
@@ -230,9 +223,7 @@ async function openApplicationWindow(): Promise<void> {
     exportRuntime.epub,
     shell,
     exportRuntime.hwpx,
-    exportRuntime.hwpBridge,
     undefined,
-    process.platform,
     hwpxCrashRecovery,
     atomicOutput,
     exportRuntime.epubCheck

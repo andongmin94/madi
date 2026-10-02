@@ -1,6 +1,6 @@
 # HWPX Validation Strategy
 
-기준일: 2026-08-13
+기준일: 2026-08-13. 제품 범위 갱신일: 2026-10-02.
 
 ## 1. Validation layers
 
@@ -12,10 +12,10 @@ Phase 1H는 하나의 XML parse를 전체 검증으로 취급하지 않는다.
 4. package/XML/reference/style/page 구조 검사
 5. source block/character/semantic coverage
 6. Electron main의 terminal summary/output/destination 독립 검사
-7. 선택적 Hancom open/save/reopen actual
+7. HWPX native 내용·사람의 서식 확인
 
-1~6이 모두 성공하기 전에는 HWPX output을 commit하지 않는다. 7은 profile 상호운용성과
-HWP bridge에 필요한 별도 actual이며 internal validator를 대체하지 않는다.
+1~6이 모두 성공하기 전에는 HWPX output을 commit하지 않는다. 7은 profile 상호운용성의
+별도 근거이며 internal validator를 대체하지 않는다. HWP 변환은 제품 범위에서 제거했다.
 
 ## 2. ZIP/package 검사
 
@@ -98,14 +98,13 @@ destination changed, cancel/timeout과 owned-temp cleanup을 확인한다.
 
 ## 8. Hancom validation boundary
 
-한컴 open/re-save는 profile compatibility의 강한 증거지만 internal source coverage를
-증명하지 않는다. Automation HWP conversion/reopen도 HWPX internal validation이 PASS한 뒤만
-실행한다. 현재 PC는 한컴오피스 2022와 ProgID가 있으나 file-path security module이 없어
-probe는 `SECURITY_MODULE_REQUIRED`; COM activation/open/save는 실행하지 않았다.
+한컴 내용 판독은 profile compatibility의 근거지만 internal source coverage나 사람의 서식 검토를
+대체하지 않는다. 일반·장편 전체 TEXT 판독의 실제 범위는 [한컴 검증 기록](HANCOM_AUTOMATION_VALIDATION.md#14-2026-10-02-hwpx-전체-text와-hwp-네트워크-gate)을 따른다.
+제품은 Hancom Automation을 실행하지 않는다.
 
 ```text
-HWPX Hancom open/re-save: MANUAL VALIDATION PENDING
-HWP conversion/reopen: MANUAL VALIDATION PENDING
+HWPX layout: MANUAL VALIDATION PENDING
+Binary HWP conversion: OUT OF SCOPE
 ```
 
 ## 9. 판정 규칙

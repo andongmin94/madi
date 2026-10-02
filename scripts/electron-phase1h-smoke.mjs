@@ -52,16 +52,6 @@ const hwpxExporterBinary = resolve(
   "debug",
   `madi-export-hwpx${executableSuffix}`,
 );
-const hwpBridgeBinary = resolve(
-  repositoryRoot,
-  "sidecars",
-  "hwp-bridge",
-  "bin",
-  "Debug",
-  "net10.0-windows",
-  "win-x86",
-  `madi-hwp-bridge${executableSuffix}`,
-);
 const atomicOutputBinary = resolve(
   repositoryRoot,
   "crates",
@@ -170,7 +160,6 @@ function summarizeError(error) {
   ]);
   const allowedHarnessFunctions = new Set([
     "assertSecurity",
-    "assertHancomState",
     "closeGlobalPanel",
     "closeWindowCleanly",
     "completeSuccessfulExport",
@@ -946,14 +935,11 @@ const relevantProcessRoles = new Map([
   ["madi", "ELECTRON"],
   ["madi-core", "CORE"],
   ["madi-export-hwpx", "EXPORTER"],
-  ["madi-hwp-bridge", "BRIDGE"],
   ["madi-atomic-output", "ATOMIC_OUTPUT"],
-  ["hwp", "HANCOM"],
 ]);
 const spawnTappedSidecarRoles = [
   "CORE",
   "EXPORTER",
-  "BRIDGE",
   "ATOMIC_OUTPUT",
 ];
 const processRoleCountKeys = [
@@ -961,18 +947,14 @@ const processRoleCountKeys = [
   "electron",
   "core",
   "exporter",
-  "bridge",
   "atomicOutput",
-  "hancom",
 ];
 const privacySafeProcessRoles = new Set([
   "ROOT",
   "ELECTRON",
   "CORE",
   "EXPORTER",
-  "BRIDGE",
   "ATOMIC_OUTPUT",
-  "HANCOM",
   "OTHER",
 ]);
 
@@ -1055,9 +1037,7 @@ function powershellProcessFilter() {
     "madi.exe",
     "madi-core.exe",
     "madi-export-hwpx.exe",
-    "madi-hwp-bridge.exe",
     "madi-atomic-output.exe",
-    "hwp.exe",
   ]
     .map((name) => `Name='${name}'`)
     .join(" OR ");
@@ -1741,18 +1721,14 @@ function roleCounts(processes) {
     electron: 0,
     core: 0,
     exporter: 0,
-    bridge: 0,
     atomicOutput: 0,
-    hancom: 0,
   };
   for (const process of processes) {
     if (process.role === "ROOT") counts.root += 1;
     if (process.role === "ELECTRON") counts.electron += 1;
     if (process.role === "CORE") counts.core += 1;
     if (process.role === "EXPORTER") counts.exporter += 1;
-    if (process.role === "BRIDGE") counts.bridge += 1;
     if (process.role === "ATOMIC_OUTPUT") counts.atomicOutput += 1;
-    if (process.role === "HANCOM") counts.hancom += 1;
   }
   return counts;
 }
@@ -1785,8 +1761,6 @@ function capturedDescendants(processes, rootInstanceKey) {
 
 async function assertNoOrphanProcesses(
   processMonitor,
-  hancomStatus,
-  hwpExportExercised,
   atomicOutputExercised,
 ) {
   const monitorHealth = await processMonitor.stop();
@@ -1801,14 +1775,11 @@ async function assertNoOrphanProcesses(
     processMonitor.rootInstanceKey,
   );
   const observedDescendants = roleCounts(descendantProcesses);
-  const hancomObservationMatches = hwpExportExercised
-    ? observed.hancom > 0
-    : observed.hancom === 0;
   const spawned = roleCounts(processMonitor.observedChildren);
   const atomicOutputObservationMatches = atomicOutputExercised
     ? spawned.atomicOutput > 0
     : spawned.atomicOutput === 0;
-  const requiredSpawnRoles = ["CORE", "EXPORTER", "BRIDGE"];
+  const requiredSpawnRoles = ["CORE", "EXPORTER"];
   if (atomicOutputExercised) {
     requiredSpawnRoles.push("ATOMIC_OUTPUT");
   }
@@ -1816,7 +1787,7 @@ async function assertNoOrphanProcesses(
     processMonitor.observedChildren.some((entry) => entry.role === role),
   );
   const bundledPathObserved = Object.fromEntries(
-    ["CORE", "EXPORTER", "BRIDGE", "ATOMIC_OUTPUT"].map((role) => [
+    ["CORE", "EXPORTER", "ATOMIC_OUTPUT"].map((role) => [
       role,
       processMonitor.observedChildren.some(
         (entry) => entry.role === role && entry.bundledPath,
@@ -1833,8 +1804,6 @@ async function assertNoOrphanProcesses(
       observedDescendants.electron > 0 &&
       spawned.core > 0 &&
       spawned.exporter > 0 &&
-      spawned.bridge > 0 &&
-      hancomObservationMatches &&
       atomicOutputObservationMatches &&
       requiredSpawnRolesObserved &&
       allObservedCommandsUseExpectedPathMode,
@@ -1843,8 +1812,6 @@ async function assertNoOrphanProcesses(
       observed,
       observedDescendants,
       spawned,
-      hancomStatus,
-      hwpExportExercised,
       atomicOutputExercised,
       requiredSpawnRolesObserved,
       allObservedCommandsUseExpectedPathMode,
@@ -1899,9 +1866,6 @@ async function assertNoOrphanProcesses(
   const capturedInstanceKeys = new Set([
     processMonitor.launcherInstanceKey,
     ...ownership.ownedProcesses.map((entry) => entry.instanceKey),
-    ...capturedNew
-      .filter((entry) => hwpExportExercised && entry.role === "HANCOM")
-      .map((entry) => entry.instanceKey),
   ]);
   const proof = await poll(
     async () => {
@@ -2026,15 +1990,6 @@ async function installMainChildProcessObserver(application) {
         nodePath.join(process.resourcesPath, "bin", "madi-export-hwpx.exe"),
       ],
       [
-        "BRIDGE",
-        nodePath.join(
-          process.resourcesPath,
-          "bin",
-          "hwp-bridge",
-          "madi-hwp-bridge.exe",
-        ),
-      ],
-      [
         "ATOMIC_OUTPUT",
         nodePath.join(process.resourcesPath, "bin", "madi-atomic-output.exe"),
       ],
@@ -2053,11 +2008,9 @@ async function installMainChildProcessObserver(application) {
           ? "CORE"
           : commandName === "madi-export-hwpx"
             ? "EXPORTER"
-            : commandName === "madi-hwp-bridge"
-              ? "BRIDGE"
-              : commandName === "madi-atomic-output"
-                ? "ATOMIC_OUTPUT"
-                : null;
+            : commandName === "madi-atomic-output"
+              ? "ATOMIC_OUTPUT"
+              : null;
       if (role) {
         const expectedBundledCommand = expectedBundledCommands.get(role);
         const bundledPath =
@@ -2140,7 +2093,7 @@ async function collectMainChildProcessObservations(run) {
         Number.isSafeInteger(record.pid) &&
         record.pid > 0 &&
         record.ppid === result.processId &&
-        ["CORE", "EXPORTER", "BRIDGE", "ATOMIC_OUTPUT"].includes(
+        ["CORE", "EXPORTER", "ATOMIC_OUTPUT"].includes(
           record.role,
         ) &&
         typeof record.bundledPath === "boolean",
@@ -2203,7 +2156,6 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
           : {
               MADI_CORE_BIN: coreBinary,
               MADI_HWPX_EXPORT_BIN: hwpxExporterBinary,
-              MADI_HWP_BRIDGE_BIN: hwpBridgeBinary,
               MADI_ATOMIC_OUTPUT_BIN: atomicOutputBinary,
             }),
         ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
@@ -2263,18 +2215,15 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
         const state = {
           projectPath: plan.projectPath,
           hwpxPaths: [...plan.hwpxPaths],
-          hwpPaths: [...(plan.hwpPaths ?? [])],
           jsonReportPaths: [...plan.jsonReportPaths],
           markdownReportPaths: [...plan.markdownReportPaths],
           calls: {
             projectOpen: 0,
             hwpxSave: 0,
-            hwpSave: 0,
             jsonReportSave: 0,
             markdownReportSave: 0,
             reveal: 0,
             hwpxOverwriteConfirmationConfigured: 0,
-            hwpOverwriteConfirmationConfigured: 0,
             reportOverwriteConfirmationConfigured: 0,
           },
         };
@@ -2293,16 +2242,6 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
               state.calls.hwpxOverwriteConfirmationConfigured += 1;
             }
             const selected = state.hwpxPaths.shift();
-            return selected
-              ? { canceled: false, filePath: selected }
-              : { canceled: true };
-          }
-          if (options.title === "HWP 내보내기") {
-            state.calls.hwpSave += 1;
-            if (options.properties?.includes("showOverwriteConfirmation")) {
-              state.calls.hwpOverwriteConfirmationConfigured += 1;
-            }
-            const selected = state.hwpPaths.shift();
             return selected
               ? { canceled: false, filePath: selected }
               : { canceled: true };
@@ -2526,8 +2465,6 @@ async function launchApplication({ projectPath, userDataPath, dialogPlan }) {
       lastActionability: null,
       productProcessDiagnostics: null,
       testTransportWrapperCleanupDiagnostics: null,
-      hancomStatus: null,
-      hwpExportExercised: false,
       atomicOutputExercised: false,
       closed: false,
     };
@@ -2554,21 +2491,14 @@ async function waitForChildExit(childProcess, timeoutMs) {
 }
 
 async function assertNativeSidecarsExitedBeforeWrapperCleanup(run) {
-  const nativeRoles = new Set(["CORE", "EXPORTER", "ATOMIC_OUTPUT", "BRIDGE"]);
-  if (run.hwpExportExercised) nativeRoles.add("HANCOM");
+  const nativeRoles = new Set(["CORE", "EXPORTER", "ATOMIC_OUTPUT"]);
   const capturedNativeKeys = new Set();
   return poll(
     async () => {
       const current = captureRelevantProcessSnapshot();
       run.processMonitor.recordProcessSnapshot(current);
       const ownership = run.processMonitor.getOwnedProcessInstances();
-      const nativeInstances = [
-        ...ownership.ownedProcesses,
-        ...[...run.processMonitor.observations.values()].filter(
-          (entry) => run.hwpExportExercised && entry.role === "HANCOM" &&
-            !run.processMonitor.baselineInstanceKeys.has(entry.instanceKey),
-        ),
-      ];
+      const nativeInstances = ownership.ownedProcesses;
       for (const entry of nativeInstances) {
         if (nativeRoles.has(entry.role)) capturedNativeKeys.add(entry.instanceKey);
       }
@@ -2579,7 +2509,6 @@ async function assertNativeSidecarsExitedBeforeWrapperCleanup(run) {
         capturedNativeProcessInstanceCount: capturedNativeKeys.size,
         aliveNativeProcessInstanceCount: aliveCount,
         closedSpawnTapReceiptCountByRole: ownership.closedSpawnTapReceiptCountByRole,
-        hancomScopeRequired: run.hwpExportExercised,
         preWrapperNativeSidecarsExited: aliveCount === 0,
       };
       run.closeAttemptEvidence = {
@@ -2762,8 +2691,6 @@ async function closeWindowCleanly(run) {
   );
   const processTracking = await assertNoOrphanProcesses(
     run.processMonitor,
-    run.hancomStatus,
-    run.hwpExportExercised,
     run.atomicOutputExercised,
   );
   run.closed = true;
@@ -2952,7 +2879,6 @@ async function dialogEvidence(run) {
       calls: { ...state.calls },
       remaining: {
         hwpx: state.hwpxPaths.length,
-        hwp: state.hwpPaths.length,
         jsonReport: state.jsonReportPaths.length,
         markdownReport: state.markdownReportPaths.length,
       },
@@ -3919,7 +3845,7 @@ function assertReportPrivacy(text, code) {
   };
 }
 
-function validateExportReport(report, expected, output, hwp = null) {
+function validateExportReport(report, expected, output) {
   verify(
     hasExactKeys(report, [
       "formatVersion",
@@ -3933,7 +3859,6 @@ function validateExportReport(report, expected, output, hwp = null) {
       "presetContentHash",
       "hwpxSha256",
       "outputSha256",
-      "preservedHwpxFileName",
       "logicalPackageHash",
       "byteLength",
       "coverage",
@@ -3941,8 +3866,6 @@ function validateExportReport(report, expected, output, hwp = null) {
       "fontFamily",
       "fontInstalled",
       "page",
-      "hancomReopen",
-      "hwpConverted",
       "timing",
       "generatedAt",
       "madiVersion",
@@ -3951,19 +3874,16 @@ function validateExportReport(report, expected, output, hwp = null) {
   );
   verify(
     report.formatVersion === 1 &&
-      report.outputType === (hwp ? "HWP" : "HWPX") &&
+      report.outputType === "HWPX" &&
       report.packageProfile === "HANCOM_OFFICIAL_MODEL_1_31" &&
       report.sourceScope === expected.scopeKind &&
       report.sourceScopeNodeId === expected.sourceScopeNodeId &&
       /^[a-f0-9]{64}$/u.test(report.sourcePublicationHash) &&
       /^[a-f0-9]{64}$/u.test(report.presetContentHash) &&
       /^[a-f0-9]{64}$/u.test(report.logicalPackageHash) &&
-      report.hwpxSha256 === (hwp ? hwp.preservedHwpxSha256 : output.sha256) &&
+      report.hwpxSha256 === output.sha256 &&
       report.outputSha256 === output.sha256 &&
-      report.preservedHwpxFileName === (hwp ? hwp.preservedHwpxFileName : null) &&
       report.byteLength === output.byteLength &&
-      report.hancomReopen === (hwp ? "PASSED" : "NOT_RUN") &&
-      report.hwpConverted === Boolean(hwp) &&
       Number.isSafeInteger(report.sourceProjectRevision) &&
       report.sourceProjectRevision >= 0 &&
       typeof report.presetId === "string" &&
@@ -4132,8 +4052,6 @@ function validateExportReport(report, expected, output, hwp = null) {
       "sourceCoverageMs",
       "exporterTotalMs",
       "totalMs",
-      "hwpConversionMs",
-      "hwpReopenMs",
     ]) &&
       Number.isFinite(report.timing.publicationIrCompileMs) &&
       report.timing.publicationIrCompileMs >= 0 &&
@@ -4151,14 +4069,7 @@ function validateExportReport(report, expected, output, hwp = null) {
         "exporterTotalMs",
       ].every(
         (key) => Number.isSafeInteger(report.timing[key]) && report.timing[key] >= 0,
-      ) &&
-      (hwp
-        ? Number.isSafeInteger(report.timing.hwpConversionMs) &&
-          report.timing.hwpConversionMs >= 0 &&
-          Number.isSafeInteger(report.timing.hwpReopenMs) &&
-          report.timing.hwpReopenMs >= 0
-        : report.timing.hwpConversionMs === null &&
-          report.timing.hwpReopenMs === null),
+      ),
     "phase1h-report-timing",
   );
   const measuredExporterStageMs =
@@ -4172,9 +4083,7 @@ function validateExportReport(report, expected, output, hwp = null) {
     report.timing.sourceCoverageMs;
   const expectedTotalMs =
     report.timing.publicationIrCompileMs +
-    report.timing.exporterTotalMs +
-    (report.timing.hwpConversionMs ?? 0) +
-    (report.timing.hwpReopenMs ?? 0);
+    report.timing.exporterTotalMs;
   verify(
     report.timing.exporterTotalMs >= measuredExporterStageMs &&
       report.timing.totalMs === expectedTotalMs,
@@ -4224,11 +4133,10 @@ function validateExportReport(report, expected, output, hwp = null) {
     exporterTotalMs: report.timing.exporterTotalMs,
     zipReopenMs: report.timing.zipReopenMs,
     sourceCoverageMs: report.timing.sourceCoverageMs,
-    hancomReopen: report.hancomReopen,
   };
 }
 
-async function readAndValidateReport(reportPath, expected, output, hwp = null) {
+async function readAndValidateReport(reportPath, expected, output) {
   const bytes = await readFile(reportPath);
   verify(bytes.length > 0 && bytes.length <= 8 * 1024 * 1024, "phase1h-report-size");
   const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -4236,7 +4144,7 @@ async function readAndValidateReport(reportPath, expected, output, hwp = null) {
   const raw = JSON.parse(text);
   return {
     raw,
-    summary: validateExportReport(raw, expected, output, hwp),
+    summary: validateExportReport(raw, expected, output),
     byteLength: bytes.length,
     utf8: true,
     ...privacy,
@@ -4323,7 +4231,6 @@ async function captureRunFailureContext(run) {
       dialogCallCounts: (await dialogEvidence(run).catch(() => null))?.calls ?? null,
       pageErrorCount: run.pageErrors.length,
       rendererDiagnosticCount: run.rendererDiagnostics.length,
-      hancomState: run.lastHancomState ?? null,
     };
   } catch (error) {
     return {
@@ -4376,86 +4283,6 @@ async function waitForNoAlert(run) {
     async () => ((await hwpxWorkspace(run).getByRole("alert").count()) === 0 ? true : null),
     "phase1h-alert-cleared",
   );
-}
-
-async function assertHancomState(run) {
-  const workspace = hwpxWorkspace(run);
-  const outputType = namedCombobox(workspace, "출력 형식");
-  const state = await outputType.evaluate((select) => {
-    const option = [...select.options].find((candidate) => candidate.value === "HWP");
-    return {
-      selected: select.value,
-      hwpPresent: Boolean(option),
-      hwpDisabled: option?.disabled === true,
-    };
-  });
-  const text = (await workspace.textContent()) ?? "";
-  const status = await workspace.getAttribute("data-hwpx-hancom-status");
-  const reason = await workspace.getAttribute("data-hwpx-hancom-reason");
-  const allowedStatuses = new Set([
-    "AVAILABLE",
-    "REGISTERED_UNVERIFIED",
-    "UNAVAILABLE",
-  ]);
-  const allowedReasons = new Set([
-    "NONE",
-    "NOT_WINDOWS",
-    "NOT_INSTALLED",
-    "BRIDGE_UNAVAILABLE",
-  ]);
-  const expectedMessage =
-    status === "REGISTERED_UNVERIFIED"
-      ? "한컴오피스는 감지됐지만 안전한 Automation 사용 조건을 확인하지 못했습니다."
-      : "HWP 변환을 사용하려면 Windows용 한컴오피스 한/글이 필요합니다.";
-  run.lastHancomState = {
-    status: allowedStatuses.has(status) ? status : "OTHER",
-    reason: allowedReasons.has(reason) ? reason : "OTHER",
-    selected:
-      state.selected === "HWPX" || state.selected === "HWP"
-        ? state.selected
-        : "OTHER",
-    hwpPresent: state.hwpPresent,
-    hwpDisabled: state.hwpDisabled,
-    expectedMessagePresent:
-      status === "AVAILABLE" ? null : text.includes(expectedMessage),
-  };
-  verify(
-    allowedStatuses.has(status),
-    "phase1h-hancom-status",
-    { status, reason },
-  );
-  run.hancomStatus = status;
-  if (status === "AVAILABLE") {
-    verify(
-      state.selected === "HWPX" && state.hwpPresent && !state.hwpDisabled,
-      "phase1h-hancom-available",
-      state,
-    );
-    return {
-      status,
-      reason: null,
-      hwpOptionDisabled: false,
-      securityModuleVerified: true,
-      automationAttempted: false,
-      hancomProcessLaunchAllowed: true,
-    };
-  }
-  verify(
-    state.selected === "HWPX" &&
-      state.hwpPresent &&
-      state.hwpDisabled &&
-      text.includes(expectedMessage),
-    "phase1h-hancom-unavailable-fail-closed",
-    state,
-  );
-  return {
-    status,
-    reason: status === "UNAVAILABLE" ? reason : null,
-    hwpOptionDisabled: true,
-    securityModuleVerified: false,
-    automationAttempted: false,
-    hancomProcessLaunchAllowed: false,
-  };
 }
 
 async function configureCustomPreset(run) {
@@ -4917,9 +4744,9 @@ async function validateFromUi(run) {
   return { valid: true, wallMs: roundMilliseconds(performance.now() - started) };
 }
 
-async function chooseOutput(run, outputType = "HWPX") {
+async function chooseOutput(run) {
   const workspace = hwpxWorkspace(run);
-  const callKey = outputType === "HWP" ? "hwpSave" : "hwpxSave";
+  const callKey = "hwpxSave";
   const before = (await dialogEvidence(run))?.calls[callKey] ?? 0;
   await workspace
     .getByRole("button", { name: "출력 파일 선택", exact: true })
@@ -4966,14 +4793,13 @@ async function stopProgressProbe(run) {
   });
 }
 
-function validateProgressEvents(events, hwp = false) {
+function validateProgressEvents(events) {
   const expectedStages = [
     "PUBLICATION_COMPILE",
     "STYLE_TABLE",
     "SECTION_XML",
     "HWPX_PACKAGE",
     "INTERNAL_VALIDATION",
-    ...(hwp ? ["HWP_CONVERSION", "REOPEN_VERIFICATION"] : []),
     "FINALIZE",
   ];
   verify(
@@ -5005,15 +4831,6 @@ function validateProgressEvents(events, hwp = false) {
   return {
     eventCount: events.length,
     stages: expectedStages,
-    hwpOnlyStagesAbsent: events.every(
-      (event) =>
-        event.stage !== "HWP_CONVERSION" &&
-        event.stage !== "REOPEN_VERIFICATION",
-    ),
-    hwpConversionObserved: events.some((event) => event.stage === "HWP_CONVERSION"),
-    reopenVerificationObserved: events.some(
-      (event) => event.stage === "REOPEN_VERIFICATION",
-    ),
   };
 }
 
@@ -5123,14 +4940,14 @@ function validateResponsiveness(responsiveness) {
   };
 }
 
-async function runExportFromUi(run, outputPath, expected, outputType = "HWPX") {
-  await chooseOutput(run, outputType);
+async function runExportFromUi(run, outputPath, expected) {
+  await chooseOutput(run);
   await startProgressProbe(run);
   await startResponsivenessProbe(run);
   const started = performance.now();
   const workspace = hwpxWorkspace(run);
   await workspace
-    .getByRole("button", { name: `${outputType} 내보내기`, exact: true })
+    .getByRole("button", { name: "HWPX 내보내기", exact: true })
     .click();
   const memoryPromise = (async () => {
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 80));
@@ -5145,10 +4962,7 @@ async function runExportFromUi(run, outputPath, expected, outputType = "HWPX") {
     "phase1h-export-complete",
     OPERATION_TIMEOUT_MS,
   );
-  const progress = validateProgressEvents(
-    await stopProgressProbe(run),
-    outputType === "HWP",
-  );
+  const progress = validateProgressEvents(await stopProgressProbe(run));
   const responsiveness = validateResponsiveness(await stopResponsivenessProbe(run));
   const memory = await memoryPromise;
   await poll(
@@ -5158,7 +4972,7 @@ async function runExportFromUi(run, outputPath, expected, outputType = "HWPX") {
   );
   const bytes = await readFile(outputPath);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
-  const structure = outputType === "HWPX" ? validateGeneratedHwpx(bytes, expected) : null;
+  const structure = validateGeneratedHwpx(bytes, expected);
   return {
     wallMs: roundMilliseconds(performance.now() - started),
     memory,
@@ -5170,7 +4984,7 @@ async function runExportFromUi(run, outputPath, expected, outputType = "HWPX") {
   };
 }
 
-async function saveJsonReport(run, reportPath, expected, output, hwp = null) {
+async function saveJsonReport(run, reportPath, expected, output) {
   await hwpxWorkspace(run)
     .getByRole("button", { name: "JSON report 저장", exact: true })
     .click();
@@ -5179,7 +4993,7 @@ async function saveJsonReport(run, reportPath, expected, output, hwp = null) {
     "phase1h-json-report-file",
     30_000,
   );
-  return readAndValidateReport(reportPath, expected, output, hwp);
+  return readAndValidateReport(reportPath, expected, output);
 }
 
 async function saveMarkdownReport(run, reportPath, expectedReport) {
@@ -5201,8 +5015,7 @@ async function saveMarkdownReport(run, reportPath, expectedReport) {
         `- Source scope/revision: ${expectedReport.sourceScope} (${expectedReport.sourceScopeNodeId})/${expectedReport.sourceProjectRevision}`,
       ) &&
       markdown.includes("- Physical HWPX sections:") &&
-      markdown.includes("- Blocks (exported/fallback/configured omission/rejected/source):") &&
-      markdown.includes("- Hancom reopen/HWP converted: NOT_RUN/false"),
+      markdown.includes("- Blocks (exported/fallback/configured omission/rejected/source):"),
     "phase1h-markdown-contract",
   );
   return {
@@ -5212,7 +5025,6 @@ async function saveMarkdownReport(run, reportPath, expectedReport) {
     packageProfilePresent: true,
     sourceScopeNodeIdPresent: true,
     coveragePresent: true,
-    noHancomReopenClaim: true,
     ...assertReportPrivacy(markdown, "phase1h-markdown-private-content"),
   };
 }
@@ -5318,7 +5130,7 @@ async function inspectOwnedTemporaryArtifacts(root) {
       const entryPath = resolve(current, entry.name);
       verify(isWithin(entryPath, root), "phase1h-temp-inspection-scope");
       if (entry.isSymbolicLink()) {
-        if (/madi-hwpx|madi-hwp/iu.test(entry.name)) symlinkCount += 1;
+        if (/madi-hwpx/iu.test(entry.name)) symlinkCount += 1;
         continue;
       }
       if (entry.isDirectory()) {
@@ -5329,7 +5141,7 @@ async function inspectOwnedTemporaryArtifacts(root) {
           recoveryClaimDirectoryCount += 1;
         }
         pending.push(entryPath);
-      } else if (/\.madi-hwpx-|\.madi-hwp-/u.test(entry.name)) {
+      } else if (/\.madi-hwpx-/u.test(entry.name)) {
         temporaryArtifactCount += 1;
       } else if (
         basename(current) === "hwpx-recovery-v1" &&
@@ -5490,110 +5302,13 @@ async function completeSuccessfulExport(run, outputPath, reportPath, expected) {
   return { validation, output, report, timing };
 }
 
-async function completeSuccessfulHwpExport(
-  run,
-  outputPath,
-  preservedHwpxPath,
-  reportPath,
-  expected,
-  directHwpx,
-) {
-  const replacingExisting = await fileExists(outputPath);
-  const workspace = hwpxWorkspace(run);
-  const outputType = namedCombobox(workspace, "출력 형식");
-  await outputType.selectOption("HWP");
-  verify(
-    (await workspace.getAttribute("data-hwpx-output-type")) === "HWP",
-    "phase1h-hwp-output-type-selected",
-  );
-  const validation = await validateFromUi(run);
-  const output = await runExportFromUi(run, outputPath, expected, "HWP");
-  run.atomicOutputExercised ||= replacingExisting;
-  verify(
-    output.byteLength > 0 &&
-      output.structure === null &&
-      output.progress.hwpConversionObserved &&
-      output.progress.reopenVerificationObserved &&
-      !output.progress.hwpOnlyStagesAbsent,
-    "phase1h-hwp-output-and-progress",
-  );
-  const preservedBytes = await readFile(preservedHwpxPath);
-  const preservedHwpxSha256 = createHash("sha256").update(preservedBytes).digest("hex");
-  const structure = validateGeneratedHwpx(preservedBytes, expected);
-  const hwp = {
-    preservedHwpxFileName: basename(preservedHwpxPath),
-    preservedHwpxSha256,
-  };
-  const report = await saveJsonReport(run, reportPath, expected, output, hwp);
-  const directHwpxIdentity = {
-    sha256: preservedHwpxSha256,
-    logicalPackageHash: report.summary.logicalPackageHash,
-    sourcePublicationHash: report.raw.sourcePublicationHash,
-    byteIdentical: preservedHwpxSha256 === directHwpx.output.sha256,
-    logicalIdentical:
-      report.summary.logicalPackageHash ===
-      directHwpx.report.summary.logicalPackageHash,
-    sourceIdentityIdentical:
-      report.raw.sourcePublicationHash === directHwpx.report.raw.sourcePublicationHash &&
-      report.raw.presetContentHash === directHwpx.report.raw.presetContentHash,
-    structureIdentical:
-      structure.sourceParagraphSequenceHash ===
-      directHwpx.output.structure.sourceParagraphSequenceHash,
-  };
-  verify(
-    report.raw.outputType === "HWP" &&
-      report.raw.hwpConverted === true &&
-      report.raw.hancomReopen === "PASSED" &&
-      report.raw.hwpxSha256 === preservedHwpxSha256 &&
-      report.raw.outputSha256 === output.sha256 &&
-      report.raw.byteLength === output.byteLength,
-    "phase1h-hwp-report-success",
-  );
-  verify(
-    directHwpxIdentity.byteIdentical &&
-      directHwpxIdentity.logicalIdentical &&
-      directHwpxIdentity.sourceIdentityIdentical &&
-      directHwpxIdentity.structureIdentical,
-    "phase1h-hwp-preserved-hwpx-direct-identity",
-    directHwpxIdentity,
-  );
-  run.hwpExportExercised = true;
-  await outputType.selectOption("HWPX");
-  return {
-    validation,
-    output: {
-      byteLength: output.byteLength,
-      sha256: output.sha256,
-      wallMs: output.wallMs,
-      progress: output.progress,
-    },
-    preservedHwpx: {
-      byteLength: preservedBytes.length,
-      sha256: preservedHwpxSha256,
-      structure,
-      directHwpxIdentity,
-    },
-    report: {
-      outputType: report.raw.outputType,
-      hwpConverted: report.raw.hwpConverted,
-      hancomReopen: report.raw.hancomReopen,
-      hwpConversionMs: report.raw.timing.hwpConversionMs,
-      hwpReopenMs: report.raw.timing.hwpReopenMs,
-      privateContentAbsent: report.privateContentAbsent,
-      contactAbsent: report.contactAbsent,
-      rawPathAbsent: report.rawPathAbsent,
-    },
-  };
-}
-
 async function runNormalStateScenario({ fixture, projectPath, userDataPath, paths }) {
   const run = await launchApplication({
     projectPath,
     userDataPath,
     dialogPlan: {
       hwpxPaths: [paths.sceneOutput],
-      hwpPaths: [paths.hwpOutput],
-      jsonReportPaths: [paths.sceneReport, paths.hwpReport],
+      jsonReportPaths: [paths.sceneReport],
       markdownReportPaths: [],
     },
   });
@@ -5601,7 +5316,6 @@ async function runNormalStateScenario({ fixture, projectPath, userDataPath, path
     reportStage("normal-state-open");
     await openProject(run);
     await enterHwpxExport(run);
-    const hancom = await assertHancomState(run);
     reportStage("normal-state-preset-crud");
     const presetCrud = await exercisePresetCrud(run);
     reportStage("normal-state-snapshot-v5");
@@ -5631,30 +5345,15 @@ async function runNormalStateScenario({ fixture, projectPath, userDataPath, path
       paths.sceneReport,
       expected,
     );
-    const hwp =
-      hancom.status === "AVAILABLE"
-        ? await completeSuccessfulHwpExport(
-            run,
-            paths.hwpOutput,
-            paths.preservedHwpx,
-            paths.hwpReport,
-            expected,
-            scene,
-          )
-        : null;
-    hancom.automationAttempted = hwp !== null;
     const dialogs = await dialogEvidence(run);
     verify(
       dialogs?.calls.projectOpen === 1 &&
       dialogs.calls.hwpxSave === 1 &&
-        dialogs.calls.hwpSave === (hwp ? 1 : 0) &&
       dialogs.calls.hwpxOverwriteConfirmationConfigured === 1 &&
-        dialogs.calls.hwpOverwriteConfirmationConfigured === (hwp ? 1 : 0) &&
-        dialogs.calls.jsonReportSave === (hwp ? 2 : 1) &&
-        dialogs.calls.reportOverwriteConfirmationConfigured === (hwp ? 2 : 1) &&
+      dialogs.calls.jsonReportSave === 1 &&
+      dialogs.calls.reportOverwriteConfirmationConfigured === 1 &&
       dialogs.remaining.hwpx === 0 &&
-        dialogs.remaining.hwp === (hwp ? 0 : 1) &&
-      dialogs.remaining.jsonReport === (hwp ? 0 : 1),
+      dialogs.remaining.jsonReport === 0,
       "phase1h-state-dialog-contract",
     );
     reportStage("normal-state-close");
@@ -5662,7 +5361,6 @@ async function runNormalStateScenario({ fixture, projectPath, userDataPath, path
     const security = securityEvidence(run);
     assertSecurity(security);
     return {
-      hancom,
       presetCrud,
       snapshot: { ...snapshot, ...snapshotRestore },
       scene: {
@@ -5688,7 +5386,6 @@ async function runNormalStateScenario({ fixture, projectPath, userDataPath, path
           scene.report.summary.configuredOmissionMessageCount,
         structure: scene.output.structure,
       },
-      hwp,
       dialogs,
       lifecycle,
       security,
@@ -5717,7 +5414,6 @@ async function runNormalExportScenario({ fixture, projectPath, userDataPath, pat
         paths.workVolume,
         paths.noClobber,
       ],
-      hwpPaths: [],
       jsonReportPaths: [
         paths.workSingleReport,
         paths.workOverwriteReport,
@@ -5733,7 +5429,6 @@ async function runNormalExportScenario({ fixture, projectPath, userDataPath, pat
     reportStage("normal-export-reopen");
     await openProject(run);
     await enterHwpxExport(run);
-    const hancom = await assertHancomState(run);
     const reopened = await assertReopenedPreset(run);
     const exports = [];
 
@@ -5829,7 +5524,6 @@ async function runNormalExportScenario({ fixture, projectPath, userDataPath, pat
         dialogs.calls.reportOverwriteConfirmationConfigured === 7 &&
         dialogs.calls.reveal === 1 &&
         dialogs.remaining.hwpx === 0 &&
-        dialogs.remaining.hwp === 0 &&
         dialogs.remaining.jsonReport === 0 &&
         dialogs.remaining.markdownReport === 0,
       "phase1h-normal-dialog-contract",
@@ -5839,7 +5533,6 @@ async function runNormalExportScenario({ fixture, projectPath, userDataPath, pat
     const security = securityEvidence(run);
     assertSecurity(security);
     return {
-      hancom,
       reopened,
       exporterHardTargetMs: NORMAL_EXPORT_HARD_TARGET_MS,
       scopes: exports.map((entry) => ({
@@ -5904,7 +5597,6 @@ async function runLongExportScenario({ fixture, projectPath, userDataPath, paths
     userDataPath,
     dialogPlan: {
       hwpxPaths: [paths.cancel, ...paths.outputs],
-      hwpPaths: [],
       jsonReportPaths: [...paths.reports],
       markdownReportPaths: [],
     },
@@ -5913,7 +5605,6 @@ async function runLongExportScenario({ fixture, projectPath, userDataPath, paths
     reportStage("long-open");
     await openProject(run);
     await enterHwpxExport(run);
-    const hancom = await assertHancomState(run);
     const workspace = hwpxWorkspace(run);
     await namedCombobox(workspace, "preset").selectOption({
       label: "가독성 중심 검토본",
@@ -6035,7 +5726,6 @@ async function runLongExportScenario({ fixture, projectPath, userDataPath, paths
         dialogs.calls.jsonReportSave === measurementRuns &&
         dialogs.calls.reportOverwriteConfirmationConfigured === measurementRuns &&
         dialogs.remaining.hwpx === 0 &&
-        dialogs.remaining.hwp === 0 &&
         dialogs.remaining.jsonReport === 0 &&
         dialogs.remaining.markdownReport === 0,
       "phase1h-long-dialog-contract",
@@ -6045,7 +5735,6 @@ async function runLongExportScenario({ fixture, projectPath, userDataPath, paths
     const security = securityEvidence(run);
     assertSecurity(security);
     return {
-      hancom,
       cancellation,
       measurementRuns,
       exporterHardTargetMs: LONG_EXPORT_HARD_TARGET_MS,
@@ -6082,7 +5771,6 @@ async function runLongExportScenario({ fixture, projectPath, userDataPath, paths
         validation: entry.report.summary.validation,
       })),
       progressStages: first.output.progress.stages,
-      hwpOnlyProgressStagesAbsent: first.output.progress.hwpOnlyStagesAbsent,
       packageSectionCount: first.output.structure.packageSectionCount,
       sourceSectionCount: first.report.summary.sourceSectionCount,
       sourceBlockCount: first.report.summary.sourceBlockCount,
@@ -6234,13 +5922,11 @@ async function finalizePackagedOverrideCanaries() {
       "rendererRequestCount",
       "coreOverridePresent",
       "exporterOverridePresent",
-      "bridgeOverridePresent",
       "atomicOutputOverridePresent",
     ]) &&
       evidence.rendererRequestCount === 0 &&
       evidence.coreOverridePresent === false &&
       evidence.exporterOverridePresent === false &&
-      evidence.bridgeOverridePresent === false &&
       evidence.atomicOutputOverridePresent === false,
     "phase1h-packaged-override-finalizer-result",
   );
@@ -6281,9 +5967,6 @@ async function main() {
     const normalStatePaths = {
       sceneOutput: resolve(normalOutput, "state-scene-direct.hwpx"),
       sceneReport: resolve(normalOutput, "state-scene.json"),
-      hwpOutput: resolve(normalOutput, "state-scene.hwp"),
-      preservedHwpx: resolve(normalOutput, "state-scene.hwpx"),
-      hwpReport: resolve(normalOutput, "state-scene-hwp.json"),
     };
     const normalPaths = {
       workSingle: resolve(normalOutput, "work-single.hwpx"),
@@ -6338,22 +6021,6 @@ async function main() {
       paths: longPaths,
     });
     const runs = [normalState, normalExport, longExport];
-    const hancomAvailable = normalState.hancom.status === "AVAILABLE";
-    verify(
-      runs.every(
-        (run) =>
-          run.hancom.status === normalState.hancom.status &&
-          run.hancom.reason === normalState.hancom.reason &&
-          run.hancom.hwpOptionDisabled === !hancomAvailable &&
-          run.hancom.securityModuleVerified === hancomAvailable &&
-          run.hancom.hancomProcessLaunchAllowed === hancomAvailable,
-      ) &&
-        normalState.hancom.automationAttempted === hancomAvailable &&
-        Boolean(normalState.hwp) === hancomAvailable &&
-        runs.slice(1).every((run) => !run.hancom.automationAttempted),
-      "phase1h-hancom-consistency",
-      runs.map((run) => ({ ...run.hancom, hwpExported: Boolean(run.hwp) })),
-    );
     const security = aggregateSecurity(runs);
     verify(
       security.externalRequestCount === 0 &&
@@ -6400,15 +6067,6 @@ async function main() {
       packaged,
       actualElectron: true,
       generatedArtifactPolicy: "PRIVACY_SAFE_SUMMARY_ONLY",
-      hancomContract: {
-        availability: normalState.hancom.status,
-        unavailableReason: normalState.hancom.reason,
-        hwpDisabled: normalState.hancom.hwpOptionDisabled,
-        securityModuleVerified: normalState.hancom.securityModuleVerified,
-        comOrHwpLaunchAttempted: normalState.hancom.automationAttempted,
-        hancomReopen: normalState.hwp?.report.hancomReopen ?? "NOT_RUN",
-        reopenClaimed: normalState.hwp?.report.hancomReopen === "PASSED",
-      },
       fixtures: {
         normal: fixtureEvidence(normal.fixture),
         long: fixtureEvidence(long.fixture),
@@ -6429,7 +6087,6 @@ async function main() {
         measurementRuns,
         exporterMaxMs: longExport.exporterTiming.maxMs,
         exporterHardTargetMs: LONG_EXPORT_HARD_TARGET_MS,
-        hancomReopen: normalState.hwp?.report.hancomReopen ?? "NOT_RUN",
       })}\n`,
     );
   } finally {
@@ -6453,7 +6110,6 @@ try {
       stage: currentStage,
       error: summary,
       context: lastFailureContext,
-      hancomReopen: "NOT_RUN",
     };
     assertEvidencePrivacy(failureEvidence);
     await writeJsonAtomically(evidencePath, failureEvidence);

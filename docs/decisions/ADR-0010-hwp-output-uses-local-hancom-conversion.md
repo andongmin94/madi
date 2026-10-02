@@ -1,7 +1,11 @@
 # ADR-0010: HWP output uses local Hancom conversion
 
-- Status: Accepted
+- Status: Superseded by owner scope decision, 2026-10-02
 - Date: 2026-08-13
+
+The owner removed binary HWP conversion after HWPX validation. The bridge, conversion UI,
+sidecar and .NET requirement are removed; HWP is not deferred work. The original decision below
+is retained only to explain revision-bound historical evidence.
 
 ## Context
 

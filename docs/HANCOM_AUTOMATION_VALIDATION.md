@@ -1,5 +1,8 @@
 # Hancom Automation Validation
 
+현재 제품 범위: **HWP CONVERSION REMOVED**, 2026-10-02 사용자 결정.
+HWPX는 독립 출판 경로로 유지한다. 아래 성공·실패·등록 원복은 각 revision의 역사적 근거이며 추가 HWP 시험 계획이 아니다.
+
 기준일: 2026-08-13. 후속 갱신일: 2026-10-02.
 Sections1–8은 기준일의 기록이며 sections9–13의 revision별 actual과 실패를 보존한다. 최신 HWPX TEXT와 HWP 네트워크 판정은 section14를 따른다.
 

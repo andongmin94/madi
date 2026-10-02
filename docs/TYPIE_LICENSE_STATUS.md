@@ -32,7 +32,7 @@ In particular, the following remain separate:
 
 - Windows native Korean IME manual validation;
 - development and fresh-unpacked Windows verification required by the Phase 1H evidence contract;
-- Hancom Automation licensing, security-module setup, and real HWP conversion/reopen validation;
+- human HWPX layout validation;
 - runtime EPUBCheck/JRE distribution hardening where applicable;
 - installer, executable signing, update, and other release-engineering decisions.
 

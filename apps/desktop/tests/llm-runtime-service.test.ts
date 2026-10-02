@@ -102,7 +102,7 @@ describe("LlmRuntimeService", () => {
   });
 
   it("resolves config and protected credential before invoking the provider", async () => {
-    const invoker = vi.fn(async ({ config, apiKey, request }) => ({
+    const invoker = vi.fn(async ({ config, request }) => ({
       requestId: request.requestId,
       providerId: config.id,
       model: config.model,

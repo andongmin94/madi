@@ -1,5 +1,9 @@
 # Optional Local HWP Bridge
 
+제품 상태: **REMOVED / HISTORICAL CONTRACT ONLY**, 2026-10-02 사용자 결정.
+현재 제품은 HWPX를 제공하며 아래 bridge·UI·sidecar·.NET 계약을 사용하지 않는다.
+아래 본문은 과거 결과를 해석하기 위한 기록이며 현재 계획이나 차후 해결 목록이 아니다.
+
 기준일: 2026-08-13. 후속 actual 갱신일: 2026-10-01.
 
 ## 1. 결정

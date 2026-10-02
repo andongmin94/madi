@@ -73,7 +73,6 @@ function state(
     },
     presets: [],
     duplicatePresetNames: [],
-    hancom: { status: "UNAVAILABLE", reason: "NOT_INSTALLED" },
     revision: 7,
     ...overrides
   };
@@ -92,7 +91,6 @@ function report(): HwpxExportReport {
     presetContentHash: "b".repeat(64),
     hwpxSha256: "c".repeat(64),
     outputSha256: "c".repeat(64),
-    preservedHwpxFileName: null,
     logicalPackageHash: "d".repeat(64),
     byteLength: 4096,
     coverage: {
@@ -154,8 +152,6 @@ function report(): HwpxExportReport {
       includeFooter: false,
       footerHasText: false
     },
-    hancomReopen: "NOT_RUN",
-    hwpConverted: false,
     timing: {
       publicationIrCompileMs: 1,
       semanticMappingMs: 1,
@@ -168,8 +164,6 @@ function report(): HwpxExportReport {
       sourceCoverageMs: 1,
       exporterTotalMs: 9,
       totalMs: 10,
-      hwpConversionMs: null,
-      hwpReopenMs: null
     },
     generatedAt: NOW,
     madiVersion: "0.0.1"
@@ -204,7 +198,6 @@ function deferred<T>() {
 
 function harness(
   options: {
-    readonly hancomAvailable?: boolean;
     readonly getState?: () => Promise<HwpxExportState>;
     readonly handle?: ReturnType<typeof createRef<PublicationExportModeHandle>>;
     readonly onBeforeExport?: () => Promise<number | null>;
@@ -214,11 +207,7 @@ function harness(
     ) => Promise<RunHwpxExportResult>;
   } = {}
 ) {
-  let current = state(
-    options.hancomAvailable
-      ? { hancom: { status: "AVAILABLE", version: "12.0" } }
-      : {}
-  );
+  let current = state();
   const getState = vi.fn(options.getState ?? (async () => current));
   const validate = vi.fn(async (request: ValidateHwpxExportRequest) => ({
     operationId: request.operationId,
@@ -248,11 +237,9 @@ function harness(
     getHwpxExportState: getState,
     validateHwpxExport: validate,
     runHwpxExport: run,
-    chooseHwpxOutput: vi.fn(async (request) => ({
+    chooseHwpxOutput: vi.fn(async () => ({
       selectionId: "selection-1",
-      fileName:
-        request.outputType === "HWP" ? "바람과-별.hwp" : "바람과-별.hwpx",
-      outputType: request.outputType
+      fileName: "바람과-별.hwpx",
     })),
     createHwpxExportPreset: createPreset,
     onHwpxExportProgress: vi.fn(() => () => undefined)
@@ -286,6 +273,44 @@ function harness(
 }
 
 describe("Phase 1H HWPX export workspace", () => {
+  it("rejects canonical state from another project before updating the parent revision", async () => {
+    const onProjectRevision = vi.fn();
+    const { validate, run } = harness({
+      onProjectRevision,
+      getState: async () => state({
+        metadata: { ...state().metadata, projectId: "other-project" }
+      })
+    });
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "현재 프로젝트의 HWPX 내보내기 상태가 아닙니다."
+    );
+    expect(onProjectRevision).not.toHaveBeenCalled();
+    expect(validate).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "출력 파일 선택" })).toBeNull();
+  });
+
+  it("rejects a different project returned during export preparation", async () => {
+    let loads = 0;
+    const onProjectRevision = vi.fn();
+    const { validate, run } = harness({
+      onProjectRevision,
+      getState: async () => ++loads === 1 ? state() : state({
+        metadata: { ...state().metadata, projectId: "other-project" },
+        revision: 99
+      })
+    });
+    await screen.findByRole("region", { name: "한글 문서 내보내기" });
+    fireEvent.click(screen.getByRole("button", { name: "사전 검사" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "현재 프로젝트의 HWPX 내보내기 상태가 아닙니다."
+    );
+    expect(onProjectRevision).toHaveBeenCalledTimes(1);
+    expect(onProjectRevision).toHaveBeenCalledWith(7);
+    expect(validate).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it("does not reload canonical state when parent revision callback identity changes", async () => {
     const firstCallback = vi.fn();
     const latestCallback = vi.fn();
@@ -326,21 +351,14 @@ describe("Phase 1H HWPX export workspace", () => {
     expect(latestCallback).toHaveBeenCalledWith(8);
   });
 
-  it("exposes labelled document settings and disables HWP without verified Automation", async () => {
+  it("exposes labelled HWPX document settings", async () => {
     harness();
     const region = await screen.findByRole("region", {
       name: "한글 문서 내보내기"
     });
-    expect(region.getAttribute("data-hwpx-hancom-status")).toBe("UNAVAILABLE");
-    expect(region.getAttribute("data-hwpx-hancom-reason")).toBe(
-      "NOT_INSTALLED"
-    );
-
-    const output = screen.getByLabelText("출력 형식") as HTMLSelectElement;
-    expect(screen.getByRole("combobox", { name: "출력 형식" })).toBe(output);
-    const hwp = [...output.options].find((option) => option.value === "HWP");
-    expect(hwp?.disabled).toBe(true);
-    expect(screen.getByText(/HWP 변환을 사용하려면/u)).toBeTruthy();
+    expect(region.getAttribute("data-hwpx-output-type")).toBe("HWPX");
+    expect(screen.queryByRole("combobox", { name: "출력 형식" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "HWP 내보내기" })).toBeNull();
     expect(screen.getByLabelText("본문 글꼴")).toBeTruthy();
     expect(screen.getByLabelText("문단 앞 간격(pt)")).toBeTruthy();
     expect(screen.getByRole("region", { name: "화 제목" })).toBeTruthy();
@@ -377,7 +395,6 @@ describe("Phase 1H HWPX export workspace", () => {
     expect(run).toHaveBeenCalledTimes(1);
     expect(run.mock.calls[0]![0]).toMatchObject({
       outputSelectionId: "selection-1",
-      outputType: "HWPX"
     });
     expect(onBeforeExport).toHaveBeenCalledTimes(2);
     expect(api.chooseHwpxOutput).toHaveBeenCalledTimes(1);
@@ -396,82 +413,6 @@ describe("Phase 1H HWPX export workspace", () => {
     });
     expect(screen.queryByRole("heading", { name: "사전 검사: VALID" })).toBeNull();
     expect((screen.getByRole("button", { name: "HWPX 내보내기" }) as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it("hides prior-mode validation and export success after output type changes", async () => {
-    harness({ hancomAvailable: true });
-    await screen.findByRole("region", { name: "한글 문서 내보내기" });
-    fireEvent.click(screen.getByRole("button", { name: "출력 파일 선택" }));
-    await screen.findByText("선택한 파일: 바람과-별.hwpx");
-    fireEvent.click(screen.getByRole("button", { name: "사전 검사" }));
-    await screen.findByRole("heading", { name: "사전 검사: VALID" });
-    fireEvent.click(screen.getByRole("button", { name: "HWPX 내보내기" }));
-    await screen.findByRole("status", { name: "HWPX 내보내기 완료" });
-
-    fireEvent.change(screen.getByLabelText("출력 형식"), {
-      target: { value: "HWP" }
-    });
-
-    expect(screen.queryByRole("heading", { name: "사전 검사: VALID" })).toBeNull();
-    expect(screen.queryByRole("status", { name: "HWPX 내보내기 완료" })).toBeNull();
-    expect(screen.queryByText(/선택한 파일:/u)).toBeNull();
-    expect(
-      (screen.getByRole("button", { name: "HWP 내보내기" }) as HTMLButtonElement)
-        .disabled
-    ).toBe(true);
-
-    fireEvent.change(screen.getByLabelText("출력 형식"), {
-      target: { value: "HWPX" }
-    });
-    expect(screen.queryByRole("heading", { name: "사전 검사: VALID" })).toBeNull();
-    expect(screen.queryByRole("status", { name: "HWPX 내보내기 완료" })).toBeNull();
-  });
-
-  it("states that the basename-only HWPX companion survived HWP conversion failure", async () => {
-    const failedReport: HwpxExportReport = {
-      ...report(),
-      outputType: "HWP",
-      outputSha256: null,
-      preservedHwpxFileName: "바람과-별.hwpx",
-      byteLength: null,
-      timing: { ...report().timing, totalMs: 22, hwpConversionMs: 12 }
-    };
-    const { api } = harness({
-      hancomAvailable: true,
-      run: async (request) => ({
-        status: "FAILED",
-        operationId: request.operationId,
-        code: "HWP_CONVERSION_FAILED",
-        preservedHwpxFileName: "바람과-별.hwpx",
-        report: failedReport
-      })
-    });
-    await screen.findByRole("region", { name: "한글 문서 내보내기" });
-    fireEvent.change(screen.getByLabelText("출력 형식"), {
-      target: { value: "HWP" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "출력 파일 선택" }));
-    await screen.findByText("선택한 파일: 바람과-별.hwp");
-    fireEvent.click(screen.getByRole("button", { name: "사전 검사" }));
-    await screen.findByRole("heading", { name: "사전 검사: VALID" });
-    fireEvent.click(screen.getByRole("button", { name: "HWP 내보내기" }));
-
-    await screen.findByRole("heading", { name: "HWPX 보존됨" });
-    expect(screen.getByText("바람과-별.hwpx")).toBeTruthy();
-    expect(screen.getByRole("alert").textContent).toMatch(/보존했습니다/u);
-    fireEvent.click(
-      screen.getByRole("button", { name: "보존된 HWPX 위치 열기" })
-    );
-    fireEvent.click(screen.getByRole("button", { name: "실패 report 저장" }));
-    expect(api.revealHwpxExport).toHaveBeenCalledTimes(1);
-    expect(api.saveHwpxExportReport).toHaveBeenCalledWith(
-      expect.objectContaining({ format: "JSON" })
-    );
-    fireEvent.change(screen.getByLabelText("출력 형식"), {
-      target: { value: "HWPX" }
-    });
-    expect(screen.queryByRole("heading", { name: "HWPX 보존됨" })).toBeNull();
-    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("copies a built-in preset into canonical project storage", async () => {

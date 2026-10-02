@@ -816,8 +816,7 @@ export function registerMadiIpc({
         service.chooseHwpxOutput(
           requireExactRequest(rawRequest, [
             "sessionId",
-            "suggestedFileName",
-            "outputType"
+            "suggestedFileName"
           ]) as unknown as ChooseHwpxOutputRequest
         )
       );
@@ -861,8 +860,7 @@ export function registerMadiIpc({
           "metadata",
           "config",
           "titlePage",
-          "outputSelectionId",
-          "outputType"
+          "outputSelectionId"
         ]) as unknown as RunHwpxExportRequest
       );
     }

@@ -26,7 +26,6 @@ import {
   PlotCanvasWorkspace,
   type CanvasAutosaveState,
   type CanvasEntityReference,
-  type CanvasPickerItem,
   type CanvasReferenceCatalog,
   type CanvasSaveRequest,
   type CanvasSceneReference,

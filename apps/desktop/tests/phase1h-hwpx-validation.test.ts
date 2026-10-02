@@ -63,7 +63,6 @@ describe("Phase 1H HWPX shared validation", () => {
       },
       presets: [preset],
       duplicatePresetNames: [],
-      hancom: { status: "UNAVAILABLE", reason: "NOT_INSTALLED" },
       revision: 1
     };
 
@@ -156,7 +155,6 @@ describe("Phase 1H HWPX shared validation", () => {
       presetContentHash: "b".repeat(64),
       hwpxSha256: "c".repeat(64),
       outputSha256: "c".repeat(64),
-      preservedHwpxFileName: null,
       logicalPackageHash: "d".repeat(64),
       byteLength: 1024,
       coverage: {
@@ -218,8 +216,6 @@ describe("Phase 1H HWPX shared validation", () => {
         includeFooter: false,
         footerHasText: false
       },
-      hancomReopen: "NOT_RUN",
-      hwpConverted: false,
       timing: {
         publicationIrCompileMs: 1,
         semanticMappingMs: 1,
@@ -232,8 +228,6 @@ describe("Phase 1H HWPX shared validation", () => {
         sourceCoverageMs: 1,
         exporterTotalMs: 8,
         totalMs: 9,
-        hwpConversionMs: null,
-        hwpReopenMs: null
       },
       generatedAt: "2026-08-13T00:00:00.000Z",
       madiVersion: "0.0.1"
@@ -311,8 +305,7 @@ describe("Phase 1H HWPX shared validation", () => {
     expect(() =>
       validateHwpxExportReport({
         ...valid,
-        hwpConverted: true,
-        timing: { ...valid.timing, totalMs: 10, hwpConversionMs: 1 }
+        byteLength: null
       })
     ).toThrow(/semantic state/u);
     const customPageReport = {
@@ -368,30 +361,6 @@ describe("Phase 1H HWPX shared validation", () => {
       })
     ).toThrow(/validation path/u);
 
-    const failedReport = {
-      ...valid,
-      outputType: "HWP",
-      outputSha256: null,
-      preservedHwpxFileName: "submission.hwpx",
-      byteLength: null,
-      timing: {
-        ...valid.timing,
-        totalMs: 51,
-        hwpConversionMs: 42
-      }
-    };
-    expect(
-      validateRunHwpxExportResult({
-        status: "FAILED",
-        operationId: OPERATION_ID,
-        code: "HWP_CONVERSION_FAILED",
-        preservedHwpxFileName: "submission.hwpx",
-        report: failedReport
-      })
-    ).toMatchObject({
-      code: "HWP_CONVERSION_FAILED",
-      preservedHwpxFileName: "submission.hwpx"
-    });
     expect(() =>
       validateRunHwpxExportResult({
         status: "COMPLETED",
@@ -403,74 +372,5 @@ describe("Phase 1H HWPX shared validation", () => {
         revision: 8
       })
     ).toThrow(/report identity/u);
-    expect(() =>
-      validateRunHwpxExportResult({
-        status: "FAILED",
-        operationId: OPERATION_ID,
-        code: "HWP_CONVERSION_FAILED",
-        preservedHwpxFileName: "submission.hwpx",
-        report: {
-          ...failedReport,
-          outputSha256: "e".repeat(64),
-          byteLength: 2048
-        }
-      })
-    ).toThrow(/semantic state/u);
-
-    const completedHwpReport = {
-      ...failedReport,
-      outputSha256: "e".repeat(64),
-      byteLength: 2048,
-      hwpConverted: true,
-      hancomReopen: "PASSED",
-      timing: {
-        ...failedReport.timing,
-        totalMs: 59,
-        hwpReopenMs: 8
-      }
-    };
-    expect(
-      validateRunHwpxExportResult({
-        status: "COMPLETED",
-        operationId: OPERATION_ID,
-        fileName: "submission.hwp",
-        byteLength: 2048,
-        sha256: "e".repeat(64),
-        report: completedHwpReport,
-        revision: 7
-      })
-    ).toMatchObject({ status: "COMPLETED", fileName: "submission.hwp" });
-    expect(() =>
-      validateRunHwpxExportResult({
-        status: "COMPLETED",
-        operationId: OPERATION_ID,
-        fileName: "submission.hwp",
-        byteLength: 2048,
-        sha256: "e".repeat(64),
-        report: {
-          ...completedHwpReport,
-          hancomReopen: "NOT_RUN",
-          timing: { ...completedHwpReport.timing, totalMs: 51, hwpReopenMs: null }
-        },
-        revision: 7
-      })
-    ).toThrow(/semantic state/u);
-    expect(() =>
-      validateRunHwpxExportResult({
-        status: "FAILED",
-        operationId: OPERATION_ID,
-        code: "HWP_CONVERSION_FAILED",
-        preservedHwpxFileName: "C:\\private\\submission.hwpx",
-        report: failedReport
-      })
-    ).toThrow(/preserved HWPX/u);
-    expect(() =>
-      validateRunHwpxExportResult({
-        status: "FAILED",
-        operationId: OPERATION_ID,
-        code: "DESTINATION_CHANGED",
-        preservedHwpxFileName: "submission.hwpx"
-      })
-    ).toThrow(/fields/u);
   });
 });

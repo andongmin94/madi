@@ -114,7 +114,3 @@ export const BUILTIN_READER_PRESETS: readonly ReaderPresetOption[] = SPECS.map(
 );
 
 export const DEFAULT_READER_PRESET = BUILTIN_READER_PRESETS[0]!;
-
-export function findBuiltinReaderPreset(id: string | null): ReaderPresetOption | null {
-  return BUILTIN_READER_PRESETS.find((preset) => preset.id === id) ?? null;
-}

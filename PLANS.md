@@ -7,9 +7,13 @@
 
 최신 사용자 요청으로 작업을 재개했다. 현재 우선순위는 실제 미사용 소스·잔재와 중복을 추적하고,
 동작상 결함이 확인된 구현을 작게 개선해 복잡도를 줄이는 것이다. 의존성을 추가하지 않고 기존 타입·계약·호출·시험을 근거로 판단한다.
-Renderer/editor, main/preload/LLM, core/검증 scripts를 나누어 진단 중이다.
+HWPX 검증 성공을 근거로 사용자 요청에 따라 binary HWP 기능을 제품 범위에서 제거한다.
+HWP 앱·계약·C# sidecar·.NET/CI/배포 경로 제거와 미사용 선언·반사 선택 shim 정리를 구현했다.
+문서 전환의 원고/저장 대상 불일치, malformed JSON-RPC, AI 오류 본문 처리,
+EPUB 입력 실패·종료/취소 경합·살아 있는 process의 임시 파일 정리 결함을 회귀 시험과 함께 수정했다.
+Strict typecheck·repository·format·diff와 담당별 집중 회귀 검사는 통과했다. 현재 통합 source의 전체 Windows 검증·새 배포본 연결이 남는다.
 아래 완료 근거는 검증된 source e2의 기준 상태다. 후속 제품 변경은 관련 회귀검사와 필수 Windows 경로를 별도로 실행하기 전까지 runtime GO로 표현하지 않는다.
-HWP 추가 실증과 새 제품 phase는 이 작업에 포함하지 않는다.
+HWP 변환은 차후 해결 목록에도 남기지 않는다. 과거 실패 근거만 보존하며 추가 한컴 실증은 하지 않는다.
 
 ## 목표와 범위
 
@@ -20,7 +24,7 @@ HWP 추가 실증과 새 제품 phase는 이 작업에 포함하지 않는다.
 | --- | --- |
 | 집필·저장 | Binder, 장면·연속 원고, 검색·치환, 자동저장, revision 검사, 백업, snapshot, 독립 텍스트 추출 |
 | 설정·기획 | Story Bible, 관계·장면 연결, 본문 언급 후보, 읽기 전용 World Graph, 독립 Plot Canvas |
-| 읽기·출판 | Publication IR 기반 Reader Lab·EPUB·HWPX, 승인 조건이 있는 선택적 HWP bridge |
+| 읽기·출판 | Publication IR 기반 Reader Lab·EPUB·HWPX |
 | AI | 사용자 제공자와 요청별 범위 동의, 제안 검토·복사, exact same-block selection 수정 |
 
 Publication IR만 Reader Lab과 exporter의 원고 입력으로 사용한다. Typie 타입은 Madi 소유 adapter에 둔다.
@@ -28,7 +32,7 @@ Publication IR만 Reader Lab과 exporter의 원고 입력으로 사용한다. Ty
 
 ## 현재 판정과 진척
 
-**기존 제품 범위의 자동 개발·Windows 검증·로컬 ZIP 준비는 source e2에서 완료했다. 현재 코드 정리와 차단된 HWP 변환·사람의 검증·배포 결정이 남는다.**
+**기존 제품 범위의 자동 개발·Windows 검증·로컬 ZIP 준비는 source e2에서 완료했다. 현재 HWP 제거·코드 정리 및 사람의 검증·배포 결정이 남는다.**
 실제 검증 제품 source는 `e2cb07e44e73fd0f43db61090374a762ad1103f0`다. 후속 결과 문서 commit을 추가 runtime 검증으로 표현하지 않는다.
 
 | 항목 | 판정과 실제 근거 |
@@ -41,9 +45,8 @@ Publication IR만 Reader Lab과 exporter의 원고 입력으로 사용한다. Ty
 | AI | **PASS WITH DIAGNOSTIC WARNING**. exact e2 개발판/배포판 실제 요청·선택 적용·Undo/Redo·저장·재열기와 제품 종료/테스트 실행기 분리 확인. 지정 응답 불일치·stderr 관측 한계 보존 |
 | IME report·수동 kit | **보고서 경로 PASS / 수동 준비 완료**. 최종 앱에서 JSON/Markdown3개 내보내기·재시작·설정 유지·프로필 정리 확인. Native IME15항목은 NOT TESTED |
 | HWPX native 내용 | **PRIVATE LOCAL TEXT PASS ONLY**. source20e 출력/sourcef464 inspector의 일반324·장편2412 문단 전체 대조, Close·Quit·native exit·job0·등록 부재. e2 native 판독·layout·HWP 변환 성공으로 이전하지 않음 |
-| HWP 소유권·취소 | **구현·계약 시험 PASS**. unchecked activation 제거, 소유 process·문서·native 종료, 취소/commit 경합·cleanup 오류 처리. 실제 conversion/reopen 성공은 없음 |
-| HWP 실제 변환 | **환경 차단 / WITHHELD / DISABLED**. source90fe 승인된 tiny 시험에서 소유 한컴 PUBLIC TCP peer1 관측. 변환 terminal 없음, 반환 종류 UNKNOWN, inner 소유 강제 정리와 exact-value external postguard의 등록 부재 확인 |
-| Native IME·한컴 layout·배포 | **사람의 확인 대기**. 자동 성공을 수동 입력·서식·라이선스·공개 배포 승인으로 바꾸지 않음 |
+| HWP 기능 | **제거 구현 완료 / 제품 범위 제외**. HWPX를 출판 경로로 유지하며 HWP 변환 UI·계약·sidecar·.NET 요구사항을 제거. 이전 변환 실패는 역사적 근거로만 보존 |
+| Native IME·HWPX layout·배포 | **사람의 확인 대기**. 자동 성공을 수동 입력·서식·공개 배포 승인으로 바꾸지 않음 |
 
 전체 실행 자료는 `.tools/verification/full-verify-e2cb07e-run1/`에 보관했다. Source80개 archive와 raw E/F/G/H10개는 원본 bytes로 보관하고 실제 package receipt·whole inventory·ZIP join과 연결했다.
 Source5347/1ff full FAIL, source20e 기본 PASS, 기존 AI source5151과 첫 e2 AI 종료 증거 부족 실행은 각 revision/실행의 기록으로 보존한다. 서로 다른 실행의 부분 성공을 합쳐 전체 PASS로 만들지 않는다.
@@ -52,8 +55,8 @@ Source5347/1ff full FAIL, source20e 기본 PASS, 기존 AI source5151과 첫 e2 
 
 1. **완료 — 기본 gate 복구와 HWP 구현 고정.** graph·IPv4/IPv6 수집·초기화 시험 수정, HWP 소유권·취소·최소 진단을 반영하고 최종 exact source 전체 경로를 통과했다.
 2. **완료 — 최종 자동 검증·포장.** 개발판/새 배포본 AI, IME report와 수동 kit, whole package·ZIP·새 압축 해제본 대조와 결과 기록을 완료했다. 검증한 제품을 포장 전에 재빌드하지 않았다.
-3. **환경 차단 — HWP conversion/reopen.** 외부 연결0 조건을 만족하는 한컴 환경에서 tiny conversion→fresh reopen→no-clobber가 먼저 통과해야 일반·장편 전체 표시 내용·장편5회·취소·timeout을 진행한다. 현재 환경에서는 추가 native trial을 하지 않고 HWP를 disabled로 유지한다. 기존 원본 모듈 일시 등록 승인만 유지하며 모든 실제 시험 뒤 exact-value external postguard와 원복을 요구한다.
-4. **사람의 확인 — Native IME15항목·한컴 layout/라이선스·배포.** 실제 환경·입력·서식을 사람이 기록하고 배포 범위를 결정한다. 미완료 항목은 NOT TESTED/PENDING을 유지한다.
+3. **검증 진행 — HWP 제거와 코드 정리.** 실제 미사용 소스·중복과 확인된 결함을 수정했다. 작은 main commit 뒤 정확한 source에서 필수 Windows 경로를 실행하고 결과와 새 배포본을 연결한다.
+4. **사람의 확인 — Native IME15항목·HWPX layout·배포.** 실제 환경·입력·서식을 사람이 기록하고 배포 범위를 결정한다. 미완료 항목은 NOT TESTED/PENDING을 유지한다.
 
 ## 실행 자료와 사람에게 남는 조건
 
@@ -61,8 +64,8 @@ Source5347/1ff full FAIL, source20e 기본 PASS, 기존 AI source5151과 첫 e2 
 - 직접 실행할 최종 앱: `output/madi-win32-x64/madi.exe`.
 - 최종 수동 kit: `output/releases/manual-validation/e2cb07e-68cec668-c8fd-49b7-86e4-baf816261a37/`. Source e2 문서 사본과15항목 NOT TESTED template·5,000자 합성 한글 입력 자료다. 수동 검증 완료 증거가 아니다.
 
-HWP 기본 UI의 REGISTERED_UNVERIFIED/disabled는 실제 module 등록·로드 성공을 증명하지 않는다. 최신 외부 postguard는 두 registry view에서 원본 module value 부재를 확인했다.
-기존 human 승인은 원본 unsigned 모듈의 일시 등록·합성 로컬 시험이다. 영구 등록·다른 registry namespace·소유권 불명확 activation·전역 process 종료·전역 네트워크/보안 변경으로 확대하지 않는다. PID18872 특정 종료 승인은 이미 사용한 별도 승인이다.
+과거 HWP 등록·합성 시험 승인과 원복·네트워크 실패는 역사적 결과 문서에서 보존한다.
+HWP 기능 제거를 추가 Automation 시험·영구 등록·전역 process 종료·전역 네트워크/보안 변경으로 해석하지 않는다.
 Native IME는 사람이 체크리스트를 수행한다. 자동 시험은 사용자의 화면·키보드·포커스·clipboard를 바꾸지 않았다.
 Typie 개발 permission은 owner-confirmed이며 공개 배포 범위는 저장소 밖 정확한 grant를 소유자가 확인한다.
 Private-local ZIP·기술 성공을 signing·installer·자동 update·공개/유료/고객 배포 승인으로 해석하지 않는다.
@@ -84,8 +87,8 @@ git diff --check
 ```
 
 전체 verify 안에서 실제 실행한 unpacked·repository·format은 그 run에 연결한다. 최종 문서 변경 뒤 repository·format·diff를 다시 확인했다.
-`.tools/run-pinned.ps1`, Node26.3.1/pnpm11.9.0/Rust1.97.1/.NET10.0.400/MSVC·SDK·x86 runtime을 사용한다.
-Rust jobs1·Vitest workers2·command process 한정 `CARGO_INCREMENTAL=0`·.NET `--disable-build-servers`를 유지한다.
+`.tools/run-pinned.ps1`, Node26.3.1/pnpm11.9.0/Rust1.97.1/MSVC·SDK를 사용한다.
+Rust jobs1·Vitest workers2·command process 한정 `CARGO_INCREMENTAL=0`을 유지한다.
 실행은 소유 비활성 Win32 desktop·BelowNormal·GPU 비활성화로 한 번에 하나씩 한다. 화면·포커스를 전환하지 않는다.
 명시적으로 호출한 사용자 소유 LLM 외 external runtime request는0이어야 한다. 원고·prompt·응답·키·private path를 로그나 공개 evidence에 남기지 않는다.
 Actual evidence만 phase 결과에 반영하고 WITHHELD/PENDING을 static inspection으로 GO로 바꾸지 않는다.
@@ -95,7 +98,7 @@ Actual evidence만 phase 결과에 반영하고 WITHHELD/PENDING을 static inspe
 상세 scope·architecture·format·ADR은 계약이며, 결과 문서는 stated revision·환경의 evidence다.
 
 - [오프라인 runtime·배포 결과](docs/OFFLINE_RUNTIME_RELEASE_RESULT.md), [한컴 검증 기록](docs/HANCOM_AUTOMATION_VALIDATION.md).
-- [Phase1H 결과](docs/PHASE_1H_RESULT.md), [HWPX 성능](docs/HWPX_EXPORT_PERFORMANCE.md), [HWP bridge 계약](docs/HWP_LOCAL_BRIDGE.md).
+- [Phase1H 결과](docs/PHASE_1H_RESULT.md), [HWPX 성능](docs/HWPX_EXPORT_PERFORMANCE.md), [과거 HWP bridge 기록](docs/HWP_LOCAL_BRIDGE.md).
 - [Phase1I 결과](docs/PHASE_1I_RESULT.md), [AI 범위](docs/PHASE_1I_SCOPE.md), [IME 체크리스트](docs/MANUAL_KOREAN_IME_CHECKLIST.md).
 - [Typie pin·patch](docs/TYPIE_PINNING_AND_PATCHES.md), [license 상태](docs/TYPIE_LICENSE_STATUS.md).
 - 집필·설정·기획·Reader Lab·EPUB의 상세 결과는 기존 Phase1A–1G 결과 문서와 Git history에 보존한다.

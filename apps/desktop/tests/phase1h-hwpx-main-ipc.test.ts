@@ -118,7 +118,7 @@ describe("Phase 1H main HWPX IPC request shapes", () => {
       [
         IPC_CHANNELS.chooseHwpxOutput,
         methods.chooseHwpxOutput,
-        { ...session, suggestedFileName: "제출본.hwpx", outputType: "HWPX" }
+        { ...session, suggestedFileName: "제출본.hwpx", }
       ],
       [IPC_CHANNELS.validateHwpxExport, methods.validateHwpxExport, validateRequest],
       [
@@ -127,7 +127,6 @@ describe("Phase 1H main HWPX IPC request shapes", () => {
         {
           ...validateRequest,
           outputSelectionId: "selection-1",
-          outputType: "HWPX"
         }
       ],
       [
@@ -159,6 +158,15 @@ describe("Phase 1H main HWPX IPC request shapes", () => {
         })
       ).rejects.toThrow("Invalid request shape");
       expect(method).not.toHaveBeenCalled();
+      if (
+        channel === IPC_CHANNELS.chooseHwpxOutput ||
+        channel === IPC_CHANNELS.runHwpxExport
+      ) {
+        await expect(
+          handler(ipc.event, { ...request, outputType: "HWP" })
+        ).rejects.toThrow("Invalid request shape");
+        expect(method).not.toHaveBeenCalled();
+      }
     }
 
     ipc.dispose();

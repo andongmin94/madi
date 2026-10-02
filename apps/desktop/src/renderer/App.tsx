@@ -17,7 +17,6 @@ import type {
   EntityMentionCandidate,
   EntityRecord,
   EntityRelationRecord,
-  EntityStatus,
   EntitySceneContext,
   ListDescendantScenesResult,
   MadiDesktopApi,
