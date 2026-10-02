@@ -143,12 +143,13 @@ export class EpubExportCancelledError extends Error {
 
 interface ActiveProcess {
   readonly child: ChildProcessWithoutNullStreams;
-  readonly reject: (error: Error) => void;
+  readonly temporaryPath: string | null;
   readonly timeout: NodeJS.Timeout;
   readonly closed: Promise<void>;
   readonly resolveClosed: () => void;
   forceKillTimeout: NodeJS.Timeout | null;
   cancelled: boolean;
+  closeReceived: boolean;
   closedFlag: boolean;
   resultReceived: boolean;
   terminalError: Error | null;
@@ -536,8 +537,12 @@ export class ProcessEpubExporter implements EpubExporterPort {
     if (active.closedFlag) {
       return;
     }
+    const terminationAlreadyRequested = active.terminalError !== null;
     active.terminalError ??= error;
     clearTimeout(active.timeout);
+    if (active.closeReceived || terminationAlreadyRequested) {
+      return;
+    }
     try {
       active.child.kill();
     } catch {
@@ -636,12 +641,13 @@ export class ProcessEpubExporter implements EpubExporterPort {
       });
       const active: ActiveProcess = {
         child,
-        reject,
+        temporaryPath,
         timeout,
         closed,
         resolveClosed,
         forceKillTimeout: null,
         cancelled: false,
+        closeReceived: false,
         closedFlag: false,
         resultReceived: false,
         terminalError: null,
@@ -657,7 +663,7 @@ export class ProcessEpubExporter implements EpubExporterPort {
       };
 
       const parseLineUnsafe = (line: Buffer): void => {
-        if (line.byteLength === 0) {
+        if (line.byteLength === 0 || active.closedFlag || active.terminalError) {
           return;
         }
         if (line.byteLength > MAX_STDOUT_LINE_BYTES) {
@@ -743,7 +749,7 @@ export class ProcessEpubExporter implements EpubExporterPort {
       };
 
       child.stdout.on("data", (chunk: Buffer) => {
-        if (active.terminalError) {
+        if (active.closeReceived || active.closedFlag || active.terminalError) {
           return;
         }
         totalStdoutBytes += chunk.byteLength;
@@ -761,15 +767,26 @@ export class ProcessEpubExporter implements EpubExporterPort {
         }
       });
       child.stderr.on("data", () => {
-        // Drain only. Utility errors are typed JSON and manuscript text is never logged.
+        // Typed JSON on stdout is the sole result channel. Retain no diagnostics.
+        fail(new Error("The EPUB utility wrote unexpected diagnostics"));
       });
-      child.stdin.on("error", () => {
-        if (!active.resultReceived && !active.closedFlag) {
+      const failInput = (): void => {
+        if (
+          !active.resultReceived &&
+          !active.closeReceived &&
+          !active.closedFlag &&
+          this.active.get(input.operationId) === active
+        ) {
           fail(new Error("The EPUB utility input stream failed"));
         }
-      });
+      };
+      child.stdin.on("error", failInput);
       child.on("error", () => fail(new Error("The EPUB utility could not start")));
       child.on("close", async (code) => {
+        if (active.closeReceived) {
+          return;
+        }
+        active.closeReceived = true;
         try {
           clearTimeout(timeout);
           if (active.forceKillTimeout) {
@@ -803,8 +820,8 @@ export class ProcessEpubExporter implements EpubExporterPort {
           } else {
             resolve(result!);
           }
-        } catch (error) {
-          reject(error as Error);
+        } catch {
+          reject(new Error("The EPUB utility failed during shutdown"));
         } finally {
           active.closedFlag = true;
           if (this.active.get(input.operationId) === active) {
@@ -813,13 +830,23 @@ export class ProcessEpubExporter implements EpubExporterPort {
           active.resolveClosed();
         }
       });
-      child.stdin.end(`${JSON.stringify(utilityInput(input))}\n`, "utf8");
+      try {
+        child.stdin.end(
+          `${JSON.stringify(utilityInput(input))}\n`,
+          "utf8",
+          (error?: Error | null) => {
+            if (error) failInput();
+          }
+        );
+      } catch {
+        failInput();
+      }
     });
   }
 
   public async cancel(operationId: string): Promise<boolean> {
     const active = this.active.get(operationId);
-    if (!active || active.resultReceived || active.closedFlag) {
+    if (!active || active.resultReceived || active.closeReceived || active.closedFlag) {
       return false;
     }
     active.cancelled = true;
@@ -837,36 +864,32 @@ export class ProcessEpubExporter implements EpubExporterPort {
       return;
     }
     this.disposed = true;
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       [...this.active.entries()].map(async ([operationId, active]) => {
-        if (!active.resultReceived) {
-          if (!active.terminalError) {
-            active.cancelled = true;
-            this.requestTermination(
-              active,
-              new Error("The EPUB utility was disposed")
-            );
-          } else {
-            try {
-              active.child.kill("SIGKILL");
-            } catch {
-              // The close waiter reports shutdown failure if needed.
-            }
-          }
+        if (!active.resultReceived && !active.closeReceived) {
+          this.requestTermination(active, new Error("The EPUB utility was disposed"));
         }
         await this.waitForClosed(active);
         this.active.delete(operationId);
       })
     );
+    const liveTemporaryPaths = new Set(
+      [...this.active.values()].flatMap((active) =>
+        active.temporaryPath ? [active.temporaryPath] : []
+      )
+    );
     const cleanupResults = await Promise.allSettled(
-      [...this.ownedTemporaryPaths].map(async (filePath) => {
-        await removeOperationTemporaryFile(filePath);
-        this.ownedTemporaryPaths.delete(filePath);
-      })
+      [...this.ownedTemporaryPaths]
+        .filter((filePath) => !liveTemporaryPaths.has(filePath))
+        .map(async (filePath) => {
+          await removeOperationTemporaryFile(filePath);
+          this.ownedTemporaryPaths.delete(filePath);
+        })
     );
     if (
       this.active.size > 0 ||
       this.ownedTemporaryPaths.size > 0 ||
+      results.some((result) => result.status === "rejected") ||
       cleanupResults.some((result) => result.status === "rejected")
     ) {
       throw new Error("The EPUB utility did not shut down cleanly");

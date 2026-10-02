@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -362,6 +362,126 @@ describe("Phase 1G EPUB child-process boundary", () => {
     ).rejects.toThrow("input stream failed");
     expect(child.kill).toHaveBeenCalled();
     await exporter.dispose();
+  });
+
+  it.each(["synchronous throw", "completion callback"])(
+    "terminates the owned child and waits for close after an stdin %s failure",
+    async (failureKind) => {
+      const directory = await makeTemporaryDirectory();
+      const child = createChild();
+      child.stdin.end.mockImplementation(
+        (_source, _encoding, completion?: (error: Error) => void) => {
+          const error = new Error("private stdin failure sentinel");
+          if (failureKind === "synchronous throw") throw error;
+          completion?.(error);
+        }
+      );
+      returnChildFromSpawn(child);
+      const exporter = new ProcessEpubExporter("fixture-exporter");
+      const run = exporter.run(input(path.join(directory, "input-failure.epub")), vi.fn());
+      let settled = false;
+      const outcome = run.then(
+        () => {
+          settled = true;
+          return null;
+        },
+        (error: Error) => {
+          settled = true;
+          return error;
+        }
+      );
+      try {
+        await Promise.resolve();
+        expect(child.kill).toHaveBeenCalledTimes(1);
+        expect(settled).toBe(false);
+        child.emit("close", 1);
+        const error = await outcome;
+        expect(error?.message).toBe("The EPUB utility input stream failed");
+        expect(error?.message).not.toContain("private stdin failure sentinel");
+      } finally {
+        child.emit("close", 1);
+        await outcome;
+        await exporter.dispose();
+      }
+    }
+  );
+
+  it("preserves an EOF result when cancellation arrives during close cleanup", async () => {
+    const directory = await makeTemporaryDirectory();
+    const outputPath = path.join(directory, "eof-result.epub");
+    const temporaryPath = path.join(directory, `.madi-epub-${OPERATION_ID}.tmp`);
+    const child = createChild();
+    returnChildFromSpawn(child);
+    const exporter = new ProcessEpubExporter("fixture-exporter");
+    const run = exporter.run(input(outputPath), vi.fn());
+    void run.catch(() => undefined);
+    await writeFile(temporaryPath, "owned temporary fixture", "utf8");
+    child.stdout.write(`${JSON.stringify({
+      kind: "PROGRESS", stage: "WRITE_OUTPUT", completed: 1, total: 1
+    })}\n`);
+    child.stdout.write(JSON.stringify(result(outputPath)));
+    child.emit("close", 0);
+    try {
+      await expect(exporter.cancel(OPERATION_ID)).resolves.toBe(false);
+      await expect(run).resolves.toMatchObject({ outputPath });
+      expect(child.kill).not.toHaveBeenCalled();
+      expect(existsSync(temporaryPath)).toBe(false);
+    } finally {
+      await run.catch(() => undefined);
+      await exporter.dispose();
+    }
+  });
+
+  it("rejects child stderr without surfacing its private diagnostics", async () => {
+    const directory = await makeTemporaryDirectory();
+    const outputPath = path.join(directory, "stderr.epub");
+    const child = createChild((current) => {
+      current.stderr.write("private manuscript diagnostic sentinel");
+      current.stdout.write(`${JSON.stringify(result(outputPath))}\n`);
+      queueMicrotask(() => current.emit("close", 0));
+    });
+    returnChildFromSpawn(child);
+    const exporter = new ProcessEpubExporter("fixture-exporter");
+    try {
+      const error = await exporter.run(input(outputPath), vi.fn()).then(
+        () => null, (reason: Error) => reason
+      );
+      expect(error?.message).toBe("The EPUB utility wrote unexpected diagnostics");
+      expect(error?.message).not.toContain("private manuscript diagnostic sentinel");
+      expect(child.kill).toHaveBeenCalledTimes(1);
+    } finally {
+      await exporter.dispose();
+    }
+  });
+
+  it("preserves an owned temporary path until its child actually closes", async () => {
+    vi.useFakeTimers();
+    const directory = await makeTemporaryDirectory();
+    const outputPath = path.join(directory, "live-child.epub");
+    const temporaryPath = path.join(directory, `.madi-epub-${OPERATION_ID}.tmp`);
+    const child = createChild((current) => {
+      writeFileSync(temporaryPath, "owned live-child fixture", "utf8");
+      current.stdout.write(`${JSON.stringify({
+        kind: "PROGRESS", stage: "WRITE_OUTPUT", completed: 1, total: 1
+      })}\n`);
+    });
+    returnChildFromSpawn(child);
+    const exporter = new ProcessEpubExporter("fixture-exporter");
+    const run = exporter.run(input(outputPath), vi.fn());
+    const runRejection = expect(run).rejects.toThrow("disposed");
+    const disposalRejection = expect(exporter.dispose()).rejects.toThrow(
+      "did not shut down cleanly"
+    );
+    try {
+      await vi.advanceTimersByTimeAsync(20_000);
+      await disposalRejection;
+      expect(existsSync(temporaryPath)).toBe(true);
+    } finally {
+      child.emit("close", null);
+      await runRejection;
+      await exporter.dispose();
+      expect(existsSync(temporaryPath)).toBe(false);
+    }
   });
 
   it("rejects progress beyond the shared preload bound before forwarding it", async () => {
