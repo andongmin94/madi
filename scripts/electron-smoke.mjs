@@ -60,9 +60,57 @@ function redactExternalUrl(candidate) {
 
 function redactError(error) {
   const message = error instanceof Error ? error.message : String(error);
+  const allowedNames = [
+    "Error",
+    "TimeoutError",
+    "TypeError",
+    "RangeError",
+    "ReferenceError",
+    "SyntaxError"
+  ];
+  const name =
+    error instanceof Error && allowedNames.includes(error.name)
+      ? error.name
+      : "OtherError";
+  const scriptUrl = import.meta.url.toLowerCase();
+  const scriptPath = fileURLToPath(import.meta.url)
+    .replaceAll("\\", "/")
+    .toLowerCase();
+  const localFrames = [];
+  const stackLines = error instanceof Error ? error.stack?.split("\n") ?? [] : [];
+  for (const frame of stackLines) {
+    if (!frame.trimStart().startsWith("at ")) {
+      continue;
+    }
+    const location = /:(\d+):(\d+)\)?\s*$/u.exec(frame);
+    if (!location) {
+      continue;
+    }
+    const frameSource = frame
+      .slice(0, location.index)
+      .replaceAll("\\", "/")
+      .toLowerCase();
+    if (!frameSource.endsWith(scriptUrl) && !frameSource.endsWith(scriptPath)) {
+      continue;
+    }
+    const line = Number(location[1]);
+    const column = Number(location[2]);
+    if (
+      Number.isSafeInteger(line) &&
+      line > 0 &&
+      Number.isSafeInteger(column) &&
+      column > 0
+    ) {
+      localFrames.push({ code: "ELECTRON_SMOKE", line, column });
+    }
+    if (localFrames.length === 6) {
+      break;
+    }
+  }
   return {
-    name: error instanceof Error ? error.name : typeof error,
-    messageLength: message.length
+    name,
+    messageLength: message.length,
+    localFrames
   };
 }
 
