@@ -1,7 +1,7 @@
 # Hancom Automation Validation
 
-기준일: 2026-08-13. 후속 갱신일: 2026-10-01.
-Sections1–8은 기준일의 기록이다. 최초 실제 시험은 section9, 재개 후 대조와 현재 한계는 section10을 따른다.
+기준일: 2026-08-13. 후속 갱신일: 2026-10-02.
+Sections1–8은 기준일의 기록이며 sections9–13의 revision별 actual과 실패를 보존한다. 최신 HWPX TEXT와 HWP 네트워크 판정은 section14를 따른다.
 
 ## 1. Official basis
 
@@ -173,7 +173,7 @@ Distribution/layout approval: NOT GIVEN
 
 사용자가 재부팅을 위해 중지한 뒤 작업 재개를 요청했다. 실제 재부팅 여부는 독립 확인하지 않았다.
 재개 후 좁은 ignored 진단은 clean `ccd406ef620eb5175e3ac2fd6671d6dff2550853`에서 실행했다.
-제품·배포본·ZIP은 source5151 그대로이며 기존 full5256.600초 PASS를 CCD의 전체 gate 실행으로 옮기지 않는다.
+당시 제품·배포본·ZIP은 source5151 그대로였으며 기존 full5256.600초 PASS를 CCD의 전체 gate 실행으로 옮기지 않는다.
 
 별도 x86 loader에서 원본 예제 DLL load/export lookup/free를 통과했다. 이는 Hancom의 RegisterModule 성공이나
 Automation 안전 가용성을 증명하지 않는다. `-Automation`과 인자 없는 prelaunch의 ROT RegisterModule은 모두 false였다.
@@ -384,3 +384,64 @@ TCP는 UNKNOWN이며 전체 원고·layout·5회·취소/timeout·network나 사
 
 Source5347의 별도 full Windows gate는 fresh scale graph reopen에서 FAIL했으므로 compiled tiny TEXT의
 좁은 PASS를 전체 GO로 이전하지 않는다. HWP는 disabled이며 소유권/취소 수정안은 제품 미반영이다.
+
+## 14. 2026-10-02 HWPX 전체 TEXT와 HWP 네트워크 gate
+
+현재 HWPX 제품의 개발판·fresh-unpacked Windows 판정은 clean source
+`e2cb07e44e73fd0f43db61090374a762ad1103f0`의 full 실제 PASS6027.338초에 한정한
+**TECHNICAL GO — HWPX / PRIVATE LOCAL ONLY**다. 상세 근거는
+[Phase 1H section33](PHASE_1H_RESULT.md#33-2026-10-02-exact-sourcee2-full-windows-hwpx-actual)를 따른다.
+아래 native TEXT 대조와 실패한 HWP 시험은 별도 revision의 기록이며 서로 합쳐 전체 성공으로 표현하지 않는다.
+
+### HWPX 전체 표시 문단 판독
+
+일반18만자·장편67.5만자 HWPX의 producer는 source
+`20e8f3a970d321152940db47e26f9252b4524f26`의 fresh packaged backend다. 실제 한컴 판독의
+clean source는 `f464e5f7c8c4e76e9fdc6995b6586afceacfe057`이며 독립 owned inspection host를 사용했다.
+원래 합성 fixture·Publication IR에서 만든 전체 표시 문단 배열과 native TEXT의 문자 순서를 대조했다.
+
+| 실제 대조 | 일반 | 장편 |
+| --- | --- | --- |
+| 표시 문단 전체 | 324/324 일치 | 2412/2412 일치 |
+| 길이 framing을 적용한 문단 sequence SHA-256 | `204b7be98ae1b20ce8f3838fd4302490c5e2821d5d616f8810823710f1f72426` | `e1b1c16117ef6a88281c45ffefe0fa78cd7dad5139d9637ec7a36a3375d663e3` |
+| outer 실제 결과 | PASS12.747초/exit0 | PASS12.664초/exit0 |
+| backend producer receipt SHA-256 | `b2bd50b39677a213324ba19dbbaa08101fd9f9ba315968c295132edc3a26933d` | `f74aea2b656682a614cb3a785f4eb2167d5d14a1aca73550de73f579e431cb24` |
+| native receipt SHA-256 | `490c91e7c3ed41375b940ad5bee49b2b099125e95b49176f7b57ee64357f1e97` | `1522a683ad3b6bfebb9421d78a0b5009a3285cc42013c93c6bdabb66d39aa72d` |
+
+Native receipts는 `.tools/verification/hwp-content-inspection-host-080f41bc-3da4-468b-862d-1ace4af6d9ee/runs/`의
+`255ebd0a-b7e6-4540-a61b-75c5678af9fe/receipt.json`과
+`d4afc9b6-90c0-49bd-b9da-58ab5b60bbc6/receipt.json`이다. Outer metadata는 각각
+`.tools/verification/normal-hwpx-native-f464-run3/metadata.json`과
+`.tools/verification/long-hwpx-native-f464-run1/metadata.json`이다.
+
+양쪽 모두 exact PID/birth/image/job/private 창·현재 문서 FullName·nonempty/unmodified를 확인하고
+Close BOOL true·전후 guard→Quit→native exit를 통과했다. 소유 job0·강제 정리 없음·Hwp0·양쪽 HKCU view의
+예제 등록값 부재·fixture/module 불변을 확인했다. Native report의 `nativeTextStored=false`는
+그 report가 native TEXT 원문을 저장하지 않았다는 범위이며, 내용이 들어 있는 합성 fixture·oracle의 저장과 구분한다.
+TCP 표본은 모두0이지만 `networkBoundaryAcceptance=false`·`canonicalCoverageAcceptance=false`를 유지한다. HWPX TEXT만 확인했으며
+HWP 변환·새 HWP 재열기·장편5회·취소/timeout·layout·사람의 acceptance를 통과한 근거가 아니다.
+이전 share 위반·receipt 작성 실패·강제 정리 실행은 각각의 FAIL로 보존한다.
+
+### 승인된 HWP 시험의 실제 네트워크 실패
+
+Clean source `90fe3f93378e401eb309082a74d34f6dd692ab22`의 승인된 tiny 시험은
+`approved-tiny-90fe3f9-run1`에서 **COMMAND_FAILED/exit1/5.721초**였다. 소유 한컴의 retained identity를
+전후 확인한 TCP 표본에서 CONNECTED/PUBLIC peer1을 관측해 `OWNED_TCP_NOT_ZERO_OR_UNAVAILABLE`로 중단했다.
+Bridge terminal은 `null`이며 반환 종류·HWP 출력/재열기·내용·no-clobber·5회·취소/timeout의 성공을 주장하지 않는다.
+
+Inner 소유 job에는 `forcedOwnedJob=true`와 `OWNED_JOB_COUNT_LIFECYCLE_UNPROVEN` 정리 실패가 남았다.
+이후 job active0·Hwp0는 강제 정리 뒤의 결과다. Outer launcher의 `jobTerminationUsed=false`를
+inner 자연 종료 증거로 바꾸지 않는다. 등록 원복·module/input 불변과 clean source 전후를 확인했으며,
+별도 exact-value external postguard는 `EXACT_MODULE_RESTORATION_CONFIRMED`와 Registry32/64 모두 absent를 확인했다.
+
+| 보존 근거 | SHA-256 |
+| --- | --- |
+| `.tools/verification/approved-tiny-90fe3f9-run1/metadata.json` | `dee7301b82a019935e36bdd522f6d8834cda0a0a734d4c5f0a8c852ee71a981b` |
+| `.tools/verification/hwp-approved-trial-staging-5347560/runs/01186e15-297c-4f66-ba39-f2e2590d59e6/receipt.json` | `81b57842c2a2203f43a34d6a958246ee82a7b7e91f9ae76ab18b23335eec460c` |
+| `.tools/verification/hwp-approved-trial-staging-5347560/postguards/d8297eee-ac6b-4cf0-b8ad-05ddf7069a51/receipt.json` | `7f404514c0972525f5dfa7fbfffe6cc5414a082ddcc8f1a31f3f20cbc21c51e0` |
+
+선택적 HWP는 **WITHHELD / NETWORK FAIL / DISABLED**를 유지한다. 원본 module 일시 등록과 합성 로컬 시험의
+승인은 네트워크 실패·변환 성공·layout/라이선스 acceptance의 승인이 아니다. 최종 e2의 HWPX UI
+`REGISTERED_UNVERIFIED`는 보안 미검증/disabled 표시 계약이며 현재 registry 등록이나 DLL 수용을 입증하지 않는다.
+Registry 원복 근거는 위 postguard와 구분한다. Native IME·한컴 layout/라이선스·public/paid/customer/installer
+배포 승인은 사람이 결정하며, 이 private-local 기술 결과에서 추론하지 않는다.

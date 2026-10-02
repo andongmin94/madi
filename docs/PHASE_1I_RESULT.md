@@ -2,7 +2,7 @@
 
 This document preserves the narrow-workflow implementation and audit record. Current goals,
 progress, contract discrepancies, and next work are maintained in [PLANS.md](../PLANS.md).
-The latest completed runtime result applies to product source `5151f6a804cf1565a09211ea8f7a11e9f547fd34`.
+The latest completed full Windows and actual loopback pair applies to product source `e2cb07e44e73fd0f43db61090374a762ad1103f0`.
 Subsequent documentation-only commits record that evidence; they are not additional runtime-tested
 product candidates. This record does not establish runtime acceptance for later product changes.
 
@@ -13,8 +13,10 @@ Repository implementation: COMPLETE FOR NARROW AI WORKFLOWS
 Exact same-block selection apply: IMPLEMENTED
 General proposal review: IMPLEMENTED
 Multi-block/project-wide apply: REMOVED, NOT AUTHORIZED
-Aggregate Windows verification source5151f6a: PASS — PRIVATE LOCAL TECHNICAL
-Actual loopback source5151f6a: DEVELOPMENT/PACKAGED PASS WITH DIAGNOSTIC WARNING
+Aggregate Windows verification sourcee2cb07e: PASS — PRIVATE LOCAL TECHNICAL
+Actual loopback sourcee2cb07e: DEVELOPMENT RUN3/PACKAGED RUN1 PASS WITH DIAGNOSTIC WARNING
+Product quit/native pre-wrapper proof: OBSERVED; INSPECTOR WRAPPER FORCE EXIT1 PRESERVED
+Natural main-process exit/native exit codes: NOT PROVEN
 Distribution: PRIVATE LOCAL ONLY; DISTRIBUTION GATES REMAIN
 ```
 
@@ -300,6 +302,33 @@ The full same-command package receipt/source/archive/inventory binding is record
 [offline runtime and release result](./OFFLINE_RUNTIME_RELEASE_RESULT.md). Inventory alone does not
 infer freshness. Native IME/Hancom and public/paid/customer/installer release decisions remain
 separate human gates; these actuals grant no distribution permission.
+
+## 2026-10-02 exact sourcee2cb07e full and actual loopback completion
+
+Exact source `e2cb07e44e73fd0f43db61090374a762ad1103f0` completed the pinned full Windows path with exit0 in **6027.338 seconds**, source clean before/after, job cleanup active0 and no host job termination. Its development/fresh-unpacked gate and source archive remain separate from the real-provider AI observations below. This is private-local technical evidence and grants no public, paid, customer or installer distribution permission.
+
+Development run3 and fresh-packaged run1 both returned `PASS_LOOPBACK_ACTUAL_WITH_DIAGNOSTIC_WARNING`, with child exit0, source clean before/after, and caller environment restored=true. The warning means an actual provider response was received and exact `MADI_OK` was false; the specified-answer diagnostic is not promoted to PASS. Provider and manuscript text are omitted.
+
+| Mode | UTC start → finish, 2026-10-02 | Host seconds | actual.json SHA-256 |
+| --- | --- | ---: | --- |
+| Development run3 | 2026-10-02T00:27:29.3689004Z → 2026-10-02T00:27:59.2922649Z | 29.923 | `52bd1210a6b58b943bbf88a851aff14e53652527e7816774fe0a0a31eba84958` |
+| Fresh-packaged run1 | 2026-10-02T00:28:23.4817085Z → 2026-10-02T00:28:53.8816187Z | 30.400 | `5b5c1d2f9e3db656742a87893dd89e7b2e365f9f6ba717032ea67feef367da97` |
+
+Both actuals retained consent before general/selection requests, actual response-copy equality with canonical text unchanged, no mutation before acceptance, exact same-block apply, one exact Undo/Redo, exact save/reopen without another provider request, and provider/request settings outside canonical content. No credential was supplied or stored. Each selected the whole 11-character block, reviewed 2 hunks, and received 13-character general/rewrite responses. Diagnostic times were 589/801 ms and rewrite→apply times 1664/2167 ms. Partial-block, duplicate/Unicode, multi-block and project-wide mutation remain outside this actual fixture's scope.
+
+Each mode's two app closes recorded window close and ordered beforeQuit1→willQuit1→quit1. The shared observer captured exact Win32 PID/birth/image identities for launcher/main and a live CORE instance before close. Captured native instances and live owned native descendants were both 0 before any wrapper force; the exact launcher/main birth and permitted transport tree were rechecked. The inspector CMD wrapper then required taskkill in all four closes: taskkill exit0, launcher exit/close1, transport cleanup completed=true. These forces are preserved as test transport cleanup, not a natural process exit. `naturalMainProcessExitProven=false` and `nativeExitCodesObserved=false` remain explicit; CIM snapshots and app lifecycle events are not retained kernel-handle or native exit-code evidence. Owned temporary app data was removed.
+
+First-app approved loopback main fetches were 3, reopen 0, and unapproved main fetches/renderer HTTP/WS/page errors were 0 in both modes. These are main-fetch/renderer observations captured before close, not whole-owned-process TCP or a through-quit stderr audit. Each orchestrator probe recorded 2/2 non-stage stderr lines, which are retained as unclassified observations. Clipboard API interception passed while OS clipboard, remote HTTPS/authentication, credential encryption and native Korean IME remain unvalidated by these actuals.
+
+The owned CPU provider's archive/model and 51 runtime-file hashes matched. Threads2/batch2/GPU0/parallel1/context2048 stayed bounded. Owned server stop recorded SIGTERM and exited=true with exitCode=null in both modes; normal exit0 is not claimed. The outer jobs recorded total-process counters 55/55, cleanup active0 and no host job termination, with input samples 58/59, unavailable 0/0, and inactive desktops throughout. The inner wrapper forces remain separate from the outer job no-termination result.
+
+The final pre/post source join hashes the original actual/orchestrator receipts plus all three source copies, checks exact source/full/runtime/package identities and unchanged debug core/dev dist/fresh package, and requires ordered product quit/native-before-wrapper proof for each close. Debug core has its own byte identity; packageReceipt.sidecarSha256 binds only the release packaged core. The Root invocation records unset native overrides, exact fresh package executable environment and restored private caller values without recording those values. The AI harness itself does not independently record the consumed executable's path/SHA. The join remains observational, with acceptance/product-completion verdict false; Root's scoped actual verdict relies on the actual evidence and invocation record.
+
+Final post-join receipt: `.tools/verification/final-ai-source-join-owned-close-prepared-cdb1d801-ca09-4f6e-bbdc-bf9665ec97cb/runs/post-f89056d4-4de4-441c-bc45-1324d1e59ac8/receipt.json`, SHA-256 `f125d37d2a6b913d15ae14f62d206a078693b1e02a8fcb9a78fa751a4d44d5db`.
+
+The first development run1 remains a limited shutdown observation (SHA-256 `1631af4571d4e2a1f2cf23d4bdb2bfe0952da2bf896daac1133d683a90ddff4f`): window close was observed, Playwright close was false, wrapper force and exit/close1 were recorded, and product/native pre-wrapper proof was absent. It is not relabeled clean. Development run2 recorded product/outer PASS in 31.881 seconds, but its first invoker returned exit1 because restoring an absent variable with .NET created an empty value; callerEnvironmentRestored=false and the preserved invoker (SHA-256 `515d256dd43cdd2fb91d3b88b11fadf78498760b0c90aac57f5f0dfad7ed503c`) remain historical. The V2 invoker uses Remove-Item Env for originally absent variables, and the minimal development run3 rerun supplies the authoritative restored=true result.
+
+Evidence remains under ignored `.tools/verification/`: development `llm-development-e2cb07e-run3/llm-loopback-runs/development-ab62eee9-f81e-4352-b6df-e8add0d3a0db/`; packaged `llm-packaged-e2cb07e-run1/llm-loopback-runs/packaged-60261ae0-590d-43ab-b572-d4b4fd3baa5f/`. Orchestrator SHA-256 values are `801fba5bf7c875b8dba1fbe20a209b3bfb348c5dfc3fcbf18d6ae506eb3f9902` and `d9c113e02dd1116204133856d58096e4f79e800ceb4decdfb035df35fbc7b3c2`; host metadata SHA-256 values are `4fd24be3bdfa8f24de33ccf29789927cbf3509c2673b8a998abdce57ea1fabb3` and `5cb7ff0140cda0222cca864c0e6868b3252b78e755207ad7e7e43af54e9b846f`. Native IME/Hancom licensing and public-distribution decisions remain human gates. Earlier source5151f6a and other source-bound observations above remain historical.
 
 ## Next stage
 

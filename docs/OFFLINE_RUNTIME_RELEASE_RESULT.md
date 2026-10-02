@@ -1,21 +1,24 @@
 # 오프라인 검사·portable 배포 준비 검증 결과
 
-기록일: 2026-10-01. 실제 검증 제품 source: `5151f6a804cf1565a09211ea8f7a11e9f547fd34`.
+기록일: 2026-10-02. 최신 실제 full·portable·AI 검증 제품 source: `e2cb07e44e73fd0f43db61090374a762ad1103f0`.
 현재 목표와 다음 작업은 [PLANS.md](../PLANS.md)에서 관리한다. 후속 문서 갱신 커밋은 실제 검증 source와 구분한다.
 
 ## 판정
 
 ```text
-Full pinned Windows source5151: PASS / exit0 / 5256.600s
+Full pinned Windows sourcee2cb07e: PASS / exit0 / 6027.338s
 Offline bundled EPUBCheck: DEVELOPMENT PASS / FRESH-UNPACKED PASS
 HWPX: PRIVATE LOCAL TECHNICAL GO
-Actual AI: DEVELOPMENT/PACKAGED PASS WITH DIAGNOSTIC WARNING
+Actual AI sourcee2cb07e: DEVELOPMENT RUN3/PACKAGED RUN1 PASS WITH DIAGNOSTIC WARNING
 Portable ZIP: CREATED / FRESH EXTRACTION MATCH / WHOLE TESTED-PAYLOAD JOIN PASS
-Manual kit: PREPARED / NOT TESTED
+Manual kit sourcee2cb07e: PREPARED / NOT TESTED
+IME report-only export/restart sourcee2cb07e: PASS / ZERO-CORE ABSENCE PROOF; MANUAL ITEMS NOT TESTED
 Native Korean IME: MANUAL VALIDATION PENDING
-Actual Hancom HWP conversion: OPEN_FAILED / NO OUTPUT / DISABLED
+Actual Hancom HWP conversion: WITHHELD / ENVIRONMENT BLOCKED / DISABLED
 Public/paid/customer/installer distribution: NOT APPROVED
 ```
+
+아래 기존 본문과 source5151/5347/1ff 후속 기록은 각각의 source·환경에 묶인 역사다. 최신 sourcee2cb07e 근거와 실패 보존 범위는 마지막 절을 따른다.
 
 사용자가 요청한 기존 제품 범위의 자동 검증과 로컬 배포 준비를 마쳤다.
 수동 IME는 사람의 확인이 필요하다. 후속 승인된 임시 모듈·합성 한컴 시험에서 실제 Open=false를 확인했으며
@@ -260,3 +263,54 @@ Source70·원본 meta/log 등75파일 byte-exact receipt SHA는
 대조 receipt SHA는 `fa71465be30f239412ee3a914d0a5d0118140d6cac85042727dc5d2d058ec123`이며
 diagnostic 당시 clean1ff와 적용 후 dirty 상태를 구분한다. Root 적용본과 후보의 LF-normalized 일치도 확인했다.
 전체 gate·native Korean IME·새 package 성공으로 확대하지 않는다. 다음 exact source에서 필수 Windows 경로를 다시 실행한다.
+
+## 2026-10-02 sourcee2cb07e 최종 full·portable·AI·report-only 근거
+
+제품 source `e2cb07e44e73fd0f43db61090374a762ad1103f0`에서 frozen install은 PASS/exit0/1.432초, 최종 pinned full은 PASS/exit0/**6027.338초**였다. Full은 2026-10-01T22:12:47.5958668Z→2026-10-01T23:53:14.9598342Z UTC에 실행했고 source 시작/끝 clean, 소유 job total-process counter3494/cleanup active0, 강제 job 종료 없음, empty job·handles·desktop 정리를 기록했다. 비활성 desktop 표본11787, input 이름 판독 불가0, inputDefaultEverySample=true이며 screen/focus/desktop 전환은 호출하지 않았다. 필수 unpacked/repository/format 경로는 이 full 안에서 실제 실행했다. 이전5151 full과 후속 개별 후보 관측을 현행 e2 PASS로 재해석하지 않는다.
+
+같은 full의 개발판/새 unpacked G/H는 PASS였다. 장편5회는450sections/2411blocks/675000characters의 exact source/block/character coverage, 결정성, ZIP/XML 재열기와 기존 파일 보호를 유지했다. Bundled EPUBCheck5.3.0은 VALID/fatal0/error0, 외부 서버·자동 다운로드 없음이며 EPUB3.3 compatibility 범위다. G/H owned-process TCP 경계와 분류/identity/parser 실패·renderer 외부 HTTP/WS는0이었다. 이는 별도 AI의 main-fetch 관측과 구분한다.
+
+| 장편5회 median/max ms | 개발판 | 새 unpacked |
+| --- | ---: | ---: |
+| EPUB native exporter | 572/583 | 61/67 |
+| EPUB UI wall | 62071.11/62341.61 | 8583.77/8700.65 |
+| HWPX native exporter | 712/717 | 74/76 |
+| HWPX 실제 runtime IR | 55686.94/55805.85 | 2411.84/2431.93 |
+| HWPX UI wall | 57428.42/57493.79 | 3305.95/3355.28 |
+
+이 값은 Rust jobs1/Vitest workers2/BelowNormal/비활성 desktop/GPU 비활성화 환경의 관측값이다. `CARGO_INCREMENTAL=0`은 owned command process에만 적용했다. Source archive80파일은 실행 중 RUNNING 시점의 원래 receipt와 metadata hash를 그대로 보존했고, 별도 terminal full PASS와 연결했다. Raw E/F/G/H 및 대표 EPUB2개의 byte-exact10파일, 전체 bound15파일을 보관했다. Archive/join acceptance=false를 새 runtime 판정으로 바꾸지 않는다.
+
+Whole package는561파일/81디렉터리/549,563,008bytes, canonical inventory digest `03d346b83cecf7f0b28778486b7416aa46fe13a849890368b2efeb4aff342b00`다. ZIP은227,707,817bytes/SHA-256 `29221e7708beddf084794227f0f5e28eb9c250ab56ba59c668c20abc8a382009`이고 manifest/current unpacked/stream-hashed ZIP payload가 이 snapshot과 일치했다. ZIP reference source만으로 새 runtime 시험이나 clean-PC 설치 성공을 주장하지 않는다. Inventory의 freshnessInferredFromInventory=false와 noInterveningBuildIndependentlyProven=false는 보존한다. 실제 package receipt/source/full/archive 연결과 전체 byte equality를 함께 읽어야 한다.
+
+| 근거 | 저장소 상대 경로 | SHA-256 |
+| --- | --- | --- |
+| Full host | `.tools/verification/full-verify-e2cb07e-run1/metadata.json` | `e11a014aee6b92d1f8efc1eaa8a68cbd0afecc29360a530438ee725c0963c1e9` |
+| Source archive80 | `.tools/verification/full-verify-e2cb07e-run1/source-archive-receipt.json` | `859e8887a835942f8d60fafa2b61a26d4f755f2800600a3bbc27871b25f5a40f` |
+| Raw/bound archive10/15 | `.tools/verification/full-verify-e2cb07e-run1/phaseefgh-proof-archive/receipt.json` | `f231fee12f5c51d2612c93959803dc3390786a2a4783fe46677106ee010b1f6b` |
+| Package receipt | `.tools/verification/tested-package-receipt-e2cb07e-e68bcea3-bc08-45ab-b86a-3c59d2d12e41/package-unpacked-receipt.json` | `f853a450b3da3cac705cfd237648e9901de04eb2ee21488feb80463809ba1e74` |
+| Whole package snapshot | `.tools/verification/tested-package-e2cb07e-7fe99ee8-7a5d-4693-92fc-4573a9b454e8/tested-package-inventory.json` | `4783799b309b4f683c5bbe415b7c0f81c1a256235c2939f566b07482249b3cb8` |
+| Portable ZIP join | `.tools/verification/portable-tested-join-e2cb07e-4d9fb71c-0acc-4344-a3d2-0994aab77666/portable-tested-join.json` | `7b84d8704dae313f5c21333dee6ff6f4c66a45fda869788f57e09113c74813cc` |
+| Manual kit join | `.tools/verification/manual-kit-join-e2cb07e-d508574e-059b-4a9f-a4a7-c1b23c4bbab6/receipt.json` | `c65f69ba356f2d69ac4885fe2382345adc3b84bbf70416cd232cf7bc81447d63` |
+| AI final post-join | `.tools/verification/final-ai-source-join-owned-close-prepared-cdb1d801-ca09-4f6e-bbdc-bf9665ec97cb/runs/post-f89056d4-4de4-441c-bc45-1324d1e59ac8/receipt.json` | `f125d37d2a6b913d15ae14f62d206a078693b1e02a8fcb9a78fa751a4d44d5db` |
+
+실제 AI는 development run3/29.923초와 packaged run1/30.400초 모두 PASS WITH DIAGNOSTIC WARNING였다. 지정응답 진단은 providerResponseReceived=true/exactMADI_OK=false로 유지하며 본문은 보관·출력하지 않는다. 좁은 same-block apply·consent·no-mutation-before-acceptance·Undo/Redo·save/reopen guards가 통과했고 first3/reopen0 approved main fetch, unapproved main fetch/renderer HTTP/WS/page error0이었다. Probe 비-stage stderr2줄씩은 미분류 관측으로 남긴다. 이 AI 관측은 전체 owned-process TCP/through-quit stderr audit가 아니다.
+
+두 모드의 총4회 종료는 ordered beforeQuit1→willQuit1→quit1과 exact PID/birth/image owner를 기록했다. CORE를 포함한 captured native instance와 live owned native descendants가 wrapper force 전에0임을 확인한 뒤 inspector CMD wrapper만 정리했다. Taskkill exit0/wrapper exit·close1을 모두 보존하고 자연 종료로 주장하지 않는다. naturalMainProcessExitProven=false/nativeExitCodesObserved=false다. Owned model stop은 SIGTERM/exited=true/exitCode=null이며 정상 exit0으로 확대하지 않는다. Full/source/runtime/cache53파일·별도 debug core·dev dist·whole fresh package pre/post 불변과 actual/source copies는 AI post-join에 연결한다. Debug core와 release sidecar hash의 동일성을 가정하지 않는다. Root는 정확한 fresh 실행환경과 caller restore=true를 별도 invocation에 기록했고, actual helper 자체가 executable path/SHA를 독립 관측하지 않았다는 한계를 유지한다.
+
+최초 DEVrun1은 window close만 있고 ordered product/native pre-wrapper proof가 없는 제한 관측으로 남긴다. DEVrun2의 product/outer PASS31.881초와 첫 invoker exit1/callerEnvironmentRestored=false는 구분한다. .NET으로 absent 변수를 empty로 복원한 첫 invoker를 보존했고, V2가 Remove-Item Env로 원래 absent 상태를 복원한 최소 DEVrun3/최종 fresh pair가 authoritative다. 이전 실패나 제한 actual을 소급 PASS/clean으로 바꾸지 않는다.
+
+수동 kit `output/releases/manual-validation/e2cb07e-68cec668-c8fd-49b7-86e4-baf816261a37`는11파일, hash payload10파일, 복사4·참조4 source가 일치했다. 합성 입력7200 Unicode code points/한글 syllable5000/문단200이며 IME15항목 모두NOT TESTED다. Kit가 복사한 절차 문서는 최종 결과 문서보다 앞선 원래 source 그대로다. 사람의 한글 조합/키보드 시험, Hancom licensing 및 public/paid/customer/installer 배포 승인은 수행되지 않았다.
+
+최종 IME report-only run2는 PASS/exit0/22.681초, source 시작/끝 clean, job total counter62/cleanup active0/no host job termination이었다. 첫 JSON/Markdown과 재시작 JSON 등 실제 export3개를 생성·읽고 저장된 환경/results의 재시작 일치를 확인했으며 각15항목은NOT TESTED, composition summary=null, 원고 본문 없음, owned profile 제거=true다. 이 흐름은 project/canonical RPC를 호출하지 않아 Core lazy launch가 없었다. 두 종료는 ordered quit1, captured native0과 live owned native0을 wrapper force 전에 확인해 absence proof=true/exit proof=false로 기록했다. 실행되지 않은 Core가 종료됐다고 주장하지 않는다. Inspector wrapper taskkill/exit1과 natural main/native exit-code proof=false는 그대로다. 이 결과는 Windows native Korean IME 성공이나 report import 검증이 아니다.
+
+최초 IMErun1은 `FAIL_REPORT_EXPORT_RESTART_DIAGNOSTIC_ONLY`와 `owned-close-pre-close-live-core-required`를 보존한다. JSON/Markdown export2개만 성공했고 restart는 미실행, ownedProfileRemoved=false였다. Report-only 경로에서 불필요한 live CORE 필수조건 때문에 닫기 전에 거부됐다. Outer는 LAUNCHER_FAILED/304.115초, cleanup 당시 active9/강제 job 종료=true/그 뒤 job empty·handles·desktop 제거, input593/unavailable0이었다. PID37384만 PID/birth/current executable/role/argv/run-directory/expected-desktop와 retained process handle을 확인해 종료했으며, stop receipt는 실제 action 뒤 tool chunk665f14를 근거로 기록했다. 이를 launch 시점/사전 승인 receipt나 자연 종료로 바꾸지 않는다.
+
+| Report-only 근거 | 저장소 상대 경로 | SHA-256 |
+| --- | --- | --- |
+| 최종 IMErun2 actual | `.tools/verification/ime-report-e2cb07e-run2/ime-report-evidence.json` | `8d2ba4176e34cbb75b99aa96092f7697873ea90fc522ab694e48a1bd6e158041` |
+| 최종 IMErun2 host | `.tools/verification/ime-report-e2cb07e-run2/metadata.json` | `b184a5c51832fb79a4197b106a1739345a3b7a4f42f71a4c7ae9d4bf470adc82` |
+| 최초 IMErun1 실패 actual | `.tools/verification/ime-report-e2cb07e-run1/ime-report-evidence.json` | `dc7f675fe7fd4d55e2ce7a27f16a78b9b90a1682b31055563c795920d87eada5` |
+| 최초 IMErun1 실패 host | `.tools/verification/ime-report-e2cb07e-run1/metadata.json` | `96abd3894809ca1faa91fa8468bd6dcfdf51e3445897382e85349d2f3c7f809c` |
+| 소유 child stop, action 뒤 기록 | `.tools/verification/ime-report-e2cb07e-run1/owned-child-stop-post-action-receipt.json` | `caa6fb92ee32aeb76062f45258a74359b4e9a2cc069f9ca26f95d187d5870167` |
+
+HWP conversion/reopen은 성공한 근거가 없으며 현재 environment/network-boundary blocker와 private-local/Hancom 결정을 유지한다. HWP는 disabled/WITHHELD다. HWPX 및 나머지 자동 경로 성공을 HWP actual 성공이나 공개 배포 허가로 확대하지 않는다. Typie 개발 permission은 owner-confirmed이며 배포는 저장소 밖 exact grant의 허용 범위만 따른다. 원본source5151/5347/1ff·이후 diagnostic 역사, licensing과 수동15항목은 이 최신 기술 결과와 분리해 보존했다.

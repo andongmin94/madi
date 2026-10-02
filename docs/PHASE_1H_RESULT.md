@@ -2,28 +2,28 @@
 
 기준일: 2026-08-13  
 후속 갱신일: 2026-10-02
-문서 상태: previous source5151 actual preserved; source5347 and source1ff full FAIL / current verdict WITHHELD
+문서 상태: sourcee2 full actual PASS / TECHNICAL GO — HWPX / PRIVATE LOCAL ONLY; optional HWP WITHHELD / NETWORK FAIL / DISABLED
 
 이 문서는 아래 기준일의 구현·실행 근거와 revision별 후속 actual을 보존한다. 현행 목표와
-작업 순서는 [PLANS.md](../PLANS.md)를 따른다. Source5151의 section29 development/fresh 판정은
-그 revision에만 적용한다. 후속 source5347·1ff는 section31/32의 full 실패로 현행 판정을 WITHHELD로 둔다.
+작업 순서는 [PLANS.md](../PLANS.md)를 따른다. Source5151의 section29 판정과 source5347·1ff의
+section31/32 실패는 각 revision에 한정한다. 최신 exact-source 개발판·fresh-unpacked HWPX 판정은 section33을 따른다.
 
 ## 1. Phase 1H 최종 판정
 
 ```text
-Phase 1H current verdict: WITHHELD
-Latest full tested source: 1ff964cd55d20b7521a68067b7278a711b3eb7c2
-Latest full pinned Windows aggregate: FAIL / exit1 / 114.669s
-Source5347 HWPX: DEVELOPMENT PASS / FRESH-UNPACKED NOT RUN
-Previous source5151: PRIVATE LOCAL TECHNICAL GO / full PASS / 5256.600s
-HWP Automation: ACTUAL OPEN FAILURE / DISABLED / MANUAL ACCEPTANCE PENDING
+Phase 1H HWPX verdict: TECHNICAL GO / PRIVATE LOCAL ONLY
+Latest full tested source: e2cb07e44e73fd0f43db61090374a762ad1103f0
+Latest full pinned Windows aggregate: PASS / exit0 / 6027.338s
+Sourcee2 HWPX: DEVELOPMENT PASS / FRESH-UNPACKED PASS
+Previous source5151 PASS and source5347/1ff FAIL: PRESERVED PER REVISION
+Optional HWP: WITHHELD / ACTUAL PUBLIC TCP FAIL / DISABLED / MANUAL ACCEPTANCE PENDING
 Public/paid/customer/installer distribution: NOT APPROVED
 ```
 
 기준일에는 일반·675,000자 development/fresh actual이 미완료였다. Source51의 개별 actual
 성공과 full 실패는 section27, source660의 전체 실제 성공은 section28, 새 source5151은 section29에 기록한다.
 필수 6개 명령의 실행 범위와 package join을 구분하며 HWPX private-local 기술 성공을
-수동 Hancom 검증이나 배포 승인으로 해석하지 않는다. 최종 문서 commit과 실제 검증 source5151도 구분한다.
+수동 Hancom 검증이나 배포 승인으로 해석하지 않는다. 최종 문서 commit과 실제 검증 sourcee2도 구분한다.
 
 후속 clean ad7fb61에서 사용자가 임시 module·합성 로컬 시험을 승인했다. source5151 bridge는
 OPEN_FAILED, 별도 진단은 실제 Open=false/getters 성공을 관측했다. HWP output·reopen 성공은 없다.
@@ -33,7 +33,7 @@ Section29의 HWPX 내부 실제 경로 판정을 실제 한컴 호환성 GO로 �
 재개 후 cleanCCD의 좁은 진단에서는 독립 빈 HWPX의 정확한 FullName·단일 현재 문서·empty/unmodified와
 Close BOOL true→Quit→native exit를 통과했다. 마디 원본과 major0→5 단일 변경 시험본은 모두 native 문서 식별에 실패했다.
 이 결과는 source5151의 내부 HWPX 판정이나 최종 한컴 acceptance를 대체하지 않는다.
-제품·ZIP은 변경하지 않았고 HWP conversion/reopen·본문 coverage·network gate는 미통과다.
+당시 제품·ZIP은 변경하지 않았고 HWP conversion/reopen·본문 coverage·network gate는 미통과다.
 상세 원본·승인·관측 범위는 [Hancom 재개 후 기록](HANCOM_AUTOMATION_VALIDATION.md#10-2026-10-01-resumed-native-controls)을 따른다.
 
 ## 2. Runtime EPUBCheck 재분류 결과 — 기준일 기록
@@ -665,3 +665,86 @@ Rust·개발판·fresh·package 단계는 이 실행에서 시작하지 않았�
 수정한 실제 파일의 집중8개는 모두 PASS했다. Jsdom orchestration 시험이며 native IME15항목의 수동 PASS가 아니다.
 대조 원본14개와 수정 연결 receipt SHA는 `fa71465be30f239412ee3a914d0a5d0118140d6cac85042727dc5d2d058ec123`다.
 새 exact-source full gate 전까지 현행 판정은 WITHHELD다.
+
+## 33. 2026-10-02 exact sourcee2 full Windows HWPX actual
+
+`full-verify-e2cb07e-run1`은 정확한 source
+`e2cb07e44e73fd0f43db61090374a762ad1103f0`에서 실제 **PASS/exit0/6027.338초**였다.
+UTC2026-10-01T22:12:47.5958668Z→23:53:14.9598342Z이며 source 전후는 같은 clean commit이다.
+Outer full host의 job total3494/cleanup active0·강제 job 종료 없음·process/thread/job/desktop handle 정리와 desktop 제거를 확인했다.
+Input11787표본은 모두 Default/비활성·unknown0이다. Full source와 뒤 문서 갱신 commit은 구분한다.
+
+개발판과 fresh-unpacked의 G/H raw는 이 full 시간 안에서 각각 새로 작성되었고 모두 PASS다.
+Raw JSON 자체에 sourceSHA 필드는 없으므로 아래 metadata·full 실행 기록·같은 run의 byte archive와 함께 해석한다.
+이 판정은 **TECHNICAL GO — HWPX / PRIVATE LOCAL ONLY**이며 선택적 HWP의 실제 변환은 별도 WITHHELD다.
+
+| exact 실제 근거 | SHA-256 |
+| --- | --- |
+| `.tools/verification/full-verify-e2cb07e-run1/metadata.json` | `e11a014aee6b92d1f8efc1eaa8a68cbd0afecc29360a530438ee725c0963c1e9` |
+| `output/playwright/madi-electron-phase1g-evidence.json` | `b7e9322f69d222626af7b64a410caae58b11bd936b0b5e44068cec53075b462f` |
+| `output/playwright/madi-electron-phase1h-evidence.json` | `6ceab8d2da5b2ce01c4c29b2101142c33dc81f0ae375cb55c82b48237ed70d12` |
+| `output/playwright/madi-packaged-phase1g-evidence.json` | `9e0f6e11c9f8ea8e2144aea51753cb0cc4f809d107944a50b461a9be867f67f2` |
+| `output/playwright/madi-packaged-phase1h-evidence.json` | `1cb5f45954eecddebf2aff3a4977476c1f3fab762f62eb973cd4ccbbde36d598` |
+
+### 원고 coverage·결정성·출력 보호
+
+일반 fixture는60 source sections/323 blocks/180,000 characters, 장편은450/2411/675,000이다.
+G 장편 EPUB은450 sections/2411 blocks/675,000 characters 전체를 보존하며 block/character loss와 fallback/reject0이다.
+ZIP155 entries/150 XHTML·mimetype first/stored·ZIP reopen·각 환경5회 byte/logical 결정성을 확인했다.
+Bundled EPUBCheck5.3.0 실제 검사는 VALID/fatal0/error0이며 외부 서버·다운로드를 사용하지 않았다.
+G의 대표 일반 EPUB은 dev/fresh 각각63779bytes와
+SHA `527f55f49bcb465df8792e1af0e662664c4185ab5deccd0a6ed94f677503788c`로 동일하다.
+장편 G raw는254784bytes와 환경별5회 결정성을 기록하지만 실제 장편 SHA를 저장하지 않으므로
+dev/fresh 장편 EPUB의 교차 byte hash 동일성까지 주장하지 않는다.
+
+H 장편5회는 각각675,000 characters와2411 source blocks를 보존했다. Export1961+명시적 fallback450,
+configured omission0/reject0이며 ZIP 안의 `Contents/sectionN.xml` 물리 section 파일10개다. 모든 결과는 VALID/fatal0/error0/warning451이고
+33378bytes다. 각 환경 내부5회 byte/logical 결정성뿐 아니라 dev/fresh의 `outputSha256`·
+`logicalPackageHash`·`sourcePublicationHash`·`presetContentHash`가 일치한다.
+일반6 scope/split-mode 결과도 같은 네 가지 hash가 일치하며 coverage·confirmed overwrite·동시 no-clobber·
+실패 뒤 stale success 숨김과 취소 뒤 output/late progress/late success 부재를 확인했다.
+일부 사용자 preset ID는 별도 생성으로 다르므로 모든 preset 식별자까지 같다고 표현하지 않는다.
+
+Development/fresh의 일반·장편 `.madi` fixture는 각각 생성되었고 물리 파일 SHA가 다르다.
+동일 source·inventory/count와 canonical Publication IR/preset 내용·HWPX 출력 hash 일치를
+원본 데이터베이스 byte 동일성으로 확대하지 않는다. 합성 fixture·expected-paragraph oracle에 본문이 포함되는 점도
+native TEXT report의 counts/hashes 기록과 구분한다.
+
+### 실제 성능과 종료·네트워크 범위
+
+아래는 장편5회 실제 median/max milliseconds다. G의 fixture debug IR reference timing은 runtime 측정에 넣지 않는다.
+
+| 실제 측정 | 개발판 median/max | fresh-unpacked median/max |
+| --- | --- | --- |
+| EPUB native exporter | 572/583 | 61/67 |
+| EPUB UI wall | 62071.11/62341.61 | 8583.77/8700.65 |
+| HWPX native exporter | 712/717 | 74/76 |
+| HWPX runtime Publication IR | 55686.94/55805.85 | 2411.84/2431.93 |
+| HWPX UI wall | 57428.42/57493.79 | 3305.95/3355.28 |
+
+Fresh 장편 exporter15초 gate는5/5 통과했으며 development에는 같은 hard gate가 적용되지 않았다.
+Fresh 일반 HWPX native exporter5초 gate도6 scope 모두 통과했다. G EPUBCheck3.3의 단일 실제 측정은
+dev4413.58ms/fresh4491.89ms이며 Java 검사5회 median으로 바꾸지 않는다.
+
+Dev/fresh G/H의 runtime external request/WebSocket0과 소유 TCP의 non-loopback·peer/listener boundary·
+classification/identity-race/parser rejection0을 확인했다. Collector는 IPv4/IPv6를 다루는 `netstat -ano`지만
+raw에 family별 row 수가 없으므로 별도 IPv4/IPv6 수치·연속 packet·UDP 관측을 주장하지 않는다.
+세 lifecycle(normalState/normalExport/longExport) 모두 product graceful quit·wrapper 종료 전 native sidecar exit·
+exact captured process exit·남은 descendant0을 확인했다. Temporary/symlink0과 H의 recovery registry/claim0을 확인했다.
+Fresh canary는 요청0·개발용 core/exporter/bridge/atomic-output override 차단을 유지했다.
+G의 실제 EPUBCheck 진행 중 취소와 별도 검사 중 app close는 시작·drain·output 부재를 확인했고,
+H의 PREPARING 취소도 accepted/output 부재/late progress·success 부재를 확인했다.
+
+### HWP와 사람의 승인 한계
+
+최종 H raw의 `REGISTERED_UNVERIFIED`는 실제 probe의 보안 미검증 상태를 표시하는 UI 계약이다.
+미등록 `SECURITY_MODULE_REQUIRED`도 이 표시로 매핑되므로 현재 registry 등록이나 module 수용의 증거가 아니다.
+HWP disabled/securityModuleVerified=false·COM/HWP launch attempt=false·reopen NOT_RUN을 유지했다.
+
+별도 source20e producer/sourcef464 native inspection의 일반324·장편2412 전체 TEXT PASS는
+[한컴 section14](HANCOM_AUTOMATION_VALIDATION.md#14-2026-10-02-hwpx-전체-text와-hwp-네트워크-gate)에 기록한다.
+이전 source90fe tiny HWP actual은 소유 한컴의 PUBLIC TCP peer1로 실패했고 terminalnull·inner forced cleanup 실패를
+보존한다. External postguard로 Registry32/64 등록값 부재·원복을 확인했지만 HWP 변환 성공은 없다.
+선택적 HWP는 **WITHHELD / NETWORK FAIL / DISABLED**이며 최종 e2 HWPX 성공과 구분한다.
+Sections27–32의 이전 revision PASS/FAIL과 미실행 범위는 그대로 보존한다. Native IME15항목·한컴
+layout/Automation 라이선스·변환/reopen acceptance는 사람의 확인 대기이며 public/paid/customer/installer 배포는 승인되지 않았다.
