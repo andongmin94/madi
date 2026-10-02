@@ -296,7 +296,10 @@ export function installSafeWindowClose(
         authorizedCloseTimeout = undefined;
       }
       window.removeListener("close", onClose);
-      if (!window.webContents.isDestroyed()) {
+      if (
+        !window.isDestroyed() &&
+        !window.webContents.isDestroyed()
+      ) {
         window.webContents.removeListener(
           "render-process-gone",
           onRendererGone

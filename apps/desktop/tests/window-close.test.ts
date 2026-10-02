@@ -27,11 +27,18 @@ class FakeWebContents extends EventEmitter {
 
 class FakeBrowserWindow extends EventEmitter {
   destroyed = false;
-  readonly webContents = new FakeWebContents();
+  private readonly retainedWebContents = new FakeWebContents();
   readonly closeEvents: FakeCloseEvent[] = [];
   readonly close = vi.fn(() => {
     this.emitClose();
   });
+
+  get webContents(): FakeWebContents {
+    if (this.destroyed) {
+      throw new Error("Object has been destroyed");
+    }
+    return this.retainedWebContents;
+  }
 
   isDestroyed(): boolean {
     return this.destroyed;
@@ -171,6 +178,31 @@ describe("safe window close", () => {
     expect(window.close).toHaveBeenCalledTimes(1);
 
     safeClose.dispose();
+  });
+
+  it.each([
+    { state: "pending renderer response", authorized: false },
+    { state: "authorized delayed close", authorized: true }
+  ])("disposes a destroyed window with a $state", ({ authorized }) => {
+    vi.useFakeTimers();
+    const window = new FakeBrowserWindow();
+    const safeClose = installSafeWindowClose(asBrowserWindow(window), 25);
+    window.once("closed", () => safeClose.dispose());
+    window.emitClose();
+    if (authorized) {
+      expect(safeClose.complete(true)).toBe(true);
+    }
+    const webContents = window.webContents;
+    window.destroyed = true;
+    webContents.destroyed = true;
+
+    expect(() => window.emit("closed")).not.toThrow();
+    expect(() => window.webContents).toThrow("Object has been destroyed");
+    expect(window.listenerCount("close")).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(safeClose.complete(true)).toBe(false);
+    vi.advanceTimersByTime(25 + SAFE_WINDOW_CLOSE_AUTHORIZATION_DELAY_MS);
+    expect(window.close).not.toHaveBeenCalled();
   });
 
   it("does not block a close after web contents is already destroyed", () => {
