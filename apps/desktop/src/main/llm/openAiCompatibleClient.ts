@@ -205,21 +205,24 @@ async function readResponseBytes(response: Response): Promise<Uint8Array> {
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
-  while (true) {
-    const result = await reader.read();
-    if (result.done) {
-      break;
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) {
+        break;
+      }
+      const chunk = result.value;
+      total += chunk.byteLength;
+      if (total > MAX_RESPONSE_BYTES) {
+        throw new LlmClientError(
+          "RESPONSE_TOO_LARGE",
+          "The provider response exceeds the safe limit."
+        );
+      }
+      chunks.push(chunk);
     }
-    const chunk = result.value;
-    total += chunk.byteLength;
-    if (total > MAX_RESPONSE_BYTES) {
-      await reader.cancel();
-      throw new LlmClientError(
-        "RESPONSE_TOO_LARGE",
-        "The provider response exceeds the safe limit."
-      );
-    }
-    chunks.push(chunk);
+  } finally {
+    reader.releaseLock();
   }
   const bytes = new Uint8Array(total);
   let offset = 0;
@@ -382,7 +385,6 @@ export async function invokeOpenAiCompatible(
       }
     );
     if (!response.ok) {
-      await readResponseBytes(response).catch(() => new Uint8Array());
       throw providerStatusError(response.status);
     }
     const payload = await parseProviderJson(response);
@@ -408,5 +410,6 @@ export async function invokeOpenAiCompatible(
   } finally {
     clearTimeout(timeout);
     options.signal?.removeEventListener("abort", onExternalAbort);
+    controller.abort();
   }
 }

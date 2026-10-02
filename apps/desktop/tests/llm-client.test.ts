@@ -247,6 +247,48 @@ describe("OpenAI-compatible madi LLM client", () => {
     });
   });
 
+  it.each([
+    [401, "AUTHENTICATION_FAILED"],
+    [429, "RATE_LIMITED"],
+    [503, "PROVIDER_UNAVAILABLE"]
+  ])("rejects HTTP %s without reading its error body", async (status, code) => {
+    const response = new Response("private provider diagnostic", { status: Number(status) });
+    let requestSignal: AbortSignal | null | undefined;
+    const fetchImpl = vi.fn<typeof fetch>(async (_url, init) => {
+      requestSignal = init?.signal;
+      return response;
+    });
+
+    await expect(invokeOpenAiCompatible({
+      config,
+      request: requestForScope(),
+      apiKey: "api-secret",
+      fetchImpl
+    })).rejects.toMatchObject({ code, status });
+
+    expect(response.bodyUsed).toBe(false);
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it("releases an oversized streamed response and aborts the owned request", async () => {
+    const response = new Response(new Uint8Array(4 * 1024 * 1024 + 1));
+    let requestSignal: AbortSignal | null | undefined;
+    const fetchImpl = vi.fn<typeof fetch>(async (_url, init) => {
+      requestSignal = init?.signal;
+      return response;
+    });
+
+    await expect(invokeOpenAiCompatible({
+      config,
+      request: requestForScope(),
+      apiKey: "api-secret",
+      fetchImpl
+    })).rejects.toMatchObject({ code: "RESPONSE_TOO_LARGE" });
+
+    expect(response.body?.locked).toBe(false);
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
   it("rejects an oversized response before parsing it", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       new Response("{}", {
