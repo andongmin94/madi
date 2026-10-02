@@ -6,7 +6,7 @@
   "main": "dist/electron/main/index.js",
   "scripts": {
     "build": "pnpm run build:main && pnpm run build:preload && pnpm run build:renderer",
-    "build:main": "tsc -p tsconfig.electron.json",
+    "build:main": "node -e \"require('node:fs').rmSync('dist/electron', { recursive: true, force: true })\" && tsc -p tsconfig.electron.json",
     "build:preload": "vite build -c vite.preload.config.ts",
     "build:renderer": "vite build",
     "dev": "pnpm run build:main && pnpm run build:preload && concurrently -k -s first \"tsc -p tsconfig.electron.json --watch --preserveWatchOutput\" \"vite --host 127.0.0.1\" \"wait-on tcp:127.0.0.1:5173 && cross-env MADI_RENDERER_URL=http://127.0.0.1:5173 electron .\"",
