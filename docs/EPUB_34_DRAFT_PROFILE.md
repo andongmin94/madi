@@ -26,7 +26,7 @@ EPUBCheck 5.3.0 보조 호환성 검사
 
 EPUBCheck 5.3.0은 3.4 전체 검증기가 아니다. 앱은 공통 subset을 bundled checker로 검사하며
 report의 `compatibilityOnly=true`와 `보조 호환성 검사` 경계를 보존한다.
-필수 `pnpm test:epubcheck` 합성 actual은 3.3 CHAPTER/SCENE output을 검증한다.
+필수 `npm run test:epubcheck` 합성 actual은 3.3 CHAPTER/SCENE output을 검증한다.
 새 runtime의 실제 실행은 해당 source 결과로 구분하며 전체 3.4 인증을 주장하지 않는다.
 
 ## 생성 subset

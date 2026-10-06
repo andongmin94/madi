@@ -19,14 +19,10 @@ const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(
   fileURLToPath(new URL("..", import.meta.url)),
 );
-const packageJsonLink = resolve(
-  repositoryRoot,
-  "apps",
-  "desktop",
-  "node_modules",
-  "electron",
-  "package.json",
+const desktopRequire = createRequire(
+  resolve(repositoryRoot, "apps", "desktop", "package.json"),
 );
+const packageJsonLink = desktopRequire.resolve("electron/package.json");
 const packageJsonPath = await realpath(packageJsonLink);
 const electronDirectory = dirname(packageJsonPath);
 if (!electronDirectory.startsWith(`${repositoryRoot}${sep}`)) {

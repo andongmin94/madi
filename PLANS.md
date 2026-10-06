@@ -1,9 +1,23 @@
 # madi 개발 계획
 
-갱신일: 2026-10-02. 작업 위치: `main`.
+갱신일: 2026-10-06. 작업 위치: `main`.
 현재 목표·진척·다음 작업·완료 조건은 이 문서에서만 관리한다.
 
-## 현재 작업 — 사용자 요청으로 중단
+## 현재 작업 — npm 전환 검증 중
+
+2026-10-06 사용자 요청에 따라 pnpm workspace를 npm `12.2.0`으로 전환한다.
+Node `26.3.1`·Rust `1.97.1`과 제품 의존 버전을 유지하며, 기존 lock의 버전·integrity를
+새 `package-lock.json`과 대조한다. 새 직접 의존이나 영구 overrides는 추가하지 않는다.
+설치·전체 Windows verify·독립 unpacked·repository·format·diff의 실제 실행 결과를 이 절에 기록한다.
+제품 기능, 과거 실행 증거와 사람의 IME·layout·배포 판정은 이번 전환 범위 밖이다.
+
+전환 준비 검증: 고정 Node `v26.3.1`/npm `12.2.0`의 `npm ci` 실제 exit0, 306개 설치,
+Electron `37.10.3` binary integrity 복구를 확인했다. 기존 registry `name@version`
+353쌍과 integrity는 추가0·제거0·변경0이며 직접 의존 버전도 모두 유지했다.
+`check:repository`는 Typie exact commit·9개 hash·경계 검사를, `format:check`는289개 파일의
+whitespace/JSON 검사를 실제 통과했다. 전체 격리 Windows 검증과 독립 unpacked 결과는 아직 PENDING이다.
+
+## 이전 제품 작업 — 사용자 요청으로 중단
 
 2026-10-02 퇴근을 위한 사용자 요청으로 작업을 중단했다. 소유 시험 job과 비활성 desktop은 정리했고, 자동 재개하지 않는다.
 최신 제품 코드 commit은 `cde2145cf7f3b7465939a99ed11a8b5d80a6bea2`다. HWP 제거와 정밀진단 개선은 구현했으며 제품 소스는 기준 e2 대비4,031줄 줄었다.
@@ -83,19 +97,19 @@ Remote HTTPS·인증키·OS clipboard·native IME 또는 AI 실행 전체 proces
 
 ## 검증과 기록 규칙
 
-AGENTS.md의 필수 명령을 고정 pnpm workspace로 실제 실행한다.
+AGENTS.md의 필수 명령을 고정 npm workspace로 실제 실행한다.
 
 ```powershell
-pnpm install --frozen-lockfile
-pnpm verify
-pnpm package:unpacked
-pnpm check:repository
-pnpm format:check
+npm ci
+npm run verify
+npm run package:unpacked
+npm run check:repository
+npm run format:check
 git diff --check
 ```
 
 전체 verify 안에서 실제 실행한 unpacked·repository·format은 그 run에 연결한다. 최종 문서 변경 뒤 repository·format·diff를 다시 확인했다.
-`.tools/run-pinned.ps1`, Node26.3.1/pnpm11.9.0/Rust1.97.1/MSVC·SDK를 사용한다.
+`.tools/run-pinned.ps1`, Node26.3.1/npm12.2.0/Rust1.97.1/MSVC·SDK를 사용한다.
 Rust jobs1·Vitest workers2·command process 한정 `CARGO_INCREMENTAL=0`을 유지한다.
 실행은 소유 비활성 Win32 desktop·BelowNormal·GPU 비활성화로 한 번에 하나씩 한다. 화면·포커스를 전환하지 않는다.
 명시적으로 호출한 사용자 소유 LLM 외 external runtime request는0이어야 한다. 원고·prompt·응답·키·private path를 로그나 공개 evidence에 남기지 않는다.

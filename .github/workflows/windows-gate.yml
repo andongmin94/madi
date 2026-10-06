@@ -52,25 +52,25 @@ jobs:
             throw "Pinned Cargo probe failed"
           }
 
-      - name: Activate pinned pnpm
+      - name: Activate pinned npm
         shell: pwsh
         run: |
-          npm install --global pnpm@11.9.0
+          npm install --global npm@12.2.0
           if ($LASTEXITCODE -ne 0) {
-            throw "Pinned pnpm installation failed"
+            throw "Pinned npm installation failed"
           }
           node --version
           if ($LASTEXITCODE -ne 0) {
             throw "Node.js version probe failed"
           }
-          pnpm --version
+          npm --version
           if ($LASTEXITCODE -ne 0) {
-            throw "Pinned pnpm version probe failed"
+            throw "Pinned npm version probe failed"
           }
 
       - name: Install pinned workspace
         shell: pwsh
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Prepare pinned EPUBCheck and JRE archives
         id: validation_tools
@@ -116,22 +116,22 @@ jobs:
       - name: Run full pinned verification
         id: full_verification
         shell: pwsh
-        run: pnpm verify
+        run: npm run verify
 
       - name: Build fresh unpacked package
         id: unpacked_package
         shell: pwsh
-        run: pnpm package:unpacked
+        run: npm run package:unpacked
 
       - name: Recheck repository contracts
         id: repository_recheck
         shell: pwsh
         run: |
-          pnpm check:repository
+          npm run check:repository
           if ($LASTEXITCODE -ne 0) {
             throw "Repository contract check failed"
           }
-          pnpm format:check
+          npm run format:check
           if ($LASTEXITCODE -ne 0) {
             throw "Format check failed"
           }
@@ -165,7 +165,7 @@ jobs:
           | Tool | Expected version |
           | --- | --- |
           | Node.js | 26.3.1 |
-          | pnpm | 11.9.0 |
+          | npm | 12.2.0 |
           | Rust | 1.97.1 |
 
           ### Step outcomes

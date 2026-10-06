@@ -34,7 +34,7 @@ logical order와 stable key의 SHA-256 12자리 suffix로 만든다.
 ## validation gate
 
 Export success는 Madi internal validator의 PASS, block/character completeness와 bundled
-EPUBCheck fatal/error 0을 요구한다. 별도 `pnpm test:epubcheck`는 exact EPUBCheck 5.3.0 distribution과 exact Temurin
+EPUBCheck fatal/error 0을 요구한다. 별도 `npm run test:epubcheck`는 exact EPUBCheck 5.3.0 distribution과 exact Temurin
 JRE 21.0.11+10의 size/SHA-256을 먼저 확인한 뒤, CHAPTER와 SCENE fixture를 각각 실제
 `.epub`으로 생성해 EPUBCheck JSON report의 fatal/error 0을 확인한다.
 

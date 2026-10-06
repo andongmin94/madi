@@ -112,7 +112,7 @@ preload 계약 또는 Story Bible canonical 저장 모델에 포함하지 않는
 - License text: packaged artifact의
   `resources/licenses/REACT-FLOW-MIT.txt`
 
-Version은 `apps/desktop/package.json`과 `pnpm-lock.yaml`에 exact `12.11.2`로 고정한다.
+Version은 `apps/desktop/package.json`과 `package-lock.json`에 exact `12.11.2`로 고정한다.
 React Flow `Node`, `Edge`, instance와 event는 renderer runtime 파생 표현이며 Rust core,
 SQLite, preload 공개 계약 또는 named snapshot payload에 포함하지 않는다. 저장 계약은
 JSON Canvas 1.0 기반 `MadiCanvasDocument`다.
@@ -143,7 +143,7 @@ entity/SCENE reference와 line style을 표현한다. 지원 범위와 strict-co
 
 해결된 전체 npm dependency graph와 integrity:
 
-- `pnpm-lock.yaml`
+- `package-lock.json`
 
 주요 runtime/build/test package:
 
@@ -162,18 +162,19 @@ entity/SCENE reference와 line style을 표현한다. 지원 범위와 strict-co
 | concurrently / cross-env / wait-on | development orchestration | MIT |
 
 위 표는 편의를 위한 요약이며 transitive dependency 전체 notice가 아니다. 설치된
-각 package의 실제 license metadata와 원문은 pnpm virtual store의 해당 package
-directory(`node_modules/.pnpm/.../node_modules/<package>/LICENSE*`)에서 확인한다.
-배포 artifact를 만들기 전 `pnpm-lock.yaml` 기준으로 production dependency 전체의
+각 package의 실제 license metadata와 원문은 npm이 설치한 해당 package
+directory(`node_modules/<package>/LICENSE*`, 중복 버전은 부모의 `node_modules/`)에서 확인한다.
+배포 artifact를 만들기 전 `package-lock.json` 기준으로 production dependency 전체의
 license/notice를 다시 생성·검토해야 한다.
 
 검토 보조 명령:
 
 ```powershell
-pnpm licenses list --prod
+npm ls --omit=dev --all
 ```
 
-이 명령의 출력은 현재 저장소에 별도 고지 파일로 고정돼 있지 않다.
+이 명령은 production dependency tree를 확인하는 보조 수단이며 license/notice 전체를
+생성하지 않는다. 출력은 현재 저장소에 별도 고지 파일로 고정돼 있지 않다.
 
 ## 주요 Rust dependency
 

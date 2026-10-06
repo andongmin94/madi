@@ -6,10 +6,10 @@ import { fileURLToPath } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const isWindows = process.platform === "win32";
-const command = isWindows ? process.env.ComSpec || "cmd.exe" : "pnpm";
+const command = isWindows ? process.env.ComSpec || "cmd.exe" : "npm";
 const args = isWindows
-  ? ["/d", "/s", "/c", "pnpm dev"]
-  : ["dev"];
+  ? ["/d", "/s", "/c", "npm run dev"]
+  : ["run", "dev"];
 const child = spawn(command, args, {
   cwd: repositoryRoot,
   env: {
@@ -42,7 +42,7 @@ async function waitForVite() {
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       throw new Error(
-        `pnpm dev exited before Vite became ready: ${output.slice(-2_000)}`,
+        `npm run dev exited before Vite became ready: ${output.slice(-2_000)}`,
       );
     }
     if (/Local:\s+http:\/\/127\.0\.0\.1:5173/i.test(plainOutput())) {
@@ -50,7 +50,7 @@ async function waitForVite() {
     }
     await wait(200);
   }
-  throw new Error(`pnpm dev did not become ready: ${output.slice(-2_000)}`);
+  throw new Error(`npm run dev did not become ready: ${output.slice(-2_000)}`);
 }
 
 function hasElectronDescendant(rootProcessId) {
@@ -87,18 +87,18 @@ try {
   await wait(5_000);
   if (child.exitCode !== null) {
     throw new Error(
-      `pnpm dev exited during the startup hold: ${output.slice(-2_000)}`,
+      `npm run dev exited during the startup hold: ${output.slice(-2_000)}`,
     );
   }
   if (!hasElectronDescendant(child.pid)) {
     throw new Error(
-      `pnpm dev did not launch Electron: ${output.slice(-2_000)}`,
+      `npm run dev did not launch Electron: ${output.slice(-2_000)}`,
     );
   }
   process.stdout.write(
     `${JSON.stringify(
       {
-        command: "pnpm dev",
+        command: "npm run dev",
         rustDebugBuild: /Finished `dev` profile/.test(output),
         viteDevelopmentServer: "http://127.0.0.1:5173",
         electronProcess: true,

@@ -16,7 +16,7 @@ Proprietary production distribution authorized: NO
 External pilot/customer binary distribution authorized: NO
 ```
 
-기술검증 성공, unpacked Windows package 생성 또는 `pnpm verify` 통과는 이 결정을
+기술검증 성공, unpacked Windows package 생성 또는 `npm run verify` 통과는 이 결정을
 대신하지 않는다. 기술 `GO`와 배포 license `GO`는 서로 독립된 gate다.
 
 ## 판단 대상인 현재 결합 구조
@@ -214,7 +214,7 @@ provenance도 다시 검토한다.
 - madi 자체 code는 현재 `UNLICENSED`이며 최종 root license가 없다.
 - Typie 외 npm, Rust, Electron, SQLite와 Nanum Gothic의 license/notice를
   release artifact 기준으로 다시 생성·검토해야 한다.
-- `pnpm-lock.yaml`과 `Cargo.lock`의 transitive dependency 전체가 현재
+- `package-lock.json`과 `Cargo.lock`의 transitive dependency 전체가 현재
   `THIRD_PARTY_NOTICES.md`의 요약 표만으로 완전히 고지된 것은 아니다.
 - code signing, installer EULA, privacy policy와 상표는 open-source license와
   별개의 release 항목이다.

@@ -109,6 +109,6 @@ Binary HWP conversion: OUT OF SCOPE
 
 ## 9. 판정 규칙
 
-Actual HWPX, block/character/scene-break coverage, development/unpacked Electron과 최종 pnpm
+Actual HWPX, block/character/scene-break coverage, development/unpacked Electron과 최종 npm
 gate가 모두 확인되기 전 Phase 1H 판정은 `WITHHELD`다. Malformed package, dangling reference,
 content loss 또는 atomic failure가 있으면 GO를 내리지 않는다.

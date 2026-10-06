@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import {
   cp,
@@ -21,12 +22,11 @@ const packageDirectory = resolve(outputRoot, "madi-win32-x64");
 const resourcesDirectory = resolve(packageDirectory, "resources");
 const appDirectory = resolve(resourcesDirectory, "app");
 const desktopDist = resolve(repositoryRoot, "apps", "desktop", "dist");
+const desktopRequire = createRequire(
+  resolve(repositoryRoot, "apps", "desktop", "package.json"),
+);
 const electronDist = resolve(
-  repositoryRoot,
-  "apps",
-  "desktop",
-  "node_modules",
-  "electron",
+  dirname(desktopRequire.resolve("electron/package.json")),
   "dist",
 );
 const sidecar = resolve(
@@ -304,24 +304,12 @@ await Promise.all([
     resolve(resourcesDirectory, "licenses", "NANUM_GOTHIC-OFL-1.1.txt"),
   ),
   cp(
-    resolve(
-      repositoryRoot,
-      "apps",
-      "desktop",
-      "node_modules",
-      "cytoscape",
-      "LICENSE",
-    ),
+    resolve(dirname(desktopRequire.resolve("cytoscape")), "..", "LICENSE"),
     resolve(resourcesDirectory, "licenses", "CYTOSCAPE-MIT.txt"),
   ),
   cp(
     resolve(
-      repositoryRoot,
-      "apps",
-      "desktop",
-      "node_modules",
-      "@xyflow",
-      "react",
+      dirname(desktopRequire.resolve("@xyflow/react/package.json")),
       "LICENSE",
     ),
     resolve(resourcesDirectory, "licenses", "REACT-FLOW-MIT.txt"),

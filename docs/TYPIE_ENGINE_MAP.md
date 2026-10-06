@@ -370,7 +370,7 @@ name, 정확한 commit, editor schema version을 검사한다. 불일치하면 s
 
 이번 환경에서 실제 필요했던 항목은 다음과 같다.
 
-- Node.js 및 pnpm
+- Node.js 및 npm
 - Rust stable toolchain
 - `wasm32-unknown-unknown` target
 - Windows MSVC linker가 있는 Visual Studio/Build Tools 환경

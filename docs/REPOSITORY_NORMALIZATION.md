@@ -15,28 +15,27 @@ The repository keeps two complementary, read-only GitHub Actions workflows:
 .github/workflows/windows-gate.yml
 ```
 
-Both run on pushes to `main` and may also be dispatched manually. `quality.yml` checks out the exact commit and pinned Typie submodule, activates the pinned Node/pnpm toolchain, installs the frozen workspace without runtime postinstall scripts, then runs:
+Both run on pushes to `main` and may also be dispatched manually. `quality.yml` checks out the exact commit and pinned Typie submodule, activates the pinned Node/npm toolchain, installs the locked workspace without runtime postinstall scripts, then runs:
 
 ```text
-pnpm run check:toolchain
-pnpm run check:repository
-pnpm run format:check
+npm run check:toolchain
+npm run check:repository
+npm run format:check
 git diff --check
-pnpm --filter @madi/desktop typecheck
+npm run typecheck --workspace @madi/desktop
 focused transport/LLM Vitest files
 ```
 
 The focused Vitest set covers the local-core restart barrier, atomic-output shutdown, EPUB/HWPX process boundaries, and the narrow LLM transport/IPC paths that are safe to exercise without launching Electron. The install intentionally uses `--ignore-scripts`; this quality gate therefore does not provision or validate an Electron runtime.
 
-This cross-platform gate is deliberately smaller than the Windows product-verification contract. A green `quality.yml` result means the repository/static contracts, desktop TypeScript typecheck, and the listed focused tests passed on that GitHub-hosted Linux runner. It does **not** prove Windows native IME behavior, Electron runtime or packaged behavior, HWPX actuals, runtime EPUBCheck packaging, or the full root `pnpm verify` path.
+This cross-platform gate is deliberately smaller than the Windows product-verification contract. A green `quality.yml` result means the repository/static contracts, desktop TypeScript typecheck, and the listed focused tests passed on that GitHub-hosted Linux runner. It does **not** prove Windows native IME behavior, Electron runtime or packaged behavior, HWPX actuals, runtime EPUBCheck packaging, or the full root `npm run verify` path.
 
-`windows-gate.yml` provisions pinned Node/pnpm and Rust on Windows,
+`windows-gate.yml` provisions pinned Node/npm and Rust on Windows,
 then invokes the full verification and unpacked-package path. Commit `a0c1366` adds official
 EPUBCheck/JRE archive preparation with the existing size/hash pins and an always-written summary
-that identifies the source SHA and actual step outcomes. It also installs pnpm `11.9.0` explicitly,
-because Node 26 does not bundle Corepack. These changes have passed local script syntax and pin
-consistency checks; neither workflow has been run from this local session. Runner execution remains
-pending in [PLANS.md](../PLANS.md).
+that identifies the source SHA and actual step outcomes. The current workflows install npm `12.2.0` explicitly and use the committed `package-lock.json`
+with `npm ci`. Local verification evidence and runner execution status are recorded separately
+in [PLANS.md](../PLANS.md); editing a workflow is not evidence of a GitHub-hosted run.
 
 The former `windows-private-verify.yml` workflow was intentionally removed. Do not recreate a self-modifying or repository-writing workflow merely to obtain a green status. Full Windows verification remains an exact-commit product gate and must be run in a Windows environment with the pinned toolchain and required local validation dependencies.
 

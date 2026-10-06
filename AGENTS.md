@@ -49,16 +49,16 @@ Before starting a broader product phase or a large structural refactor:
 
 ## Required verification
 
-Use the pinned pnpm workspace; do not introduce `package-lock.json` or switch package managers.
+Use the pinned npm 12.2.0 workspace and the committed `package-lock.json`. Install with `npm ci`; do not introduce another package manager or lockfile.
 
 At minimum, run:
 
 ```powershell
-pnpm install --frozen-lockfile
-pnpm verify
-pnpm package:unpacked
-pnpm check:repository
-pnpm format:check
+npm ci
+npm run verify
+npm run package:unpacked
+npm run check:repository
+npm run format:check
 git diff --check
 ```
 

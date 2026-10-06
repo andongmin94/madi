@@ -272,7 +272,7 @@ snapshot codec, IME, render와 scene-break 의미를 함께 바꾸는 compatibil
 작업이다.
 
 1. 현재 exact commit, runtime hash와 과거 `.madi`/snapshot fixture corpus를
-   보존하고 `pnpm verify` baseline을 기록한다.
+   보존하고 `npm run verify` baseline을 기록한다.
 2. 후보 commit을 40자 hash로 지정한다. branch HEAD를 pin으로 사용하지 않는다.
 3. 후보 source의 license/notice, Cargo feature, generated `.d.ts`, browser
    binding, codec과 schema diff를 검토한다.

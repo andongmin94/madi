@@ -91,7 +91,7 @@ LLM 추출, cloud/sync, collaboration, mobile/web, 장면별 상세 diff와 공�
 ### 1. 앱 실행
 
 ```powershell
-pnpm dev
+npm run dev
 ```
 
 Typie WASM이 준비되면 상단에서 `새 프로젝트` 또는 `.madi 열기`를 사용할 수 있다.
@@ -535,7 +535,7 @@ script는 clean/pinned submodule을 확인하고
 - Windows 10/11 x64
 - Git
 - Node.js `26.3.1` (`.node-version`)
-- pnpm `11.9.0` (`package.json#packageManager`)
+- npm `12.2.0` (`package.json#packageManager`)
 - Rust `1.97.1` MSVC (`rust-toolchain.toml`)
 - Rust targets `x86_64-pc-windows-msvc`, `wasm32-unknown-unknown`
 - Visual Studio 2022 Build Tools의 C++ desktop workload와 Windows SDK
@@ -543,27 +543,27 @@ script는 clean/pinned submodule을 확인하고
 EPUB 검사 자산은 `.tools/phase1g-validation/`에 `epubcheck-5.3.0.zip`과
 `temurin-jre-21.0.11+10.zip`으로 준비한다. 공식 다운로드 URL은
 [Windows gate의 validation tools 단계](.github/workflows/windows-gate.yml), exact size/hash는
-[검증 전략](docs/EPUB_VALIDATION_STRATEGY.md)을 따른다. `pnpm prepare:epubcheck`가 전체 archive와
+[검증 전략](docs/EPUB_VALIDATION_STRATEGY.md)을 따른다. `npm run prepare:epubcheck`가 전체 archive와
 추출 tree를 검증한다. Build/dev/start와 package 명령도 이 준비를 사용하며, 누락·변조된
 도구를 system Java나 자동 download로 우회하지 않는다.
 
-Windows에서 pnpm CLI를 한 번만 준비한다. 이 명령은 전역 CLI 설치에만 npm을
-사용하며, 저장소 설치·build·test·package는 계속 pnpm만 사용한다.
+Node.js `26.3.1`에서 npm CLI `12.2.0`을 준비한다. 저장소 설치·build·test·package는
+고정 npm workspace와 `package-lock.json`을 사용한다.
 
 ```powershell
-npm install --global pnpm@11.9.0
+npm install --global npm@12.2.0
 ```
 
 설치:
 
 ```powershell
 node --version
-pnpm --version
+npm --version
 rustc +1.97.1-x86_64-pc-windows-msvc --version
 
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\bootstrap-typie.ps1
-pnpm install --frozen-lockfile
+npm ci
 ```
 
 의존성 최초 설치와 Typie checkout에는 network 또는 cache가 필요할 수 있다. 설치
@@ -574,45 +574,45 @@ pnpm install --frozen-lockfile
 
 ```powershell
 # 대화형 개발 실행
-pnpm dev
+npm run dev
 
 # build
-pnpm build
+npm run build
 
 # 집중 검증
-pnpm run test:publication
-pnpm run test:hwpx
-pnpm run test:atomic-output
-pnpm run test:core
-pnpm run typecheck
-pnpm run test:desktop
-pnpm run test:phase1a
-pnpm run test:phase1b
-pnpm run test:phase1c
-pnpm run test:integration
-pnpm run fixture:phase1f-reader
+npm run test:publication
+npm run test:hwpx
+npm run test:atomic-output
+npm run test:core
+npm run typecheck
+npm run test:desktop
+npm run test:phase1a
+npm run test:phase1b
+npm run test:phase1c
+npm run test:integration
+npm run fixture:phase1f-reader
 
 # 최종 gate
-pnpm verify
-pnpm package:unpacked
-pnpm package:portable
-pnpm prepare:manual-validation
-pnpm test:electron
-pnpm test:package
-pnpm test:bundle
-pnpm check:repository
-pnpm format:check
+npm run verify
+npm run package:unpacked
+npm run package:portable
+npm run prepare:manual-validation
+npm run test:electron
+npm run test:package
+npm run test:bundle
+npm run check:repository
+npm run format:check
 
 # 대화형 개발 실행은 최종 gate와 별도
-pnpm test:dev
+npm run test:dev
 ```
 
-`pnpm verify`는 toolchain/repository/format/typecheck, renderer/Rust Publication/EPUB/HWPX test,
+`npm run verify`는 toolchain/repository/format/typecheck, renderer/Rust Publication/EPUB/HWPX test,
 atomic-output helper build/test, pinned EPUBCheck fixture와 runtime,
 실제 Typie probe, `.madi` integration, production build, build 뒤 lazy bundle artifact
 test, 일반·scale development Electron과 fresh unpacked packaged smoke를 순서대로
 실행한다. Phase 1F smoke는 일반·675,000자 장편 Reader fixture를 각각 5회 측정하고 새
-process 복원까지 확인한다. `pnpm test:dev`는 interactive Vite/Electron startup 성격
+process 복원까지 확인한다. `npm run test:dev`는 interactive Vite/Electron startup 성격
 때문에 별도다.
 
 unpacked 출력:
@@ -628,10 +628,10 @@ output/madi-win32-x64/resources/validation/
 output/madi-win32-x64/resources/licenses/
 ```
 
-`pnpm package:portable`은 새 unpacked build를 ZIP으로 만들고 fresh extraction의 모든
+`npm run package:portable`은 새 unpacked build를 ZIP으로 만들고 fresh extraction의 모든
 path·size·SHA-256을 원본과 대조한다. ZIP·manifest·checksum·실행/수동 업데이트 안내는
 `output/releases/`에 source별로 보관하며 기존 release를 덮어쓰지 않는다. 앱을 실행하거나
-설치하지 않는다. `pnpm prepare:manual-validation`은 별도 시험 profile 안내·합성 한글
+설치하지 않는다. `npm run prepare:manual-validation`은 별도 시험 profile 안내·합성 한글
 5,000자·미검증 결과 template을 준비하고 창을 열지 않는다. 실제 IME PASS는 사람의 검증 결과로만 기록한다.
 
 ### 검증 결과 확인
@@ -649,7 +649,7 @@ HWPX 실행 근거는 [Phase 1H 결과](docs/PHASE_1H_RESULT.md), EPUB 실행 �
 core build와 help:
 
 ```powershell
-pnpm run build:core
+npm run build:core
 $core = ".\crates\madi-core\target\debug\madi-core.exe"
 & $core --help
 & $core create-tree-node --help
