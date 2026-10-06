@@ -534,7 +534,7 @@ script는 clean/pinned submodule을 확인하고
 
 - Windows 10/11 x64
 - Git
-- Node.js `26.3.1` (`.node-version`)
+- Node.js `24.21.0` LTS (`.node-version`)
 - npm `12.2.0` (`package.json#packageManager`)
 - Rust `1.97.1` MSVC (`rust-toolchain.toml`)
 - Rust targets `x86_64-pc-windows-msvc`, `wasm32-unknown-unknown`
@@ -547,7 +547,7 @@ EPUB 검사 자산은 `.tools/phase1g-validation/`에 `epubcheck-5.3.0.zip`과
 추출 tree를 검증한다. Build/dev/start와 package 명령도 이 준비를 사용하며, 누락·변조된
 도구를 system Java나 자동 download로 우회하지 않는다.
 
-Node.js `26.3.1`에서 npm CLI `12.2.0`을 준비한다. 저장소 설치·build·test·package는
+Node.js `24.21.0` LTS에서 npm CLI `12.2.0`을 준비한다. 저장소 설치·build·test·package는
 고정 npm workspace와 `package-lock.json`을 사용한다.
 
 ```powershell

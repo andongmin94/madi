@@ -164,7 +164,7 @@ jobs:
 
           | Tool | Expected version |
           | --- | --- |
-          | Node.js | 26.3.1 |
+          | Node.js | 24.21.0 |
           | npm | 12.2.0 |
           | Rust | 1.97.1 |
 

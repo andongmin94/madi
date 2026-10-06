@@ -1,4 +1,4 @@
-const EXPECTED_NODE = "v26.3.1";
+const EXPECTED_NODE = "v24.21.0";
 const EXPECTED_NPM = "12.2.0";
 
 const packageManagerUserAgent =

@@ -3,7 +3,21 @@
 갱신일: 2026-10-06. 작업 위치: `main`.
 현재 목표·진척·다음 작업·완료 조건은 이 문서에서만 관리한다.
 
-## 현재 작업 — npm 전환 완료
+## 현재 작업 — Node 24.21.0 LTS 전환 완료
+
+2026-10-06 사용자 요청에 따라 저장소 Node pin과 실행 wrapper를 `24.21.0` LTS로 바꿨다.
+`.node-version`·exact toolchain checker·CI의 expected version과 현재 개발 문서를 함께 맞췄다.
+저장소 npm `12.2.0`의 지원 범위 `^22.22.2 || ^24.15.0 || >=26.0.0`에 포함되는 버전이다.
+제품 의존·lock·Rust·vendor와 이전 source의 실행 증거는 바꾸지 않았다.
+이번 확인 범위는 실제 runtime/toolchain·repository·format·typecheck와 desktop JavaScript build다.
+실제 Node `v24.21.0`/npm `12.2.0` exact toolchain, Typie exact commit·9개 hash·repository 경계,
+290개 파일의 format/JSON, desktop typecheck와 `npm run build --workspace @madi/desktop`를 모두 exit0으로 확인했다.
+Workspace build는 JavaScript main/preload/renderer만 실행했다. `package-lock.json` SHA256은
+`e101ae75fd0210d7687652d18c2e4ff8d0150bfe93df14b144c2ce781e4e7b10`으로 그대로다.
+전체 verify·Rust 재빌드·제품 package/dev smoke는 반복하지 않았다. 이전 Node26.3.1의 제품 실행 증거를
+새 Node24의 전체 runtime 결과로 표현하지 않는다.
+
+## 이전 환경 작업 — npm 전환 완료
 
 2026-10-06 사용자 요청에 따라 pnpm workspace를 npm `12.2.0`으로 전환했다.
 Node `26.3.1`·Rust `1.97.1`과 제품 의존 버전을 유지하며, 기존 lock의 버전·integrity를
@@ -149,7 +163,7 @@ git diff --check
 ```
 
 전체 verify 안에서 실제 실행한 unpacked·repository·format은 그 run에 연결한다. 최종 문서 변경 뒤 repository·format·diff를 다시 확인했다.
-`.tools/run-pinned.ps1`, Node26.3.1/npm12.2.0/Rust1.97.1/MSVC·SDK를 사용한다.
+`.tools/run-pinned.ps1`, Node24.21.0 LTS/npm12.2.0/Rust1.97.1/MSVC·SDK를 사용한다.
 Rust jobs1·Vitest workers2·command process 한정 `CARGO_INCREMENTAL=0`을 유지한다.
 실행은 소유 비활성 Win32 desktop·BelowNormal·GPU 비활성화로 한 번에 하나씩 한다. 화면·포커스를 전환하지 않는다.
 명시적으로 호출한 사용자 소유 LLM 외 external runtime request는0이어야 한다. 원고·prompt·응답·키·private path를 로그나 공개 evidence에 남기지 않는다.
