@@ -3,19 +3,34 @@
 갱신일: 2026-10-06. 작업 위치: `main`.
 현재 목표·진척·다음 작업·완료 조건은 이 문서에서만 관리한다.
 
-## 현재 작업 — npm 전환 검증 중
+## 현재 작업 — npm 전환 완료
 
-2026-10-06 사용자 요청에 따라 pnpm workspace를 npm `12.2.0`으로 전환한다.
+2026-10-06 사용자 요청에 따라 pnpm workspace를 npm `12.2.0`으로 전환했다.
 Node `26.3.1`·Rust `1.97.1`과 제품 의존 버전을 유지하며, 기존 lock의 버전·integrity를
 새 `package-lock.json`과 대조한다. 새 직접 의존이나 영구 overrides는 추가하지 않는다.
-설치·전체 Windows verify에 포함된 unpacked/fresh 시험·추가 dev 시작 시험·repository·format·diff의 실제 실행 결과를 이 절에 기록한다.
+설치·빌드·개발/packaged 시험·dev 시작 시험·repository·format·diff의 실제 실행 결과를 이 절에 기록한다.
 제품 기능, 과거 실행 증거와 사람의 IME·layout·배포 판정은 이번 전환 범위 밖이다.
 
 전환 준비 검증: 고정 Node `v26.3.1`/npm `12.2.0`의 `npm ci` 실제 exit0, 306개 설치,
 Electron `37.10.3` binary integrity 복구를 확인했다. 기존 registry `name@version`
 353쌍과 integrity는 추가0·제거0·변경0이며 직접 의존 버전도 모두 유지했다.
-`check:repository`는 Typie exact commit·9개 hash·경계 검사를, `format:check`는289개 파일의
-whitespace/JSON 검사를 실제 통과했다. 전체 격리 Windows 검증과 새 unpacked/fresh 결과는 아직 PENDING이다.
+고정 npm 실행 wrapper·workspaces·CI·현재 문서와 Electron의 npm hoist 경로를 전환하고,
+기존 pnpm lock/workspace·실행 경로를 제거했다. 검증 candidate는 `c65b09a8d77b0f7b90042f6dcc892935fd64ed60`이다.
+이 source의 분할 실행에서 다음 범위를 실제 통과했다.
+
+- Full run5의 개발 경로: Desktop102파일/710시험·bundle4시험, Rust/Typie/integration/build와 개발 Electron Basic·D·E·F·G·H.
+- `npm run test:package` 단독 실행: pretest의 fixture3종·release/unpacked 빌드와 fresh packaged Basic·D·E·F·G·H, 816.327초/exit0.
+- `npm run test:dev` 단독 실행: 22.324초/exit0, 실제 소유 browser1개와 `--disable-gpu` argv 관측.
+
+모든 성공 실행은 같은 clean candidate의 전후 SHA를 확인했다. 패키지 단독 실행의 소유 desktop은1599/1599회 비활성,
+입력 이름 unknown0, 종료 전 fresh UOI_IO 비활성 조회1회였고 job empty·handle/desktop close·desktop 소멸을 확인했다.
+검증된 `output/madi-win32-x64`의554개 파일/549,229,982byte를 thread work에 보존하고,
+각 상대경로의 SHA256·size가 원본과 전부 일치하는 provenance를 기록했다. 이 배포본은 추가 재빌드하지 않는다.
+사람의 IME·layout·배포 승인이나 이전 제품 작업의 PRIVATE GO는 이번 근거로 확대하지 않는다.
+
+단일 `npm run verify`의 aggregate PASS는 없다. 사용자가 npm 교체 범위를 다시 명확히 한 뒤
+반복 전체 제품 검증을 중단했으며, 같은 source의 위 분할 검증 결과로 이번 관리자 전환을 마친다.
+전체 실행의 실패·부분 증거를 성공으로 합산하거나 없는 command-exit/sourceAfter 값을 채우지 않는다.
 
 첫 전환 candidate `fb1a73bf86ceb1d3314f1bcaba8123072517d287`의 부분 실행 기록은 보존했다.
 Full run1은789.117초에 OS의 `Screen-saver` 입력 desktop 관측으로 기존 Default-only guard가 종료했다.
@@ -25,8 +40,22 @@ Full run2는124.429초에 Phase1E fixture의 I/O/SQLite class 오류로 exit1이
 같은 clean source의 해당 fixture 단독 재현은26.056초/exit0이었다. 오래된 UUID 임시 파일을 원인으로 단정하거나 제품 구현을 바꾸지 않았다.
 Full run3에서는 Phase1E fixture와 Reader fixture16회 RPC가 통과했으나 G/H 외 Electron의 GPU-off 설정 누락을 확인해
 1255.094초에 소유 child/job만 안전하게 종료했다. 이 실행도 전체 PASS가 아니다. 없는 command-exit/sourceAfter 값을 성공으로 채우지 않는다.
-기존 G/H와 같은 isolated-only `--disable-gpu` 설정을 basic/D·E·F의 공통 smoke와 dev/start 공식 Electron CLI 실행에 적용하고,
-실제 Chromium switch 또는 소유 browser argv를 검사한다. 제품 main·의존·lock·기존 검사 threshold는 바꾸지 않는다.
+기존 G/H와 같은 isolated-only `--disable-gpu` 설정을 basic/D·E·F의 공통 smoke와 dev/start 공식 Electron CLI 실행에 적용했고,
+실제 Chromium switch 또는 소유 browser argv를 검사했다. 제품 main·의존·lock·기존 검사 threshold는 바꾸지 않았다.
+Candidate c65의 Full run4는1017.869초에 기존 helper의 입력 이름 native5 실패로 종료했다.
+이름 관측과 별개인 소유 desktop UOI_IO 비활성 근거가 있었으나 이 과거 실행을 PASS로 승격하지 않았다.
+현재 ignored helper hash는 `9B8DFA295DE998D52EEB9B3713FBAF1326EB92E3EA1479F89252C872B1ED7CB5`다.
+이름 native5일 때에만 같은 회차 live owned handle의 fresh UOI_IO 성공·비활성을 별도로 요구한다.
+초기 identity·known unsupported name·다른 native 오류·owned flag 읽기 실패/true·source·exit·GPU·job·정리 요구는 유지한다.
+Full run5는2874.782초에 prepackage PhaseD fixture의 Rust bin 재링크 `LNK1105`/Win321224로 exit1이었다.
+Mapping 주체/근본원인은 미확정이며 같은 source의 PhaseD 단독 실행은 실제 재링크 후4.513초/exit0이었다.
+제품·Rust·lifecycle 설정을 바꾸지 않고 이어진 위 단독 package 전체 실행을 통과했다.
+Full run6은1252.694초에 사용자 범위 재확인에 따른 반복 검증 중단으로 소유 child/job만 정리했다.
+이름 native5 unavailable9회는 raw Default/allowedName=null·availability=false로 보존했고,
+같은 회차 fresh owned proof9회와 primary2449/2449회 비활성, 종료 전 fresh 조회·job empty·desktop 소멸을 확인했다.
+Raw launcher 결과는 command-exit가 없는 `LAUNCHER_FAILED`이며 별도 intentional-abort 근거를 보존했다.
+이 실행도 전체 PASS가 아니다. 최종 `check:repository`는 Typie exact commit·9개 hash·경계 검사를,
+`format:check`는290개 파일의 whitespace/JSON 검사를 실제 통과했다. `git diff --check`도 exit0이다.
 
 ## 이전 제품 작업 — 사용자 요청으로 중단
 
