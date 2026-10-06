@@ -22,6 +22,8 @@ const desktopRequire = createRequire(
 );
 const packagedExecutable = process.env.MADI_PACKAGED_EXE?.trim();
 const packaged = Boolean(packagedExecutable);
+const isolatedDesktop = Boolean(process.env.MADI_ISOLATED_GATE_RUN_DIR?.trim());
+const isolatedDesktopArguments = isolatedDesktop ? ["--disable-gpu"] : [];
 const reloadProbe = process.env.MADI_PHASE1E_RELOAD_PROBE === "1";
 const electronExecutable = packagedExecutable || desktopRequire("electron");
 const executableName = process.platform === "win32" ? "madi-core.exe" : "madi-core";
@@ -198,7 +200,9 @@ async function launchApplication({ projectPath, canvasPath, userDataPath }) {
   const userDataArgument = `--user-data-dir=${userDataPath}`;
   const application = await electron.launch({
     executablePath: electronExecutable,
-    args: packaged ? [userDataArgument] : [".", userDataArgument],
+    args: packaged
+      ? [...isolatedDesktopArguments, userDataArgument]
+      : [".", ...isolatedDesktopArguments, userDataArgument],
     cwd: packaged ? dirname(electronExecutable) : desktopDirectory,
     env: {
       ...process.env,
@@ -262,8 +266,13 @@ async function launchApplication({ projectPath, canvasPath, userDataPath }) {
   const runtime = await application.evaluate(({ app }) => ({
     isPackaged: app.isPackaged,
     appName: app.getName(),
+    disableGpuSwitchObserved: app.commandLine.hasSwitch("disable-gpu"),
     userDataPath: app.getPath("userData"),
   }));
+  verify(
+    runtime.disableGpuSwitchObserved === isolatedDesktop,
+    "phase1e-runtime-isolated-desktop-rendering",
+  );
   page.on("pageerror", (error) => {
     const reactCode = error.message.match(/Minified React error #(\d+)/u)?.[1];
     pageErrors.push({

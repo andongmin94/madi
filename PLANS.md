@@ -8,14 +8,25 @@
 2026-10-06 사용자 요청에 따라 pnpm workspace를 npm `12.2.0`으로 전환한다.
 Node `26.3.1`·Rust `1.97.1`과 제품 의존 버전을 유지하며, 기존 lock의 버전·integrity를
 새 `package-lock.json`과 대조한다. 새 직접 의존이나 영구 overrides는 추가하지 않는다.
-설치·전체 Windows verify·독립 unpacked·repository·format·diff의 실제 실행 결과를 이 절에 기록한다.
+설치·전체 Windows verify에 포함된 unpacked/fresh 시험·추가 dev 시작 시험·repository·format·diff의 실제 실행 결과를 이 절에 기록한다.
 제품 기능, 과거 실행 증거와 사람의 IME·layout·배포 판정은 이번 전환 범위 밖이다.
 
 전환 준비 검증: 고정 Node `v26.3.1`/npm `12.2.0`의 `npm ci` 실제 exit0, 306개 설치,
 Electron `37.10.3` binary integrity 복구를 확인했다. 기존 registry `name@version`
 353쌍과 integrity는 추가0·제거0·변경0이며 직접 의존 버전도 모두 유지했다.
 `check:repository`는 Typie exact commit·9개 hash·경계 검사를, `format:check`는289개 파일의
-whitespace/JSON 검사를 실제 통과했다. 전체 격리 Windows 검증과 독립 unpacked 결과는 아직 PENDING이다.
+whitespace/JSON 검사를 실제 통과했다. 전체 격리 Windows 검증과 새 unpacked/fresh 결과는 아직 PENDING이다.
+
+첫 전환 candidate `fb1a73bf86ceb1d3314f1bcaba8123072517d287`의 부분 실행 기록은 보존했다.
+Full run1은789.117초에 OS의 `Screen-saver` 입력 desktop 관측으로 기존 Default-only guard가 종료했다.
+소유 desktop은 모든 관측에서 비활성이었다. 소유 desktop 비활성·알 수 없는 입력 실패·소스 동일성·정리 조건을
+유지하면서 실제 `Default`/`Screen-saver` 이름을 허용하는 ignored helper로 바꿨다. 실제 Default 관측값과 허용 정책값은 분리한다.
+Full run2는124.429초에 Phase1E fixture의 I/O/SQLite class 오류로 exit1이었다. 하위원인은 미확정이며,
+같은 clean source의 해당 fixture 단독 재현은26.056초/exit0이었다. 오래된 UUID 임시 파일을 원인으로 단정하거나 제품 구현을 바꾸지 않았다.
+Full run3에서는 Phase1E fixture와 Reader fixture16회 RPC가 통과했으나 G/H 외 Electron의 GPU-off 설정 누락을 확인해
+1255.094초에 소유 child/job만 안전하게 종료했다. 이 실행도 전체 PASS가 아니다. 없는 command-exit/sourceAfter 값을 성공으로 채우지 않는다.
+기존 G/H와 같은 isolated-only `--disable-gpu` 설정을 basic/D·E·F의 공통 smoke와 dev/start 공식 Electron CLI 실행에 적용하고,
+실제 Chromium switch 또는 소유 browser argv를 검사한다. 제품 main·의존·lock·기존 검사 threshold는 바꾸지 않는다.
 
 ## 이전 제품 작업 — 사용자 요청으로 중단
 

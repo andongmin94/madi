@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const isWindows = process.platform === "win32";
+const isolatedDesktop = Boolean(process.env.MADI_ISOLATED_GATE_RUN_DIR?.trim());
 const command = isWindows ? process.env.ComSpec || "cmd.exe" : "npm";
 const args = isWindows
   ? ["/d", "/s", "/c", "npm run dev"]
@@ -53,23 +54,31 @@ async function waitForVite() {
   throw new Error(`npm run dev did not become ready: ${output.slice(-2_000)}`);
 }
 
-function hasElectronDescendant(rootProcessId) {
+function observeElectronDescendant(rootProcessId) {
   if (!isWindows) {
-    return true;
+    return {
+      electronProcess: true,
+      browserProcessCount: null,
+      disableGpuSwitchObserved: null,
+    };
   }
   const script = [
     `$rootProcessId = ${rootProcessId}`,
     "$pending = [System.Collections.Generic.Queue[int]]::new()",
     "$pending.Enqueue($rootProcessId)",
-    "$found = $false",
+    "$browserCount = 0",
+    "$disabledBrowserCount = 0",
     "while ($pending.Count -gt 0) {",
     "  $parent = $pending.Dequeue()",
     "  foreach ($process in Get-CimInstance Win32_Process -Filter \"ParentProcessId=$parent\") {",
-    "    if ($process.Name -ieq 'electron.exe') { $found = $true }",
+    "    if ($process.Name -ieq 'electron.exe' -and $process.CommandLine -notmatch '--type=') {",
+    "      $browserCount++",
+    "      if ($process.CommandLine -match '(?:^|\\s)--disable-gpu(?:\\s|$)') { $disabledBrowserCount++ }",
+    "    }",
     "    $pending.Enqueue([int]$process.ProcessId)",
     "  }",
     "}",
-    "Write-Output $found",
+    "[pscustomobject]@{ electronProcess = ($browserCount -gt 0); browserProcessCount = $browserCount; disableGpuSwitchObserved = if ($browserCount -gt 0) { $disabledBrowserCount -eq $browserCount } else { $null } } | ConvertTo-Json -Compress",
   ].join("\n");
   const result = execFileSync(
     "powershell.exe",
@@ -79,7 +88,7 @@ function hasElectronDescendant(rootProcessId) {
       windowsHide: true,
     },
   );
-  return result.trim().toLocaleLowerCase() === "true";
+  return JSON.parse(result);
 }
 
 try {
@@ -90,10 +99,14 @@ try {
       `npm run dev exited during the startup hold: ${output.slice(-2_000)}`,
     );
   }
-  if (!hasElectronDescendant(child.pid)) {
+  const electronRuntime = observeElectronDescendant(child.pid);
+  if (!electronRuntime.electronProcess) {
     throw new Error(
       `npm run dev did not launch Electron: ${output.slice(-2_000)}`,
     );
+  }
+  if (isolatedDesktop && electronRuntime.disableGpuSwitchObserved !== true) {
+    throw new Error("npm run dev isolated Electron browser did not disable GPU");
   }
   process.stdout.write(
     `${JSON.stringify(
@@ -101,7 +114,7 @@ try {
         command: "npm run dev",
         rustDebugBuild: /Finished `dev` profile/.test(output),
         viteDevelopmentServer: "http://127.0.0.1:5173",
-        electronProcess: true,
+        ...electronRuntime,
         startupHoldSeconds: 5,
       },
       null,
