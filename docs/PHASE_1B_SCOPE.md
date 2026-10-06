@@ -164,10 +164,10 @@ compatibility는 [`MADI_FILE_FORMAT_V1_DRAFT.md`](MADI_FILE_FORMAT_V1_DRAFT.md)�
 기록하지 않는다.
 
 ```powershell
-pnpm verify
-pnpm package:unpacked
-pnpm test:electron
-pnpm test:package
+npm run verify
+npm run package:unpacked
+npm run test:electron
+npm run test:package
 ```
 
 ## 5. 이번 단계에서 제외한 것

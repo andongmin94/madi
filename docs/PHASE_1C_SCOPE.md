@@ -135,12 +135,12 @@ SCENE 선택 때 원고 mode에 `설정 연결` inspector를 제공하고, Story
 완료 gate는 다음과 같다.
 
 ```powershell
-pnpm verify
-pnpm package:unpacked
-pnpm test:electron
-pnpm test:package
-pnpm check:repository
-pnpm format:check
+npm run verify
+npm run package:unpacked
+npm run test:electron
+npm run test:package
+npm run check:repository
+npm run format:check
 ```
 
 ## 11. 제외 범위

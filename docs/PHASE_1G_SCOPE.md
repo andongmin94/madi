@@ -108,7 +108,7 @@ Snapshot payload 5에는 publication metadata, 하나 이하의 COVER asset과 E
 - metadata/preset/cover와 snapshot 5 close/reopen/restore
 - 일반·675,000자 장편 actual과 cancel/no-clobber
 - development 및 fresh unpacked Electron actual
-- `pnpm verify`, package, bundle, repository와 format gate
+- `npm run verify`, package, bundle, repository와 format gate
 
 ## 8. 제외 범위
 

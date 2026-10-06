@@ -5,6 +5,10 @@
 
 ## 현재 작업 — Node 24.21.0 LTS 전환 완료
 
+현재 패키지 관리자는 npm `12.2.0`이며 설치는 `npm ci`, 실행은 `npm run <script>`를 사용한다.
+2026-10-06 재확인에서 Phase1B/1C/1D/1G/1H 범위 문서의 실행 gate도 npm으로 맞췄다.
+과거 결과·성능 문서에 남은 pnpm 명령은 당시 실제 검증 환경의 기록으로 보존한다.
+
 2026-10-06 사용자 요청에 따라 저장소 Node pin과 실행 wrapper를 `24.21.0` LTS로 바꿨다.
 `.node-version`·exact toolchain checker·CI의 expected version과 현재 개발 문서를 함께 맞췄다.
 저장소 npm `12.2.0`의 지원 범위 `^22.22.2 || ^24.15.0 || >=26.0.0`에 포함되는 버전이다.

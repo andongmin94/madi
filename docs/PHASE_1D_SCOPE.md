@@ -51,12 +51,12 @@ Phase 1D 범위가 아니다.
 다음 명령이 모두 exit code 0이어야 한다.
 
 ```powershell
-pnpm verify
-pnpm package:unpacked
-pnpm test:electron
-pnpm test:package
-pnpm check:repository
-pnpm format:check
+npm run verify
+npm run package:unpacked
+npm run test:electron
+npm run test:package
+npm run check:repository
+npm run format:check
 ```
 
 성능 목표를 초과하거나 실제 Electron 복원이 불안정하면 이를 숨기지 않고

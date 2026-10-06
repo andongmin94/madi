@@ -95,7 +95,7 @@ last export state는 포함하지 않는다.
 - 일반 원고와 675,000자 장편 block/character/scene-break loss 0
 - development 및 fresh-unpacked Electron actual
 - package resource boundary와 외부 runtime request 0
-- AGENTS.md의 필수 pnpm command와 git diff 검사 통과
+- AGENTS.md의 필수 npm command와 git diff 검사 통과
 
 한컴에서의 HWPX 내용·서식 확인은 제품 내부 검증과 구분한다. Native TEXT 대조의 통과를
 사람의 layout acceptance로 바꾸지 않는다. HWP 변환은 완료 gate에서 제외했다.
