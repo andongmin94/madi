@@ -496,7 +496,7 @@ export function App({
   const [binderWidth, setBinderWidth] = useState(DEFAULT_BINDER_WIDTH);
   const [treeError, setTreeError] = useState("");
   const [uiStateReady, setUiStateReady] = useState(false);
-  const [panel, setPanel] = useState<Panel>("development");
+  const [panel, setPanel] = useState<Panel | null>("development");
   const [appMode, setAppMode] = useState<AppMode>("MANUSCRIPT");
   const [entities, setEntities] = useState<readonly EntityRecord[]>([]);
   const [entityAliases, setEntityAliases] = useState<
@@ -3622,12 +3622,17 @@ export function App({
         </section>
       </section>
 
-      {(appMode === "MANUSCRIPT" ||
+      {panel !== null && (appMode === "MANUSCRIPT" ||
         ((appMode === "PLOT_CANVAS" ||
           appMode === "READER_LAB" ||
           appMode === "PUBLICATION_EXPORT") &&
           (panel === "search" || panel === "snapshots"))) && (
         <div className="inspector-drawer">
+        <div className="inspector-drawer__actions">
+          <button type="button" aria-label="작업 패널 닫기" onClick={() => setPanel(null)}>
+            닫기
+          </button>
+        </div>
         {panel === "search" ? (
           <SearchReplacePanel
             result={searchResult}

@@ -1,10 +1,11 @@
 .plot-canvas-workspace {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) auto;
-  grid-template-rows: auto minmax(480px, 1fr) auto;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(160px, 1fr) auto;
   min-width: 0;
-  min-height: 620px;
+  min-height: 0;
   overflow: hidden;
   color: var(--color-ink);
   background: var(--color-surface-muted);
@@ -85,7 +86,7 @@
   grid-column: 1;
   grid-row: 2;
   min-width: 0;
-  min-height: 480px;
+  min-height: 160px;
   background: var(--color-surface-muted);
 }
 
@@ -268,6 +269,8 @@
 
 .plot-canvas-picker {
   position: absolute;
+  display: flex;
+  flex-direction: column;
   z-index: 50;
   top: 64px;
   left: max(20px, calc(50% - 260px));
@@ -291,6 +294,8 @@
 
 .plot-canvas-picker__results {
   display: grid;
+  flex: 1;
+  min-height: 0;
   gap: 6px;
   max-height: 450px;
   margin-top: 10px;
@@ -343,24 +348,4 @@
 .plot-canvas-accessible-list button[aria-pressed="true"] {
   color: var(--color-ink);
   background: var(--color-accent);
-}
-
-@media (max-width: 900px) {
-  .plot-canvas-workspace {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(420px, 1fr) auto auto;
-  }
-
-  .plot-canvas-inspector {
-    grid-column: 1;
-    grid-row: 3;
-    width: 100% !important;
-    max-width: none;
-    border-top: 2px solid var(--color-border);
-    border-left: 0;
-  }
-
-  .plot-canvas-accessible-list {
-    grid-row: 4;
-  }
 }

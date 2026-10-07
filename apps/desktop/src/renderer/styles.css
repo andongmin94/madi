@@ -441,6 +441,8 @@ button:disabled {
 
 .inspector-drawer {
   position: relative;
+  display: flex;
+  flex-direction: column;
   grid-row: 3;
   grid-column: 1;
   align-self: stretch;
@@ -448,11 +450,31 @@ button:disabled {
   z-index: 8;
   width: 330px;
   min-height: 0;
+  overflow: hidden;
   box-shadow: -4px 0 0 var(--color-border);
 }
 
+.inspector-drawer__actions {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  padding: 5px 12px;
+  background: var(--color-surface);
+  border-bottom: 2px solid var(--color-border);
+}
+
+.inspector-drawer__actions button {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
 .inspector-drawer > .side-panel {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .non-scene-selection {

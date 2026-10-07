@@ -103,6 +103,7 @@
   display: grid;
   flex: 1 1 auto;
   grid-template-columns: minmax(0, 1fr) minmax(290px, 360px);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -115,10 +116,13 @@
 
 .world-graph__summary {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
-  padding: 8px 12px;
+  max-height: 96px;
+  padding: 6px 10px;
+  overflow: auto;
   color: var(--color-muted);
+  font-size: 12px;
   border-bottom: 2px solid var(--color-border);
 }
 
@@ -160,7 +164,9 @@
   top: 8px;
   left: 8px;
   max-width: min(640px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
   padding: 5px 8px;
+  overflow: auto;
   border: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
@@ -190,6 +196,8 @@
 }
 
 .world-graph-detail {
+  min-width: 0;
+  min-height: 0;
   overflow: auto;
   padding: 16px;
   border-left: 2px solid var(--color-border);
@@ -271,7 +279,7 @@
 .world-graph__empty {
   display: grid;
   place-content: center;
-  min-height: 480px;
+  min-height: 0;
   padding: 24px;
   color: var(--color-muted);
   text-align: center;
@@ -285,14 +293,21 @@
 }
 
 @media (max-width: 900px) {
+  .world-graph__toolbar {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .world-graph__search {
+    min-width: 280px;
+  }
+
   .world-graph__body {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) 260px;
   }
 
   .world-graph-detail {
-    max-height: 420px;
-    border-top: 2px solid var(--color-border);
-    border-left: 0;
+    padding: 12px;
   }
 
   .world-graph-filter > div {
