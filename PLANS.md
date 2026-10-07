@@ -1,9 +1,19 @@
 # madi 개발 계획
 
-갱신일: 2026-10-06. 작업 위치: `main`.
+갱신일: 2026-10-07. 작업 위치: `main`.
 현재 목표·진척·다음 작업·완료 조건은 이 문서에서만 관리한다.
 
-## 현재 작업 — Node 24.21.0 LTS 전환 완료
+## 현재 작업 — Playwright 최종 검증 재개
+
+2026-10-07 사용자의 재개 요청에 따라 HWP 제거·코드 정리의 최종 검증을 이어간다.
+고정 Node24.21.0/npm12.2.0 환경의 정확한 clean main commit에서 `npm ci`와 전체 `npm run verify`를 실행한다.
+전체 경로에 포함된 개발판·fresh unpacked Playwright 시험과 package:unpacked의 실제 결과를 확인한다.
+통과한 package를 재빌드 없이 ZIP으로 포장·대조하고, 실제 AI 연결과 창 자연 종료·보고서 재시작을 검증한 뒤 결과 문서를 갱신한다.
+앱 시험은 소유 비활성 Win32 desktop·BelowNormal·GPU 비활성화로 순차 실행한다.
+현재 최종 runtime 판정은 **PENDING**이다. 이전 환경·source의 성공이나 중단된 부분 실행을 이번 성공으로 합산하지 않는다.
+사람이 수행할 Native IME15항목·HWPX layout·배포 승인 조건은 별도로 유지한다.
+
+## 완료한 환경 작업 — Node 24.21.0 LTS 전환
 
 현재 패키지 관리자는 npm `12.2.0`이며 설치는 `npm ci`, 실행은 `npm run <script>`를 사용한다.
 2026-10-06 재확인에서 Phase1B/1C/1D/1G/1H 범위 문서의 실행 gate도 npm으로 맞췄다.
@@ -135,7 +145,7 @@ Source5347/1ff full FAIL, source20e 기본 PASS, 기존 AI source5151과 첫 e2 
 
 1. **완료 — 기본 gate 복구와 HWP 구현 고정.** graph·IPv4/IPv6 수집·초기화 시험 수정, HWP 소유권·취소·최소 진단을 반영하고 최종 exact source 전체 경로를 통과했다.
 2. **완료 — 최종 자동 검증·포장.** 개발판/새 배포본 AI, IME report와 수동 kit, whole package·ZIP·새 압축 해제본 대조와 결과 기록을 완료했다. 검증한 제품을 포장 전에 재빌드하지 않았다.
-3. **사용자 요청으로 중단 — HWP 제거와 코드 정리의 최종 검증.** 구현과 집중 회귀검사를 마쳤다. 재개 시 정확한 clean main source에서 필수 Windows 경로를 다시 실행하고 결과와 새 배포본을 연결한다. 중단한 부분 실행을 전체 PASS로 합치지 않는다.
+3. **진행 — HWP 제거와 코드 정리의 최종 검증.** 구현과 집중 회귀검사를 마쳤으며 2026-10-07 사용자 요청으로 Playwright 검증을 재개했다. 정확한 clean main source에서 필수 Windows 경로를 실행하고 결과와 새 배포본을 연결한다. 중단한 부분 실행을 전체 PASS로 합치지 않는다.
 4. **사람의 확인 — Native IME15항목·HWPX layout·배포.** 실제 환경·입력·서식을 사람이 기록하고 배포 범위를 결정한다. 미완료 항목은 NOT TESTED/PENDING을 유지한다.
 
 ## 실행 자료와 사람에게 남는 조건
