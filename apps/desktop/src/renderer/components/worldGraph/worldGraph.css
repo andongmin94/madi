@@ -124,7 +124,7 @@
 
 .world-graph-canvas-shell {
   position: relative;
-  min-height: 480px;
+  min-height: 0;
 }
 
 .world-graph-canvas {

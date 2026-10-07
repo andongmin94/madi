@@ -115,6 +115,7 @@
   min-width: 0;
   min-height: 0;
   flex-direction: column;
+  overflow: auto;
 }
 
 .plot-canvas-metadata {
