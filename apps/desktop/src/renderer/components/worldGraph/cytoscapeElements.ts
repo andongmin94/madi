@@ -204,7 +204,7 @@ export const WORLD_GRAPH_CYTOSCAPE_STYLES = [
       "border-width": 2,
       color: "#eef3f9",
       "font-size": 10,
-      "font-family": "system-ui, sans-serif",
+      "font-family": "Pretendard Variable, Malgun Gothic, sans-serif",
       "text-valign": "bottom",
       "text-margin-y": 8,
       "text-background-color": "#18202b",

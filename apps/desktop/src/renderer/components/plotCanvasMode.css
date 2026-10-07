@@ -3,8 +3,8 @@
   grid-template-columns: minmax(210px, 260px) minmax(0, 1fr);
   min-height: 0;
   flex: 1;
-  background: #10161d;
-  color: #e7edf4;
+  background: var(--color-surface-muted);
+  color: var(--color-ink);
 }
 
 .plot-canvas-list {
@@ -13,8 +13,8 @@
   flex-direction: column;
   gap: 0.75rem;
   padding: 0.85rem;
-  border-right: 1px solid #33404d;
-  background: #151d26;
+  border-right: 2px solid var(--color-border);
+  background: var(--color-surface-muted);
 }
 
 .plot-canvas-list > header,
@@ -35,7 +35,7 @@
 .plot-canvas-import-preview label {
   display: grid;
   gap: 0.25rem;
-  color: #aebac7;
+  color: var(--color-muted);
   font-size: 0.76rem;
 }
 
@@ -44,10 +44,10 @@
 .plot-canvas-import-preview input {
   min-width: 0;
   padding: 0.48rem 0.58rem;
-  border: 1px solid #46586a;
-  border-radius: 0.35rem;
-  background: #0f151c;
-  color: #edf3f8;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
 }
 
 .plot-canvas-list__items {
@@ -64,26 +64,25 @@
   gap: 0.2rem;
   width: 100%;
   padding: 0.62rem;
-  border: 1px solid transparent;
-  border-radius: 0.4rem;
-  background: #1c2631;
-  color: #e8eef5;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  color: var(--color-ink);
   text-align: left;
 }
 
 .plot-canvas-list__items > button[aria-current="true"] {
-  border-color: #6e9bc5;
-  background: #25384a;
+  background: var(--color-accent);
 }
 
 .plot-canvas-list__items span,
 .plot-canvas-list__items small {
-  color: #9dabb9;
+  color: var(--color-muted);
   font-size: 0.72rem;
 }
 
 .plot-canvas-list__items small {
-  color: #efc078;
+  color: var(--color-ink);
 }
 
 .plot-canvas-list__file-actions {
@@ -94,21 +93,20 @@
 
 .plot-canvas-mode button {
   padding: 0.45rem 0.62rem;
-  border: 1px solid #4c6174;
-  border-radius: 0.35rem;
-  background: #263746;
-  color: #edf3f8;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
 }
 
 .plot-canvas-mode button:hover:not(:disabled),
 .plot-canvas-mode button:focus-visible {
-  border-color: #8bb8df;
-  background: #30485d;
+  background: var(--color-accent-soft);
 }
 
 .plot-canvas-mode button.danger {
-  border-color: #805052;
-  color: #ffd6d6;
+  border-color: var(--color-border);
+  color: var(--color-danger);
 }
 
 .plot-canvas-mode__editor {
@@ -121,8 +119,8 @@
 
 .plot-canvas-metadata {
   padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid #33404d;
-  background: #151d26;
+  border-bottom: 2px solid var(--color-border);
+  background: var(--color-surface-muted);
 }
 
 .plot-canvas-metadata label:first-child {
@@ -137,8 +135,8 @@
 .plot-canvas-mode__error {
   margin: 0;
   padding: 0.55rem 0.75rem;
-  background: #48282b;
-  color: #ffd8d8;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
 }
 
 .plot-canvas-mode__save {
@@ -147,16 +145,16 @@
   bottom: 0.7rem;
   z-index: 10;
   padding: 0.3rem 0.55rem;
-  border: 1px solid #536678;
-  border-radius: 999px;
-  background: rgb(16 22 29 / 88%);
-  color: #cdd8e2;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-muted);
   font-size: 0.72rem;
 }
 
 .plot-canvas-mode__save[data-phase="error"] {
-  border-color: #a96363;
-  color: #ffd4d4;
+  border-color: var(--color-border);
+  color: var(--color-danger);
 }
 
 .plot-canvas-import-preview {
@@ -166,10 +164,10 @@
   z-index: 100;
   width: min(440px, calc(100vw - 2rem));
   padding: 1rem;
-  border: 1px solid #60778b;
-  border-radius: 0.55rem;
-  background: #18232e;
-  box-shadow: 0 1rem 3rem rgb(0 0 0 / 45%);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  box-shadow: var(--shadow-md);
   transform: translate(-50%, -50%);
 }
 

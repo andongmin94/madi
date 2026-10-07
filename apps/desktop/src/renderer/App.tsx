@@ -3283,7 +3283,7 @@ export function App({
       <header className="titlebar">
         <div className="wordmark" aria-label="madi">
           madi
-          <span>phase 1H</span>
+          <span>로컬 집필실</span>
         </div>
         <label className="document-title">
           <span className="sr-only">현재 작품명</span>
@@ -3298,53 +3298,54 @@ export function App({
       </header>
 
       <nav className="toolbar" aria-label="문서 작업">
-        <div className="toolbar__group">
-          <ToolbarButton
-            disabled={enginePhase !== "ready" || busy}
-            onClick={() => void createProjectFromUi()}
-          >
-            새 프로젝트
-          </ToolbarButton>
-          <ToolbarButton
-            disabled={enginePhase !== "ready" || busy}
-            onClick={() => void openProjectFromUi()}
-          >
-            .madi 열기
-          </ToolbarButton>
-          <ToolbarButton
-            disabled={!hasDocument || busy}
-            onClick={() =>
-              void controller?.save(() => compositionActiveRef.current)
-            }
-            title="Ctrl+S"
-          >
-            저장
-          </ToolbarButton>
+        <div className="toolbar__commands">
+          <div className="toolbar__group">
+            <ToolbarButton
+              disabled={enginePhase !== "ready" || busy}
+              onClick={() => void createProjectFromUi()}
+            >
+              새 프로젝트
+            </ToolbarButton>
+            <ToolbarButton
+              disabled={enginePhase !== "ready" || busy}
+              onClick={() => void openProjectFromUi()}
+            >
+              .madi 열기
+            </ToolbarButton>
+            <ToolbarButton
+              disabled={!hasDocument || busy}
+              onClick={() =>
+                void controller?.save(() => compositionActiveRef.current)
+              }
+              title="Ctrl+S"
+            >
+              저장
+            </ToolbarButton>
+          </div>
+          <span className="toolbar__divider" aria-hidden="true" />
+          <div className="toolbar__group">
+            <ToolbarButton
+              disabled={!hasDocument || !workspace.canUndo || busy}
+              onClick={() => controller?.undo()}
+              title="최근 명령 기반 가능 상태(엔진 전체 history 보장 아님)"
+            >
+              Undo
+            </ToolbarButton>
+            <ToolbarButton
+              disabled={!hasDocument || !workspace.canRedo || busy}
+              onClick={() => controller?.redo()}
+              title="최근 명령 기반 가능 상태(엔진 전체 history 보장 아님)"
+            >
+              Redo
+            </ToolbarButton>
+            <ToolbarButton
+              disabled={!hasActiveDocument || appMode !== "MANUSCRIPT" || busy}
+              onClick={() => controller?.insertSceneBreak()}
+            >
+              장면 구분선
+            </ToolbarButton>
+          </div>
         </div>
-        <span className="toolbar__divider" aria-hidden="true" />
-        <div className="toolbar__group">
-          <ToolbarButton
-            disabled={!hasDocument || !workspace.canUndo || busy}
-            onClick={() => controller?.undo()}
-            title="최근 명령 기반 가능 상태(엔진 전체 history 보장 아님)"
-          >
-            Undo
-          </ToolbarButton>
-          <ToolbarButton
-            disabled={!hasDocument || !workspace.canRedo || busy}
-            onClick={() => controller?.redo()}
-            title="최근 명령 기반 가능 상태(엔진 전체 history 보장 아님)"
-          >
-            Redo
-          </ToolbarButton>
-          <ToolbarButton
-            disabled={!hasActiveDocument || appMode !== "MANUSCRIPT" || busy}
-            onClick={() => controller?.insertSceneBreak()}
-          >
-            장면 구분선
-          </ToolbarButton>
-        </div>
-        <span className="toolbar__divider" aria-hidden="true" />
         <div className="mode-switch" role="group" aria-label="작업 모드">
           <button
             type="button"
@@ -3395,7 +3396,6 @@ export function App({
             내보내기
           </button>
         </div>
-        <div className="toolbar__spacer" />
         <div className="panel-switch" role="group" aria-label="작업 패널">
           <button
             type="button"

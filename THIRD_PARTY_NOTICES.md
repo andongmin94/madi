@@ -85,6 +85,42 @@ upstream manifest에는 확인한 범위에서 명시적인 SPDX “only”/“o
 font asset의 madi 내부 family 이름은 Phase 0 Typie 기본 font slot에 맞춘 기술적
 mapping이며, 원래 font 저작권·이름 또는 OFL 조건을 변경하지 않는다.
 
+## Neobrutal UI design reference
+
+- Project: Neobrutal UI
+- Repository: `https://github.com/andongmin94/neobrutal-ui`
+- Exact reference commit: `b4da2463fe710a77bf464c65125a1a7f40424722`
+- Copyright notice: `Copyright (c) 2023 Samuel Breznjak`
+- License: MIT
+- Checked-in license text: `docs/licenses/NEOBRUTAL-UI-MIT.txt`
+- Packaged license text: `resources/licenses/NEOBRUTAL-UI-MIT.txt`
+- License bytes: `1,072`; SHA-256: `a77140948a68fafb5e0077a287502104203b7ccb11255b311101ec8fe85fa250`
+
+앱 UI의 색상·두꺼운 테두리·선명한 그림자·버튼 기하 형태를 참고했다.
+라이브러리 component source나 npm dependency는 포함하지 않는다. 위 MIT 원문은
+참고 commit의 Git blob과 byte-identical하며 unpacked package에 함께 고지한다.
+
+## Pretendard
+
+- Font: Pretendard Variable
+- Exact release: `v1.3.9`
+- Repository: `https://github.com/orioncactus/pretendard`
+- Exact upstream commit: `5c41199ea0024a9e0b2cb31735265056e5472d76`
+- Upstream file: `packages/pretendard/dist/web/variable/woff2/PretendardVariable.woff2`
+- Copyright notice: `Copyright (c) 2021, Kil Hyung-jin`, with Reserved Font Name `Pretendard`
+- License: SIL Open Font License 1.1
+- Checked-in license text: `docs/licenses/PRETENDARD-OFL-1.1.txt`
+- Packaged license text: `resources/licenses/PRETENDARD-OFL-1.1.txt`
+- Renderer font: `apps/desktop/src/renderer/assets/fonts/PretendardVariable.woff2`
+- Font bytes: `2,057,688`; SHA-256: `9599f12fd42fc0bce1cd50b47a0c022e108d7aa64dd0d1bb0ed44f3282d900b4`
+- License bytes: `4,418`; SHA-256: `d31ddd9f2bed32fd7e302a205cf2380ba0de6529152d239ef99cfb6f261bfc04`
+
+원본 font와 license는 위 upstream commit의 Git blob과 byte-identical하다.
+Renderer는 한글 전체 가변 WOFF2를 local asset으로 포함하며 굵기 `45–920`을 지원한다.
+Runtime CDN·시스템 설치·폰트 다운로드 없이 앱 UI 기본 글꼴로 사용한다.
+Typie canvas의 별도 Nanum Gothic asset과 사용자가 선택한 출판 preset은 이 CSS font와
+구분한다. Unpacked package는 OFL 원문을 위 고정 SHA-256과 대조해 복사한다.
+
 ## Cytoscape.js
 
 - Project: Cytoscape.js

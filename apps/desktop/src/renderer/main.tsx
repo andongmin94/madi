@@ -8,6 +8,7 @@ import {
   createLlmTrackedEditorFactory,
   LlmEditorAccess
 } from "./llm/editorAccess";
+import "./fonts.css";
 import "./styles.css";
 
 const root = document.getElementById("root");

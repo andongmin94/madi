@@ -11,6 +11,7 @@ const CONTENT_TYPES = new Map<string, string>([
   [".js", "text/javascript; charset=utf-8"],
   [".map", "application/json; charset=utf-8"],
   [".wasm", "application/wasm"],
+  [".woff2", "font/woff2"],
   [".zst", "application/octet-stream"]
 ]);
 

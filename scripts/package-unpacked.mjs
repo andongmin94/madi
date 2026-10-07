@@ -69,6 +69,16 @@ const packagedBinaryAllowlist = [
 ];
 const pinnedLicenseCopies = [
   {
+    source: resolve(repositoryRoot, "docs", "licenses", "NEOBRUTAL-UI-MIT.txt"),
+    name: "NEOBRUTAL-UI-MIT.txt",
+    sha256: "a77140948a68fafb5e0077a287502104203b7ccb11255b311101ec8fe85fa250",
+  },
+  {
+    source: resolve(repositoryRoot, "docs", "licenses", "PRETENDARD-OFL-1.1.txt"),
+    name: "PRETENDARD-OFL-1.1.txt",
+    sha256: "d31ddd9f2bed32fd7e302a205cf2380ba0de6529152d239ef99cfb6f261bfc04",
+  },
+  {
     source: resolve(repositoryRoot, "docs", "licenses", "SHA2-MIT.txt"),
     name: "SHA2-MIT.txt",
     sha256: "b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1",
@@ -413,6 +423,8 @@ process.stdout.write(
       },
       notices: [
         "resources/licenses/THIRD_PARTY_NOTICES.md",
+        "resources/licenses/NEOBRUTAL-UI-MIT.txt",
+        "resources/licenses/PRETENDARD-OFL-1.1.txt",
         "resources/licenses/TYPIE-AGPL-3.0.txt",
         "resources/licenses/NANUM_GOTHIC-OFL-1.1.txt",
         "resources/licenses/CYTOSCAPE-MIT.txt",

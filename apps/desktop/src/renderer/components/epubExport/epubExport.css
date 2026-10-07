@@ -5,8 +5,8 @@
   min-height: 0;
   overflow: auto;
   padding: 20px;
-  background: #f7f4ec;
-  color: #27241f;
+  background: var(--color-surface-muted);
+  color: var(--color-ink);
 }
 
 .epub-export--loading {
@@ -48,10 +48,11 @@
 .epub-export__panel,
 .epub-export__actions,
 .epub-export__validation {
-  border: 1px solid #cfc7b7;
-  border-radius: 10px;
-  background: #fffdf8;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
   padding: 14px;
+  box-shadow: var(--shadow-sm);
 }
 
 .epub-export__panel {
@@ -72,8 +73,10 @@
   box-sizing: border-box;
   width: 100%;
   padding: 7px 8px;
-  border: 1px solid #b9b09f;
-  border-radius: 6px;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-ink);
+  background: var(--color-surface);
   font: inherit;
 }
 
@@ -85,8 +88,8 @@
 .epub-export__notice {
   margin: 0;
   padding: 9px;
-  border-left: 3px solid #9b6e25;
-  background: #fff6df;
+  border-left: 3px solid var(--color-border);
+  background: var(--color-surface-muted);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -116,7 +119,9 @@
 
 .epub-export__summary div {
   padding: 8px;
-  background: #f3efe6;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
 }
 
 .epub-export__summary dt {
@@ -151,17 +156,18 @@
 .epub-export__error,
 .epub-export__success {
   padding: 10px 12px;
-  border-radius: 7px;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
 }
 
 .epub-export__error {
-  background: #fbe7e2;
-  color: #7f2418;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
 }
 
 .epub-export__success {
-  background: #e4f3e4;
-  color: #245d29;
+  background: var(--color-accent-soft);
+  color: var(--color-ink);
   overflow-wrap: anywhere;
 }
 

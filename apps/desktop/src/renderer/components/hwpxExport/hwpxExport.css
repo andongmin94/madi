@@ -5,8 +5,8 @@
 }
 
 .publication-export-tabs [role="tab"][aria-selected="true"] {
-  border-color: var(--accent, #3b82f6);
-  font-weight: 700;
+  background: var(--color-accent);
+  font-weight: 800;
 }
 
 .hwpx-export {
@@ -19,6 +19,27 @@
   display: grid;
   gap: 0.75rem;
   min-width: 0;
+  padding: 16px;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.hwpx-export legend {
+  padding: 0 6px;
+  font-weight: 800;
+}
+
+.hwpx-export input:not([type="checkbox"]),
+.hwpx-export select {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  font: inherit;
 }
 
 .hwpx-export label {
@@ -47,9 +68,10 @@
 }
 
 .hwpx-export__success {
-  border: 1px solid var(--border-color, #64748b);
-  border-radius: 0.5rem;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
   padding: 1rem;
+  background: var(--color-accent-soft);
 }
 
 @media (prefers-reduced-motion: reduce) {

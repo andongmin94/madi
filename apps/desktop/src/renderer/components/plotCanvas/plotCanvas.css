@@ -1,7 +1,4 @@
 .plot-canvas-workspace {
-  --plot-canvas-border: #d7dce3;
-  --plot-canvas-panel: #f8fafc;
-  --plot-canvas-ink: #172033;
   position: relative;
   display: grid;
   grid-template-columns: minmax(420px, 1fr) auto;
@@ -9,10 +6,10 @@
   min-width: 0;
   min-height: 620px;
   overflow: hidden;
-  color: var(--plot-canvas-ink);
-  background: #eef1f5;
-  border: 1px solid var(--plot-canvas-border);
-  border-radius: 12px;
+  color: var(--color-ink);
+  background: var(--color-surface-muted);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
 .plot-canvas-toolbar {
@@ -23,8 +20,8 @@
   justify-content: space-between;
   gap: 8px;
   padding: 10px 12px;
-  background: #fff;
-  border-bottom: 1px solid var(--plot-canvas-border);
+  background: var(--color-surface);
+  border-bottom: 2px solid var(--color-border);
 }
 
 .plot-canvas-toolbar__group {
@@ -40,10 +37,10 @@
 .plot-canvas-accessible-list button {
   min-height: 32px;
   padding: 5px 10px;
-  color: #273246;
-  background: #fff;
-  border: 1px solid #cbd3df;
-  border-radius: 7px;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -51,13 +48,12 @@
 .plot-canvas-inspector button:hover,
 .plot-canvas-picker button:hover,
 .plot-canvas-accessible-list button:hover {
-  background: #f1f5f9;
+  background: var(--color-surface-muted);
 }
 
 .plot-canvas-toolbar button[aria-pressed="true"] {
-  color: #1d4ed8;
-  background: #eff6ff;
-  border-color: #93c5fd;
+  color: var(--color-ink);
+  background: var(--color-accent);
 }
 
 .plot-canvas-toolbar button:disabled,
@@ -68,21 +64,21 @@
 
 .plot-canvas-save-state {
   min-width: 92px;
-  color: #64748b;
+  color: var(--color-muted);
   font-size: 12px;
   text-align: right;
 }
 
 .plot-canvas-save-state--error {
-  color: #b91c1c;
+  color: var(--color-danger);
 }
 
 .plot-canvas-workspace__error {
   margin: 0;
   padding: 8px 12px;
-  color: #991b1b;
-  background: #fef2f2;
-  border-bottom: 1px solid #fecaca;
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+  border-bottom: 2px solid var(--color-border);
 }
 
 .plot-canvas-stage {
@@ -90,7 +86,7 @@
   grid-row: 2;
   min-width: 0;
   min-height: 480px;
-  background: #f9fafb;
+  background: var(--color-surface-muted);
 }
 
 .plot-canvas-stage .react-flow {
@@ -109,32 +105,32 @@
   height: 100%;
   padding: 12px 14px;
   overflow: hidden;
-  color: #1e293b;
-  background: #fff;
-  border: 1px solid #cbd5e1;
-  border-top: 4px solid var(--madi-canvas-node-accent, #64748b);
-  border-radius: 9px;
-  box-shadow: 0 2px 8px rgb(15 23 42 / 9%);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-top: 4px solid var(--madi-canvas-node-accent, var(--color-muted));
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
 }
 
 .plot-canvas-node--group {
-  color: #334155;
-  background: rgb(226 232 240 / 46%);
-  border: 1px dashed var(--madi-canvas-node-accent, #94a3b8);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 2px dashed var(--madi-canvas-node-accent, var(--color-muted));
   box-shadow: none;
 }
 
 .plot-canvas-node--entity_reference {
-  background: #fffefb;
+  background: var(--color-surface);
 }
 
 .plot-canvas-node--scene_reference {
-  background: #fbfdff;
+  background: var(--color-surface);
 }
 
 .plot-canvas-node--broken {
-  background: #fff7f7;
-  border-color: #e49a9a;
+  background: var(--color-danger-soft);
+  border-color: var(--color-border);
   border-style: dashed;
 }
 
@@ -149,13 +145,13 @@
 .plot-canvas-node__kind,
 .plot-canvas-node__badge,
 .plot-canvas-node__broken {
-  color: #64748b;
+  color: var(--color-muted);
   font-size: 11px;
   font-weight: 700;
 }
 
 .plot-canvas-node__broken {
-  color: #b91c1c;
+  color: var(--color-danger);
 }
 
 .plot-canvas-node__title,
@@ -174,7 +170,7 @@
 
 .plot-canvas-node__subtitle {
   margin-top: 3px;
-  color: #64748b;
+  color: var(--color-muted);
   font-size: 12px;
 }
 
@@ -182,7 +178,7 @@
   display: -webkit-box;
   margin: 9px 0;
   overflow: hidden;
-  color: #475569;
+  color: var(--color-muted);
   font-size: 12px;
   line-height: 1.45;
   -webkit-box-orient: vertical;
@@ -196,8 +192,8 @@
 .plot-canvas-node .react-flow__handle {
   width: 8px;
   height: 8px;
-  background: #64748b;
-  border: 2px solid #fff;
+  background: var(--color-surface-muted);
+  border: 2px solid var(--color-border);
 }
 
 .plot-canvas-inspector {
@@ -208,8 +204,8 @@
   min-width: 260px;
   padding: 16px;
   overflow: auto;
-  background: var(--plot-canvas-panel);
-  border-left: 1px solid var(--plot-canvas-border);
+  background: var(--color-surface-muted);
+  border-left: 2px solid var(--color-border);
 }
 
 .plot-canvas-inspector h2 {
@@ -229,7 +225,7 @@
 
 .plot-canvas-inspector__type {
   margin: 0;
-  color: #475569;
+  color: var(--color-muted);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -242,10 +238,10 @@
   box-sizing: border-box;
   width: 100%;
   padding: 8px 9px;
-  color: #172033;
-  background: #fff;
-  border: 1px solid #cbd5e1;
-  border-radius: 7px;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
   font: inherit;
 }
 
@@ -266,8 +262,8 @@
 }
 
 .plot-canvas-inspector button.danger {
-  color: #b91c1c;
-  border-color: #fecaca;
+  color: var(--color-danger);
+  border-color: var(--color-border);
 }
 
 .plot-canvas-picker {
@@ -280,10 +276,10 @@
   max-height: min(620px, calc(100% - 90px));
   padding: 14px;
   overflow: hidden;
-  background: #fff;
-  border: 1px solid #cbd5e1;
-  border-radius: 12px;
-  box-shadow: 0 18px 60px rgb(15 23 42 / 22%);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
 }
 
 .plot-canvas-picker header {
@@ -310,7 +306,7 @@
 
 .plot-canvas-picker__results span,
 .plot-canvas-picker__results small {
-  color: #64748b;
+  color: var(--color-muted);
   font-size: 11px;
 }
 
@@ -320,8 +316,8 @@
   max-height: 220px;
   padding: 8px 12px;
   overflow: auto;
-  background: #fff;
-  border-top: 1px solid var(--plot-canvas-border);
+  background: var(--color-surface);
+  border-top: 2px solid var(--color-border);
 }
 
 .plot-canvas-accessible-list > div {
@@ -345,29 +341,8 @@
 }
 
 .plot-canvas-accessible-list button[aria-pressed="true"] {
-  color: #1d4ed8;
-  background: #eff6ff;
-  border-color: #93c5fd;
-}
-
-@media (prefers-color-scheme: dark) {
-  .plot-canvas-workspace {
-    --plot-canvas-border: #334155;
-    --plot-canvas-panel: #172033;
-    --plot-canvas-ink: #e2e8f0;
-    background: #0f172a;
-  }
-
-  .plot-canvas-toolbar,
-  .plot-canvas-accessible-list,
-  .plot-canvas-picker {
-    color: #e2e8f0;
-    background: #172033;
-  }
-
-  .plot-canvas-stage {
-    background: #101827;
-  }
+  color: var(--color-ink);
+  background: var(--color-accent);
 }
 
 @media (max-width: 900px) {
@@ -381,7 +356,7 @@
     grid-row: 3;
     width: 100% !important;
     max-width: none;
-    border-top: 1px solid var(--plot-canvas-border);
+    border-top: 2px solid var(--color-border);
     border-left: 0;
   }
 

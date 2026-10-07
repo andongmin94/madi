@@ -4,11 +4,18 @@
 
 ## 현재 상태
 
-제품 runtime의 전체 Windows 검증 source는 `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`이다. 전체 gate·AI·자연 종료 자동 검증은 이 source 전후 clean에서 실행했다.
-계획된 제품 구현·코드 정리와 자동 runtime 검증을 완료했다. 실제 결과 문서 반영과 repository·format·diff 확인도 통과했다.
+이전 제품 runtime의 전체 Windows 검증 source는 `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`이다. 전체 gate·AI·자연 종료 자동 검증은 이 source 전후 clean에서 실행했다.
+기존 계획의 제품 구현·코드 정리와 자동 runtime 검증을 완료한 뒤, 소유자 요청으로 UI 개선을 진행한다. 새 UI source의 runtime 승인은 **WITHHELD**이며 이전 gate로 대신하지 않는다.
 2026-10-07 후속 문서 source `65936f2`에서도 같은 배포본의 Playwright 실사용 흐름 검수를 완료했다. 제품 source는 바뀌지 않았다.
 Node24.21.0/npm12.2.0/Rust1.97.1을 고정한다. 설치는 `npm ci`, 실행은 `npm run <script>`다.
 Private-local 기술 완료이며 공개·유료·고객·installer 배포 승인을 뜻하지 않는다. 사람의 확인 조건은 아래 세 항목이다.
+
+## 현재 작업: UI 개선
+
+- `andongmin94/neobrutal-ui`의 굵은 테두리·단단한 그림자·버튼 눌림 상태를 기존 React/CSS 구조에 반영한다. 공통 토큰으로 집필·설정·그래프·캔버스·Reader·내보내기·AI 화면을 통일한다.
+- 기본 UI 폰트는 공식 Pretendard v1.3.9를 로컬 번들로 포함한다. canvas 원고의 실제 기본 폰트도 확인하며 출판 preset의 사용자 선택은 유지한다.
+- 작업 버튼과 모드 선택의 배치를 정리하고 작은 UI 문구의 가독성을 높인다. 최소 창 크기 880×620을 포함해 Playwright로 로컬 폰트 로드·버튼 접근·주요 화면을 확인한다.
+- 구현 commit의 전체 고정 Windows gate, fresh-unpacked 실사용 흐름·오프라인 요청·EPUB/HWPX 재열기 결과를 실제 실행 후 기록한다. 현재 새 UI 검증 결과는 **PENDING**이다.
 
 ## 목표와 범위
 
@@ -41,7 +48,7 @@ Binary HWP는 2026-10-02 제품 범위에서 제거했다. 변환 UI·C# bridge�
 | 추가 실사용 UI 검수 | packaged run4 PASS46.472초. 두 장면 집필·Undo/Redo·인물·POV·치환·Reader·EPUB/HWPX·재열기 통과. 스키마와 UI 상태 외19테이블 보존 |
 | 결과 문서·최종 정합성 | 현재 source의 실제 결과를 반영했고 `npm run check:repository`·`npm run format:check`·`git diff --check` PASS |
 
-계획된 자동 제품 작업은 완료했다. 다음 확인 대상은 아래 사람의 세 조건이다.
+위 표는 이전 제품 source의 완료 기록이다. 현재 UI 작업 완료 조건은 새 source의 검증이며, 아래 사람의 세 조건도 유지한다.
 후속 문서 commit은 실제 검증 source와 구분하며 이전 성공으로 이후 제품 변경을 승인하지 않는다.
 
 ## 사람이 확인할 세 조건

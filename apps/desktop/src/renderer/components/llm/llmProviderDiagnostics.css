@@ -1,10 +1,10 @@
 .madi-llm-diagnostics-launcher {
   width: 48px;
   height: 22px;
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  background: #ffffff;
-  color: #1f2937;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
   font: inherit;
   font-size: 11px;
   font-weight: 800;
@@ -12,7 +12,7 @@
 }
 
 .madi-llm-diagnostics-launcher:hover {
-  background: #f8fafc;
+  background: var(--color-surface-muted);
 }
 
 .madi-llm-diagnostics-backdrop {
@@ -22,18 +22,18 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(15, 23, 42, 0.44);
-  backdrop-filter: blur(2px);
+  background: rgb(24 24 27 / 28%);
 }
 
 .madi-llm-diagnostics-dialog {
   width: min(520px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
   overflow: auto;
-  border-radius: 20px;
-  background: #f8fafc;
-  color: #172033;
-  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.3);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-md);
 }
 
 .madi-llm-diagnostics-dialog > header {
@@ -42,7 +42,7 @@
   justify-content: space-between;
   gap: 16px;
   padding: 20px 22px 16px;
-  border-bottom: 1px solid #dbe2ea;
+  border-bottom: 2px solid var(--color-border);
 }
 
 .madi-llm-diagnostics-dialog header p,
@@ -52,7 +52,7 @@
 
 .madi-llm-diagnostics-dialog header p {
   margin-bottom: 4px;
-  color: #64748b;
+  color: var(--color-muted);
   font-size: 12px;
   font-weight: 700;
 }
@@ -64,10 +64,10 @@
 .madi-llm-diagnostics-dialog header button {
   width: 36px;
   height: 36px;
-  border: 1px solid #cbd5e1;
-  border-radius: 11px;
-  background: #ffffff;
-  color: #334155;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-ink);
   font-size: 22px;
   cursor: pointer;
 }
@@ -81,10 +81,10 @@
 .madi-llm-diagnostics-notice {
   margin: 0;
   padding: 12px 14px;
-  border: 1px solid #bfdbfe;
-  border-radius: 12px;
-  background: #eff6ff;
-  color: #1e3a5f;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+  color: var(--color-ink);
   line-height: 1.55;
 }
 
@@ -104,10 +104,10 @@
   width: 100%;
   min-height: 40px;
   padding: 8px 10px;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #172033;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-ink);
   font: inherit;
 }
 
@@ -121,14 +121,14 @@
 .madi-llm-diagnostics-body dl div {
   min-width: 0;
   padding: 10px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  background: #ffffff;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
 }
 
 .madi-llm-diagnostics-body dt {
   margin-bottom: 4px;
-  color: #64748b;
+  color: var(--color-muted);
   font-size: 11px;
   font-weight: 700;
 }
@@ -144,20 +144,20 @@
   display: grid;
   gap: 4px;
   padding: 12px 14px;
-  border: 1px solid;
-  border-radius: 12px;
+  border: 2px solid;
+  border-radius: var(--radius-md);
 }
 
 .madi-llm-diagnostics-result.is-success {
-  border-color: #86efac;
-  background: #f0fdf4;
-  color: #166534;
+  border-color: var(--color-border);
+  background: var(--color-accent-soft);
+  color: var(--color-ink);
 }
 
 .madi-llm-diagnostics-result.is-warning {
-  border-color: #fde68a;
-  background: #fffbeb;
-  color: #92400e;
+  border-color: var(--color-border);
+  background: var(--color-surface-muted);
+  color: var(--color-ink);
 }
 
 .madi-llm-diagnostics-result span {
@@ -167,10 +167,10 @@
 .madi-llm-diagnostics-error {
   margin: 0;
   padding: 12px 14px;
-  border: 1px solid #fecaca;
-  border-radius: 12px;
-  background: #fef2f2;
-  color: #991b1b;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
 }
 
 .madi-llm-diagnostics-actions {
@@ -182,19 +182,18 @@
 .madi-llm-diagnostics-actions button {
   min-height: 38px;
   padding: 8px 13px;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #334155;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-ink);
   font: inherit;
   font-weight: 700;
   cursor: pointer;
 }
 
 .madi-llm-diagnostics-actions button.is-primary {
-  border-color: #1f2937;
-  background: #1f2937;
-  color: #ffffff;
+  background: var(--color-accent);
+  color: var(--color-ink);
 }
 
 .madi-llm-diagnostics-actions button:disabled,
