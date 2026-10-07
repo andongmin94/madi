@@ -1,7 +1,6 @@
 import {
   Background,
   BackgroundVariant,
-  Controls,
   MiniMap,
   ReactFlow,
   ReactFlowProvider
@@ -131,6 +130,8 @@ function canReuseCanvasFlowEdge(
 
 interface FlowInstancePort {
   fitView(options?: { readonly padding?: number; readonly duration?: number }): Promise<boolean>;
+  zoomIn(): Promise<boolean>;
+  zoomOut(): Promise<boolean>;
   setViewport(
     viewport: { readonly x: number; readonly y: number; readonly zoom: number },
     options?: { readonly duration?: number }
@@ -839,6 +840,22 @@ export const PlotCanvasWorkspace = forwardRef<
         <div className="plot-canvas-toolbar__group">
           <button
             type="button"
+            className="plot-canvas-zoom-button"
+            aria-label="캔버스 확대"
+            onClick={() => void flowInstanceRef.current?.zoomIn()}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className="plot-canvas-zoom-button"
+            aria-label="캔버스 축소"
+            onClick={() => void flowInstanceRef.current?.zoomOut()}
+          >
+            −
+          </button>
+          <button
+            type="button"
             onClick={() => void flowInstanceRef.current?.fitView({ padding: 0.15, duration: 180 })}
           >
             화면 맞춤
@@ -1028,7 +1045,6 @@ export const PlotCanvasWorkspace = forwardRef<
             {uiState.showGrid ? (
               <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
             ) : null}
-            <Controls showInteractive={false} />
             {uiState.showMinimap ? (
               <MiniMap pannable zoomable ariaLabel="Plot Canvas 미니맵" />
             ) : null}

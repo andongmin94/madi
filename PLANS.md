@@ -21,6 +21,7 @@ Private-local 기술 완료이며 공개·유료·고객·installer 배포 승�
 - `1b34564` 전체 gate run1은 이 수정 전에 의도적으로 종료했다. launcher 기록은 LAUNCHER_FAILED215.781초이며 PASS가 아니다. 종료 사유 receipt와 소유 job 정리·비활성 desktop 해제 근거를 원본 run에 보존한다.
 - `0822ed5` UI run3은 COMMAND_FAILED69.377초다. 출판 모드 wrapper의 main grid 배치가 없어 작업 패널 닫기가 화면 밖으로 밀린 문제를 실제 캡처에서 확인했다. wrapper 배치·탭·독립 스크롤을 수정하며 이 회차는 그래프·캔버스 검사에 도달하지 않았다.
 - `8dd6780` UI run4는 좁은 창의 상태 표시줄 오른쪽 경계가6.8px 넘는 것을 발견해 실패했다. 앱 grid의 암묵적 최소 너비를 제거하고 상태 표시줄의 축소를 허용한다. 같은 검수 조건을 유지해 후속 source를 검증한다.
+- `d4f3ef7` run5의 둥근 모서리 검사점을 실제 painted 영역으로 보정한 run6에서도980px 카드가 기존 React Flow Controls에 가려지는 것을 확인했다. 확대·축소를 상단 도구 모음으로 옮기고 겹치는 기존 Controls 경로를 제거한다. 두 FAIL 결과를 보존하며 전체 node 경계·가림 검사를 유지한다.
 
 ## 목표와 범위
 
