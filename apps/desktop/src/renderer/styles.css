@@ -81,6 +81,7 @@ textarea:not(.typie-runtime__ime-input):focus-visible,
 .app-shell > .story-bible,
 .app-shell > .plot-canvas-mode,
 .app-shell > .reader-lab,
+.app-shell > .publication-export-mode,
 .app-shell > .world-graph-host,
 .app-shell > .workspace-empty {
   grid-row: 3;

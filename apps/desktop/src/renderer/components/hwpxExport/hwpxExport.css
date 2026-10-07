@@ -1,18 +1,11 @@
-.publication-export-tabs {
-  display: flex;
-  gap: 0.5rem;
-  margin-block-end: 1rem;
-}
-
-.publication-export-tabs [role="tab"][aria-selected="true"] {
-  background: var(--color-accent);
-  font-weight: 800;
-}
-
 .hwpx-export {
   display: grid;
+  align-content: start;
   gap: 1rem;
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
 }
 
 .hwpx-export fieldset {
@@ -75,8 +68,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hwpx-export *,
-  .publication-export-tabs * {
+  .hwpx-export * {
     scroll-behavior: auto !important;
     transition: none !important;
   }

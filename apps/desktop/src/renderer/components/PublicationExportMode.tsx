@@ -72,7 +72,7 @@ export const PublicationExportMode = forwardRef<
     }
   };
   return (
-    <section aria-label="출판 파일 내보내기">
+    <section className="publication-export-mode" aria-label="출판 파일 내보내기">
       <div className="publication-export-tabs" role="tablist" aria-label="파일 형식">
         <button
           type="button"
