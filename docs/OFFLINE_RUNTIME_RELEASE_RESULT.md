@@ -1,29 +1,126 @@
 # 오프라인 검사·portable 배포 준비 검증 결과
 
-기록일: 2026-10-07. 제품 runtime의 전체 Windows 검증 source: `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`.
-후속 문서 source `65936f254be025472db1c3df85a5ac30d3d876db`에서 같은 배포본의 추가 실사용 UI 검수도 실행했다.
+기록일: 2026-10-07. 현재 UI 제품 source: `b9aa3e7e45aae85d18969b89366a590c341877c7`.
+현재 UI·전체 Windows gate·실제 AI 결과는 아래 b9 절을 따른다. 이전 f2의 full·ZIP·AI·자연 종료와 후속 문서 source `65936f254be025472db1c3df85a5ac30d3d876db`의 UI 검수는 해당 revision의 근거로 보존한다.
 후속 문서 commit은 이 실행 기준과 구분한다. 현재 계획은 [PLANS.md](../PLANS.md)에서만 관리한다.
 
 ## 현재 판정
 
 ```text
-Full pinned npm Windows: PASS / exit0 / 4459.669s
+Exact b9 full pinned npm Windows: PASS / exit0 / 4192.837s
 Development and fresh-unpacked Basic/D/E/F/G/H: PASS
 Offline EPUBCheck/JRE and HWPX: PRIVATE LOCAL TECHNICAL GO
-Actual AI development/fresh package: PASS WITH DIAGNOSTIC WARNING
-Portable ZIP: CREATED / WHOLE TESTED-PAYLOAD BYTE JOIN PASS
-Plain native close: PASS / main exit0
-IME report export/restart: PASS / reports3 / natural main exit0 twice
-Packaged synthetic real-use UI: PASS / writing / planning / exports / reopen / content preserved
+Exact b9 packaged UI: PASS / harness67.113s / host69.599s / source and whole package joined
+Exact b9 actual AI UI: PASS WITH DIAGNOSTIC WARNING / host34.011s
+Current b9 unpacked: VERIFIED / 556 files / whole inventory join PASS
+f2 portable ZIP / AI / plain close / IME report: PRIOR REVISION EVIDENCE
 Binary HWP / Hancom bridge / .NET requirement: REMOVED FROM PRODUCT SCOPE
-Native Korean IME15 and HWPX layout: HUMAN VALIDATION PENDING
+Native Korean IME15: NOT TESTED
+HWPX layout: HUMAN VALIDATION PENDING
 Public/paid/customer/installer distribution: NOT APPROVED
 ```
 
 아래 이전 본문은 각 source·환경에 묶인 역사다. 과거 HWP WITHHELD·환경 blocker·pnpm 명령을 현행 기능이나 TODO로 해석하지 않는다.
-현재 HWPX 내보내기는 한컴 설치와 독립적이다. 최신 full·ZIP·AI·직접 자연 종료의 근거는 마지막 f2 절을 따른다.
+현재 HWPX 내보내기는 한컴 설치와 독립적이다. 이전 ZIP·직접 자연 종료·IME report의 근거는 마지막 f2 절을 따른다.
 Typie 개발 permission은 owner-confirmed이며 배포 범위는 저장소 밖 exact grant를 따른다.
 실증은 이 PC의 개발판·fresh unpacked에 한정하며 다른 깨끗한 PC나 installer 설치 검증은 수행하지 않았다.
+
+## 2026-10-07 exact source b9 UI 개선과 검증
+
+소유자 요청의 [neobrutal-ui](https://github.com/andongmin94/neobrutal-ui) reference `b4da2463fe710a77bf464c65125a1a7f40424722`를 참고했다.
+굵은 검정 테두리·단단한 그림자·라임 강조색·hover/press/focus 상태를 기존 React/CSS 공통 토큰에 반영했다.
+집필·설정·그래프·캔버스·Reader·EPUB/HWPX·AI 화면을 통일하고 작업 패널 닫기를 추가했다.
+작은 창의 main grid·출판 wrapper·그래프 높이·캔버스 공간을 고쳤다. React Flow Controls overlay를 제거하고 확대·축소를 기존 도구 모음으로 옮겼다.
+이전 Binder inline 선택색·obsolete responsive 경로·대체된 Nanum 자산을 제거했으며 npm 의존성을 추가하지 않았다.
+
+### 오프라인 Pretendard
+
+공식 Pretendard v1.3.9/upstream `5c41199ea0024a9e0b2cb31735265056e5472d76`를 사용한다.
+기본 UI의 variable WOFF2는2,057,688B/SHA `9599f12fd42fc0bce1cd50b47a0c022e108d7aa64dd0d1bb0ed44f3282d900b4`다.
+App protocol의 WOFF2 MIME·GET/HEAD bytes·허용 경로를 실제10테스트로 확인했다. 폰트 CDN이나 런타임 다운로드는 사용하지 않는다.
+Canvas 원고도 실제 Pretendard Regular TTF에서 만든 Typie 자산을 사용한다. 원본은2,725,828B/SHA `6d0af5258997aec7354a6e340fc2325ba321c410ca48b3af858c8c3d6e92a324`다.
+같은 pinned Typie `fbe5c4bf860d1717a66e66bea2374a2e39f0dd26`의 Rust font API로 생성했고14,336 codepoints/한글 완성형11,172자를 확인했다.
+생성 receipt SHA는 `871792559f71a5940a99d856fe37ae9139deffcefad0a34fa7fd29d4b50555c7`이다.
+이 checkout의 기존 JS 재생성 명령에는 별도 vendor editor-server JS/WASM prerequisite가 필요하므로 standalone 재생성 성공을 주장하지 않는다.
+저장 format의 FontFamily/FontWeight 계약은 유지하며 Publication preset의 사용자 선택을 바꾸지 않았다.
+OFL·reference MIT와 provenance는 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) 및 bundled notice에 기록했다.
+
+### 최종 전체 Windows gate
+
+`full-ui-verify-b9aa3e7-run1`은 **terminal PASS4192.837초/exit0**다.
+07:58:41.3782155→09:08:34.2067443 UTC, source 전후 같은 b9/clean이다.
+Pinned Node24.21.0/npm12.2.0/Rust1.97.1과 committed lock을 사용했고 이번 UI 작업에서 `npm ci`를 실제 실행했다.
+`npm run verify`의 repository·format·typecheck·build·Rust·Typie·integration·오프라인 EPUBCheck와 개발판/새 unpacked Basic/D–H가 실제 완료했다.
+Desktop102파일/714테스트와 별도 bundle1파일/4테스트가 통과했다. Bundle4를 중복 없는 unique 테스트 수에 더하지 않는다.
+`npm run package:unpacked`도 full 안에서 새로 실행했다. HWPX 장편 각5회 exporter max는 개발판888ms/배포판83ms이며15초 target을 통과했다.
+이는 native exporter 시간이며 전체 UI wall이나 사람의 layout 승인을 뜻하지 않는다.
+Host 입력8,193표본은 모두 Default/owned inactive·unknown0이다. Job3262process/cleanup active0·강제 job 종료0·handle 정리·desktop 제거를 확인했다.
+기존 Node DEP0190·Rust linker 경고는 로그에 보존하며 경고 없는 실행으로 표현하지 않는다.
+
+Full 이후 전체 package를 두 번 읽어556파일/80디렉터리/551,929,587B를 고정했다.
+Canonical inventory SHA는 `34e65c8959632bbb340e54c5765523f6e4a9fd895cf15e406564839cbdde8c8d`다.
+UI run7의 pre-full package와 파일별 bytes/SHA·전체 디렉터리 목록을 실제 deep equality로 연결했으며 AI 검수 전후에도 같은 tree가 보존됐다.
+이번 UI 작업에서 새 portable ZIP은 만들지 않았다. 이전 f2 ZIP을 현재 UI 배포본으로 부르지 않는다.
+
+### 실제 UI run7
+
+`ui-review-b9aa3e7-run7`은 source 전후 clean에서 **harness PASS67.113초·host PASS69.599초/exit0**이다.
+1440×1000·1180×820·980×720·880×620의40화면/40 main-row 검사, 로컬 폰트10회, screenshot54개를 기록했다.
+Toolbar17 controls의 접근·경계·hit와 화면 가로 overflow0을 확인했다. Graph 자동배치·Plot 화면 맞춤 후 네 크기 각각에서 실제 노드 전체 경계·clipping·painted hit를 확인했다.
+Canvas zoom controls도 네 크기에서 접근 가능했고1440px 실제 축소→확대로 DOM scale1→0.833333→1을 관측했다.
+작업 패널 닫기·키보드 focus·hover도 실제 UI에서 확인했다. 880px의 오른쪽 작업 drawer가 일부 내보내기 폼을 덮는 것은 닫기 가능한 현재 구조다.
+모든 폼 필드가 동시에 노출되거나 overlay가 전혀 없다는 범위로 확대하지 않는다.
+
+새 작품·장면2개·한글 집필·Undo/Redo·인물/POV·치환·Reader2pane/본문 이동·EPUB/HWPX ZIP/XML 재열기·앱 재시작을 통과했다.
+출력 EPUB의 원본 CSS를360/960px에서 렌더했고 가로 overflow0이다.
+Read-only SQLite의 schema와 UI 상태 외19테이블 전체 row가 네 시점에서 일치했다. `ui_state` 및 물리 `.madi` byte hash는 바뀌며 format 계약상 불변 조건이 아니다.
+폰트는 실제 loaded FontFace·computed family·same-origin CSS URL·package 자산 bytes/SHA로 확인했다.
+Custom scheme ResourceTiming0은 **UNAVAILABLE**로 보존하고 실제 요청 성공 근거로 쓰지 않는다.
+두 session의 renderer HTTP/WS·main fetch·default-session 외부 요청·page error는 instrumentation부터 pre-close 관측 범위에서0이었다.
+두 종료 모두 ordered product quit·captured Core1개 종료·wrapper 전 owned native0·wrapper exit/close0·force0을 확인했다.
+`naturalMainProcessExitProven=false`/`nativeExitCodesObserved=false`를 유지한다. Host136 known inactive·job79/active0·host force0·desktop gone이다.
+
+### 실제 AI UI
+
+`ai-ui-b9aa3e7-run1`은 **host PASS34.011초/exit0·actual probe23.790초**다.
+실제 기존 Qwen3-0.6B-Q8_0/llama CPU provider를 소유 loopback18143·threads2·GPU0으로 잠시 실행했다.
+제공자 설정·진단·제안 검토·선택 다듬기 네 화면을1440/880px에서 검수했고8PNG의 실제 SHA와 기록이 일치했다.
+Geometry8회/관측한 버튼52개에서 경계·visible clip·hit·Pretendard를 확인했다. 폰트4회도 실제 loaded FontFace와 고정 자산을 연결했다.
+요청별 명시 동의·검토 전 canonical 불변·exact same-block 적용·한 번의 Undo/Redo·저장·재열기를 통과했다.
+첫 session의 승인 loopback main fetch3건과 재열기0건을 관측했고 그 외 instrumentation 관측 외부 요청·page error는0이다.
+`PASS_LOOPBACK_ACTUAL_WITH_DIAGNOSTIC_WARNING`을 유지한다. 제공자 응답은 실제로 받았으나 진단 기대문구 `MADI_OK`가 아니어 `UNEXPECTED_RESPONSE` 경고가 발생했다.
+Remote HTTPS·인증키·OS clipboard·native IME·AI whole-process TCP 감사는 검증하지 않았다.
+두 앱의 ordered quit·Core 종료·wrapper exit/close0·force0을 확인했지만 main 자연 exit/native exit-code는 증명하지 않았다.
+소유 llama server는 SIGTERM/null exitCode로 종료했으며 정상 exit0로 표현하지 않는다.
+Host66표본 모두 Default/owned inactive·job92/active0·강제 job 종료0·desktop 제거를 확인했다.
+
+### 원본 근거와 실패 이력
+
+| 근거 | 저장소 상대 경로 / 실제 SHA-256 |
+| --- | --- |
+| Full terminal host | `.tools/verification/full-ui-verify-b9aa3e7-run1/metadata.json`; `5cebc5d135ffd3f55f32b5a491d0c18f749f517f153a00346a85b92752912477` |
+| Full original log | 같은 run의 `command.log`; `79875489721ceda3b75160c1eff4ac3f9d24c7dd287681a8c091803873f99a23` |
+| UI actual / host | `.tools/verification/ui-review-b9aa3e7-run7/ui-review-evidence.json`; `00e50f1fe0da6863fa4c2389ed872d6bfe6a1aeb2d0680a92dfbb75bcf6b9971`; host `caa35f11c4265b94385f49c1301a5469e60ae266cd7207b513903e7b0989656b` |
+| Fresh whole inventory | `.tools/verification/ui-package-b9aa3e7-5354916a-9952-4900-954f-37bc61522175/inventory.json`; `adc32c780c97b825af011b660e2978cc2fb7fa9ab3124ff04e823f9f067944b6` |
+| Exact source/full/UI/AI join | `.tools/verification/full-ui-verify-b9aa3e7-run1/final-ui-package-join.json`; `281302bb874164fcd7ad2fca68d947662f2935eb25fd09c65fa120e884921e9c` |
+| AI host | `.tools/verification/ai-ui-b9aa3e7-run1/metadata.json`; `815ce0159182cf6b8c9110a2ecc310372307be300585e155f50502d230eb059e` |
+| AI actual / orchestrator | 같은 run의 `llm-loopback-runs/packaged-e7278328-7bf6-4306-8381-e53ec73b10f3/actual.json`; `b47c69a6d7a65a468258c543cb02eea83d2245e6c021e6d38a2d28c1a3685fed`; orchestrator `23a3f7f774196e8921587c09cedbd5ec4a7e9cc772b75f816bfcb1f76f7d50f6` |
+
+Screenshot·합성 작품·원본 검수 도구는 local-only run에 보존하며 Git에 올리지 않았다. 사용자 작품이나 키를 시험에 사용하지 않았다.
+예비 실행도 원본을 덮어쓰거나 최종 PASS로 변경하지 않았다.
+
+| 예비 실행 | 실제 결과와 후속 처리 |
+| --- | --- |
+| `ui-review-8d943ad-run1` | COMMAND_FAILED12.640초. Custom scheme ResourceTiming을 잘못 요구한 검사; 다음 copy는 실제 FontFace·CSS·asset hash로 확인 |
+| `ui-review-02f411f-run2` | host PASS66.206초/harness63.766초. 당시 자동 검사는 노드 노출을 보증하지 못함;880px 캡처의 실제 Graph/Canvas 공간·선택색 수정 |
+| `full-ui-verify-1b34564-run1` | 의도적 중단·LAUNCHER_FAILED215.781초/child4294967295. 위 실제 UI 문제 수정 전 gate를 중단했고 사유·owned cleanup receipt 보존; PASS가 아님 |
+| `ui-review-0822ed5-run3` | COMMAND_FAILED69.377초. Publication wrapper main-grid 배치 누락으로 닫기 버튼이 화면 밖; wrapper·tabs·독립 scroll 수정 |
+| `ui-review-8dd6780-run4` | COMMAND_FAILED29.981초. Status bar 경계6.8px overflow; app-grid minimum width와 footer 축소 수정 |
+| `ui-review-d4f3ef7-run5` | COMMAND_FAILED81.424초. 둥근 카드의 투명 모서리에 둔 검사점을 실제 painted 영역으로 보정하되 전체 rect/clipping 조건 유지 |
+| `ui-review-d4f3ef7-run6` | COMMAND_FAILED74.316초.980px 실제 카드가 React Flow Controls에 가려짐; product overlay 제거·toolbar zoom 이동 |
+
+최종 b9의 UI run7·full·actual AI는 위 수정 이후 별도 실행이다. 시험은 소유 비활성 desktop에서 실행했으며 사용자 화면·전역 키보드·포커스·OS clipboard·desktop 전환을 바꾸지 않았다.
+Windows native IME15항목·사람의 HWPX layout·exact grant에 따른 배포 승인 조건은 그대로 남긴다.
 
 ## 2026-10-07 추가 실사용 UI 검수
 

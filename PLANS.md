@@ -4,24 +4,18 @@
 
 ## 현재 상태
 
-이전 제품 runtime의 전체 Windows 검증 source는 `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`이다. 전체 gate·AI·자연 종료 자동 검증은 이 source 전후 clean에서 실행했다.
-기존 계획의 제품 구현·코드 정리와 자동 runtime 검증을 완료한 뒤, 소유자 요청으로 UI 개선을 진행한다. 새 UI source의 runtime 승인은 **WITHHELD**이며 이전 gate로 대신하지 않는다.
-2026-10-07 후속 문서 source `65936f2`에서도 같은 배포본의 Playwright 실사용 흐름 검수를 완료했다. 제품 source는 바뀌지 않았다.
+현재 UI 제품 source는 `b9aa3e7e45aae85d18969b89366a590c341877c7`이다. 소유자 요청의 UI 개선과 exact source의 전체 Windows gate·배포판 실사용·실제 AI UI 검수를 완료했다.
+각 실행은 source 전후 clean에서 수행했다. Full이 새로 만든 배포본과 UI 검수 배포본의 전체 파일·디렉터리 inventory가 일치하며 AI 검수 전후에도 보존됐다.
+이전 source `f2efe6e`의 full·ZIP·AI·자연 종료와 후속 문서 source `65936f2`의 실사용 검수는 해당 revision의 근거로 보존한다.
 Node24.21.0/npm12.2.0/Rust1.97.1을 고정한다. 설치는 `npm ci`, 실행은 `npm run <script>`다.
 Private-local 기술 완료이며 공개·유료·고객·installer 배포 승인을 뜻하지 않는다. 사람의 확인 조건은 아래 세 항목이다.
 
-## 현재 작업: UI 개선
+## UI 개선 완료
 
-- `andongmin94/neobrutal-ui`의 굵은 테두리·단단한 그림자·버튼 눌림 상태를 기존 React/CSS 구조에 반영한다. 공통 토큰으로 집필·설정·그래프·캔버스·Reader·내보내기·AI 화면을 통일한다.
-- 기본 UI 폰트는 공식 Pretendard v1.3.9 variable WOFF2를 로컬 번들로 포함한다. canvas 원고는 같은 버전 Regular의 실제 자산을 사용하며 출판 preset의 사용자 선택은 유지한다. 생성기의 한글 완성형 11,172자 coverage와 편집 엔진 probe를 확인했고 앱 전체 gate는 별도로 검증한다.
-- 작업 버튼과 모드 선택의 배치를 정리하고 작은 UI 문구의 가독성을 높인다. 최소 창 크기 880×620을 포함해 Playwright로 로컬 폰트 로드·버튼 접근·주요 화면을 확인한다.
-- 구현 commit의 전체 고정 Windows gate, fresh-unpacked 실사용 흐름·오프라인 요청·EPUB/HWPX 재열기 결과를 실제 실행 후 기록한다. 현재 새 UI 검증 결과는 **PENDING**이다.
-- 예비 배포판 source `02f411f`의 UI run2는 PASS63.766초다. 실제 로컬 FontFace 10회·4크기 40화면·54캡처·집필/재열기/EPUB/HWPX 흐름을 확인했다. 880px 캡처에서 확인한 Binder의 이전 inline 색상은 공통 선택 토큰을 가리지 않도록 제거한다. 최종 변경 source의 gate와 UI 검수는 다시 수행한다.
-- 예비 검수의 자동 PASS는 그래프·캔버스 노드 노출을 보증하지 않았다. 캡처에서 발견한 880px 그래프 높이와 캔버스 공간 문제를 수정하고, 작업 패널 닫기를 추가한다. 후속 검수는 각 창 크기에서 기존 자동배치·화면 맞춤 버튼을 사용한 뒤 실제 노드 표시와 가림을 검사한다.
-- `1b34564` 전체 gate run1은 이 수정 전에 의도적으로 종료했다. launcher 기록은 LAUNCHER_FAILED215.781초이며 PASS가 아니다. 종료 사유 receipt와 소유 job 정리·비활성 desktop 해제 근거를 원본 run에 보존한다.
-- `0822ed5` UI run3은 COMMAND_FAILED69.377초다. 출판 모드 wrapper의 main grid 배치가 없어 작업 패널 닫기가 화면 밖으로 밀린 문제를 실제 캡처에서 확인했다. wrapper 배치·탭·독립 스크롤을 수정하며 이 회차는 그래프·캔버스 검사에 도달하지 않았다.
-- `8dd6780` UI run4는 좁은 창의 상태 표시줄 오른쪽 경계가6.8px 넘는 것을 발견해 실패했다. 앱 grid의 암묵적 최소 너비를 제거하고 상태 표시줄의 축소를 허용한다. 같은 검수 조건을 유지해 후속 source를 검증한다.
-- `d4f3ef7` run5의 둥근 모서리 검사점을 실제 painted 영역으로 보정한 run6에서도980px 카드가 기존 React Flow Controls에 가려지는 것을 확인했다. 확대·축소를 상단 도구 모음으로 옮기고 겹치는 기존 Controls 경로를 제거한다. 두 FAIL 결과를 보존하며 전체 node 경계·가림 검사를 유지한다.
+- `andongmin94/neobrutal-ui`의 굵은 테두리·단단한 그림자·버튼 눌림 상태를 기존 React/CSS 구조에 반영했다. 공통 토큰으로 집필·설정·그래프·캔버스·Reader·내보내기·AI 화면을 통일했다. 추가 npm 의존성은 없다.
+- 공식 Pretendard v1.3.9 variable WOFF2를 기본 UI 폰트로 오프라인 번들에 포함했다. canvas 원고도 같은 버전 Regular의 실제 자산을 사용한다. 한글 완성형 11,172자 coverage·편집 엔진 probe·실제 로컬 FontFace 로드를 확인했다. 출판 preset의 사용자 선택은 유지한다.
+- 작업 버튼·모드 선택을 정리하고 작업 패널 닫기를 추가했다. 880×620을 포함한 네 창 크기에서 버튼 접근·본문 영역·그래프/캔버스 노드 노출을 확인했다. 기존 React Flow Controls를 제거하고 확대·축소를 상단 도구 모음으로 옮겨 노드 가림을 해결했다.
+- 구현·검수의 실패 회차와 수정 근거는 [오프라인 결과](docs/OFFLINE_RUNTIME_RELEASE_RESULT.md)의 b9 UI 절에 보존한다. 현재 요청의 자동 작업은 완료했으며 남은 조건은 아래 사람의 세 항목이다.
 
 ## 목표와 범위
 
@@ -43,19 +37,17 @@ Binary HWP는 2026-10-02 제품 범위에서 제거했다. 변환 UI·C# bridge�
 
 | 항목 | 실제 결과 |
 | --- | --- |
-| 고정 설치·npm 전환 | `npm ci` PASS31.244초/exit0. workspace·lock·명령·문서 계약은 npm12.2.0 |
-| 전체 Windows gate | terminal PASS4459.669초/exit0. desktop710·bundle4 시험, 개발판·fresh unpacked Basic/D–H, Rust·Typie·integration·build 포함 |
-| 코드 정리·정밀진단 | e2 대비 제품4,031줄·총6,721줄 감소. RPC·LLM·복원·adapter·export cleanup·stale build·window guard 수정 유지 |
-| EPUB·HWPX | exact coverage·ZIP/XML 재열기·결정성·취소·no-clobber·cleanup 통과. 성능과 서식 승인 범위는 각각 결과 문서 참조 |
-| 배포 package·ZIP | 검증 unpacked554파일/80디렉터리/549,229,982B. 재빌드 없이 ZIP 포장; whole inventory·manifest·ZIP entry payload hash 일치 |
-| 실제 AI | 개발판27.887초·배포판26.105초 PASS. loopback 동의·선택 적용·Undo/Redo·저장·재열기 검증; diagnostic warning 보존·wrapper force0 |
-| 일반 앱 자연 종료 | fresh plain native close PASS36.015초. main exit/close0·남은 owned tree0; 이 control에서는 제품 core가 로드되지 않음 |
-| IME report·재시작 | direct run3 PASS40.068초. 보고서3개·동일 profile의 수동7필드 유지·두 main 자연 exit/close0·남은 owned tree0·profile 정리 |
-| 추가 실사용 UI 검수 | packaged run4 PASS46.472초. 두 장면 집필·Undo/Redo·인물·POV·치환·Reader·EPUB/HWPX·재열기 통과. 스키마와 UI 상태 외19테이블 보존 |
-| 결과 문서·최종 정합성 | 현재 source의 실제 결과를 반영했고 `npm run check:repository`·`npm run format:check`·`git diff --check` PASS |
+| 고정 npm workspace | Node24.21.0/npm12.2.0/Rust1.97.1·committed lock. 이번 UI 작업에서도 `npm ci` 실제 실행 |
+| b9 전체 Windows gate | terminal PASS4192.837초/exit0. desktop714·bundle4 시험, 개발판·fresh unpacked Basic/D–H, Rust·Typie·integration·build 포함 |
+| b9 EPUB·HWPX | exact coverage·ZIP/XML 재열기·결정성·취소·no-clobber·cleanup 통과. HWPX 장편 packaged exporter max83ms; UI wall·사람의 서식 승인은 별도 |
+| b9 배포 package 연결 | 556파일/80디렉터리/551,929,587B. Full 이후 두 번 읽은 전체 inventory와 UI run7 inventory 일치·AI 전후 보존. 새 ZIP은 만들지 않음 |
+| b9 실제 AI UI | host PASS34.011초/exit0·actual probe23.790초. 동의·exact same-block 적용·Undo/Redo·저장·재열기·AI4화면×2크기 통과. 진단 경고 보존 |
+| b9 실사용 UI | harness PASS67.113초·host PASS69.599초/exit0. 폰트10회·4크기40화면·54캡처, 집필·설정·치환·Reader·EPUB/HWPX·재열기·스키마/원고19테이블 보존 |
+| 기존 코드 정리·정밀진단 | 이전 f2 완료 근거를 유지. 이번 UI에서 이전 선택 색상·작은 창 layout 경로·중복 zoom overlay·대체된 Nanum 자산 제거 |
+| 결과 문서·최종 정합성 | 실제 b9 결과 기록. 후속 문서 변경 뒤 `npm run check:repository`·`npm run format:check`·`git diff --check` 실제 PASS. 문서 commit은 제품 검증 source와 구분 |
 
-위 표는 이전 제품 source의 완료 기록이다. 현재 UI 작업 완료 조건은 새 source의 검증이며, 아래 사람의 세 조건도 유지한다.
-후속 문서 commit은 실제 검증 source와 구분하며 이전 성공으로 이후 제품 변경을 승인하지 않는다.
+UI·AI inspector의 ordered product quit·Core 종료·wrapper exit0·force0은 확인했다. 이 근거를 main 자연 exit/native exit-code 증명으로 확대하지 않는다.
+이전 f2의 별도 plain close·IME report·ZIP 결과는 해당 source의 역사다. 이전 성공으로 이후 제품 변경을 승인하지 않는다.
 
 ## 사람이 확인할 세 조건
 
@@ -65,15 +57,13 @@ Binary HWP는 2026-10-02 제품 범위에서 제거했다. 변환 UI·C# bridge�
 
 ## 실행 근거와 기록
 
-- [전체 gate](.tools/verification/full-verify-f2efe6e-run1/metadata.json): terminal PASS; job3321/cleanup active0·host force0·desktop gone.
-- full 입력 관측8784개는 owned inactive였다. native error5로 이름 unknown4개였으며 같은 sample의 fresh inactive 근거4개를 보존한다.
-- [현재 ZIP](output/releases/madi-0.0.1-win32-x64-f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276): ZIP SHA `5a0df130…`, canonical inventory SHA `4684dd2e…`; 상세 join은 오프라인 결과에 기록한다.
-- ZIP join은 entry stream hash 대조다. 이 join을 별도의 새 ZIP 추출·앱 시험으로 표현하지 않는다.
-- [report run3](.tools/verification/ime-report-direct-cdp-natural-f2efe6e-run3/metadata.json): input78 known inactive·job122/active0·host force0·desktop gone.
-- [실사용 run4](.tools/verification/real-use-packaged-65936f2-run4/real-use-evidence.json): 원본 CSS의 EPUB360/960px 렌더 overflow0·package 전후 byte 일치·오류/관측한 외부 요청0. 이전 검수 스크립트 실패3회는 결과 문서에 보존한다.
-- source archive는444개 source의 **RUNNING snapshot**을 그대로 보존한다. terminal full metadata와 별도로 연결하며 snapshot을 PASS로 고쳐 쓰지 않는다.
-- report run1 완료 download 관측 실패110.832초와 run2 첫 종료 뒤 relaunch timeout130.432초는 역사에 보존한다. 성공 run3과 합치지 않는다.
-- 이전 Node/npm·e2/source52/cde 기록은 [오프라인 결과](docs/OFFLINE_RUNTIME_RELEASE_RESULT.md)에 revision-bound 역사로 보존한다.
+- [b9 전체 gate](.tools/verification/full-ui-verify-b9aa3e7-run1/metadata.json): terminal PASS; job3262/cleanup active0·host force0·desktop gone. 입력8,193표본은 모두 Default/owned inactive·unknown0.
+- [b9 UI run7](.tools/verification/ui-review-b9aa3e7-run7/ui-review-evidence.json): 원본 CSS EPUB360/960px overflow0·package 전후 일치·관측한 오류/외부 요청0.
+- [b9 실제 AI](.tools/verification/ai-ui-b9aa3e7-run1/metadata.json): host PASS·AI8캡처·명시 동의한 loopback 요청3/그 외 관측0·job92/active0·host force0·desktop gone.
+- [b9 whole package join](.tools/verification/full-ui-verify-b9aa3e7-run1/final-ui-package-join.json): canonical inventory SHA `34e65c8959632bbb340e54c5765523f6e4a9fd895cf15e406564839cbdde8c8d`·전체 inventory deep equality.
+- [f2 보관 ZIP](output/releases/madi-0.0.1-win32-x64-f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276): 이전 UI의 ZIP SHA `5a0df130…`·inventory SHA `4684dd2e…`. b9 배포본으로 표현하지 않는다.
+- 이전 f2 source archive는444개 source의 **RUNNING snapshot**을 그대로 보존한다. 해당 terminal full metadata와 별도로 연결하며 snapshot을 PASS로 고쳐 쓰지 않는다.
+- 이전 UI·report 실패와 Node/npm·e2/source52/cde/f2 기록은 [오프라인 결과](docs/OFFLINE_RUNTIME_RELEASE_RESULT.md)에 revision-bound 역사로 보존한다.
 
 ## 검증 운용
 
