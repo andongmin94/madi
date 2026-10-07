@@ -1,30 +1,27 @@
 # 오프라인 검사·portable 배포 준비 검증 결과
 
-기록일: 2026-10-02. 최신 실제 full·portable·AI 검증 제품 source: `e2cb07e44e73fd0f43db61090374a762ad1103f0`.
-현재 목표와 다음 작업은 [PLANS.md](../PLANS.md)에서 관리한다. 후속 문서 갱신 커밋은 실제 검증 source와 구분한다.
+기록일: 2026-10-07. 최신 실제 검증 기준 commit: `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`.
+후속 문서 commit은 이 실행 기준과 구분한다. 현재 계획은 [PLANS.md](../PLANS.md)에서만 관리한다.
 
-## 판정
+## 현재 판정
 
 ```text
-Full pinned Windows sourcee2cb07e: PASS / exit0 / 6027.338s
-Offline bundled EPUBCheck: DEVELOPMENT PASS / FRESH-UNPACKED PASS
-HWPX: PRIVATE LOCAL TECHNICAL GO
-Actual AI sourcee2cb07e: DEVELOPMENT RUN3/PACKAGED RUN1 PASS WITH DIAGNOSTIC WARNING
-Portable ZIP: CREATED / FRESH EXTRACTION MATCH / WHOLE TESTED-PAYLOAD JOIN PASS
-Manual kit sourcee2cb07e: PREPARED / NOT TESTED
-IME report-only export/restart sourcee2cb07e: PASS / ZERO-CORE ABSENCE PROOF; MANUAL ITEMS NOT TESTED
-Native Korean IME: MANUAL VALIDATION PENDING
-Actual Hancom HWP conversion: WITHHELD / ENVIRONMENT BLOCKED / DISABLED
+Full pinned npm Windows: PASS / exit0 / 4459.669s
+Development and fresh-unpacked Basic/D/E/F/G/H: PASS
+Offline EPUBCheck/JRE and HWPX: PRIVATE LOCAL TECHNICAL GO
+Actual AI development/fresh package: PASS WITH DIAGNOSTIC WARNING
+Portable ZIP: CREATED / WHOLE TESTED-PAYLOAD BYTE JOIN PASS
+Plain native close: PASS / main exit0
+IME report export/restart: PASS / reports3 / natural main exit0 twice
+Binary HWP / Hancom bridge / .NET requirement: REMOVED FROM PRODUCT SCOPE
+Native Korean IME15 and HWPX layout: HUMAN VALIDATION PENDING
 Public/paid/customer/installer distribution: NOT APPROVED
 ```
 
-아래 기존 본문과 source5151/5347/1ff 후속 기록은 각각의 source·환경에 묶인 역사다. 최신 sourcee2cb07e 근거와 실패 보존 범위는 마지막 절을 따른다.
-
-사용자가 요청한 기존 제품 범위의 자동 검증과 로컬 배포 준비를 마쳤다.
-수동 IME는 사람의 확인이 필요하다. 후속 승인된 임시 모듈·합성 한컴 시험에서 실제 Open=false를 확인했으며
-HWP conversion/reopen은 아직 성공하지 못했다. HWP는 disabled이며 최종 문서/layout·배포 승인은 없다.
-Typie 개발 permission은 owner-confirmed이고 공개 배포 범위는 저장소 밖 실제 grant를 따른다.
-이 기록은 현재 컴퓨터의 개발판/새 unpacked 앱 실증이다. 다른 깨끗한 PC나 installer 설치 성공으로 확대하지 않는다.
+아래 이전 본문은 각 source·환경에 묶인 역사다. 과거 HWP WITHHELD·환경 blocker·pnpm 명령을 현행 기능이나 TODO로 해석하지 않는다.
+현재 HWPX 내보내기는 한컴 설치와 독립적이다. 최신 full·ZIP·AI·직접 자연 종료의 근거는 마지막 f2 절을 따른다.
+Typie 개발 permission은 owner-confirmed이며 배포 범위는 저장소 밖 exact grant를 따른다.
+실증은 이 PC의 개발판·fresh unpacked에 한정하며 다른 깨끗한 PC나 installer 설치 검증은 수행하지 않았다.
 
 ## 구현과 오프라인 bundle
 
@@ -313,4 +310,196 @@ Whole package는561파일/81디렉터리/549,563,008bytes, canonical inventory d
 | 최초 IMErun1 실패 host | `.tools/verification/ime-report-e2cb07e-run1/metadata.json` | `96abd3894809ca1faa91fa8468bd6dcfdf51e3445897382e85349d2f3c7f809c` |
 | 소유 child stop, action 뒤 기록 | `.tools/verification/ime-report-e2cb07e-run1/owned-child-stop-post-action-receipt.json` | `caa6fb92ee32aeb76062f45258a74359b4e9a2cc069f9ca26f95d187d5870167` |
 
-HWP conversion/reopen은 성공한 근거가 없으며 현재 environment/network-boundary blocker와 private-local/Hancom 결정을 유지한다. HWP는 disabled/WITHHELD다. HWPX 및 나머지 자동 경로 성공을 HWP actual 성공이나 공개 배포 허가로 확대하지 않는다. Typie 개발 permission은 owner-confirmed이며 배포는 저장소 밖 exact grant의 허용 범위만 따른다. 원본source5151/5347/1ff·이후 diagnostic 역사, licensing과 수동15항목은 이 최신 기술 결과와 분리해 보존했다.
+당시 sourcee2 HWP conversion/reopen은 성공하지 못했고 environment/network-boundary blocker와 disabled/WITHHELD 상태였다. 소유자가 2026-10-02 binary HWP를 제거했으므로 이 기록은 현행 blocker나 TODO가 아니다. HWPX 및 나머지 자동 경로 성공을 HWP actual 성공이나 공개 배포 허가로 확대하지 않는다. Typie 개발 permission은 owner-confirmed이며 배포는 저장소 밖 exact grant의 허용 범위만 따른다. 원본source5151/5347/1ff·이후 diagnostic 역사, licensing과 수동15항목은 이 최신 기술 결과와 분리해 보존했다.
+
+
+## 2026-10-07 계획 압축을 위한 이전 근거 원문 보존
+
+아래는 source `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`의 PLANS.md에서 옮길 역사적 기록이다. 해당 source의 원문 SHA-256은 `a84e4bc3731c076737f4fbe2d52f36a693ea2dc60d0079e9f6102f01899eefce`이다. 줄 범위별 원문 bytes·줄끝·표현·판정을 그대로 보존했다. 원문에 있는 “현재”, “최종”, “재개하면”, “자동 재개하지 않는다” 등은 당시 snapshot의 표현이며 현행 작업 지시가 아니다. 현재 목표·다음 작업은 PLANS.md만 따른다.
+
+2026-10-07 이후 정확한 source의 full·ZIP·AI·자연 종료 결과는 이 과거 단락에서 추론하거나 채우지 않는다. Node/npm 부분 성공·source52/e2 성공·cde 중단을 새 Node24 전체 PASS로 합산하지 않는다. Binary HWP는 현행 제품 범위 밖이다. 과거 e2 표의 HWP/C# 수치와 당시 기능 설명은 revision-bound 기록이며 재도입 또는 향후 TODO가 아니다.
+
+<!-- Verbatim PLANS.md 16–33; 2026-10-06 Node24 전환 당시 실행 범위와 미실행 범위; SHA-256 3b207f053aafc2601f411878f935218c2078cd40a28df3217e209f959679700f -->
+## 완료한 환경 작업 — Node 24.21.0 LTS 전환
+
+현재 패키지 관리자는 npm `12.2.0`이며 설치는 `npm ci`, 실행은 `npm run <script>`를 사용한다.
+2026-10-06 재확인에서 Phase1B/1C/1D/1G/1H 범위 문서의 실행 gate도 npm으로 맞췄다.
+과거 결과·성능 문서에 남은 pnpm 명령은 당시 실제 검증 환경의 기록으로 보존한다.
+
+2026-10-06 사용자 요청에 따라 저장소 Node pin과 실행 wrapper를 `24.21.0` LTS로 바꿨다.
+`.node-version`·exact toolchain checker·CI의 expected version과 현재 개발 문서를 함께 맞췄다.
+저장소 npm `12.2.0`의 지원 범위 `^22.22.2 || ^24.15.0 || >=26.0.0`에 포함되는 버전이다.
+제품 의존·lock·Rust·vendor와 이전 source의 실행 증거는 바꾸지 않았다.
+이번 확인 범위는 실제 runtime/toolchain·repository·format·typecheck와 desktop JavaScript build다.
+실제 Node `v24.21.0`/npm `12.2.0` exact toolchain, Typie exact commit·9개 hash·repository 경계,
+290개 파일의 format/JSON, desktop typecheck와 `npm run build --workspace @madi/desktop`를 모두 exit0으로 확인했다.
+Workspace build는 JavaScript main/preload/renderer만 실행했다. `package-lock.json` SHA256은
+`e101ae75fd0210d7687652d18c2e4ff8d0150bfe93df14b144c2ce781e4e7b10`으로 그대로다.
+전체 verify·Rust 재빌드·제품 package/dev smoke는 반복하지 않았다. 이전 Node26.3.1의 제품 실행 증거를
+새 Node24의 전체 runtime 결과로 표현하지 않는다.
+
+
+<!-- Verbatim PLANS.md 34–87; npm 전환 분할 성공과 full run1–6 실패·중단의 원래 기록; SHA-256 06dfacab7b2276ad199ad6109146a64d80c1ed78a0eee44af599c3dc0098b548 -->
+## 이전 환경 작업 — npm 전환 완료
+
+2026-10-06 사용자 요청에 따라 pnpm workspace를 npm `12.2.0`으로 전환했다.
+Node `26.3.1`·Rust `1.97.1`과 제품 의존 버전을 유지하며, 기존 lock의 버전·integrity를
+새 `package-lock.json`과 대조한다. 새 직접 의존이나 영구 overrides는 추가하지 않는다.
+설치·빌드·개발/packaged 시험·dev 시작 시험·repository·format·diff의 실제 실행 결과를 이 절에 기록한다.
+제품 기능, 과거 실행 증거와 사람의 IME·layout·배포 판정은 이번 전환 범위 밖이다.
+
+전환 준비 검증: 고정 Node `v26.3.1`/npm `12.2.0`의 `npm ci` 실제 exit0, 306개 설치,
+Electron `37.10.3` binary integrity 복구를 확인했다. 기존 registry `name@version`
+353쌍과 integrity는 추가0·제거0·변경0이며 직접 의존 버전도 모두 유지했다.
+고정 npm 실행 wrapper·workspaces·CI·현재 문서와 Electron의 npm hoist 경로를 전환하고,
+기존 pnpm lock/workspace·실행 경로를 제거했다. 검증 candidate는 `c65b09a8d77b0f7b90042f6dcc892935fd64ed60`이다.
+이 source의 분할 실행에서 다음 범위를 실제 통과했다.
+
+- Full run5의 개발 경로: Desktop102파일/710시험·bundle4시험, Rust/Typie/integration/build와 개발 Electron Basic·D·E·F·G·H.
+- `npm run test:package` 단독 실행: pretest의 fixture3종·release/unpacked 빌드와 fresh packaged Basic·D·E·F·G·H, 816.327초/exit0.
+- `npm run test:dev` 단독 실행: 22.324초/exit0, 실제 소유 browser1개와 `--disable-gpu` argv 관측.
+
+모든 성공 실행은 같은 clean candidate의 전후 SHA를 확인했다. 패키지 단독 실행의 소유 desktop은1599/1599회 비활성,
+입력 이름 unknown0, 종료 전 fresh UOI_IO 비활성 조회1회였고 job empty·handle/desktop close·desktop 소멸을 확인했다.
+검증된 `output/madi-win32-x64`의554개 파일/549,229,982byte를 thread work에 보존하고,
+각 상대경로의 SHA256·size가 원본과 전부 일치하는 provenance를 기록했다. 이 배포본은 추가 재빌드하지 않는다.
+사람의 IME·layout·배포 승인이나 이전 제품 작업의 PRIVATE GO는 이번 근거로 확대하지 않는다.
+
+단일 `npm run verify`의 aggregate PASS는 없다. 사용자가 npm 교체 범위를 다시 명확히 한 뒤
+반복 전체 제품 검증을 중단했으며, 같은 source의 위 분할 검증 결과로 이번 관리자 전환을 마친다.
+전체 실행의 실패·부분 증거를 성공으로 합산하거나 없는 command-exit/sourceAfter 값을 채우지 않는다.
+
+첫 전환 candidate `fb1a73bf86ceb1d3314f1bcaba8123072517d287`의 부분 실행 기록은 보존했다.
+Full run1은789.117초에 OS의 `Screen-saver` 입력 desktop 관측으로 기존 Default-only guard가 종료했다.
+소유 desktop은 모든 관측에서 비활성이었다. 소유 desktop 비활성·알 수 없는 입력 실패·소스 동일성·정리 조건을
+유지하면서 실제 `Default`/`Screen-saver` 이름을 허용하는 ignored helper로 바꿨다. 실제 Default 관측값과 허용 정책값은 분리한다.
+Full run2는124.429초에 Phase1E fixture의 I/O/SQLite class 오류로 exit1이었다. 하위원인은 미확정이며,
+같은 clean source의 해당 fixture 단독 재현은26.056초/exit0이었다. 오래된 UUID 임시 파일을 원인으로 단정하거나 제품 구현을 바꾸지 않았다.
+Full run3에서는 Phase1E fixture와 Reader fixture16회 RPC가 통과했으나 G/H 외 Electron의 GPU-off 설정 누락을 확인해
+1255.094초에 소유 child/job만 안전하게 종료했다. 이 실행도 전체 PASS가 아니다. 없는 command-exit/sourceAfter 값을 성공으로 채우지 않는다.
+기존 G/H와 같은 isolated-only `--disable-gpu` 설정을 basic/D·E·F의 공통 smoke와 dev/start 공식 Electron CLI 실행에 적용했고,
+실제 Chromium switch 또는 소유 browser argv를 검사했다. 제품 main·의존·lock·기존 검사 threshold는 바꾸지 않았다.
+Candidate c65의 Full run4는1017.869초에 기존 helper의 입력 이름 native5 실패로 종료했다.
+이름 관측과 별개인 소유 desktop UOI_IO 비활성 근거가 있었으나 이 과거 실행을 PASS로 승격하지 않았다.
+현재 ignored helper hash는 `9B8DFA295DE998D52EEB9B3713FBAF1326EB92E3EA1479F89252C872B1ED7CB5`다.
+이름 native5일 때에만 같은 회차 live owned handle의 fresh UOI_IO 성공·비활성을 별도로 요구한다.
+초기 identity·known unsupported name·다른 native 오류·owned flag 읽기 실패/true·source·exit·GPU·job·정리 요구는 유지한다.
+Full run5는2874.782초에 prepackage PhaseD fixture의 Rust bin 재링크 `LNK1105`/Win321224로 exit1이었다.
+Mapping 주체/근본원인은 미확정이며 같은 source의 PhaseD 단독 실행은 실제 재링크 후4.513초/exit0이었다.
+제품·Rust·lifecycle 설정을 바꾸지 않고 이어진 위 단독 package 전체 실행을 통과했다.
+Full run6은1252.694초에 사용자 범위 재확인에 따른 반복 검증 중단으로 소유 child/job만 정리했다.
+이름 native5 unavailable9회는 raw Default/allowedName=null·availability=false로 보존했고,
+같은 회차 fresh owned proof9회와 primary2449/2449회 비활성, 종료 전 fresh 조회·job empty·desktop 소멸을 확인했다.
+Raw launcher 결과는 command-exit가 없는 `LAUNCHER_FAILED`이며 별도 intentional-abort 근거를 보존했다.
+이 실행도 전체 PASS가 아니다. 최종 `check:repository`는 Typie exact commit·9개 hash·경계 검사를,
+`format:check`는290개 파일의 whitespace/JSON 검사를 실제 통과했다. `git diff --check`도 exit0이다.
+
+
+<!-- Verbatim PLANS.md 88–107; source52 성공 한계와 cde fix·부분 중단·sourceAfter 미관측 기록; SHA-256 91185172cd9bf402c0d850530ae4aeee9470fab15cf08d1bb4320dce8a1a4f90 -->
+## 이전 제품 작업 — 사용자 요청으로 중단
+
+2026-10-02 퇴근을 위한 사용자 요청으로 작업을 중단했다. 소유 시험 job과 비활성 desktop은 정리했고, 자동 재개하지 않는다.
+최신 제품 코드 commit은 `cde2145cf7f3b7465939a99ed11a8b5d80a6bea2`다. HWP 제거와 정밀진단 개선은 구현했으며 제품 소스는 기준 e2 대비4,031줄 줄었다.
+Source52 전체 Windows 검증4599.511초·로컬 ZIP 대조·실제 AI 연결은 해당 source의 완료 근거다. Source52에는 이후 별도 시험에서 확인한 창 종료 예외가 있으므로 최신 코드의 완료 판정으로 이전하지 않는다.
+닫힌 창의 `webContents` 접근 예외를 최소 guard로 수정했다. 회귀시험2개 실제 RED 뒤 종료 관련14개 GREEN, typecheck·repository·format·diff를 통과했다.
+Source cde의 전체 시험은 사용자 요청으로2335.000초에 중단했다. Desktop102파일/710시험·bundle4시험과 dev 기본·D/E/F 경로까지 통과하고 장편 EPUB 시험 중이었다. HWPX·새 unpacked·fresh 경로는 이 실행에서 완료하지 않았다. **전체 PASS가 아니며 최신 runtime 판정은 PENDING이다.**
+중단 근거는 `.tools/verification/full-verify-cde2145-run2/intentional-abort.json`과 실제 terminal metadata에 보존했다. job1316/cleanup 시 active18은 소유 job 안에서 종료해 empty로 확인했고 handles·desktop을 닫았다. Input4556회 unknown0·소유 desktop inactive=true다. 강제 중단으로 없는 sourceAfter 필드를 성공값으로 채우지 않았다.
+재개하면 그때의 정확한 clean main source에서 명시적 command-only `CARGO_INCREMENTAL=0`으로 전체 pinned Windows 검증을 다시 실행한다. 통과한 unpacked를 재빌드 없이 ZIP으로 묶고 전체 byte join, 실제 AI·자연 종료/보고서 재시작 시험, 최종 결과 문서 갱신을 마친다. 준비 helper와 이전 결과는 `.tools/verification/`에 보존했다.
+
+현재 범위는 실제 미사용 소스·잔재와 중복을 추적하고,
+동작상 결함이 확인된 구현을 작게 개선해 복잡도를 줄이는 것이다. 의존성을 추가하지 않고 기존 타입·계약·호출·시험을 근거로 판단한다.
+HWPX 검증 성공을 근거로 사용자 요청에 따라 binary HWP 기능을 제품 범위에서 제거한다.
+HWP 앱·계약·C# sidecar·.NET/CI/배포 경로 제거와 미사용 선언·반사 선택 shim 정리를 구현했다.
+문서 전환의 원고/저장 대상 불일치, malformed JSON-RPC, AI 오류 본문 처리,
+EPUB 입력 실패·종료/취소 경합·살아 있는 process의 임시 파일 정리 결함을 회귀 시험과 함께 수정했다.
+Strict typecheck·repository·format·diff와 담당별 집중 회귀 검사는 통과했다. 현재 통합 source의 전체 Windows 검증·새 배포본 연결이 남는다.
+아래 완료 근거는 검증된 source e2의 기준 상태다. 후속 제품 변경은 관련 회귀검사와 필수 Windows 경로를 별도로 실행하기 전까지 runtime GO로 표현하지 않는다.
+HWP 변환은 차후 해결 목록에도 남기지 않는다. 과거 실패 근거만 보존하며 추가 한컴 실증은 하지 않는다.
+
+
+<!-- Verbatim PLANS.md 123–142; 당시 e2 전체 gate·package·AI·report 기준 상태; SHA-256 58de238abe8435d5eaeb724d5006b8d490ca59d4f3dd1b6c3ce0242ad3164f0f -->
+## 현재 판정과 진척
+
+**기존 제품 범위의 자동 개발·Windows 검증·로컬 ZIP 준비는 source e2에서 완료했다. 현재 HWP 제거·코드 정리 및 사람의 검증·배포 결정이 남는다.**
+실제 검증 제품 source는 `e2cb07e44e73fd0f43db61090374a762ad1103f0`다. 후속 결과 문서 commit을 추가 runtime 검증으로 표현하지 않는다.
+
+| 항목 | 판정과 실제 근거 |
+| --- | --- |
+| 최종 Windows gate | **PASS**. frozen install1.432초, full6027.338초/exit0. Desktop105파일/719시험·C#25시험, core·exporters·Typie·build·dev/fresh 기본/D/E/F/G/H 및 unpacked/repository/format 포함 |
+| 최종 실행 정리 | **PASS**. 소유 job3494/active0, host 강제 종료 없음, handles·desktop 정리. input11787회 Default/비활성, unknown0 |
+| EPUB·HWPX | **PRIVATE LOCAL TECHNICAL GO**. exact e2 dev/fresh ZIP/XML·IR 범위·결정성·취소·출력 보호·재열기. TCP 외부 관측0; UDP/연속 packet 관측을 주장하지 않음 |
+| EPUBCheck/JRE | **PASS**. ZIP에 고정 오프라인 bundle 포함. 실제 Java 검사·취소·검사 중 종료·출력 보호 확인 |
+| 최종 ZIP | **WHOLE PAYLOAD JOIN PASS**. 실제 검증한561파일/81폴더/549,563,008bytes를 재빌드 없이 포장, ZIP과 새 압축 해제본까지 전체 hash 대조 |
+| AI | **PASS WITH DIAGNOSTIC WARNING**. exact e2 개발판/배포판 실제 요청·선택 적용·Undo/Redo·저장·재열기와 제품 종료/테스트 실행기 분리 확인. 지정 응답 불일치·stderr 관측 한계 보존 |
+| IME report·수동 kit | **보고서 경로 PASS / 수동 준비 완료**. 최종 앱에서 JSON/Markdown3개 내보내기·재시작·설정 유지·프로필 정리 확인. Native IME15항목은 NOT TESTED |
+| HWPX native 내용 | **PRIVATE LOCAL TEXT PASS ONLY**. source20e 출력/sourcef464 inspector의 일반324·장편2412 문단 전체 대조, Close·Quit·native exit·job0·등록 부재. e2 native 판독·layout·HWP 변환 성공으로 이전하지 않음 |
+| HWP 기능 | **제거 구현 완료 / 제품 범위 제외**. HWPX를 출판 경로로 유지하며 HWP 변환 UI·계약·sidecar·.NET 요구사항을 제거. 이전 변환 실패는 역사적 근거로만 보존 |
+| Native IME·HWPX layout·배포 | **사람의 확인 대기**. 자동 성공을 수동 입력·서식·공개 배포 승인으로 바꾸지 않음 |
+
+전체 실행 자료는 `.tools/verification/full-verify-e2cb07e-run1/`에 보관했다. Source80개 archive와 raw E/F/G/H10개는 원본 bytes로 보관하고 실제 package receipt·whole inventory·ZIP join과 연결했다.
+Source5347/1ff full FAIL, source20e 기본 PASS, 기존 AI source5151과 첫 e2 AI 종료 증거 부족 실행은 각 revision/실행의 기록으로 보존한다. 서로 다른 실행의 부분 성공을 합쳐 전체 PASS로 만들지 않는다.
+
+<!-- Verbatim PLANS.md 151–164; e2 artifact 경로·native IME/layout·private 배포·AI 관측 범위; SHA-256 da3f8048f8f9e62234eac3d7793abf5c06d422d5305f10eeb8af737ac0a39b6a -->
+## 실행 자료와 사람에게 남는 조건
+
+- 최종 private-local ZIP: `output/releases/madi-0.0.1-win32-x64-e2cb07e44e73fd0f43db61090374a762ad1103f0/`.
+- 직접 실행할 최종 앱: `output/madi-win32-x64/madi.exe`.
+- 최종 수동 kit: `output/releases/manual-validation/e2cb07e-68cec668-c8fd-49b7-86e4-baf816261a37/`. Source e2 문서 사본과15항목 NOT TESTED template·5,000자 합성 한글 입력 자료다. 수동 검증 완료 증거가 아니다.
+
+과거 HWP 등록·합성 시험 승인과 원복·네트워크 실패는 역사적 결과 문서에서 보존한다.
+HWP 기능 제거를 추가 Automation 시험·영구 등록·전역 process 종료·전역 네트워크/보안 변경으로 해석하지 않는다.
+Native IME는 사람이 체크리스트를 수행한다. 자동 시험은 사용자의 화면·키보드·포커스·clipboard를 바꾸지 않았다.
+Typie 개발 permission은 owner-confirmed이며 공개 배포 범위는 저장소 밖 정확한 grant를 소유자가 확인한다.
+Private-local ZIP·기술 성공을 signing·installer·자동 update·공개/유료/고객 배포 승인으로 해석하지 않는다.
+
+AI 실증은 keyless loopback·합성 단일 블록 전체 선택·clipboard API interception 범위다. 진단 지정 응답 불일치와 stderr 관측 한계는 보존한다.
+Remote HTTPS·인증키·OS clipboard·native IME 또는 AI 실행 전체 process TCP 감사로 확대하지 않는다. 앱의 제품 종료와 Playwright 테스트 실행기의 정리는 별도로 기록한다.
+
+
+## 2026-10-07 exact sourcef2 최종 npm·Playwright 근거
+
+Node24.21.0 LTS/npm12.2.0/Rust1.97.1/Electron37.10.3에서 `npm ci`는31.244초/exit0, `npm run verify`는4459.669초/exit0이었다. Full 시작/종료는 2026-10-07T04:52:23.5142938Z→2026-10-07T06:06:42.6681148Z, exact source 전후 clean이며 Desktop102파일/710테스트·bundle4·Rust·Typie·integration·build·개발판과 fresh unpacked Basic/D/E/F/G/H를 같은 run에서 통과했다. 필수 `npm run package:unpacked`·repository·format은 full 안에서 실제 실행했다. 다른 revision의 성공이나 부분 실행을 합산하지 않았다.
+
+Full은 소유 비활성 Win32 desktop·BelowNormal·GPU 비활성화, Rust jobs1·Vitest workers2·command-process 한정 CARGO_INCREMENTAL0에서 실행했다. Job total3321/cleanup active0, 강제 job 종료0, process/thread/job handles 및 desktop closed/gone를 확인했다. Owned inactive flag8784회와 pre-close fresh query1을 기록했다. 입력 이름은 Default/Screen-saver가 관측됐고 native5 판독 불가4회는 같은 회차 fresh owned-inactive proof4회와 연결한다. 이름 판독 완전성=false와 allowedActiveInputEverySample=null을 보존하며 모든 표본 Default라고 주장하지 않는다. 화면·키보드·포커스·clipboard·보안 설정을 바꾸지 않았다.
+
+E/F/G/H actual10개는 `.tools/verification/full-verify-f2efe6e-run1/phaseefgh-proof-archive/receipt.json`에 byte-exact 보존했다. 장편450 sections/2411 blocks/675000 characters의 exact coverage·출력 결정성·ZIP/XML 재열기·취소·no-clobber·recovery cleanup 및 관측된 HTTP/WS/owned TCP 검증을 같은 run에 연결했다. HWPX의 fallback450/warning451도 그대로 기록한다. UDP·연속 packet·IME·서식 승인으로 확대하지 않는다. 실제 n5와 개발판의 느린 IR/UI는 [EPUB 성능](EPUB_EXPORT_PERFORMANCE.md#14-exact-sourcef2efe6e-developmentfresh-actual--2026-10-07), [HWPX 성능](HWPX_EXPORT_PERFORMANCE.md#10-exact-sourcef2efe6e-developmentfresh-actual--2026-10-07)을 따른다.
+
+Source archive는 원래 RUNNING snapshot이다:444 sources/7228114B, receipt207144B/SHA-256 `6d9d81fa93a356e7b6a062ceca58669391bdcd895dd02566bc1837514565bd76`. 당시 runtimeGO=false/observedFullStatus=RUNNING을 terminal PASS로 고치지 않았다. Terminal full metadata SHA-256은 `eda4ff9bab7472c846cefddd87cbd8ef8c51d30f9c70320f10ec4c8b02c6c58d`이며 별도 실제 결과다.
+
+## Exact f2 package receipt·canonical inventory·portable join
+
+Source `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`의 terminal full PASS metadata SHA-256은 `eda4ff9bab7472c846cefddd87cbd8ef8c51d30f9c70320f10ec4c8b02c6c58d`다. 그 command.log에서 추출한 package-unpacked-receipt는2749B/SHA-256 `c94b357fd76ef781b91d711e6da22b881957f4e9e356f21e125f6c131669e4e6`이며 native copy/runtime bundle 결과이지 전체 앱 payload의 digest 자체가 아니다. 같은 receipt hash가 다른 source에 나타나도 source/전체 package가 같다고 추론하지 않는다.
+
+검증한 unpacked tree는554파일/80디렉터리/549229982bytes다. Canonical `JSON.stringify(inventory)` digest(inventorySha256)는 `4684dd2e03eccb3f0239976ca47ab20c2053afde016ace2567482f3406db172d`. Snapshot JSON 파일 자체의 hash는 `47619ffaed14c3465f8c3f9f8c0c6b6e103288cc3467936a1887076e104f5f91`(120393B)이며 두 hash의 뜻을 구분한다. Snapshot·manifest·현재 unpacked tree·ZIP entry payload가 같은 canonical inventory에 연결되고 HWP payload는 없다.
+
+ZIP은227591160B/SHA-256 `5a0df13048683ae615c488477412d44b67e31d2e44f3f2224b5a8d57f649bd42`, 경로 `output/releases/madi-0.0.1-win32-x64-f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276/madi-0.0.1-win32-x64-f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276.zip`다. Join receipt는3518B/SHA-256 `938a2abc5c263f1117a5e37d1515483060038b22341cc11e81200f8ad31042a1`이고 zipEntryContentsStreamHashedWithoutExtraction=true/newAppTestClaimed=false다. 이 receipt는 ZIP entry를 stream hash로 대조했으며 별도 새 ZIP 압축 해제본을 실행/대조했다고 확대하지 않는다. Fresh unpacked 앱 실증은 앞선 full의 packaged gate이고 ZIP proof와 구분한다.
+
+Snapshot freshnessInferredFromInventory=false, noInterveningBuildIndependentlyProven=false, join noInterveningBuildIndependentlyProven=false를 유지한다. Root의 직접 package-portable 포장 절차와 전체 byte equality를 함께 읽되 inventory만으로 독립 build 부재·clean-PC 설치·공개 배포 승인·실제 AI 성공을 주장하지 않는다.
+
+| 근거 | 저장소 상대 경로 | File SHA-256 |
+| --- | --- | --- |
+| Package receipt | `.tools/verification/tested-package-receipt-f2efe6e-b690e6f5-a885-4c6a-ab7e-4f1e294f02e9/package-unpacked-receipt.json` | `c94b357fd76ef781b91d711e6da22b881957f4e9e356f21e125f6c131669e4e6` |
+| Whole snapshot JSON | `.tools/verification/tested-package-f2efe6e-cb9e7fe6-8269-4ffb-bea9-094675a1fc30/tested-package-inventory.json` | `47619ffaed14c3465f8c3f9f8c0c6b6e103288cc3467936a1887076e104f5f91` |
+| Portable join | `.tools/verification/portable-tested-join-f2efe6e-5a636f5a-ac13-4a06-b8ac-fa34b9a31880/portable-tested-join.json` | `938a2abc5c263f1117a5e37d1515483060038b22341cc11e81200f8ad31042a1` |
+
+### 실제 AI와 직접 자연 종료·보고서
+
+개발 AI27.887초·fresh AI26.105초 모두 실제 로컬 제공자 응답을 받았고 선택 apply/Undo/Redo·저장·재열기가 통과했다. 고정 진단의 exact MADI_OK=false 경고를 남겼다. 네 종료 모두 CORE1·before-wrapper captured native0/live owned native0·ordered quit과 wrapper exit/close0, force0이었다. AI inspector harness 자체의 naturalMainProcessExitProven=false/nativeExitCodesObserved=false는 유지한다. PRE/POST source·runtime·dev-dist·whole-package identities가 일치하고 호출자 환경도 복원됐다. 실제 AI의 자세한 관측 범위와 receipt는 [Phase1I](PHASE_1I_RESULT.md#2026-10-07-exact-sourcef2efe6e-npm--node-24-actual-loopback)를 따른다.
+
+별도 plain run1은36.015초/exit0으로 실제 소유 HWND에 WM_CLOSE를 보내 main exit/close0·owned tree0·force0·profile 제거를 확인했다. Report run3은40.068초/exit0, same profile의 JSON/Markdown/재시작 JSON3개·manual7 exact·15 NOT TESTED·composition null·원고 본문 없음·profile 제거를 확인했다. 두 main의 child exit/close는 각각0, signal null, force0, owned tree0이었다. Playwright 연결을 먼저 정상 disconnect한 뒤 PID/birth/image/argv/owned HWND를 검증해 닫았으며 main-process 평가·Node inspector·DOM storage 주입/flush·전역 입력은 사용하지 않았다. Report-only Core는 실행되지 않았으므로 native absence proof와 실행된 Core의 exit proof를 구분한다. 실제 IME나 report import 성공을 주장하지 않는다.
+
+Plain/report의 outer job total85/122, input70/78 unavailable0/0·owned inactive, cleanup active0/no host force·desktop closed/gone를 확인했다. 보고서의 public Download.failure()===null 완료·동일 페이지 blob·파일명·단일 고유 출력·stable double-read bytes/SHA를 검사했고 actual native 자연 종료를 별도로 확인했다. 이는 file 존재만으로 내린 판정이 아니다.
+
+Report run1은110.832초/exit1로 REPORT_DOWNLOAD_NOT_COMPLETED에서 실패했다. 생성된 첫 JSON1463B는 schema 유효였지만 Markdown·재시작·자연 종료를 통과하지 못했다. Run2는public 완료 관측으로 첫 JSON/Markdown과 첫 자연 종료0을 확인했으나 direct-relaunch 단계 TimeoutError로130.432초/exit1이었다. 위치·원인은 미확정이며 첫 성공을 전체 성공으로 승격하지 않는다. 실패 raw와 cleanup/force 관측을 각각 보존했다. Run3은run2에 단계 태그·제한된 진단만 추가한 동일 동작·timeout·criteria의 실제 전체 성공이며, 이 성공을 run2 실패 원인의 확정으로 해석하지 않는다. Product source 변경 없이 helper 수정만 수행했다.
+
+| 근거 | 저장소 상대 경로 | SHA-256 |
+| --- | --- | --- |
+| Terminal full | `.tools/verification/full-verify-f2efe6e-run1/metadata.json` | `eda4ff9bab7472c846cefddd87cbd8ef8c51d30f9c70320f10ec4c8b02c6c58d` |
+| AI POST join | `.tools/verification/ai-playwright-f2efe6e-prepared-66b46329-9353-4e5a-9087-aa59e4e9a4e2/runs/post-84e74739-8394-4677-a970-41ef159b7b20/receipt.json` | `0cf47b5988f6c2f849a717947ad4d04311b2c3772bc0a2117bb1fb183d89dd3e` |
+| Plain native close | `.tools/verification/ime-plain-native-close-control-f2efe6e-run1/plain-native-close-control-evidence.json` | `9cff7022dfd4ece218cc9c8404c7532280f0efa80222c79c9b95db96175e6e43` |
+| Report run3 actual | `.tools/verification/ime-report-direct-cdp-natural-f2efe6e-run3/ime-direct-report-evidence.json` | `5b5b4cb00e00d590f70b4aaa6bbacbd242185621446dc07645a59a85afee6ec0` |
+| Report run3 host | `.tools/verification/ime-report-direct-cdp-natural-f2efe6e-run3/metadata.json` | `0ff5e4e1967eb85609ac530711858887fc78c78cc7bd7a9c19bc696783e89c42` |
+| Report run1 failure | `.tools/verification/ime-report-direct-cdp-natural-f2efe6e-run1/ime-direct-report-evidence.json` | `d08fac13711413ce29b76fc387d73de876ae59dd680223e1ad4a3f59975a329d` |
+| Report run2 failure | `.tools/verification/ime-report-direct-cdp-natural-f2efe6e-run2/ime-direct-report-evidence.json` | `55901630a845ffae14ed8cffaf559a338969e8bf4e2d62ad09ec735280929344` |
+
+수동 kit `output/releases/manual-validation/f2efe6e-8622e739-d125-4ec1-9315-30ebf218200c`는7파일/한글5000자로 준비했다. App launched=false/validationPerformed=false/IME15 NOT TESTED를 유지했다. 소유자가 실제 IME·HWPX layout과 공개/유료/고객/installer 배포 조건을 확인하기 전까지 private-local 기술 결과와 구분한다. Binary HWP·Hancom Automation·.NET runtime은 현행 제품과 차후 TODO에서 제거됐다.

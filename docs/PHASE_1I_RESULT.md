@@ -2,7 +2,7 @@
 
 This document preserves the narrow-workflow implementation and audit record. Current goals,
 progress, contract discrepancies, and next work are maintained in [PLANS.md](../PLANS.md).
-The latest completed full Windows and actual loopback pair applies to product source `e2cb07e44e73fd0f43db61090374a762ad1103f0`.
+The latest completed npm Windows and actual loopback pair applies to product source `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276` (2026-10-07).
 Subsequent documentation-only commits record that evidence; they are not additional runtime-tested
 product candidates. This record does not establish runtime acceptance for later product changes.
 
@@ -13,10 +13,11 @@ Repository implementation: COMPLETE FOR NARROW AI WORKFLOWS
 Exact same-block selection apply: IMPLEMENTED
 General proposal review: IMPLEMENTED
 Multi-block/project-wide apply: REMOVED, NOT AUTHORIZED
-Aggregate Windows verification sourcee2cb07e: PASS — PRIVATE LOCAL TECHNICAL
-Actual loopback sourcee2cb07e: DEVELOPMENT RUN3/PACKAGED RUN1 PASS WITH DIAGNOSTIC WARNING
-Product quit/native pre-wrapper proof: OBSERVED; INSPECTOR WRAPPER FORCE EXIT1 PRESERVED
-Natural main-process exit/native exit codes: NOT PROVEN
+Aggregate npm Windows verification sourcef2efe6e: PASS — PRIVATE LOCAL TECHNICAL
+Actual loopback sourcef2efe6e: DEVELOPMENT RUN1/PACKAGED RUN1 PASS WITH DIAGNOSTIC WARNING
+Product quit/native pre-wrapper proof: OBSERVED; ALL FOUR WRAPPERS EXIT0 / FORCE0
+AI inspector natural main-process exit/native exit codes: NOT PROVEN
+Separate report/plain direct natural main exit: PASS / CORE ABSENCE ONLY
 Distribution: PRIVATE LOCAL ONLY; DISTRIBUTION GATES REMAIN
 ```
 
@@ -65,11 +66,11 @@ The stable product now has one clear canonical mutation path: an exact same-bloc
 The final product candidate must pass the required pinned path:
 
 ```powershell
-pnpm install --frozen-lockfile
-pnpm verify
-pnpm package:unpacked
-pnpm check:repository
-pnpm format:check
+npm ci
+npm run verify
+npm run package:unpacked
+npm run check:repository
+npm run format:check
 git diff --check
 ```
 
@@ -329,6 +330,29 @@ Final post-join receipt: `.tools/verification/final-ai-source-join-owned-close-p
 The first development run1 remains a limited shutdown observation (SHA-256 `1631af4571d4e2a1f2cf23d4bdb2bfe0952da2bf896daac1133d683a90ddff4f`): window close was observed, Playwright close was false, wrapper force and exit/close1 were recorded, and product/native pre-wrapper proof was absent. It is not relabeled clean. Development run2 recorded product/outer PASS in 31.881 seconds, but its first invoker returned exit1 because restoring an absent variable with .NET created an empty value; callerEnvironmentRestored=false and the preserved invoker (SHA-256 `515d256dd43cdd2fb91d3b88b11fadf78498760b0c90aac57f5f0dfad7ed503c`) remain historical. The V2 invoker uses Remove-Item Env for originally absent variables, and the minimal development run3 rerun supplies the authoritative restored=true result.
 
 Evidence remains under ignored `.tools/verification/`: development `llm-development-e2cb07e-run3/llm-loopback-runs/development-ab62eee9-f81e-4352-b6df-e8add0d3a0db/`; packaged `llm-packaged-e2cb07e-run1/llm-loopback-runs/packaged-60261ae0-590d-43ab-b572-d4b4fd3baa5f/`. Orchestrator SHA-256 values are `801fba5bf7c875b8dba1fbe20a209b3bfb348c5dfc3fcbf18d6ae506eb3f9902` and `d9c113e02dd1116204133856d58096e4f79e800ceb4decdfb035df35fbc7b3c2`; host metadata SHA-256 values are `4fd24be3bdfa8f24de33ccf29789927cbf3509c2673b8a998abdce57ea1fabb3` and `5cb7ff0140cda0222cca864c0e6868b3252b78e755207ad7e7e43af54e9b846f`. Native IME/Hancom licensing and public-distribution decisions remain human gates. Earlier source5151f6a and other source-bound observations above remain historical.
+
+## 2026-10-07 exact sourcef2efe6e npm / Node 24 actual loopback
+
+Source `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276` passed `npm run verify` with Node `24.21.0`/npm `12.2.0`, exit0 in **4459.669 seconds**, clean source before/after. Full metadata SHA-256: `eda4ff9bab7472c846cefddd87cbd8ef8c51d30f9c70320f10ec4c8b02c6c58d`. The following same-source AI pair is separate private-local technical evidence; earlier revisions remain historical.
+
+Development and fresh-packaged actuals both returned `PASS_LOOPBACK_ACTUAL_WITH_DIAGNOSTIC_WARNING`, outer exit0 and caller environment restored=true. Both received an actual provider response; exact `MADI_OK` was false. `DIAGNOSTIC_UNEXPECTED_RESPONSE` remains a warning, and the exact-answer diagnostic is not promoted to success.
+
+| Mode | UTC start → finish, 2026-10-07 | Host seconds | actual.json SHA-256 |
+| --- | --- | ---: | --- |
+| Development run1 | 06:09:08.5943029Z → 06:09:36.4794940Z | 27.887 | `1ef560ee8e796f2e7fa64db84f4195268a318ecd426f1450ab2b7d0047560edf` |
+| Fresh-packaged run1 | 06:09:43.3414999Z → 06:10:09.4455718Z | 26.105 | `359f9fe7151d69f6d6184aee1165b3ca748ed09f294d0dbf7887c58c6d37b12d` |
+
+The fixture retained consent, proposal review/copy without canonical mutation, exact same-block apply, one exact Undo/Redo, save/reopen without another provider request, and provider settings outside canonical content. It selected an 11-character block and reviewed two hunks; partial-block, duplicate/Unicode and broader mutation are outside this actual fixture's scope. Provider and manuscript text are omitted.
+
+Each of the four closes captured one live CORE instance, exact launcher/main PID/birth/image identity, and ordered beforeQuit1→willQuit1→quit1. Captured native instances and live owned native descendants were both0 before any possible wrapper force. All four inspector CMD wrappers exited/closed0 with null signals; wrapper cleanup required=false, forced termination=false/result=null, cleanup completed=true. `naturalTransportCloseProven=true` does not establish natural Electron main-process exit or native exit codes: this AI harness explicitly retains `naturalMainProcessExitProven=false` and `nativeExitCodesObserved=false`. Owned temporary app data was removed.
+
+Each mode observed first-app approved loopback main fetches3/reopen0; unapproved main fetches, renderer HTTP/WS and page errors were0. These pre-close main-fetch/renderer counters are not a whole-process TCP or through-quit stderr audit; each probe retained two unclassified non-stage stderr lines. Clipboard API interception does not validate OS clipboard, remote HTTPS/key authentication, credential encryption or native Korean IME. Human HWPX layout acceptance is separate.
+
+The cached CPU provider's archive/model and51 runtime-file hashes matched; threads2/batch2/GPU0/parallel1/context2048 remained bounded. Owned server stop recorded SIGTERM, exited=true/exitCode=null in both modes, not natural exit0. Outer jobs each recorded52 processes, cleanup active0 and no host job termination; AI input samples54/51 had unavailable0/0 and owned desktops inactive throughout. These outer results remain separate from the inner wrapper and provider-stop observations.
+
+PRE receipt SHA-256: `d3b225e0836b0d17e504eecef85871e8cc3d885422ae33167ef3b0cc7637b24d`. POST receipt: `.tools/verification/ai-playwright-f2efe6e-prepared-66b46329-9353-4e5a-9087-aa59e4e9a4e2/runs/post-84e74739-8394-4677-a970-41ef159b7b20/receipt.json`, SHA-256 `0cf47b5988f6c2f849a717947ad4d04311b2c3772bc0a2117bb1fb183d89dd3e`. The original actual/orchestrator receipts and helper copies match their recorded byte identities; PRE/POST snapshots match exact source/full/archive/runtime/debug-core/dev-dist/whole tested-package identities. Root invocation records bind the packaged executable environment and restored private caller values; the AI harness does not independently attest the consumed executable path/SHA.
+
+The successful POST join preserves each mode's actual status while setting `acceptance=false`, `productCompletionVerdict=false` and `actualAiPerformedByThisHelper=false`: the identity-join helper neither runs AI nor makes a final product/distribution decision. These fields do not erase the independently recorded runtime results. Native IME, human layout and public/paid/customer/installer approval remain separate gates.
 
 ## Next stage
 

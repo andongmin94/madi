@@ -4,7 +4,38 @@ This document records the audit and transport-hardening observations at their st
 Current work order, open contract checks, and verification status are maintained in
 [PLANS.md](../PLANS.md). Historical audit conclusions are not a later commit's runtime acceptance.
 
-## Verdict
+## Current audit verdict — 2026-10-07
+
+The HWPX-only cleanup and fault corrections passed the full pinned npm Windows path at exact source `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`: exit0 in4459.669 seconds, Desktop710 tests plus4 bundle tests, Rust/Typie/integration/build and development/fresh packaged Basic/D/E/F/G/H. The actual loopback pair and direct native report/plain close passed separately on the same frozen source/package. The AI diagnostic warning, previous report run1/run2 failures and manual IME/layout gates remain recorded in [the offline result](OFFLINE_RUNTIME_RELEASE_RESULT.md). No earlier revision's partial result is used as this candidate's acceptance. Current work stays in [PLANS.md](../PLANS.md).
+
+Static measurement used pinned Node24.21.0/TypeScript5.9.3 and confirmed exact clean source before and after. Against `e2cb07e44e73fd0f43db61090374a762ad1103f0`, the measured changes are:
+
+| Measured category | Changed files | Added lines | Removed lines | Net lines |
+| --- | ---: | ---: | ---: | ---: |
+| product | 32 | 269 | 4300 | -4031 |
+| tests | 20 | 539 | 2794 | -2255 |
+| tooling | 8 | 34 | 196 | -162 |
+| scriptTestsAndFixtures | 7 | 139 | 412 | -273 |
+| total | 67 | 981 | 7702 | -6721 |
+
+Product source is down **4,031 lines**, with no product-source diff from cde to f2. The total measured decrease is **6,721 lines**; npm/GPU tooling changes make this different from cde's historical6,751. The scope is tracked TS/TSX/MJS/C#/csproj. Rust, vendor, documents/JSON/PowerShell and ignored generated products are excluded; the total is not presented as a product-only reduction.
+
+Product TS/TSX/MJS has6,536 syntactic decisions, a9,984 sum of per-function proxies and an unchanged maximum134, with parser diagnostics0. These are syntax indicators, not a quality score or proof that maintainability risks are resolved.
+
+The current sources retain all eight corrections: malformed JSON-RPC validation, LLM error-body/request ownership, scene/entity graph and owner restoration, direct browser selection mapping, EPUB close/owned-temporary barriers, HWP/.NET removal, clearing stale Electron output before compilation, and the destroyed-window getter guard. Retained regression sources and111 scanned product files are bound in the static diagnosis receipt. This review launched no app, build or test and does not report a new regression-test PASS.
+
+Binary HWP UI/contracts/C# bridge/.NET requirements and the reflection selection shim are removed. HWP remains outside product scope and is not a future TODO. Publication IR, Madi-owned editor adapters and the narrow exact same-block AI mutation boundary remain the current contracts. Native Korean IME15 and HWPX layout still require human validation; private-local technical evidence does not authorize public/paid/customer/installer distribution.
+
+| Static evidence | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `.tools/verification/code-cleanup-audit-f2efe6e-87a37e6d-c8bb-448d-b1c8-dae5bc79e11c/metrics.json` | 2777983 | `83cf7bff8155dc65a9ce97ef54026cf726d243302e96c83f590ecf8917f52720` |
+| `.tools/verification/code-cleanup-audit-f2efe6e-87a37e6d-c8bb-448d-b1c8-dae5bc79e11c/STATIC_DIAGNOSIS_RECEIPT.json` | 12062 | `339cdcada9a00b5c4e8720b268265cf14db9ef158940b60044e9684134f1db91` |
+
+The full source archive remains its original RUNNING snapshot:444 sources, acceptance=false/runtimeGO=false, `.tools/verification/full-verify-f2efe6e-run1/source-archive-receipt.json` (207144B/SHA-256 `6d9d81fa93a356e7b6a062ceca58669391bdcd895dd02566bc1837514565bd76`). Its snapshot status/hash must not be rewritten to terminal PASS. The root's later terminal full metadata and package/AI/report joins are separate evidence.
+
+The initial audit and dated follow-ups below are historical conclusions at their stated revisions. Their HWP and pnpm statements remain historical evidence, not current product paths or current verification commands.
+
+## Initial audit verdict — historical
 
 The repository is not “perfect,” but the core product architecture is sound. The largest immediate quality problem was not the canonical data model or export pipeline; it was an unfinished Phase 1I experiment that added a second AI review surface, structured multi-block selection mapping, duplicate planning code, and tests for a mutation path that remained disabled in production.
 

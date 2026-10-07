@@ -1,5 +1,10 @@
 # HWPX Export Performance
 
+## 현재 판정 — 2026-10-07, exact sourcef2efe6e
+
+Tested source는 `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`, pinned full은 PASS/exit0/4459.669초다. 같은 full의 development/fresh-unpacked H correctness와 n5 측정은 PASS이며 신규 §10의 actual 수치를 따른다. 기존 §1–9의 revision-bound 기록을 새 수치와 혼합하지 않는다. Fresh15초 target은 native exporter에만 적용한다. HWP conversion/reopen은 현행 측정 단계가 아니며 native text 대조를 HWPX layout 승인으로 표현하지 않는다.
+
+
 기준일: 2026-08-13
 후속 갱신일: 2026-10-01
 
@@ -232,3 +237,29 @@ DefaultEverySample=null·inactiveEverySample=true를 보존한다. Known input�
 `8f711f39ec4e46f27d818102ec360428de2bf6180b5e7d4a03ebf2f2e923f815`이며 ignored same-run phaseefgh-proof-archive에 byte-exact 보존했다.
 수동 native Korean IME·Hancom module/licensing/실제 HWP conversion/reopen은 PENDING/HWPdisabled다.
 이 결과는 HWPX private-local 기술 GO이며 공개·유료·고객·installer 승인 또는 docs-only HEAD의 새 actual PASS가 아니다.
+
+## 10. Exact sourcef2efe6e development/fresh actual — 2026-10-07
+
+Source `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`의 `full-verify-f2efe6e-run1`은 PASS/exit0/4459.669초였고 development/fresh H가 같은 run에서 통과했다. Source before/after clean과 terminal metadata SHA-256 `eda4ff9bab7472c846cefddd87cbd8ef8c51d30f9c70320f10ec4c8b02c6c58d`에 연결된 n5 실제 성능이다.
+
+| 장편 n5, ms | Development median / max | Fresh unpacked median / max |
+| --- | ---: | ---: |
+| Native exporter total | 711 / 797 | 77 / 93 |
+| Actual runtime Publication IR | 51121.86 / 63017.43 | 2605.09 / 2871.27 |
+| Report total(IR + native) | 51871.86 / 63814.43 | 2698.09 / 2948.27 |
+| Click→output/reopen wall | 52615.26 / 64868.89 | 3516.56 / 3836.16 |
+
+Native exporter raw5: development[797, 651, 659, 711, 750], fresh[70, 69, 93, 82, 77]. Runtime IR raw5: development[63017.43, 51497.63, 50900.74, 50326.26, 51121.86], fresh[2293.66, 2743.19, 2605.09, 2460.58, 2871.27]. UI wall raw5: development[64868.89, 52951.4, 52375.18, 51865.75, 52615.26], fresh[3165.05, 3516.56, 3742.66, 3352.13, 3836.16]. Fresh native EXPORTER_TOTAL_MS15000ms는 실제5/5 적용·통과했다. 느린 개발판IR/UI를 제외하거나 fresh native 수치로 대신하지 않는다. Report totalMs는 IR+native 합계이고 UI wall 및 native target과 구분한다.
+
+모든 dev/fresh5회에서450 source/exported sections·675000 source/exported characters, source2411blocks=exported1961+fallback450+omission0+rejected0을 유지했다. HWPX package10sections, VALID/fatal0/error0/warning451이며 warning/fallback을0으로 바꾸지 않는다. Output33378B/SHA-256 `4a4bf6078a18039620e5f8a13214860c230de5945f667866da031d8331419a57`, logical package hash `082e00935a82bb928a535cc6672eb11872699b3e5e59b7c07b5f5f2e48358d24`는 dev/fresh 및5회 사이 모두 같다.
+
+ZIP/XML 재열기·scope/split·determinism·취소/late-success 부재·no-clobber·symlink/claim/recovery cleanup, renderer HTTP/WS 및 owned TCP 위반/분류/identity/parser0, 세 lifecycle의 captured native-before-wrapper exit를 같은 evidence에서 확인했다. Cancel latency는 measured=false이며 memory peak/leak·warm-up 보장을 주장하지 않는다.
+
+| H raw evidence | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Development | 55652 | `a139599070cd7cb9f96576728bc597ec9473001baa4397cda826df6e760a25e0` |
+| Fresh unpacked | 55670 | `fbc47267780d28aa4fe9536960c4451c9278d4ffda45e43ec3c38ef929192266` |
+
+이 PC의 Node24.21.0/npm12.2.0/Rust1.97.1/Electron37.10.3, 소유 비활성 Win32 desktop·BelowNormal·GPU 비활성화·jobs1/workers2·command-only CARGO_INCREMENTAL0 환경에서 관측했다. UDP/연속 packet·native 한국어 IME·HWPX layout·다른 hardware 성능·공개/유료/고객/installer 배포 승인을 주장하지 않는다. HWP 변환은 제품/성능 범위 밖이며 과거 optional Hancom 단계는 역사다.
+
+근거 summary: `.tools/verification/npm-playwright-post-gate-prepared-f2efe6e-41c0a1cb-6552-4e04-8a14-f6c5b73d0e23/collected-full-verify-f2efe6e-run1-final-b5ede0a0-bd33-409a-abb6-284d8b003b62/performance-summary.json`, 60185B/SHA-256 `ff93872f348013506450f96f279b56bbd267b10b7f960e1790609cbdab2fa771`. Raw JSON은 위 고유 collection의 raw/에 byte-exact 보존하며 원문·private path·diagnostic 본문을 문서로 복사하지 않는다. package/ZIP은 [오프라인 결과](OFFLINE_RUNTIME_RELEASE_RESULT.md)의 별도 byte join을 따른다.

@@ -1,12 +1,12 @@
-# Phase 1H — HWPX Export & Optional Local HWP Bridge 결과
+# Phase 1H — HWPX Export 결과
 
-기준일: 2026-08-13  
-후속 갱신일: 2026-10-02
-문서 상태: sourcee2 full actual PASS / TECHNICAL GO — HWPX / PRIVATE LOCAL ONLY; optional HWP WITHHELD / NETWORK FAIL / DISABLED
-
-이 문서는 아래 기준일의 구현·실행 근거와 revision별 후속 actual을 보존한다. 현행 목표와
-작업 순서는 [PLANS.md](../PLANS.md)를 따른다. Source5151의 section29 판정과 source5347·1ff의
-section31/32 실패는 각 revision에 한정한다. 최신 exact-source 개발판·fresh-unpacked HWPX 판정은 section33을 따른다.
+기준일: 2026-08-13. 후속 갱신일: 2026-10-07.
+문서 상태: exact sourcef2 full PASS / DEVELOPMENT·FRESH-UNPACKED HWPX PASS / PRIVATE LOCAL TECHNICAL GO.
+현재 실제 source는 `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`, full은4459.669초/exit0이며 최신 HWPX 판정은 §34를 따른다.
+Binary HWP는2026-10-02 제품 범위에서 제거했으며 optional bridge·.NET 요구·향후 TODO가 아니다.
+아래 §1–33은 각 revision의 당시 구현·PASS/FAIL/WITHHELD·미실행 범위를 보존한 역사다. 예전 HWP·optional·network blocker 문구를 현행 작업으로 읽지 않는다.
+현행 목표와 작업 순서는 [PLANS.md](../PLANS.md), AI·자연 종료/report·ZIP은 [오프라인 결과](OFFLINE_RUNTIME_RELEASE_RESULT.md)의 별도 actual을 따른다.
+Native IME15·HWPX layout·공개/유료/고객/installer 배포는 승인되지 않았다.
 
 ## 1. Phase 1H 최종 판정
 
@@ -283,7 +283,7 @@ Phase 1I 구현이 존재하지만 Phase 1H actual 판정은 계속 보류한다
 
 ## 23. 현행 계획 참조
 
-다음 실행 작업, 필수 command와 HWP 별도 조건은 [PLANS.md](../PLANS.md)에서 관리한다.
+현재 실행 작업과 필수 npm 검증 경로는 [PLANS.md](../PLANS.md)를 따른다. Binary HWP는 현행 범위 밖이며 과거 Automation 기록은 현재 TODO나 재개 조건이 아니다.
 새 실행 근거가 확보되면 해당 commit·환경·hash·결과를 이 문서와 성능 문서에 기록한다.
 계획 목록 정리는 실행 성공이나 최종 판정 변경을 뜻하지 않는다.
 
@@ -748,3 +748,31 @@ HWP disabled/securityModuleVerified=false·COM/HWP launch attempt=false·reopen 
 선택적 HWP는 **WITHHELD / NETWORK FAIL / DISABLED**이며 최종 e2 HWPX 성공과 구분한다.
 Sections27–32의 이전 revision PASS/FAIL과 미실행 범위는 그대로 보존한다. Native IME15항목·한컴
 layout/Automation 라이선스·변환/reopen acceptance는 사람의 확인 대기이며 public/paid/customer/installer 배포는 승인되지 않았다.
+
+## 34. 2026-10-07 exact sourcef2 HWPX actual — HWP 제거 후
+
+제품 source `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`의 `full-verify-f2efe6e-run1`은 PASS/exit0/4459.669초, source 전후 clean이었다. Terminal metadata SHA-256은 `eda4ff9bab7472c846cefddd87cbd8ef8c51d30f9c70320f10ec4c8b02c6c58d`다. 아래 개발판/fresh-unpacked H 결과는 같은 full의 actual이며 §1–33의 역사적 결과를 새 source 성공으로 옮기지 않는다.
+
+개발판/fresh 모두 일반6 scope/split과 장편5회·ZIP/XML 재열기·rich inline/ruby fallback을 통과했다. 장편은 source/exported450sections·675000characters, source2411blocks=exported1961+fallback450+configured omission0+rejected0, package 물리section10개다. 결과는 VALID/fatal0/error0/warning451이며 fallback/warning을0으로 표현하지 않는다.
+
+Output33378B/SHA-256 `4a4bf6078a18039620e5f8a13214860c230de5945f667866da031d8331419a57`, logicalPackageHash `082e00935a82bb928a535cc6672eb11872699b3e5e59b7c07b5f5f2e48358d24`, sourcePublicationHash `eba872b8ce302e8ff54c9f3417a115768f0d0ebbaa1f33c87ed37f706854626b`, presetContentHash `5651a452f234acdf399e9ba3c3dd8007a888f46d1693740f59fff66230a17bbb`는 dev/fresh 및 각5회에서 일치했다. 데이터베이스 physical bytes나 모든 개별 preset ID까지 같다는 뜻은 아니다.
+
+| 장편 n5, ms | 개발판 median/max | fresh-unpacked median/max |
+| --- | ---: | ---: |
+| Native exporter | 711/797 | 77/93 |
+| Actual runtime Publication IR | 51121.86/63017.43 | 2605.09/2871.27 |
+| UI click→output/reopen | 52615.26/64868.89 | 3516.56/3836.16 |
+
+Fresh15초 hard gate는 native EXPORTER_TOTAL_MS에만5/5 적용·통과했다. 개발판의 느린 IR/UI를 숨기지 않으며 IR/native/report total/UI 경계를 구분한다. Raw5와 stage 수치는 [HWPX 성능 §10](HWPX_EXPORT_PERFORMANCE.md#10-exact-sourcef2efe6e-developmentfresh-actual--2026-10-07)을 따른다.
+
+동시 no-clobber·실패 후 stale-success 숨김·취소 후 output/late progress/late success 부재, 세 lifecycle(normalState/normalExport/longExport)의 product graceful quit·wrapper 전 captured native exit·남은 descendant0, temp/symlink/recovery registry/claim0을 확인했다. Renderer HTTP/WS 및 owned TCP non-loopback·boundary·classification/identity/parser0이다. IPv4/IPv6별 수치·UDP·연속 packet·별도 AI 전체 TCP 감사를 주장하지 않는다.
+
+| 같은 full의 H raw·archive | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Development H raw | 55652 | `a139599070cd7cb9f96576728bc597ec9473001baa4397cda826df6e760a25e0` |
+| Fresh H raw | 55670 | `fbc47267780d28aa4fe9536960c4451c9278d4ffda45e43ec3c38ef929192266` |
+| E/F/G/H byte-exact archive receipt | 8335 | `0c189c540ab5acb1d8ea5f3affd1c478b93ab64361dc43f8712168e634fa444c` |
+
+Raw는 `.tools/verification/full-verify-f2efe6e-run1/phaseefgh-proof-archive/`에 보존했다. Source archive444개/207144B(SHA-256 `6d9d81fa93a356e7b6a062ceca58669391bdcd895dd02566bc1837514565bd76`)는 original RUNNING snapshot/acceptance=false/runtimeGO=false 그대로이며 terminal PASS metadata와 별도로 연결한다.
+
+사용자가2026-10-02 binary HWP를 제품 범위에서 제거했다. 현재 HWPX-only actual은 Hancom Automation·HWP bridge·.NET 경로를 호출하지 않으며 설치된 Hancom에 의존하는 변환이 아니다. HWP를 향후 TODO/수동 승인 대기로 남기지 않는다. Native IME15·HWPX layout은 사람 검증 대기, private-local 기술 성공은 공개/유료/고객/installer 배포 승인이 아니다. AI·plain 자연 종료·strict report 후속 결과는 각각의 별도 actual 결과에 기록하며 이 H 판정에 합산하지 않는다.

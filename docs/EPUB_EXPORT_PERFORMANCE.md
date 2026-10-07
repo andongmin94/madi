@@ -1,5 +1,10 @@
 # EPUB Export Performance
 
+## 현재 판정 — 2026-10-07, exact sourcef2efe6e
+
+Tested source는 `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`, pinned full은 PASS/exit0/4459.669초다. 같은 full의 development/fresh-unpacked G correctness와 n5 측정은 PASS이며 성능 근거는 아래 신규 §14를 따른다. 이전 source5151·e2·52의 판정과 timing은 각 revision의 역사로 보존한다. 이 성능 판정은 private-local 범위이며 별도 AI·자연 종료/report·배포 최종 tuple을 대신하지 않는다.
+
+
 ## 현재 판정 — 2026-10-01, exact source5151f6a
 
 ```text
@@ -309,3 +314,28 @@ non-loopback/native TCP, identity/classification/parser rejection은0이고 fres
 - [Phase 1G result](./PHASE_1G_RESULT.md)
 - [Reader Lab performance](./READER_LAB_PERFORMANCE.md)
 - [Validation strategy](./EPUB_VALIDATION_STRATEGY.md)
+
+## 14. Exact sourcef2efe6e development/fresh actual — 2026-10-07
+
+Source `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`의 `full-verify-f2efe6e-run1`은 PASS/exit0/4459.669초였고 development/fresh G가 같은 run에서 통과했다. Source before/after clean과 terminal metadata SHA-256 `eda4ff9bab7472c846cefddd87cbd8ef8c51d30f9c70320f10ec4c8b02c6c58d`에 연결된 n5 실제 성능이다. Full input8784회는 owned inactive이며 native5 unknown4회와 같은 회차 fresh inactive proof4회를 보존한다. 입력 이름이 전부 Default였다고 표현하지 않는다.
+
+| 장편 n5, ms | Development median / max | Fresh unpacked median / max |
+| --- | ---: | ---: |
+| Native exporter total | 544 / 555 | 61 / 65 |
+| UI end-to-end wall | 62226.32 / 65666.65 | 8598.85 / 9566.33 |
+| Native internal validation | 96 / 107 | 14 / 14 |
+
+Native exporter raw5: development[544, 518, 532, 551, 555], fresh[58, 61, 65, 65, 55]. UI wall raw5: development[65666.65, 56303.83, 58990.68, 64051.87, 62226.32], fresh[8485.55, 8564.25, 9488.16, 9566.33, 8598.85]. Fresh hard target15000ms는 native EXPORTER_TOTAL_MS에만 실제 적용돼5/5 통과했다. 느린 development UI wall(62226.32 / 65666.65ms)은 포함된 전체 경로의 관측이며 native15초 gate로 숨기거나 평가하지 않는다.
+
+G의 Publication IR 값은 FIXTURE_DEBUG_REFERENCE_NOT_RUNTIME_IR다: development median/max52960.63 / 89252.8ms, fresh fixture 참조50358.62 / 60856.8ms. Fresh actual IR로 표시하거나 runtime wall/native total에 더하지 않는다. 대표3.3 EPUB의 bundled EPUBCheck5.3.0 Java는 단일 관측 development5163.13ms/fresh5378.93ms, VALID/fatal0/error0였다. 장편 Java n5 median이나 cancel latency가 아니다.
+
+Coverage는450 source/exported sections·2411 source/exported blocks·675000 source/exported characters, fallback/rejected0이며 결정성·ZIP 재열기·mimetype first/stored·155entries/150XHTML/161nav/150spine를 유지했다. 번들364파일/187794843B의 pinned hash, renderer HTTP/WS 및 owned TCP 위반/분류/identity/parser0, 취소 후 output/late-success 부재·JVM stream drain, no-clobber, 세 lifecycle native-before-wrapper exit·cleanup을 같은 evidence에서 확인했다.
+
+| G raw evidence | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Development | 71273 | `b8fd0527cc6385ad02bff391c45c2cd1b8fa1e6e5c7042f7fdddf93e0acb00b3` |
+| Fresh unpacked | 71313 | `c377caa91f9e94878c2971c78d77b13edff8ffb6d282bf6027d5ffd53918149a` |
+
+이 PC의 Node24.21.0/npm12.2.0/Rust1.97.1/Electron37.10.3, 소유 비활성 Win32 desktop·BelowNormal·GPU 비활성화·jobs1/workers2·command-only CARGO_INCREMENTAL0 환경에서 관측했다. UDP/연속 packet·native 한국어 IME·HWPX layout·다른 hardware 성능·공개/유료/고객/installer 배포 승인을 주장하지 않는다. HWP 변환은 제품/성능 범위 밖이며 과거 optional Hancom 단계는 역사다.
+
+근거 summary: `.tools/verification/npm-playwright-post-gate-prepared-f2efe6e-41c0a1cb-6552-4e04-8a14-f6c5b73d0e23/collected-full-verify-f2efe6e-run1-final-b5ede0a0-bd33-409a-abb6-284d8b003b62/performance-summary.json`, 60185B/SHA-256 `ff93872f348013506450f96f279b56bbd267b10b7f960e1790609cbdab2fa771`. Raw JSON은 위 고유 collection의 raw/에 byte-exact 보존하며 원문·private path·diagnostic 본문을 문서로 복사하지 않는다. package/ZIP은 [오프라인 결과](OFFLINE_RUNTIME_RELEASE_RESULT.md)의 별도 byte join을 따른다.
