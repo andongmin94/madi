@@ -4,8 +4,9 @@
 
 ## 현재 상태
 
-현재 검증 source는 `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`이다. 아래 자동 검증은 모두 이 source 전후 clean에서 실행했다.
+제품 runtime의 전체 Windows 검증 source는 `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`이다. 전체 gate·AI·자연 종료 자동 검증은 이 source 전후 clean에서 실행했다.
 계획된 제품 구현·코드 정리와 자동 runtime 검증을 완료했다. 실제 결과 문서 반영과 repository·format·diff 확인도 통과했다.
+2026-10-07 후속 문서 source `65936f2`에서도 같은 배포본의 Playwright 실사용 흐름 검수를 완료했다. 제품 source는 바뀌지 않았다.
 Node24.21.0/npm12.2.0/Rust1.97.1을 고정한다. 설치는 `npm ci`, 실행은 `npm run <script>`다.
 Private-local 기술 완료이며 공개·유료·고객·installer 배포 승인을 뜻하지 않는다. 사람의 확인 조건은 아래 세 항목이다.
 
@@ -37,6 +38,7 @@ Binary HWP는 2026-10-02 제품 범위에서 제거했다. 변환 UI·C# bridge�
 | 실제 AI | 개발판27.887초·배포판26.105초 PASS. loopback 동의·선택 적용·Undo/Redo·저장·재열기 검증; diagnostic warning 보존·wrapper force0 |
 | 일반 앱 자연 종료 | fresh plain native close PASS36.015초. main exit/close0·남은 owned tree0; 이 control에서는 제품 core가 로드되지 않음 |
 | IME report·재시작 | direct run3 PASS40.068초. 보고서3개·동일 profile의 수동7필드 유지·두 main 자연 exit/close0·남은 owned tree0·profile 정리 |
+| 추가 실사용 UI 검수 | packaged run4 PASS46.472초. 두 장면 집필·Undo/Redo·인물·POV·치환·Reader·EPUB/HWPX·재열기 통과. 스키마와 UI 상태 외19테이블 보존 |
 | 결과 문서·최종 정합성 | 현재 source의 실제 결과를 반영했고 `npm run check:repository`·`npm run format:check`·`git diff --check` PASS |
 
 계획된 자동 제품 작업은 완료했다. 다음 확인 대상은 아래 사람의 세 조건이다.
@@ -55,6 +57,7 @@ Binary HWP는 2026-10-02 제품 범위에서 제거했다. 변환 UI·C# bridge�
 - [현재 ZIP](output/releases/madi-0.0.1-win32-x64-f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276): ZIP SHA `5a0df130…`, canonical inventory SHA `4684dd2e…`; 상세 join은 오프라인 결과에 기록한다.
 - ZIP join은 entry stream hash 대조다. 이 join을 별도의 새 ZIP 추출·앱 시험으로 표현하지 않는다.
 - [report run3](.tools/verification/ime-report-direct-cdp-natural-f2efe6e-run3/metadata.json): input78 known inactive·job122/active0·host force0·desktop gone.
+- [실사용 run4](.tools/verification/real-use-packaged-65936f2-run4/real-use-evidence.json): 원본 CSS의 EPUB360/960px 렌더 overflow0·package 전후 byte 일치·오류/관측한 외부 요청0. 이전 검수 스크립트 실패3회는 결과 문서에 보존한다.
 - source archive는444개 source의 **RUNNING snapshot**을 그대로 보존한다. terminal full metadata와 별도로 연결하며 snapshot을 PASS로 고쳐 쓰지 않는다.
 - report run1 완료 download 관측 실패110.832초와 run2 첫 종료 뒤 relaunch timeout130.432초는 역사에 보존한다. 성공 run3과 합치지 않는다.
 - 이전 Node/npm·e2/source52/cde 기록은 [오프라인 결과](docs/OFFLINE_RUNTIME_RELEASE_RESULT.md)에 revision-bound 역사로 보존한다.

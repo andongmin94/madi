@@ -1,6 +1,7 @@
 # 오프라인 검사·portable 배포 준비 검증 결과
 
-기록일: 2026-10-07. 최신 실제 검증 기준 commit: `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`.
+기록일: 2026-10-07. 제품 runtime의 전체 Windows 검증 source: `f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276`.
+후속 문서 source `65936f254be025472db1c3df85a5ac30d3d876db`에서 같은 배포본의 추가 실사용 UI 검수도 실행했다.
 후속 문서 commit은 이 실행 기준과 구분한다. 현재 계획은 [PLANS.md](../PLANS.md)에서만 관리한다.
 
 ## 현재 판정
@@ -13,6 +14,7 @@ Actual AI development/fresh package: PASS WITH DIAGNOSTIC WARNING
 Portable ZIP: CREATED / WHOLE TESTED-PAYLOAD BYTE JOIN PASS
 Plain native close: PASS / main exit0
 IME report export/restart: PASS / reports3 / natural main exit0 twice
+Packaged synthetic real-use UI: PASS / writing / planning / exports / reopen / content preserved
 Binary HWP / Hancom bridge / .NET requirement: REMOVED FROM PRODUCT SCOPE
 Native Korean IME15 and HWPX layout: HUMAN VALIDATION PENDING
 Public/paid/customer/installer distribution: NOT APPROVED
@@ -22,6 +24,62 @@ Public/paid/customer/installer distribution: NOT APPROVED
 현재 HWPX 내보내기는 한컴 설치와 독립적이다. 최신 full·ZIP·AI·직접 자연 종료의 근거는 마지막 f2 절을 따른다.
 Typie 개발 permission은 owner-confirmed이며 배포 범위는 저장소 밖 exact grant를 따른다.
 실증은 이 PC의 개발판·fresh unpacked에 한정하며 다른 깨끗한 PC나 installer 설치 검증은 수행하지 않았다.
+
+## 2026-10-07 추가 실사용 UI 검수
+
+소유자의 요청으로 `65936f2`까지 원격 `main`에 먼저 푸시한 뒤 새 합성 작품을 실제 앱 UI에서 만들었다.
+이 source와 runtime source f2의 차이는 문서7개뿐이며 제품 source diff는 없다.
+재빌드 없이 기존 검증 배포본을 사용했고, 검수 전후554파일/80디렉터리/549,229,982B 전체 내용이 고정 inventory와 일치했다.
+Canonical inventory SHA는 `4684dd2e03eccb3f0239976ca47ab20c2053afde016ace2567482f3406db172d`다.
+
+최종 `real-use-packaged-65936f2-run4`는 host **PASS46.472초/exit0**, 실제 harness **PASS43.556초**다.
+Pinned Node24.21.0/npm12.2.0과 Electron37.10.3/Playwright1.54.2를 사용했다.
+파일 선택 dialog만 새 시험 폴더의 경로로 반환했고, 원고·설정·출판 데이터는 page UI에서 작성했다. 실제 native 파일 선택창 조작 시험은 아니다.
+
+| 실제 작업 | 관측 결과 |
+| --- | --- |
+| 작품·집필 | 새 작품/장면2개, 합성 한글 본문 입력, 추가 편집·Undo/Redo·최종 Undo의 정확한 본문 복원, 저장 |
+| 설정·치환 | 인물1개·한 줄 요약·POV 연결1개, 본문1회 선택 치환; 재열기 검색에서 새 문구1회/옛 문구0회 |
+| Reader Lab | 두 pane 각각2sections/6blocks 측정 complete·본문 일치·overflow0; 본문 클릭으로 원래 장면 이동, 재열기 유지 |
+| 출판 | UI 사전 검사·EPUB/HWPX 파일 생성, ZIP/XML 재열기·parser error0·두 본문 각각1회·옛 문구/U+FFFD0 |
+| EPUB 화면 | 출력 원본 CSS·spine 순서로 비활성 desktop의 시험 창에서360/960px 렌더; 본문2개 표시·가로 overflow0 |
+| 재열기 | 동일 profile에서 앱을 종료·재시작하고 원본 `.madi` 열기; 작품명·본문·인물·요약·POV·Reader·출판 metadata 일치 |
+
+최종 EPUB은3,033B/SHA `f72333f95b407521b8a241a754e323faed4c048522de2bf2775bf3735f8bcbc3`,
+HWPX는4,896B/SHA `011252c0fc1e55b00ac4ee42e0faa692ed4323b90fab3463a8ebd2d63b7c3397`다.
+이 작은 작품은 EPUB6entries/spine1/본문 문단2, HWPX9entries/section1이다. 장편 성능·결정성 시험은 기존 full 근거를 따른다.
+
+`.madi` 전체 byte SHA 불변을 원고 불변 조건으로 쓰지 않는다. 현재 format의 `ui_state`는 장면 선택·창 종료 때 별도로 저장된다.
+Pinned Node의 `node:sqlite`를 readOnly/query_only transaction으로 열어 `sqlite_schema`와 UI 상태 외19개 table의 모든 row를 비교했다.
+첫 종료 전·첫 종료 후·재열기 확인 후·두 번째 종료 후의 content SHA는 모두
+`eb537de228cb4b4076397d728e50168203429f3226dbae019fc869d91c038c7f`로 같다.
+Schema SHA도 같으며 문서 blob·revision·timestamp·검색 index·snapshot·출판 설정을 비교 범위에 포함한다.
+`ui_state`3행의 hash와 물리 파일 hash는 달라졌다. 출력 근거에는 body/row 값을 쓰지 않고 count/hash만 기록했다.
+
+두 앱 session 모두 renderer HTTP/WS·page error·main fetch·default-session external web request 관측0이다.
+관측은 instrumentation부터 pre-close까지이며 전체 process TCP/UDP 감사나 native IME 시험을 뜻하지 않는다.
+두 종료 모두 product ordered quit·captured Core1개 종료/남은 owned native0을 wrapper 정리 전에 확인했다.
+Wrapper exit/close0·force0이며 이 inspector harness의 `naturalMainProcessExitProven=false`/`nativeExitCodesObserved=false`는 보존한다.
+Host는 입력91표본/unknown0/owned inactive, job85/cleanup active0·host force0·handles 정리·desktop 제거를 확인했다.
+사용자 화면·키보드·clipboard·desktop 전환을 사용하지 않았다. Profile과 합성 문서는 local 검수 자료로 보존했다.
+
+기존 실패도 덮어쓰지 않았다. 모두 같은 제품 배포본을 사용한 별도 검수 스크립트 실행이다.
+
+| 이전 실행 | 실제 실패와 후속 처리 |
+| --- | --- |
+| run1 | host42.201초/exit1. native select에 대한 exact label 선택자 timeout; 기존 시험과 같은 combobox 접근성 선택자로 별도 copy 수정 |
+| run2 | host229.958초/exit1. 추가 hidden EPUB viewer의 screenshot timeout; 원본 결과 보존, 정확한 owned exe/profile에 CDP 연결해 남은 시험 창만 닫음·force0 |
+| run3 | host30.959초/exit1. UI·출판·화면·재열기 내용 검증 뒤 잘못된 whole-file SHA 불변 조건 실패. Before logical snapshot이 없어 이 회차의 변경 table 원인은 확정하지 않음 |
+
+run4는 올바른 format 계약에 맞춘 네 시점의 실제 전체 content 비교로 종료했다. 새 제품 수정을 만들거나 과거 FAIL을 PASS로 변경하지 않았다.
+시험한 흐름에서 제품 결함은 발견하지 못했다. 원고·Reader·EPUB360/960px screenshot을 직접 확인했으며
+이 화면 검수는 전용 e-reader, Windows native IME15항목, HWPX native layout, 공개 배포 승인을 대신하지 않는다.
+
+실제 근거는 [.tools run4](../.tools/verification/real-use-packaged-65936f2-run4/real-use-evidence.json)와
+[host metadata](../.tools/verification/real-use-packaged-65936f2-run4/metadata.json)다.
+Actual JSON SHA는 `600b07b28138a9887974dd538e6e27f2f736d656fe98a52c77cacbf69cbf2b32`,
+host SHA는 `228f4d1070adca03ee07bc3e67eb2c999dff9e454a5b079d826f3c8b23b6e784`다.
+Screenshot10개와 합성 `.madi`/EPUB/HWPX는 같은 run의 `artifacts/`에 있고 Git에 포함하지 않았다.
 
 ## 구현과 오프라인 bundle
 
