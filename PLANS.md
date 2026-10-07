@@ -16,6 +16,7 @@ Private-local 기술 완료이며 공개·유료·고객·installer 배포 승�
 - 기본 UI 폰트는 공식 Pretendard v1.3.9 variable WOFF2를 로컬 번들로 포함한다. canvas 원고는 같은 버전 Regular의 실제 자산을 사용하며 출판 preset의 사용자 선택은 유지한다. 생성기의 한글 완성형 11,172자 coverage와 편집 엔진 probe를 확인했고 앱 전체 gate는 별도로 검증한다.
 - 작업 버튼과 모드 선택의 배치를 정리하고 작은 UI 문구의 가독성을 높인다. 최소 창 크기 880×620을 포함해 Playwright로 로컬 폰트 로드·버튼 접근·주요 화면을 확인한다.
 - 구현 commit의 전체 고정 Windows gate, fresh-unpacked 실사용 흐름·오프라인 요청·EPUB/HWPX 재열기 결과를 실제 실행 후 기록한다. 현재 새 UI 검증 결과는 **PENDING**이다.
+- 예비 배포판 source `02f411f`의 UI run2는 PASS63.766초다. 실제 로컬 FontFace 10회·4크기 40화면·54캡처·집필/재열기/EPUB/HWPX 흐름을 확인했다. 880px 캡처에서 확인한 Binder의 이전 inline 색상은 공통 선택 토큰을 가리지 않도록 제거한다. 최종 변경 source의 gate와 UI 검수는 다시 수행한다.
 
 ## 목표와 범위
 

@@ -133,14 +133,6 @@ function BinderTreeNode({
       <div
         className={`binder__row${selected ? " binder__row--selected" : ""}`}
         data-selected={selected ? "true" : "false"}
-        style={
-          selected
-            ? {
-                backgroundColor: "#e7e1d5",
-                boxShadow: "inset 3px 0 #725b3f"
-              }
-            : undefined
-        }
       >
         {branch ? (
           <button
