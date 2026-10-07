@@ -68,23 +68,6 @@ upstream manifest에는 확인한 범위에서 명시적인 SPDX “only”/“o
 이 저장소는 보수적으로 `AGPL-3.0-only`로 기록한다. 자세한 판단 유보와 배포 경로는
 `docs/TYPIE_LICENSE_IMPACT.md`를 참고한다.
 
-## Nanum Gothic
-
-- Font: Nanum Gothic Regular
-- Source:
-  `https://github.com/google/fonts/tree/main/ofl/nanumgothic`
-- License: SIL Open Font License 1.1
-- License text: `packages/typie-runtime/NANUM_GOTHIC_LICENSE.txt`
-- Runtime assets:
-  - `packages/typie-runtime/assets/NanumGothic-Regular.base.zst`
-  - `packages/typie-runtime/assets/NanumGothic-Regular.manifest.zst`
-  - `packages/typie-runtime/assets/NanumGothic-Regular.chunk-0.zst`
-- Source 및 runtime hashes:
-  `packages/typie-runtime/BUILD_INFO.json`
-
-font asset의 madi 내부 family 이름은 Phase 0 Typie 기본 font slot에 맞춘 기술적
-mapping이며, 원래 font 저작권·이름 또는 OFL 조건을 변경하지 않는다.
-
 ## Neobrutal UI design reference
 
 - Project: Neobrutal UI
@@ -102,7 +85,7 @@ mapping이며, 원래 font 저작권·이름 또는 OFL 조건을 변경하지 �
 
 ## Pretendard
 
-- Font: Pretendard Variable
+- Fonts: Pretendard Variable (UI), Pretendard Regular (Typie canvas)
 - Exact release: `v1.3.9`
 - Repository: `https://github.com/orioncactus/pretendard`
 - Exact upstream commit: `5c41199ea0024a9e0b2cb31735265056e5472d76`
@@ -112,14 +95,21 @@ mapping이며, 원래 font 저작권·이름 또는 OFL 조건을 변경하지 �
 - Checked-in license text: `docs/licenses/PRETENDARD-OFL-1.1.txt`
 - Packaged license text: `resources/licenses/PRETENDARD-OFL-1.1.txt`
 - Renderer font: `apps/desktop/src/renderer/assets/fonts/PretendardVariable.woff2`
+- Canvas source: `packages/pretendard/dist/public/static/alternative/Pretendard-Regular.ttf`
+- Canvas source bytes: `2,725,828`; SHA-256: `6d0af5258997aec7354a6e340fc2325ba321c410ca48b3af858c8c3d6e92a324`
+- Canvas font: `packages/typie-runtime/assets/Pretendard-Regular.{base,manifest,chunk-0}.zst`
+- Canvas source and generated asset hashes: `packages/typie-runtime/BUILD_INFO.json`
+- Runtime package license text: `packages/typie-runtime/PRETENDARD_LICENSE.txt`
 - Font bytes: `2,057,688`; SHA-256: `9599f12fd42fc0bce1cd50b47a0c022e108d7aa64dd0d1bb0ed44f3282d900b4`
 - License bytes: `4,418`; SHA-256: `d31ddd9f2bed32fd7e302a205cf2380ba0de6529152d239ef99cfb6f261bfc04`
 
 원본 font와 license는 위 upstream commit의 Git blob과 byte-identical하다.
 Renderer는 한글 전체 가변 WOFF2를 local asset으로 포함하며 굵기 `45–920`을 지원한다.
 Runtime CDN·시스템 설치·폰트 다운로드 없이 앱 UI 기본 글꼴로 사용한다.
-Typie canvas의 별도 Nanum Gothic asset과 사용자가 선택한 출판 preset은 이 CSS font와
-구분한다. Unpacked package는 OFL 원문을 위 고정 SHA-256과 대조해 복사한다.
+Typie canvas는 같은 release의 실제 Pretendard Regular를 기본 400 굵기로 사용한다.
+기존 pinned Typie font protocol에 맞춰 모든 codepoint를 한 chunk로 묶으며 한글 완성형
+11,172자를 모두 포함한다. 사용자가 선택한 출판 preset은 변경하지 않는다.
+Unpacked package는 OFL 원문을 위 고정 SHA-256과 대조해 복사한다.
 
 ## Cytoscape.js
 
@@ -290,7 +280,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cargo.ps1 `
   tree --manifest-path crates/madi-core/Cargo.toml
 ```
 
-현재 unpacked package는 `THIRD_PARTY_NOTICES.md`, Typie/Nanum/Cytoscape/React Flow/JSON
+현재 unpacked package는 `THIRD_PARTY_NOTICES.md`, Typie/Pretendard/Cytoscape/React Flow/JSON
 Canvas 원문, 위 네 Rust license 원문과 아래 Phase 1G EPUB/HWPX direct dependency,
 EPUBCheck 원문을 `resources/licenses`에 복사한다. Package script는 checked-in source와 packaged
 copy를 고정 SHA-256에 대조해 mismatch를 거부한다.

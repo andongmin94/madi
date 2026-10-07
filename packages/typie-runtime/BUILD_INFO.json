@@ -17,13 +17,16 @@
     "wasmTypescriptSha256": "0e1c17188fac974a59d10589289176adf52e127c497284787c185144dfff3c90"
   },
   "font": {
-    "name": "Nanum Gothic Regular",
-    "source": "https://github.com/google/fonts/tree/main/ofl/nanumgothic",
+    "name": "Pretendard Regular",
+    "version": "1.3.9",
+    "source": "https://raw.githubusercontent.com/orioncactus/pretendard/5c41199ea0024a9e0b2cb31735265056e5472d76/packages/pretendard/dist/public/static/alternative/Pretendard-Regular.ttf",
     "license": "OFL-1.1",
-    "sourceSha256": "76f45ef4a6bcff344c837c95a7dcc26e017e38b5846d5ae0cdcb5b86be2e2d31",
-    "engineHash": "a178cbd6767300e8",
-    "baseSha256": "54418892219582d1d1334f79ad5fc7fdc74d646464beb0d9bcb600ebacb08517",
-    "manifestSha256": "81424decc8cebe05ac5c4597248648d0f5416742acfcc25c22990e75537e3ca5",
-    "chunk0Sha256": "489e66dc686591b671f3b14c00cde16922b62b63e06f0563ca5695c6c5101502"
+    "sourceSha256": "6d0af5258997aec7354a6e340fc2325ba321c410ca48b3af858c8c3d6e92a324",
+    "sourceCodepoints": 14336,
+    "hangulSyllablesCovered": 11172,
+    "engineHash": "11b5fd285bb405d5",
+    "baseSha256": "a89c8644401e193d4f44b4ffa99c840e9c8ebefc1e847b32807941b5b100e4af",
+    "manifestSha256": "96f53b21bdb4821770dcf8e40453490c87cb4aa4d1d0a7f3cce28c23a768b3ec",
+    "chunk0Sha256": "fc2fa33a0bd7a4d1841a4d86fa5d578c3549b6a9bfe58f5afb1871d6add09eb9"
   }
 }

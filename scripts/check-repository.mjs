@@ -297,6 +297,22 @@ async function sha256(relativePath) {
 }
 
 const assets = [
+  [
+    "apps/desktop/src/renderer/assets/fonts/PretendardVariable.woff2",
+    "9599f12fd42fc0bce1cd50b47a0c022e108d7aa64dd0d1bb0ed44f3282d900b4",
+  ],
+  [
+    "docs/licenses/PRETENDARD-OFL-1.1.txt",
+    "d31ddd9f2bed32fd7e302a205cf2380ba0de6529152d239ef99cfb6f261bfc04",
+  ],
+  [
+    "packages/typie-runtime/PRETENDARD_LICENSE.txt",
+    "d31ddd9f2bed32fd7e302a205cf2380ba0de6529152d239ef99cfb6f261bfc04",
+  ],
+  [
+    "docs/licenses/NEOBRUTAL-UI-MIT.txt",
+    "a77140948a68fafb5e0077a287502104203b7ccb11255b311101ec8fe85fa250",
+  ],
   [buildInfo.sourcePatch.path, buildInfo.sourcePatch.sha256],
   [
     "packages/typie-runtime/browser/editor_ffi_bg.wasm",
@@ -316,15 +332,15 @@ const assets = [
     buildInfo.bindings.wasmTypescriptSha256,
   ],
   [
-    "packages/typie-runtime/assets/NanumGothic-Regular.base.zst",
+    "packages/typie-runtime/assets/Pretendard-Regular.base.zst",
     buildInfo.font.baseSha256,
   ],
   [
-    "packages/typie-runtime/assets/NanumGothic-Regular.manifest.zst",
+    "packages/typie-runtime/assets/Pretendard-Regular.manifest.zst",
     buildInfo.font.manifestSha256,
   ],
   [
-    "packages/typie-runtime/assets/NanumGothic-Regular.chunk-0.zst",
+    "packages/typie-runtime/assets/Pretendard-Regular.chunk-0.zst",
     buildInfo.font.chunk0Sha256,
   ],
 ];

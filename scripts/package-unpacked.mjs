@@ -305,15 +305,6 @@ await Promise.all([
     resolve(resourcesDirectory, "licenses", "TYPIE-AGPL-3.0.txt"),
   ),
   cp(
-    resolve(
-      repositoryRoot,
-      "packages",
-      "typie-runtime",
-      "NANUM_GOTHIC_LICENSE.txt",
-    ),
-    resolve(resourcesDirectory, "licenses", "NANUM_GOTHIC-OFL-1.1.txt"),
-  ),
-  cp(
     resolve(dirname(desktopRequire.resolve("cytoscape")), "..", "LICENSE"),
     resolve(resourcesDirectory, "licenses", "CYTOSCAPE-MIT.txt"),
   ),
@@ -426,7 +417,6 @@ process.stdout.write(
         "resources/licenses/NEOBRUTAL-UI-MIT.txt",
         "resources/licenses/PRETENDARD-OFL-1.1.txt",
         "resources/licenses/TYPIE-AGPL-3.0.txt",
-        "resources/licenses/NANUM_GOTHIC-OFL-1.1.txt",
         "resources/licenses/CYTOSCAPE-MIT.txt",
         "resources/licenses/REACT-FLOW-MIT.txt",
         "resources/licenses/JSON-CANVAS-MIT.txt",

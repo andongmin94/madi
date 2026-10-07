@@ -13,17 +13,17 @@ const [wasmBytes, icuData, buildInfoJson, fontBase, fontManifest, fontChunk] =
     readFile(pathFromHere("../packages/typie-runtime/BUILD_INFO.json"), "utf8"),
     readFile(
       pathFromHere(
-        "../packages/typie-runtime/assets/NanumGothic-Regular.base.zst"
+        "../packages/typie-runtime/assets/Pretendard-Regular.base.zst"
       )
     ),
     readFile(
       pathFromHere(
-        "../packages/typie-runtime/assets/NanumGothic-Regular.manifest.zst"
+        "../packages/typie-runtime/assets/Pretendard-Regular.manifest.zst"
       )
     ),
     readFile(
       pathFromHere(
-        "../packages/typie-runtime/assets/NanumGothic-Regular.chunk-0.zst"
+        "../packages/typie-runtime/assets/Pretendard-Regular.chunk-0.zst"
       )
     )
   ]);

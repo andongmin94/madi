@@ -207,7 +207,7 @@ textarea:not(.typie-runtime__ime-input):focus-visible,
   align-items: center;
   gap: 12px;
   min-width: 0;
-  padding: 0 4px 4px 0;
+  padding: 4px;
   overflow-x: auto;
 }
 
@@ -1032,9 +1032,8 @@ button:disabled {
   scroll-margin-top: 60px;
 }
 
-.scrivenings__scene--active {
-  border-color: var(--color-border);
-  box-shadow: var(--shadow-md);
+.scrivenings__scene--active .scrivenings__scene-header {
+  background: var(--color-accent);
 }
 
 .scrivenings__scene-header {
@@ -1338,7 +1337,7 @@ button:disabled {
   display: flex;
   gap: 8px;
   min-width: 0;
-  padding: 0 4px 4px 0;
+  padding: 4px;
   overflow-x: auto;
 }
 

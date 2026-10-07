@@ -8,9 +8,9 @@ const pathFromHere = (relativePath) => fileURLToPath(new URL(relativePath, impor
 const wasmPath = pathFromHere('../packages/typie-runtime/browser/editor_ffi_bg.wasm');
 const icuPath = pathFromHere('../packages/typie-runtime/browser/icu.zst');
 const buildInfoPath = pathFromHere('../packages/typie-runtime/BUILD_INFO.json');
-const fontBasePath = pathFromHere('../packages/typie-runtime/assets/NanumGothic-Regular.base.zst');
-const fontManifestPath = pathFromHere('../packages/typie-runtime/assets/NanumGothic-Regular.manifest.zst');
-const fontChunkPath = pathFromHere('../packages/typie-runtime/assets/NanumGothic-Regular.chunk-0.zst');
+const fontBasePath = pathFromHere('../packages/typie-runtime/assets/Pretendard-Regular.base.zst');
+const fontManifestPath = pathFromHere('../packages/typie-runtime/assets/Pretendard-Regular.manifest.zst');
+const fontChunkPath = pathFromHere('../packages/typie-runtime/assets/Pretendard-Regular.chunk-0.zst');
 
 const [wasmBytes, icuData, buildInfoJson, fontBase, fontManifest, fontChunk] = await Promise.all([
   readFile(wasmPath),

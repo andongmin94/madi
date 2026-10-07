@@ -11,9 +11,9 @@
     },
     "./browser/wasm": "./browser/editor_ffi_bg.wasm",
     "./browser/icu.zst": "./browser/icu.zst",
-    "./browser/font-base.zst": "./assets/NanumGothic-Regular.base.zst",
-    "./browser/font-manifest.zst": "./assets/NanumGothic-Regular.manifest.zst",
-    "./browser/font-chunk-0.zst": "./assets/NanumGothic-Regular.chunk-0.zst",
+    "./browser/font-base.zst": "./assets/Pretendard-Regular.base.zst",
+    "./browser/font-manifest.zst": "./assets/Pretendard-Regular.manifest.zst",
+    "./browser/font-chunk-0.zst": "./assets/Pretendard-Regular.chunk-0.zst",
     "./build-info": "./BUILD_INFO.json"
   },
   "files": [
@@ -21,6 +21,6 @@
     "browser",
     "BUILD_INFO.json",
     "LICENSE",
-    "NANUM_GOTHIC_LICENSE.txt"
+    "PRETENDARD_LICENSE.txt"
   ]
 }

@@ -14,5 +14,6 @@
 /docs/licenses/NEOBRUTAL-UI-MIT.txt text eol=lf
 /patches/typie/*.patch text eol=lf
 /packages/typie-runtime/BUILD_INFO.json text eol=lf
+/packages/typie-runtime/PRETENDARD_LICENSE.txt text eol=lf
 /packages/typie-runtime/browser/*.js text eol=lf
 /packages/typie-runtime/browser/*.d.ts text eol=lf
