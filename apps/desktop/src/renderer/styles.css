@@ -71,6 +71,7 @@ textarea:not(.typie-runtime__ime-input):focus-visible,
 
 .app-shell {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 58px auto minmax(0, 1fr) 34px;
   width: 100%;
   height: 100%;
@@ -967,6 +968,7 @@ button:disabled {
 
 .statusbar {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
