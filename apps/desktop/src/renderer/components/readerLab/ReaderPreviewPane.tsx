@@ -42,7 +42,7 @@ const SHADOW_PREVIEW_CSS = `
   line-height: var(--reader-line-height);
 }
 .reader-device-shell { width: 100%; height: 100%; overflow: hidden; }
-.reader-device-chrome { width: 100%; background: #2f3135; border-bottom: 1px solid #151619; }
+.reader-device-chrome { width: 100%; background: #313131; border-bottom: 1px solid #151515; }
 .reader-safe-viewport { width: 100%; box-sizing: border-box; overflow: hidden; }
 .reader-document { min-height: 100%; padding: var(--reader-padding-v) var(--reader-padding-h); }
 .reader-section { display: flow-root; min-width: 0; }
@@ -54,8 +54,8 @@ const SHADOW_PREVIEW_CSS = `
   position: relative; min-width: 0; border-radius: 4px; outline: 0;
   overflow-wrap: anywhere; word-break: normal; cursor: pointer;
 }
-.reader-block:focus-visible { box-shadow: 0 0 0 2px #9b7136; }
-.reader-block[aria-pressed="true"] { background: color-mix(in srgb, #d7a64c 23%, transparent); }
+.reader-block:focus-visible { box-shadow: 0 0 0 2px currentColor; }
+.reader-block[aria-pressed="true"] { background: color-mix(in srgb, currentColor 23%, transparent); }
 .reader-block p, .reader-block blockquote { margin: 0 0 var(--reader-paragraph-spacing); }
 .reader-block p { text-indent: var(--reader-indent); text-align: var(--reader-align); white-space: pre-wrap; }
 .reader-block blockquote { padding-left: 1em; border-left: 3px solid currentColor; opacity: .86; white-space: pre-wrap; }

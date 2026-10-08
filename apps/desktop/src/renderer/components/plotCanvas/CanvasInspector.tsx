@@ -149,7 +149,7 @@ export function CanvasInspector({
               색상
               <input
                 aria-label="선택 항목 색상"
-                placeholder="#64748b 또는 1~6"
+                placeholder="#737373 또는 1~6"
                 maxLength={64}
                 value={node.color ?? ""}
                 onChange={(event) =>

@@ -7,14 +7,14 @@ import type {
 } from "./types";
 
 const KIND_COLORS: Readonly<Record<WorldGraphEntityKind, string>> = {
-  CHARACTER: "#4f7cac",
-  LOCATION: "#3f8f72",
-  ORGANIZATION: "#8a63a8",
-  ITEM: "#a8723f",
-  EVENT: "#bf5b60",
-  WORLD_RULE: "#547789",
-  FORESHADOWING: "#b48619",
-  OTHER: "#6f7580"
+  CHARACTER: "#737373",
+  LOCATION: "#858585",
+  ORGANIZATION: "#929292",
+  ITEM: "#686868",
+  EVENT: "#a3a3a3",
+  WORLD_RULE: "#7a7a7a",
+  FORESHADOWING: "#b3b3b3",
+  OTHER: "#808080"
 };
 
 const KIND_SHAPES: Readonly<
@@ -181,7 +181,7 @@ export function toCytoscapeElements(
         inverseLabel: edge.inverseLabel ?? "",
         relationTypeId: edge.relationTypeId,
         directed: edge.directed,
-        lineColor: resolveGraphColor(edge.colorToken, "#748091"),
+        lineColor: resolveGraphColor(edge.colorToken, "#737373"),
         targetArrowShape: edge.directed ? "triangle" : "none"
       },
       classes: edgeClasses(edge, selection)
@@ -200,14 +200,14 @@ export const WORLD_GRAPH_CYTOSCAPE_STYLES = [
       width: "data(width)",
       height: "data(height)",
       "background-color": "data(color)",
-      "border-color": "#f4f7fb",
+      "border-color": "#f5f5f5",
       "border-width": 2,
-      color: "#eef3f9",
+      color: "#f0f0f0",
       "font-size": 12,
       "font-family": "Pretendard Variable, Malgun Gothic, sans-serif",
       "text-valign": "bottom",
       "text-margin-y": 8,
-      "text-background-color": "#18202b",
+      "text-background-color": "#262626",
       "text-background-opacity": 0.86,
       "text-background-padding": 3,
       "text-wrap": "ellipsis",
@@ -228,12 +228,12 @@ export const WORLD_GRAPH_CYTOSCAPE_STYLES = [
       "target-arrow-color": "data(lineColor)",
       "target-arrow-shape": "data(targetArrowShape)",
       "curve-style": "bezier",
-      color: "#cfd8e5",
+      color: "#d4d4d4",
       "font-size": 10,
       "font-family": "Pretendard Variable, Malgun Gothic, sans-serif",
       "min-zoomed-font-size": 7,
       "text-rotation": "autorotate",
-      "text-background-color": "#18202b",
+      "text-background-color": "#262626",
       "text-background-opacity": 0.8,
       "text-background-padding": 2,
       "overlay-opacity": 0
@@ -242,14 +242,14 @@ export const WORLD_GRAPH_CYTOSCAPE_STYLES = [
   {
     selector: "node.selected, node.endpoint",
     style: {
-      "border-color": "#ffd166",
+      "border-color": "#ffffff",
       "border-width": 5,
       "z-index": 20
     }
   },
   {
     selector: "node.neighbor",
-    style: { "border-color": "#8bd3dd", "border-width": 3 }
+    style: { "border-color": "#a3a3a3", "border-width": 3 }
   },
   {
     selector: "edge.selected, edge.connected",
@@ -258,8 +258,8 @@ export const WORLD_GRAPH_CYTOSCAPE_STYLES = [
       color: "#ffffff",
       "font-size": 12,
       "min-zoomed-font-size": 0,
-      "line-color": "#ffd166",
-      "target-arrow-color": "#ffd166",
+      "line-color": "#ffffff",
+      "target-arrow-color": "#ffffff",
       "z-index": 20
     }
   },

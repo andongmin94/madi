@@ -22,7 +22,7 @@
   z-index: 100;
   display: flex;
   justify-content: flex-end;
-  background: rgb(24 24 27 / 28%);
+  background: rgb(24 24 24 / 28%);
 }
 
 .madi-llm-dialog {

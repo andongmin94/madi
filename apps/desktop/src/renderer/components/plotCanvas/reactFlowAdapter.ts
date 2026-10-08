@@ -111,7 +111,7 @@ function toReactFlowNodes(
         width: node.width,
         height: node.height,
         ...(display.color
-          ? ({ "--madi-canvas-node-accent": colorValue(display.color, "#64748b") } as object)
+          ? ({ "--madi-canvas-node-accent": colorValue(display.color, "#737373") } as object)
           : {})
       },
       ariaLabel: `${display.title}, ${display.subtitle ?? display.kind}${
@@ -126,7 +126,7 @@ function toReactFlowEdges(
   selection: MadiCanvasSelection | null
 ): ReactFlowCanvasEdge[] {
   return document.edges.map((edge) => {
-    const stroke = colorValue(edge.color, "#64748b");
+    const stroke = colorValue(edge.color, "#737373");
     const lineStyle = edge.madi?.lineStyle ?? "SOLID";
     return {
       id: edge.id,
@@ -154,7 +154,7 @@ function toReactFlowEdges(
             ? { strokeDasharray: "2 5" }
             : {})
       },
-      labelStyle: { fill: "#334155", fontSize: 12, fontWeight: 600 },
+      labelStyle: { fill: "#404040", fontSize: 12, fontWeight: 600 },
       labelShowBg: true,
       labelBgPadding: [5, 3],
       labelBgBorderRadius: 4,

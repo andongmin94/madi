@@ -290,13 +290,13 @@ describe("React Flow adapter boundary", () => {
         (node.style as Readonly<Record<string, string | number>>)[
           "--madi-canvas-node-accent"
         ]
-      ).toBe("#64748b");
+      ).toBe("#737373");
       expect(node.data.canonicalNode.color).toBe(unsafeColor);
     }
-    expect(runtime.edges[0].style?.stroke).toBe("#64748b");
+    expect(runtime.edges[0].style?.stroke).toBe("#737373");
     expect(
       (runtime.edges[0].markerEnd as { readonly color?: string }).color
-    ).toBe("#64748b");
+    ).toBe("#737373");
     expect(runtime.edges[0].data?.canonicalEdge.color).toBe(unsafeColor);
     expect(ReactFlowAdapter.fromReactFlow(runtime, unsafeDocument)).toEqual(
       unsafeDocument

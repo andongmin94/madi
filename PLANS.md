@@ -1,21 +1,28 @@
 # madi 개발 계획
 
-갱신일: 2026-10-07. 작업 위치: `main`. 현재 실행 계획은 이 문서 하나로 관리한다.
+갱신일: 2026-10-08. 작업 위치: `main`. 현재 실행 계획은 이 문서 하나로 관리한다.
 
 ## 현재 상태
 
-현재 UI 제품 source는 `b9aa3e7e45aae85d18969b89366a590c341877c7`이다. 소유자 요청의 UI 개선과 exact source의 전체 Windows gate·배포판 실사용·실제 AI UI 검수를 완료했다.
+소유자의 후속 요청으로 UI를 흰색·회색·검정의 모노톤으로 전환한다. 새 변경의 runtime 승인은 **WITHHELD**이며 exact source의 전체 Windows gate와 fresh-unpacked UI 검수를 실제 실행한다.
+마지막 전체 승인 UI 제품 source는 `b9aa3e7e45aae85d18969b89366a590c341877c7`이다. 이 source의 전체 Windows gate·배포판 실사용·실제 AI UI 검수를 완료했다.
 각 실행은 source 전후 clean에서 수행했다. Full이 새로 만든 배포본과 UI 검수 배포본의 전체 파일·디렉터리 inventory가 일치하며 AI 검수 전후에도 보존됐다.
 이전 source `f2efe6e`의 full·ZIP·AI·자연 종료와 후속 문서 source `65936f2`의 실사용 검수는 해당 revision의 근거로 보존한다.
 Node24.21.0/npm12.2.0/Rust1.97.1을 고정한다. 설치는 `npm ci`, 실행은 `npm run <script>`다.
 Private-local 기술 완료이며 공개·유료·고객·installer 배포 승인을 뜻하지 않는다. 사람의 확인 조건은 아래 세 항목이다.
 
-## UI 개선 완료
+## 현재 작업: 모노톤 전환
+
+- 공통 라임 강조색·비중립 배경·저장 상태 표시와 기본 Graph/Reader의 장식 강조색을 grayscale로 바꾼다. 굵은 테두리·단단한 그림자·Pretendard·기존 상호작용 구조는 유지한다.
+- 사용자 작품의 색상 token·Reader/출판 preset은 변경하지 않는다. 원고·저장 계약·AI 로직을 바꾸지 않는다.
+- 최종 source를 commit한 뒤 고정 설치·전체 Windows gate·fresh-unpacked Playwright 검수와 문서 정합성을 확인한다. 완료 판정은 실제 terminal 결과에서 갱신한다.
+
+## 이전 UI 개선 완료
 
 - `andongmin94/neobrutal-ui`의 굵은 테두리·단단한 그림자·버튼 눌림 상태를 기존 React/CSS 구조에 반영했다. 공통 토큰으로 집필·설정·그래프·캔버스·Reader·내보내기·AI 화면을 통일했다. 추가 npm 의존성은 없다.
 - 공식 Pretendard v1.3.9 variable WOFF2를 기본 UI 폰트로 오프라인 번들에 포함했다. canvas 원고도 같은 버전 Regular의 실제 자산을 사용한다. 한글 완성형 11,172자 coverage·편집 엔진 probe·실제 로컬 FontFace 로드를 확인했다. 출판 preset의 사용자 선택은 유지한다.
 - 작업 버튼·모드 선택을 정리하고 작업 패널 닫기를 추가했다. 880×620을 포함한 네 창 크기에서 버튼 접근·본문 영역·그래프/캔버스 노드 노출을 확인했다. 기존 React Flow Controls를 제거하고 확대·축소를 상단 도구 모음으로 옮겨 노드 가림을 해결했다.
-- 구현·검수의 실패 회차와 수정 근거는 [오프라인 결과](docs/OFFLINE_RUNTIME_RELEASE_RESULT.md)의 b9 UI 절에 보존한다. 현재 요청의 자동 작업은 완료했으며 남은 조건은 아래 사람의 세 항목이다.
+- 구현·검수의 실패 회차와 수정 근거는 [오프라인 결과](docs/OFFLINE_RUNTIME_RELEASE_RESULT.md)의 b9 UI 절에 보존한다. 아래 사람의 세 조건은 유지한다.
 
 ## 목표와 범위
 
@@ -33,7 +40,7 @@ Publication IR은 Reader Lab·exporter의 유일한 원고 입력이다. Typie �
 Binary HWP는 2026-10-02 제품 범위에서 제거했다. 변환 UI·C# bridge·.NET 요구를 제거했으며 차후 TODO로 남기지 않는다.
 새 제품 phase·큰 구조 변경·multi-block/project-wide AI mutation은 현재 범위에 포함하지 않는다.
 
-## 자동 작업 완료
+## 이전 b9 UI의 자동 작업 완료
 
 | 항목 | 실제 결과 |
 | --- | --- |

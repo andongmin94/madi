@@ -1,14 +1,14 @@
 :root {
-  --color-bg: #f5f5f2;
+  --color-bg: #f5f5f5;
   --color-surface: #ffffff;
-  --color-surface-muted: #f0f0eb;
-  --color-ink: #18181b;
-  --color-muted: #57575f;
-  --color-border: #18181b;
-  --color-accent: #a3e635;
-  --color-accent-soft: #ecfccb;
-  --color-danger: #b91c1c;
-  --color-danger-soft: #fff1f2;
+  --color-surface-muted: #f0f0f0;
+  --color-ink: #181818;
+  --color-muted: #575757;
+  --color-border: #181818;
+  --color-accent: #d4d4d4;
+  --color-accent-soft: #ededed;
+  --color-danger: #333333;
+  --color-danger-soft: #eeeeee;
   --shadow-sm: 2px 2px 0 var(--color-border);
   --shadow-md: 4px 4px 0 var(--color-border);
   --radius-sm: 5px;
@@ -157,25 +157,25 @@ textarea:not(.typie-runtime__ime-input):focus-visible,
 .save-status__dot {
   width: 7px;
   height: 7px;
-  background: #8b8f85;
+  background: #999999;
   border-radius: 50%;
 }
 
 .save-status--dirty .save-status__dot {
-  background: #e1a94c;
+  background: #777777;
 }
 
 .save-status--saving .save-status__dot,
 .save-status--restoring .save-status__dot {
-  background: #72a7cd;
+  background: #575757;
 }
 
 .save-status--saved .save-status__dot {
-  background: #76a377;
+  background: #333333;
 }
 
 .save-status--error .save-status__dot {
-  background: #d86d63;
+  background: var(--color-ink);
 }
 
 .toolbar {
@@ -1792,7 +1792,7 @@ button:disabled {
   place-items: center;
   inset: 0;
   padding: 20px;
-  background: rgb(33 31 27 / 42%);
+  background: rgb(24 24 24 / 42%);
 }
 
 .story-delete-dialog > div {
