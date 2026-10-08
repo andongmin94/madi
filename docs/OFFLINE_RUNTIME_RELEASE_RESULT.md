@@ -1,18 +1,19 @@
 # 오프라인 검사·portable 배포 준비 검증 결과
 
-기록일: 2026-10-08. 현재 모노톤 UI 제품 source: `03e44d8e3d2e8c506534d02e17065da4cb39106b`.
-현재 UI·전체 Windows gate·실제 AI 결과는 아래03절을 따른다. 이전 b9 UI·full·AI와 f2의 full·ZIP·AI·자연 종료, 후속 문서 source `65936f254be025472db1c3df85a5ac30d3d876db`의 UI 검수는 해당 revision의 근거로 보존한다.
+기록일: 2026-10-08. 현재 기본 Mono UI 제품 source: `d96bd0f50e45c9e999cd360a58e2c49d9a6b047c`.
+현재 UI·전체 Windows gate·실제 AI 결과는 아래 d96 절을 따른다. 직전03의 회색 구현과 이전 b9 UI·full·AI, f2의 full·ZIP·AI·자연 종료, 문서 source `65936f254be025472db1c3df85a5ac30d3d876db`의 검수는 해당 revision의 근거로 보존한다.
 후속 문서 commit은 이 실행 기준과 구분한다. 현재 계획은 [PLANS.md](../PLANS.md)에서만 관리한다.
 
 ## 현재 판정
 
 ```text
-Exact03 full pinned npm Windows: PASS / exit0 / 4181.694s
+Exact d96 full pinned npm Windows: PASS / exit0 / 4277.253s
 Development and fresh-unpacked Basic/D/E/F/G/H: PASS
 Offline EPUBCheck/JRE and HWPX: PRIVATE LOCAL TECHNICAL GO
-Exact03 monochrome packaged UI: PASS / harness65.427s / host67.798s / source and whole package joined
-Exact03 actual AI UI: PASS WITH DIAGNOSTIC WARNING / probe22.196s / host31.278s
-Current03 unpacked: VERIFIED / 556 files / whole inventory join PASS
+Exact d96 default Mono packaged UI: PASS / harness72.370s / host74.069s / source and whole package joined
+Exact d96 actual AI UI: PASS WITH DIAGNOSTIC WARNING / probe23.974s / host33.783s
+Current d96 unpacked: VERIFIED / 556 files / whole inventory join PASS
+03 grayscale UI: PRIOR REVISION EVIDENCE / DEFAULT MONO REQUIREMENT NOT SATISFIED
 b9 UI / full / actual AI: PRIOR REVISION EVIDENCE
 f2 portable ZIP / AI / plain close / IME report: PRIOR REVISION EVIDENCE
 Binary HWP / Hancom bridge / .NET requirement: REMOVED FROM PRODUCT SCOPE
@@ -26,7 +27,52 @@ Public/paid/customer/installer distribution: NOT APPROVED
 Typie 개발 permission은 owner-confirmed이며 배포 범위는 저장소 밖 exact grant를 따른다.
 실증은 이 PC의 개발판·fresh unpacked에 한정하며 다른 깨끗한 PC나 installer 설치 검증은 수행하지 않았다.
 
+## 2026-10-08 exact source d96 원본 기본 Mono와 검증
+
+제품 source는 `d96bd0f50e45c9e999cd360a58e2c49d9a6b047c`다. 아래 install·full·UI·AI와 최종 join은 같은 source의 전후 main/clean에서 수행했다. 후속 문서 commit은 이 제품 source와 구분한다.
+소유자의 정정에 따라 일반 grayscale 구현을 `neobrutal-ui` reference `b4da2463fe710a77bf464c65125a1a7f40424722`의 [기본 Mono](https://github.com/andongmin94/neobrutal-ui/blob/b4da2463fe710a77bf464c65125a1a7f40424722/registry/src/data/colors.ts)로 바꿨다.
+Primary/선택은 `#27282b`/`#f4f5f7`, neutral 입력/sidebar는 white/black, card/outline은 `#f4f5f7`/black이다. 검정 shadow4px·radius5px·hover 이동3px/shadow1px·active 이동4px/shadow0과 원본 error/destructive 의미색을 적용했다.
+폐기한 accent-soft 경로를 제거했다. Pretendard·사용자 작품색·Reader/출판 preset·원고/저장/AI 계약은 유지했고 npm 의존성은 추가하지 않았다. Graph8종의 데이터색을 원본 chart5색에 임의 대응하지 않았다.
+
+Pinned Node24.21.0/npm12.2.0/Rust1.97.1·committed lock의 `npm ci`는 실제 PASS15.912초/exit0이다. Install audit16건(5 moderate·7 high·4 critical)을 보존하며 취약점 해결이나 CI workflow 실행을 주장하지 않는다.
+Fast `npm run package:unpacked`는 host PASS11.831초/exit0이고, 이후 전체 `npm run verify`에서도 fresh unpacked를 새로 만들었다.
+`full-default-mono-verify-d96bd0f-run1`은 **terminal PASS4277.253초/exit0**다. Desktop102파일/714테스트·별도 bundle1파일/4테스트, repository·format·typecheck·Rust·Typie·integration·build·오프라인 EPUBCheck/JRE와 개발판/fresh-unpacked Basic/D–H를 완료했다. Bundle4는 unique714에 더하지 않는다.
+HWPX 장편 각5회 exporter max는 개발판881ms/배포판89ms로15초 target을 통과했다. 이는 native exporter 시간으로 IR 준비·UI wall·사람의 서식 승인이 아니다.
+Full은 job3,059 processes/cleanup active0·force0·desktop 제거다. 입력8,427표본 모두 Default/owned inactive·이름 조회 불가0이며 이름/비활성 flag 관측이 완전했다. 이전03의 조회 불가5회는 그 run의 별도 역사로 보존한다.
+
+`ui-review-default-mono-d96bd0f-run1`은 **harness PASS72.370초·host PASS74.069초/exit0**다. Upstream9파일·contract·helper hash를 전후 확인하고, 실제 computed token12개·root paint2개·선택 색상쌍을43회 검증했다. 기존 grayscale checker는 실행하지 않았다.
+Binder·mode·panel·Story kind/entity·publication tab·Reader pane tab·active Scrivenings의8종 선택을 실제 관측했다. 주요 버튼 rest/hover/active는 shadow4/1/0px·이동0/3/4px이고 disabled도 shadow4/이동0을 유지한다. Pointer-up은 버튼 밖에서 하고 원래 parking 위치를 복원해 실제 저장/new-project click을 유발하지 않았다.
+Computed primary 대비는13 이상이다. 이는 disabled opacity 합성 대비나 모든 component/destructive 버튼의 상태 검증을 뜻하지 않는다. 관측한 저장 phase는 `saved`뿐이며 모든 phase나 작품색/preset 본문을 검사한 것으로 확대하지 않는다.
+1440×1000·1180×820·980×720·880×620에서40 layout/40 main-row·폰트10회·57PNG·Graph/Canvas8회·Canvas zoom4회를 기록했다. 작업 패널 닫기·focus·hover·활성 Scrivenings와 선택 복원을 통과했다.
+PNG8장을 별도 시각 검수했다. Drawer는 기존330px overlay이고 Reader880은 내부 scroll이 필요하다. Drawer를 연 상태의 모든 콘텐츠 동시 노출이나 임의 node/label의 일반 보증으로 확대하지 않는다.
+새 작품·장면2개·한글 집필·Undo/Redo·인물/POV·치환·Reader2pane·EPUB/HWPX ZIP/XML 재열기·앱 재시작·EPUB360/960px overflow0을 확인했다. Read-only SQLite schema와 UI 상태 외19테이블 전체 row가 네 지점에서 일치했다. 물리 `.madi`/`ui_state` hash 불변은 주장하지 않는다.
+UI host147표본 모두 Default/owned inactive·이름 미가용0, job79/active0·force0·desktop gone이다. 두 session의 관측 renderer HTTP/WS·main fetch·default-session 외부 요청·page error는0이다.
+
+UI 전과 Full 후의 완전 inventory가556파일/80디렉터리/551,939,563B로 실제 deep equality다. AI 전후 및 최종 현재 package tree도 일치했다. Canonical SHA는 `ec47c66f4bef4313e3acd2decbe7ffb6b832b2e400894106f010fb4514067c3a`다.
+최종 join은 **PASS_EXACT_SOURCE_WHOLE_PACKAGE_JOIN**이다. 새 portable ZIP은 만들지 않았다. 이전 ZIP·inventory·RUNNING snapshot을 현재 배포본이나 현재 terminal PASS로 바꾸지 않는다.
+
+`ai-ui-default-mono-d96bd0f-run1`은 **host PASS33.783초/exit0·actual probe23.974초**다. 기존 Qwen3-0.6B-Q8_0/llama CPU를 소유 loopback18143·threads2/batch2·GPU0·context2048로 잠시 실행했다.
+제공자·진단·제안·선택 수정4화면×1440/880px의8PNG·geometry8회·버튼52개·폰트4회를 확인했다. 요청별 동의·검토 전 canonical 불변·exact same-block 적용·Undo/Redo·저장·재열기가 통과했다.
+실제 제공자 응답이 진단 기대문구 `MADI_OK`와 달라 **PASS_LOOPBACK_ACTUAL_WITH_DIAGNOSTIC_WARNING**/`UNEXPECTED_RESPONSE`를 유지한다. 경고1개·문구61자를 기록하고 응답 원문은 로그에 남기지 않았다.
+승인 loopback main fetch3건·재열기0건, 기타 관측 요청/WS·unapproved main fetch·default-session 외부 요청·page error0이다. 관측 범위는 instrumentation부터 pre-close이며 전체 process TCP/UDP 감사·remote HTTPS·인증키·OS clipboard·native IME 검증이 아니다.
+두 앱의 ordered product quit·Core 소멸·wrapper exit/close0·force0을 확인했다. `naturalMainProcessExitProven=false`/`nativeExitCodesObserved=false`를 유지한다. 소유 server는 SIGTERM/null exitCode로 종료됐고 임시 directory를 제거했다.
+AI host66표본 모두 Default/owned inactive·이름 미가용0, job92/active0·force0·desktop gone이다. AI preparation의 원본16파일·새 boundary literal·실행/보관 helper의 byte/hash를 최종 join에서 연결했다.
+
+첫 `28f96d5d` join은 UTF-16LE BOM `FF FE`의 full log를 UTF-8로 해석해 line95의 Phase1H lookup assertion에서 exit1로 실패했다. 제품·runtime 결과는 바꾸지 않았고 결과 파일 작성 전 멈췄다.
+실패 receipt와 helper를 보존했다. 새 `68cc2c66` helper는 BOM·짝수 byte 길이를 확인하고 UTF-16LE로 해석하며 기존 PASS·coverage·source/package/isolation·cleanup 조건을 유지했다. 실제 최종 join만 완료 판정으로 사용한다.
+
+| 원본 근거 | 저장소 상대 경로 / 실제 SHA-256 |
+| --- | --- |
+| Install host | `.tools/verification/frozen-install-default-mono-d96bd0f-run1/metadata.json`; `4a6026840f25a7f7b45496ef2401be1a5dd7c3fe9efdeed1f3d033ac0e05d12d` |
+| Full host / log | `.tools/verification/full-default-mono-verify-d96bd0f-run1/metadata.json`; `148961af689f31bc3c15b5970d294c3301363d056a9657ca558a71d81330aacd`; log `cb5bc0e94564cf2f8d01b03833dad5dc6b2de422b4535fa9b3d59895a90b9675` |
+| UI actual / host | `.tools/verification/ui-review-default-mono-d96bd0f-run1/ui-review-evidence.json`; `91ca5af7e5c56325a70b86220cbd48d1d50744f8497846b8650758452f78c1b7`; host `342c93c131a264d2d641e475691b7ea8f757033dcb6a9ce0a858d464b3cd1488` |
+| AI actual / orchestrator / host | `.tools/verification/ai-ui-default-mono-d96bd0f-run1/llm-loopback-runs/packaged-5e828e9d-079a-4db1-81de-80560a7b2dc0/actual.json`; `1b4aabdf90532111bfe57d21fd9e573aec74c26029319e0c02428672133610b0`; orchestrator `94e6f24a41d8af0549d0a9c37273c0c1da7b7581b2b6a02594bbc6701d11acf8`; host `420fa4f320eef7b61995c02fa389b24e129ec707b1fcee344309cd7a37da824a` |
+| Exact package join | `.tools/verification/full-default-mono-verify-d96bd0f-run1/final-default-mono-package-join.json`; `8318bd5896f9eda3bdde9736c13dea0f7be74792d7296fad79dc5bc43f4e7825` |
+| Join parser failure | `.tools/verification/default-mono-join-failure-28f96d5d-1eb63a99-7758-4fb2-872e-f6c50b231156.json`; failed helper SHA `583c3bc12ed395c3e6fc8520d88e7c94463c3b02bf0dede53e5d4df8e59fe0fb`; corrected helper SHA `a8e7db44d246459534e2c7dbceb7cfbda7cbc5aae6757bd59387d8be81e8bf4c` |
+
 ## 2026-10-08 exact source03 모노톤 UI와 검증
+
+이 절의 일반 grayscale 구현은 소유자의 기본 Mono 요구를 충족하지 못했다. 아래 기술 검증은03 revision의 실제 결과로 보존하며 현재 디자인 완료 근거로 사용하지 않는다.
 
 제품 source는 `03e44d8e3d2e8c506534d02e17065da4cb39106b`이며 아래 실행은 source 전후 같은03/clean이다. 후속 문서 commit은 이 제품 source와 구분한다.
 공통10색상 token·저장 상태dot·AI backdrop와 Graph/Canvas 기본 장식색을 흰색·회색·검정으로 바꿨다.
