@@ -93,11 +93,11 @@ export function ReaderScopePresetPanel({
           />
         </label>
         <div className="reader-button-row">
-          <button type="button" disabled={busy || presetName.trim().length === 0 || !presetDirty} onClick={onSavePreset}>
+          <button type="button" className="is-primary" disabled={busy || presetName.trim().length === 0 || !presetDirty} onClick={onSavePreset}>
             {selectedPreset?.builtin ? "새 preset 저장" : "변경 저장"}
           </button>
           <button type="button" disabled={busy || !selectedPreset} onClick={onDuplicatePreset}>복제</button>
-          <button type="button" disabled={busy || !selectedPreset || selectedPreset.builtin} onClick={onDeletePreset}>삭제</button>
+          <button type="button" className="is-destructive" disabled={busy || !selectedPreset || selectedPreset.builtin} onClick={onDeletePreset}>삭제</button>
           <button type="button" disabled={busy || !presetDirty} onClick={onResetPreset}>설정 reset</button>
         </div>
         {presetDirty && <p className="reader-changed" role="status">저장하지 않은 사용자 변경</p>}

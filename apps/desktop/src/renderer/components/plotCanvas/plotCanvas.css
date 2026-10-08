@@ -45,15 +45,29 @@
   cursor: pointer;
 }
 
-.plot-canvas-toolbar button:hover,
-.plot-canvas-inspector button:hover,
-.plot-canvas-picker button:hover,
-.plot-canvas-accessible-list button:hover {
-  background: var(--color-surface-muted);
+.plot-canvas-toolbar button,
+.plot-canvas-inspector button,
+.plot-canvas-picker header button {
+  box-shadow: var(--shadow-sm);
+  font-weight: 500;
+}
+
+.plot-canvas-toolbar button:hover:not(:disabled),
+.plot-canvas-inspector button:hover:not(:disabled),
+.plot-canvas-picker header button:hover:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--color-border);
+}
+
+.plot-canvas-toolbar button:active:not(:disabled),
+.plot-canvas-inspector button:active:not(:disabled),
+.plot-canvas-picker header button:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: none;
 }
 
 .plot-canvas-toolbar button[aria-pressed="true"] {
-  color: var(--color-ink);
+  color: var(--color-accent-foreground);
   background: var(--color-accent);
 }
 
@@ -115,7 +129,7 @@
   padding: 12px 14px;
   overflow: hidden;
   color: var(--color-ink);
-  background: var(--color-surface);
+  background: var(--color-bg);
   border: 2px solid var(--color-border);
   border-top: 4px solid var(--madi-canvas-node-accent, var(--color-muted));
   border-radius: var(--radius-md);
@@ -124,17 +138,17 @@
 
 .plot-canvas-node--group {
   color: var(--color-ink);
-  background: var(--color-surface);
+  background: var(--color-bg);
   border: 2px dashed var(--madi-canvas-node-accent, var(--color-muted));
   box-shadow: none;
 }
 
 .plot-canvas-node--entity_reference {
-  background: var(--color-surface);
+  background: var(--color-bg);
 }
 
 .plot-canvas-node--scene_reference {
-  background: var(--color-surface);
+  background: var(--color-bg);
 }
 
 .plot-canvas-node--broken {
@@ -271,7 +285,8 @@
 }
 
 .plot-canvas-inspector button.danger {
-  color: var(--color-danger);
+  color: var(--color-ink);
+  background: var(--color-destructive);
   border-color: var(--color-border);
 }
 
@@ -287,7 +302,7 @@
   max-height: min(620px, calc(100% - 90px));
   padding: 14px;
   overflow: hidden;
-  background: var(--color-surface);
+  background: var(--color-bg);
   border: 2px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
@@ -319,7 +334,7 @@
 
 .plot-canvas-picker__results span,
 .plot-canvas-picker__results small {
-  color: var(--color-muted);
+  color: currentColor;
   font-size: 11px;
 }
 
@@ -354,6 +369,14 @@
 }
 
 .plot-canvas-accessible-list button[aria-pressed="true"] {
-  color: var(--color-ink);
+  color: var(--color-accent-foreground);
+  background: var(--color-accent);
+}
+
+.plot-canvas-picker__results button:hover:not(:disabled),
+.plot-canvas-picker__results button:focus-visible,
+.plot-canvas-accessible-list button:hover:not(:disabled),
+.plot-canvas-accessible-list button:focus-visible {
+  color: var(--color-accent-foreground);
   background: var(--color-accent);
 }

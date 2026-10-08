@@ -42,7 +42,7 @@ const SHADOW_PREVIEW_CSS = `
   line-height: var(--reader-line-height);
 }
 .reader-device-shell { width: 100%; height: 100%; overflow: hidden; }
-.reader-device-chrome { width: 100%; background: #313131; border-bottom: 1px solid #151515; }
+.reader-device-chrome { width: 100%; background: #27282b; border-bottom: 1px solid #000000; }
 .reader-safe-viewport { width: 100%; box-sizing: border-box; overflow: hidden; }
 .reader-document { min-height: 100%; padding: var(--reader-padding-v) var(--reader-padding-h); }
 .reader-section { display: flow-root; min-width: 0; }

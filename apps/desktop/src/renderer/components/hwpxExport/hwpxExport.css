@@ -6,6 +6,8 @@
   min-height: 0;
   overflow: auto;
   padding: 20px;
+  color: var(--color-ink);
+  background: var(--color-bg);
 }
 
 .hwpx-export fieldset {
@@ -15,13 +17,49 @@
   padding: 16px;
   border: 2px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: var(--color-bg);
   box-shadow: var(--shadow-sm);
 }
 
 .hwpx-export legend {
   padding: 0 6px;
-  font-weight: 800;
+  font-weight: 700;
+}
+
+.hwpx-export [role="alert"] {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.hwpx-export button {
+  min-height: 34px;
+  padding: 7px 10px;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  font-weight: 500;
+}
+
+.hwpx-export button:hover:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--color-border);
+}
+
+.hwpx-export button:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: none;
+}
+
+.hwpx-export button.is-primary {
+  color: var(--color-accent-foreground);
+  background: var(--color-accent);
+}
+
+.hwpx-export button.is-destructive {
+  color: var(--color-ink);
+  background: var(--color-destructive);
 }
 
 .hwpx-export input:not([type="checkbox"]),
@@ -64,7 +102,8 @@
   border: 2px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 1rem;
-  background: var(--color-accent-soft);
+  color: var(--color-ink);
+  background: var(--color-bg);
 }
 
 @media (prefers-reduced-motion: reduce) {

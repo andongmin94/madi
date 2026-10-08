@@ -684,7 +684,7 @@ export const HwpxExportWorkspace = forwardRef<
           <button type="button" onClick={() => void duplicatePreset()}>
             복제
           </button>
-          <button type="button" disabled={!customPreset} onClick={() => void deletePreset()}>
+          <button type="button" className="is-destructive" disabled={!customPreset} onClick={() => void deletePreset()}>
             삭제
           </button>
           <button type="button" onClick={() => selectPreset(`BUILTIN:${initialBuiltIn.id}`)}>
@@ -1177,6 +1177,7 @@ export const HwpxExportWorkspace = forwardRef<
             !output ||
             visibleValidation?.report.validation.status !== "VALID"
           }
+          className="is-primary"
           onClick={() => void runExport()}
         >
           HWPX 내보내기

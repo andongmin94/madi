@@ -1072,7 +1072,7 @@ export const EpubExportWorkspace = forwardRef<
           <div className="epub-export__cover">
             <span>표지: {state.cover ? `${state.cover.mediaType} · ${state.cover.width}×${state.cover.height}` : "없음"}</span>
             <button type="button" onClick={() => void chooseCover()}>PNG/JPEG 선택</button>
-            <button type="button" disabled={!state.cover} onClick={() => void removeCover()}>표지 제거</button>
+            <button type="button" className="is-destructive" disabled={!state.cover} onClick={() => void removeCover()}>표지 제거</button>
           </div>
         </fieldset>
 
@@ -1092,7 +1092,7 @@ export const EpubExportWorkspace = forwardRef<
 
           <label>preset<select value={selectedPresetId ?? ""} onChange={(event) => { const id = event.currentTarget.value || null; setSelectedPresetId(id); const preset = state.presets.find((item) => item.id === id); if (preset) { setConfig(preset.config); setPresetName(preset.name); } else { setConfig(DEFAULT_CONFIG); } }}><option value="">기본 설정</option>{state.presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}</select></label>
           <label>preset 이름<input value={presetName} onChange={(event) => setPresetName(event.currentTarget.value)} /></label>
-          <div className="epub-export__button-row"><button type="button" onClick={() => void createPreset()}>새 preset 저장</button><button type="button" disabled={!selectedPreset} onClick={() => void updatePreset()}>변경 저장</button><button type="button" disabled={!selectedPreset} onClick={() => void duplicatePreset()}>복제</button><button type="button" disabled={!selectedPreset} onClick={() => void deletePreset()}>삭제</button></div>
+          <div className="epub-export__button-row"><button type="button" onClick={() => void createPreset()}>새 preset 저장</button><button type="button" disabled={!selectedPreset} onClick={() => void updatePreset()}>변경 저장</button><button type="button" disabled={!selectedPreset} onClick={() => void duplicatePreset()}>복제</button><button type="button" className="is-destructive" disabled={!selectedPreset} onClick={() => void deletePreset()}>삭제</button></div>
         </fieldset>
       </div>
 
@@ -1101,7 +1101,7 @@ export const EpubExportWorkspace = forwardRef<
           <button type="button" disabled={busy} onClick={() => void validate()}>사전 검사</button>
           <button type="button" disabled={busy} onClick={() => void chooseOutput()}>저장 위치 선택</button>
           <span>{output?.fileName ?? "저장 위치 미선택"}</span>
-          <button type="button" disabled={busy || !output} onClick={() => void runExport()}>EPUB 내보내기</button>
+          <button type="button" className="is-primary" disabled={busy || !output} onClick={() => void runExport()}>EPUB 내보내기</button>
           <button type="button" disabled={!operationBusy || phase === "CANCELLING"} onClick={() => void cancelActive()}>취소</button>
         </div>
         {visibleProgress && <div className="epub-export__progress" role="status" aria-live="polite"><span>{stageLabel(visibleProgress.stage)}</span><progress aria-label={`${stageLabel(visibleProgress.stage)} 진행률`} value={visibleProgress.completed} max={visibleProgress.total} /><span>{visibleProgress.completed}/{visibleProgress.total}</span></div>}

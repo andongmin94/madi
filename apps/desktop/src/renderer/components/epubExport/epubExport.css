@@ -9,21 +9,22 @@
   display: flex;
   gap: 8px;
   padding: 12px 20px;
-  background: var(--color-surface);
+  background: var(--color-bg);
   border-bottom: 2px solid var(--color-border);
 }
 
 .publication-export-tabs [role="tab"] {
   min-height: 35px;
   padding: 7px 12px;
-  background: var(--color-surface);
+  color: var(--color-ink);
+  background: var(--color-bg);
   border: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
   font-weight: 700;
 }
 
 .publication-export-tabs [role="tab"][aria-selected="true"] {
+  color: var(--color-accent-foreground);
   background: var(--color-accent);
 }
 
@@ -77,7 +78,7 @@
 .epub-export__validation {
   border: 2px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: var(--color-bg);
   padding: 14px;
   box-shadow: var(--shadow-sm);
 }
@@ -132,6 +133,33 @@
 
 .epub-export button {
   min-height: 34px;
+  padding: 7px 10px;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  font-weight: 500;
+}
+
+.epub-export button:hover:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--color-border);
+}
+
+.epub-export button:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: none;
+}
+
+.epub-export button.is-primary {
+  color: var(--color-accent-foreground);
+  background: var(--color-accent);
+}
+
+.epub-export button.is-destructive {
+  color: var(--color-ink);
+  background: var(--color-destructive);
 }
 
 .epub-export__progress progress {
@@ -173,7 +201,16 @@
   padding: 8px;
   border: 0;
   background: transparent;
+  box-shadow: none;
   text-align: left;
+}
+
+.epub-export__messages button:hover:not(:disabled),
+.epub-export__messages button:active:not(:disabled) {
+  color: var(--color-accent-foreground);
+  background: var(--color-accent);
+  box-shadow: none;
+  transform: none;
 }
 
 .epub-export__messages code {
@@ -193,7 +230,7 @@
 }
 
 .epub-export__success {
-  background: var(--color-accent-soft);
+  background: var(--color-bg);
   color: var(--color-ink);
   overflow-wrap: anywhere;
 }

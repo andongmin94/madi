@@ -425,18 +425,22 @@ function replacementPlans(
 function ToolbarButton({
   children,
   disabled,
+  primary = false,
   onClick,
   title
 }: {
   readonly children: ReactNode;
   readonly disabled?: boolean;
+  readonly primary?: boolean;
   readonly onClick: () => void;
   readonly title?: string;
 }) {
   return (
     <button
       type="button"
-      className="toolbar-button"
+      className={
+        primary ? "toolbar-button toolbar-button--primary" : "toolbar-button"
+      }
       disabled={disabled}
       onClick={onClick}
       title={title}
@@ -3301,6 +3305,7 @@ export function App({
         <div className="toolbar__commands">
           <div className="toolbar__group">
             <ToolbarButton
+              primary
               disabled={enginePhase !== "ready" || busy}
               onClick={() => void createProjectFromUi()}
             >
@@ -3313,6 +3318,7 @@ export function App({
               .madi 열기
             </ToolbarButton>
             <ToolbarButton
+              primary
               disabled={!hasDocument || busy}
               onClick={() =>
                 void controller?.save(() => compositionActiveRef.current)

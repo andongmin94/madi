@@ -14,7 +14,7 @@
   gap: 0.75rem;
   padding: 0.85rem;
   border-right: 2px solid var(--color-border);
-  background: var(--color-surface-muted);
+  background: var(--color-surface);
 }
 
 .plot-canvas-list > header,
@@ -66,23 +66,22 @@
   padding: 0.62rem;
   border: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-muted);
+  background: var(--color-surface);
   color: var(--color-ink);
   text-align: left;
 }
 
-.plot-canvas-list__items > button[aria-current="true"] {
+.plot-canvas-list__items > button[aria-current="true"],
+.plot-canvas-list__items > button:hover:not(:disabled),
+.plot-canvas-list__items > button:focus-visible {
+  color: var(--color-accent-foreground);
   background: var(--color-accent);
 }
 
 .plot-canvas-list__items span,
 .plot-canvas-list__items small {
-  color: var(--color-muted);
+  color: currentColor;
   font-size: 0.72rem;
-}
-
-.plot-canvas-list__items small {
-  color: var(--color-ink);
 }
 
 .plot-canvas-list__file-actions {
@@ -99,14 +98,34 @@
   color: var(--color-ink);
 }
 
-.plot-canvas-mode button:hover:not(:disabled),
-.plot-canvas-mode button:focus-visible {
-  background: var(--color-accent-soft);
+.plot-canvas-list > header button,
+.plot-canvas-list__file-actions button,
+.plot-canvas-metadata button,
+.plot-canvas-import-preview button {
+  box-shadow: var(--shadow-sm);
+  font-weight: 500;
+}
+
+.plot-canvas-list > header button:hover:not(:disabled),
+.plot-canvas-list__file-actions button:hover:not(:disabled),
+.plot-canvas-metadata button:hover:not(:disabled),
+.plot-canvas-import-preview button:hover:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--color-border);
+}
+
+.plot-canvas-list > header button:active:not(:disabled),
+.plot-canvas-list__file-actions button:active:not(:disabled),
+.plot-canvas-metadata button:active:not(:disabled),
+.plot-canvas-import-preview button:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: none;
 }
 
 .plot-canvas-mode button.danger {
   border-color: var(--color-border);
-  color: var(--color-danger);
+  color: var(--color-ink);
+  background: var(--color-destructive);
 }
 
 .plot-canvas-mode__editor {

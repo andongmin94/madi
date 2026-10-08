@@ -71,19 +71,22 @@
   gap: 3px;
   width: 100%;
   padding: 9px 10px;
+  color: var(--color-ink);
   text-align: left;
   background: var(--color-surface);
   border: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
 }
 
-.reader-choice-list button:hover:not(:disabled) {
-  background: var(--color-accent-soft);
+.reader-choice-list button:hover:not(:disabled),
+.reader-choice-list button:focus-visible {
+  color: var(--color-accent-foreground);
+  background: var(--color-accent);
 }
 
 .reader-choice-list button[aria-checked="true"],
 .reader-choice-list button[aria-selected="true"] {
-  color: var(--color-ink);
+  color: var(--color-accent-foreground);
   background: var(--color-accent);
   border-color: var(--color-border);
 }
@@ -97,14 +100,9 @@
 }
 
 .reader-choice-list button small {
-  color: var(--color-muted);
+  color: currentColor;
   font-size: 10px;
   letter-spacing: 0.06em;
-}
-
-.reader-choice-list button[aria-checked="true"] small,
-.reader-choice-list button[aria-selected="true"] small {
-  color: var(--color-ink);
 }
 
 .reader-choice-list--presets {
@@ -132,7 +130,7 @@
 }
 
 .reader-select-list option:checked {
-  color: var(--color-ink);
+  color: var(--color-accent-foreground);
   background: var(--color-accent);
 }
 
@@ -153,6 +151,7 @@
 .reader-control select {
   min-width: 0;
   padding: 5px 6px;
+  color: var(--color-ink);
   background: var(--color-surface);
   border: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -175,11 +174,46 @@
 .reader-pane-tabs button,
 .reader-save-blocked button {
   padding: 6px 9px;
+  color: var(--color-ink);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   background: var(--color-surface);
   border: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
+}
+
+.reader-button-row button.is-primary {
+  color: var(--color-accent-foreground);
+  background: var(--color-accent);
+}
+
+.reader-button-row button.is-destructive {
+  color: var(--color-ink);
+  background: var(--color-destructive);
+}
+
+.reader-button-row button,
+.reader-preview-toolbar button,
+.reader-save-blocked button {
+  box-shadow: var(--shadow-sm);
+}
+
+.reader-button-row button:hover:not(:disabled),
+.reader-preview-toolbar button:hover:not(:disabled),
+.reader-save-blocked button:hover:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--color-border);
+}
+
+.reader-button-row button:active:not(:disabled),
+.reader-preview-toolbar button:active:not(:disabled),
+.reader-save-blocked button:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: none;
+}
+
+.reader-pane-tabs button {
+  background: var(--color-bg);
 }
 
 .reader-button-row button:disabled,
@@ -261,7 +295,7 @@
 }
 
 .reader-preview-toolbar button[aria-pressed="true"] {
-  color: var(--color-ink);
+  color: var(--color-accent-foreground);
   background: var(--color-accent);
 }
 
@@ -331,7 +365,7 @@
 }
 
 .reader-pane-tabs button[aria-selected="true"] {
-  color: var(--color-ink);
+  color: var(--color-accent-foreground);
   background: var(--color-accent);
 }
 
@@ -374,7 +408,7 @@
   min-width: 0;
   padding: 7px 9px;
   color: var(--color-ink);
-  background: var(--color-accent-soft);
+  background: var(--color-bg);
   border-bottom: 2px solid var(--color-border);
   font-size: 10px;
 }

@@ -53,16 +53,25 @@
   background: var(--color-surface);
   border: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  font-weight: 500;
   cursor: pointer;
 }
 
 .world-graph__toolbar > button:hover:not(:disabled),
 .world-graph__toolbar [role="group"] button:hover:not(:disabled) {
-  background: var(--color-accent-soft);
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--color-border);
+}
+
+.world-graph__toolbar > button:active:not(:disabled),
+.world-graph__toolbar [role="group"] button:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: none;
 }
 
 .world-graph__toolbar [role="group"] button[aria-pressed="true"] {
-  color: var(--color-ink);
+  color: var(--color-accent-foreground);
   background: var(--color-accent);
   border-color: var(--color-border);
 }
@@ -85,7 +94,7 @@
   padding: 5px;
   border: 2px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: var(--color-bg);
   box-shadow: var(--shadow-md);
 }
 
@@ -135,11 +144,11 @@
   position: absolute;
   inset: 0;
   outline: none;
-  background: #171717;
+  background: #18191c;
 }
 
 .world-graph-canvas:focus-visible {
-  box-shadow: inset 0 0 0 3px var(--color-accent);
+  box-shadow: inset 0 0 0 3px var(--color-accent-foreground);
 }
 
 .world-graph-canvas-help {
@@ -153,7 +162,7 @@
   border: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-muted);
-  background: var(--color-surface);
+  background: var(--color-bg);
   font-size: 12px;
   pointer-events: none;
 }
@@ -169,7 +178,7 @@
   overflow: auto;
   border: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  background: var(--color-bg);
   box-shadow: var(--shadow-sm);
 }
 
@@ -193,6 +202,20 @@
   border: 0;
   background: transparent;
   text-align: left;
+}
+
+.world-graph__search-results button:hover:not(:disabled),
+.world-graph__search-results button:focus-visible,
+.world-graph-accessible-list button:hover:not(:disabled),
+.world-graph-accessible-list button:focus-visible,
+.world-graph-detail button:hover:not(:disabled),
+.world-graph-detail button:focus-visible {
+  color: var(--color-accent-foreground);
+  background: var(--color-accent);
+}
+
+.world-graph-detail button small {
+  color: currentColor;
 }
 
 .world-graph-detail {

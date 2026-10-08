@@ -4,13 +4,21 @@
 
 ## 현재 상태
 
-현재 모노톤 UI 제품 source는 `03e44d8e3d2e8c506534d02e17065da4cb39106b`다. 이 source의 전체 Windows gate·fresh-unpacked 실사용·실제 AI UI 검수를 완료했다.
+소유자의 정정에 따라 `neobrutal-ui`의 기본 Mono 테마를 그대로 적용한다. 기존 회색 강조색 구현은 이 요구를 충족하지 못했으며 새 제품 변경의 runtime 승인은 **WITHHELD**다.
+직전 기술 검증 source는 `03e44d8e3d2e8c506534d02e17065da4cb39106b`다. 이 source의 전체 Windows gate·fresh-unpacked 실사용·실제 AI UI 검수를 완료했으나 기본 Mono 디자인 승인을 뜻하지 않는다.
 각 최종 실행은 source 전후 clean에서 수행했다. Full이 새로 만든 배포본의 전체 파일·디렉터리 inventory를 UI·AI 검수 전후와 실제 연결했다.
 이전 b9 UI와 f2의 full·ZIP·AI·자연 종료, 문서 source `65936f2`의 실사용 검수는 해당 revision의 근거로 보존한다. 현재 판정은 아래 최신 실행 결과를 따른다.
 Node24.21.0/npm12.2.0/Rust1.97.1을 고정한다. 설치는 `npm ci`, 실행은 `npm run <script>`다.
 Private-local 기술 완료이며 공개·유료·고객·installer 배포 승인을 뜻하지 않는다. 사람의 확인 조건은 아래 세 항목이다.
 
-## 모노톤 전환 완료
+## 현재 작업: 원본 기본 Mono 테마
+
+- Reference `b4da2463fe710a77bf464c65125a1a7f40424722`의 기본 Mono를 기준으로 삼는다. 주요 버튼·선택은 `#27282b` 바탕과 `#f4f5f7` 글자, neutral 입력/sidebar는 흰색과 검정, 카드·outline은 `#f4f5f7`와 검정으로 맞춘다.
+- 검정4px 그림자·5px radius·hover3px/active4px와 원본의 error/destructive 의미색을 적용한다. Pretendard와 사용자 작품색·Reader/출판 preset·원고/저장/AI 계약은 유지한다.
+- 새 source를 commit한 뒤 먼저 fresh-unpacked 화면을 검수한다. 회색 채널 일치 대신 원본 token·foreground/background pair·그림자·실제 선택과 버튼 상태를 확인한다.
+- 화면 검수 후 exact source의 고정 설치·전체 Windows gate를 실행하고 실제 결과에서 완료 판정을 갱신한다.
+
+## 직전 회색 UI 구현과 검증
 
 - 공통 라임 강조색·비중립 배경·저장 상태 표시와 Graph/Canvas/Reader의 기본 장식색을 흰색·회색·검정으로 바꿨다. 굵은 테두리·단단한 그림자·Pretendard·기존 상호작용 구조는 유지했다.
 - 사용자 작품의 색상 token·Reader/출판 preset과 원고·저장 계약·AI 로직은 유지했다. 새 npm 의존성은 없다.
@@ -39,7 +47,7 @@ Publication IR은 Reader Lab·exporter의 유일한 원고 입력이다. Typie �
 Binary HWP는 2026-10-02 제품 범위에서 제거했다. 변환 UI·C# bridge·.NET 요구를 제거했으며 차후 TODO로 남기지 않는다.
 새 제품 phase·큰 구조 변경·multi-block/project-wide AI mutation은 현재 범위에 포함하지 않는다.
 
-## 현재 source의 자동 작업 완료
+## 직전03 source의 자동 작업 완료
 
 | 항목 | 실제 결과 |
 | --- | --- |
@@ -62,10 +70,10 @@ UI·AI inspector의 ordered product quit·Core 종료·wrapper exit0·force0은 
 
 ## 실행 근거와 기록
 
-- [현재 전체 gate](.tools/verification/full-mono-verify-03e44d8-run1/metadata.json): terminal PASS; job3251/cleanup active0·host force0·desktop gone. 입력8,224표본 모두 소유 desktop 비활성이며 이름 미가용5회도 독립 inactive flag로 확인했다. 이름 관측은 Default→Screen-saver→Default로, 전표본 Default/이름 가용으로 표현하지 않는다.
-- [현재 UI](.tools/verification/ui-review-mono-03e44d8-run1/ui-review-evidence.json): 원본 CSS EPUB360/960px overflow0·package 전후 일치·관측한 오류/외부 요청0·모노톤42회 PASS.
-- [현재 실제 AI](.tools/verification/ai-ui-mono-03e44d8-run2/metadata.json): host PASS·AI8캡처·명시 동의한 loopback 외 관측 외부 요청0·job92/active0·host force0·desktop gone. 이전 source를 요구한 run1 실패는 보존했다.
-- [현재 whole package join](.tools/verification/full-mono-verify-03e44d8-run1/final-monochrome-package-join.json): canonical inventory SHA `f4ba3085db9115e00dbeaead06ad13031b26b2cabc25a10eca2aa3998aa8e5c1`·전체 inventory deep equality.
+- [직전03 전체 gate](.tools/verification/full-mono-verify-03e44d8-run1/metadata.json): terminal PASS; job3251/cleanup active0·host force0·desktop gone. 입력8,224표본 모두 소유 desktop 비활성이며 이름 미가용5회도 독립 inactive flag로 확인했다. 이름 관측은 Default→Screen-saver→Default로, 전표본 Default/이름 가용으로 표현하지 않는다.
+- [직전03 UI](.tools/verification/ui-review-mono-03e44d8-run1/ui-review-evidence.json): 원본 CSS EPUB360/960px overflow0·package 전후 일치·관측한 오류/외부 요청0·모노톤42회 PASS.
+- [직전03 실제 AI](.tools/verification/ai-ui-mono-03e44d8-run2/metadata.json): host PASS·AI8캡처·명시 동의한 loopback 외 관측 외부 요청0·job92/active0·host force0·desktop gone. 이전 source를 요구한 run1 실패는 보존했다.
+- [직전03 whole package join](.tools/verification/full-mono-verify-03e44d8-run1/final-monochrome-package-join.json): canonical inventory SHA `f4ba3085db9115e00dbeaead06ad13031b26b2cabc25a10eca2aa3998aa8e5c1`·전체 inventory deep equality.
 - [f2 보관 ZIP](output/releases/madi-0.0.1-win32-x64-f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276): 이전 UI의 ZIP SHA `5a0df130…`·inventory SHA `4684dd2e…`. 현재 배포본으로 표현하지 않는다.
 - 이전 f2 source archive는444개 source의 **RUNNING snapshot**을 그대로 보존한다. 해당 terminal full metadata와 별도로 연결하며 snapshot을 PASS로 고쳐 쓰지 않는다.
 - 이전 UI·report 실패와 Node/npm·e2/source52/cde/f2 기록은 [오프라인 결과](docs/OFFLINE_RUNTIME_RELEASE_RESULT.md)에 revision-bound 역사로 보존한다.

@@ -3,16 +3,23 @@
   height: 22px;
   border: 2px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: var(--color-accent-soft);
-  color: var(--color-ink);
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
+  box-shadow: var(--shadow-sm);
   font: inherit;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 500;
   cursor: pointer;
 }
 
-.madi-llm-selection-launcher:hover {
-  background: var(--color-accent-soft);
+.madi-llm-selection-launcher:hover:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--color-border);
+}
+
+.madi-llm-selection-launcher:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: none;
 }
 
 .madi-llm-selection-backdrop {
@@ -22,7 +29,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgb(24 24 24 / 28%);
+  background: var(--color-overlay);
 }
 
 .madi-llm-selection-dialog {
@@ -46,7 +53,7 @@
   gap: 20px;
   padding: 20px 24px 16px;
   border-bottom: 2px solid var(--color-border);
-  background: var(--color-surface);
+  background: var(--color-bg);
 }
 
 .madi-llm-selection-dialog header p,
@@ -73,6 +80,7 @@
   border-radius: var(--radius-md);
   background: var(--color-surface);
   color: var(--color-ink);
+  box-shadow: var(--shadow-sm);
   font-size: 24px;
   line-height: 1;
   cursor: pointer;
@@ -97,7 +105,7 @@
 
 .madi-llm-selection-notice {
   border: 2px solid var(--color-border);
-  background: var(--color-accent-soft);
+  background: var(--color-bg);
   color: var(--color-ink);
 }
 
@@ -121,7 +129,7 @@
 
 .madi-llm-selection-status.is-ready {
   border-color: var(--color-border);
-  background: var(--color-accent-soft);
+  background: var(--color-bg);
   color: var(--color-ink);
 }
 
@@ -129,7 +137,7 @@
 .madi-llm-selection-grid {
   border: 2px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: var(--color-bg);
   box-shadow: var(--shadow-md);
 }
 
@@ -231,7 +239,8 @@
   color: var(--color-ink);
   font: inherit;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
 }
 
@@ -259,7 +268,23 @@
 
 .madi-llm-selection-actions button.is-primary {
   background: var(--color-accent);
-  color: var(--color-ink);
+  color: var(--color-accent-foreground);
+}
+
+.madi-llm-selection-heading button:hover:not(:disabled),
+.madi-llm-selection-actions button:hover:not(:disabled),
+.madi-llm-selection-small-actions button:hover:not(:disabled),
+.madi-llm-selection-dialog header > button:hover:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--color-border);
+}
+
+.madi-llm-selection-heading button:active:not(:disabled),
+.madi-llm-selection-actions button:active:not(:disabled),
+.madi-llm-selection-small-actions button:active:not(:disabled),
+.madi-llm-selection-dialog header > button:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: none;
 }
 
 .madi-llm-selection-dialog button:disabled,
@@ -311,8 +336,8 @@
   width: 22px;
   height: 22px;
   border-radius: var(--radius-sm);
-  background: var(--color-accent-soft);
-  color: var(--color-ink);
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
   font-size: 11px;
   font-weight: 800;
 }
