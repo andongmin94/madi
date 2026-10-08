@@ -4,18 +4,17 @@
 
 ## 현재 상태
 
-소유자의 후속 요청으로 UI를 흰색·회색·검정의 모노톤으로 전환한다. 새 변경의 runtime 승인은 **WITHHELD**이며 exact source의 전체 Windows gate와 fresh-unpacked UI 검수를 실제 실행한다.
-마지막 전체 승인 UI 제품 source는 `b9aa3e7e45aae85d18969b89366a590c341877c7`이다. 이 source의 전체 Windows gate·배포판 실사용·실제 AI UI 검수를 완료했다.
-각 실행은 source 전후 clean에서 수행했다. Full이 새로 만든 배포본과 UI 검수 배포본의 전체 파일·디렉터리 inventory가 일치하며 AI 검수 전후에도 보존됐다.
-이전 source `f2efe6e`의 full·ZIP·AI·자연 종료와 후속 문서 source `65936f2`의 실사용 검수는 해당 revision의 근거로 보존한다.
+현재 모노톤 UI 제품 source는 `03e44d8e3d2e8c506534d02e17065da4cb39106b`다. 이 source의 전체 Windows gate·fresh-unpacked 실사용·실제 AI UI 검수를 완료했다.
+각 최종 실행은 source 전후 clean에서 수행했다. Full이 새로 만든 배포본의 전체 파일·디렉터리 inventory를 UI·AI 검수 전후와 실제 연결했다.
+이전 b9 UI와 f2의 full·ZIP·AI·자연 종료, 문서 source `65936f2`의 실사용 검수는 해당 revision의 근거로 보존한다. 현재 판정은 아래 최신 실행 결과를 따른다.
 Node24.21.0/npm12.2.0/Rust1.97.1을 고정한다. 설치는 `npm ci`, 실행은 `npm run <script>`다.
 Private-local 기술 완료이며 공개·유료·고객·installer 배포 승인을 뜻하지 않는다. 사람의 확인 조건은 아래 세 항목이다.
 
-## 현재 작업: 모노톤 전환
+## 모노톤 전환 완료
 
-- 공통 라임 강조색·비중립 배경·저장 상태 표시와 기본 Graph/Reader의 장식 강조색을 grayscale로 바꾼다. 굵은 테두리·단단한 그림자·Pretendard·기존 상호작용 구조는 유지한다.
-- 사용자 작품의 색상 token·Reader/출판 preset은 변경하지 않는다. 원고·저장 계약·AI 로직을 바꾸지 않는다.
-- 최종 source를 commit한 뒤 고정 설치·전체 Windows gate·fresh-unpacked Playwright 검수와 문서 정합성을 확인한다. 완료 판정은 실제 terminal 결과에서 갱신한다.
+- 공통 라임 강조색·비중립 배경·저장 상태 표시와 Graph/Canvas/Reader의 기본 장식색을 흰색·회색·검정으로 바꿨다. 굵은 테두리·단단한 그림자·Pretendard·기존 상호작용 구조는 유지했다.
+- 사용자 작품의 색상 token·Reader/출판 preset과 원고·저장 계약·AI 로직은 유지했다. 새 npm 의존성은 없다.
+- 화면의 색상 검사42회에서 공통 색상 token10개·root paint2개와 표시 중인 버튼·선택·저장 dot의 중립색을 확인했다. 관측한 저장 상태는 `saved`이며 모든 저장 phase나 사용자 작품색 검증으로 확대하지 않는다.
 
 ## 이전 UI 개선 완료
 
@@ -40,18 +39,17 @@ Publication IR은 Reader Lab·exporter의 유일한 원고 입력이다. Typie �
 Binary HWP는 2026-10-02 제품 범위에서 제거했다. 변환 UI·C# bridge·.NET 요구를 제거했으며 차후 TODO로 남기지 않는다.
 새 제품 phase·큰 구조 변경·multi-block/project-wide AI mutation은 현재 범위에 포함하지 않는다.
 
-## 이전 b9 UI의 자동 작업 완료
+## 현재 source의 자동 작업 완료
 
 | 항목 | 실제 결과 |
 | --- | --- |
-| 고정 npm workspace | Node24.21.0/npm12.2.0/Rust1.97.1·committed lock. 이번 UI 작업에서도 `npm ci` 실제 실행 |
-| b9 전체 Windows gate | terminal PASS4192.837초/exit0. desktop714·bundle4 시험, 개발판·fresh unpacked Basic/D–H, Rust·Typie·integration·build 포함 |
-| b9 EPUB·HWPX | exact coverage·ZIP/XML 재열기·결정성·취소·no-clobber·cleanup 통과. HWPX 장편 packaged exporter max83ms; UI wall·사람의 서식 승인은 별도 |
-| b9 배포 package 연결 | 556파일/80디렉터리/551,929,587B. Full 이후 두 번 읽은 전체 inventory와 UI run7 inventory 일치·AI 전후 보존. 새 ZIP은 만들지 않음 |
-| b9 실제 AI UI | host PASS34.011초/exit0·actual probe23.790초. 동의·exact same-block 적용·Undo/Redo·저장·재열기·AI4화면×2크기 통과. 진단 경고 보존 |
-| b9 실사용 UI | harness PASS67.113초·host PASS69.599초/exit0. 폰트10회·4크기40화면·54캡처, 집필·설정·치환·Reader·EPUB/HWPX·재열기·스키마/원고19테이블 보존 |
-| 기존 코드 정리·정밀진단 | 이전 f2 완료 근거를 유지. 이번 UI에서 이전 선택 색상·작은 창 layout 경로·중복 zoom overlay·대체된 Nanum 자산 제거 |
-| 결과 문서·최종 정합성 | 실제 b9 결과 기록. 후속 문서 변경 뒤 `npm run check:repository`·`npm run format:check`·`git diff --check` 실제 PASS. 문서 commit은 제품 검증 source와 구분 |
+| 고정 npm workspace | Node24.21.0/npm12.2.0/Rust1.97.1·committed lock. exact source의 `npm ci` 실제 PASS26.208초/exit0 |
+| 전체 Windows gate | terminal PASS4181.694초/exit0. desktop102파일/714테스트·별도 bundle4 시험, 개발판·fresh unpacked Basic/D–H, Rust·Typie·integration·build 포함 |
+| EPUB·HWPX | exact coverage·ZIP/XML 재열기·결정성·취소·no-clobber·cleanup 통과. HWPX 장편 packaged exporter max69ms; UI wall·사람의 서식 승인은 별도 |
+| 배포 package 연결 | 556파일/80디렉터리/551,929,597B. Full 이후와 UI·AI 이후 두 번 읽은 전체 inventory가 실제 일치. 새 ZIP은 만들지 않음 |
+| 실제 AI UI | host PASS31.278초/exit0·actual probe22.196초. 동의·exact same-block 적용·Undo/Redo·저장·재열기·AI4화면×2크기 통과. 진단 경고 보존 |
+| 실사용 모노톤 UI | harness PASS65.427초·host PASS67.798초/exit0. 폰트10회·4크기40화면·54캡처·색상 검사42회, 집필·설정·치환·Reader·EPUB/HWPX·재열기·스키마/원고19테이블 보존 |
+| 결과 문서·최종 정합성 | 실제 결과를 기록했고 후속 문서 변경 뒤 `npm run check:repository`·`npm run format:check`·`git diff --check`를 실제 PASS했다. 문서 commit은 제품 검증 source와 구분 |
 
 UI·AI inspector의 ordered product quit·Core 종료·wrapper exit0·force0은 확인했다. 이 근거를 main 자연 exit/native exit-code 증명으로 확대하지 않는다.
 이전 f2의 별도 plain close·IME report·ZIP 결과는 해당 source의 역사다. 이전 성공으로 이후 제품 변경을 승인하지 않는다.
@@ -64,11 +62,11 @@ UI·AI inspector의 ordered product quit·Core 종료·wrapper exit0·force0은 
 
 ## 실행 근거와 기록
 
-- [b9 전체 gate](.tools/verification/full-ui-verify-b9aa3e7-run1/metadata.json): terminal PASS; job3262/cleanup active0·host force0·desktop gone. 입력8,193표본은 모두 Default/owned inactive·unknown0.
-- [b9 UI run7](.tools/verification/ui-review-b9aa3e7-run7/ui-review-evidence.json): 원본 CSS EPUB360/960px overflow0·package 전후 일치·관측한 오류/외부 요청0.
-- [b9 실제 AI](.tools/verification/ai-ui-b9aa3e7-run1/metadata.json): host PASS·AI8캡처·명시 동의한 loopback 요청3/그 외 관측0·job92/active0·host force0·desktop gone.
-- [b9 whole package join](.tools/verification/full-ui-verify-b9aa3e7-run1/final-ui-package-join.json): canonical inventory SHA `34e65c8959632bbb340e54c5765523f6e4a9fd895cf15e406564839cbdde8c8d`·전체 inventory deep equality.
-- [f2 보관 ZIP](output/releases/madi-0.0.1-win32-x64-f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276): 이전 UI의 ZIP SHA `5a0df130…`·inventory SHA `4684dd2e…`. b9 배포본으로 표현하지 않는다.
+- [현재 전체 gate](.tools/verification/full-mono-verify-03e44d8-run1/metadata.json): terminal PASS; job3251/cleanup active0·host force0·desktop gone. 입력8,224표본 모두 소유 desktop 비활성이며 이름 미가용5회도 독립 inactive flag로 확인했다. 이름 관측은 Default→Screen-saver→Default로, 전표본 Default/이름 가용으로 표현하지 않는다.
+- [현재 UI](.tools/verification/ui-review-mono-03e44d8-run1/ui-review-evidence.json): 원본 CSS EPUB360/960px overflow0·package 전후 일치·관측한 오류/외부 요청0·모노톤42회 PASS.
+- [현재 실제 AI](.tools/verification/ai-ui-mono-03e44d8-run2/metadata.json): host PASS·AI8캡처·명시 동의한 loopback 외 관측 외부 요청0·job92/active0·host force0·desktop gone. 이전 source를 요구한 run1 실패는 보존했다.
+- [현재 whole package join](.tools/verification/full-mono-verify-03e44d8-run1/final-monochrome-package-join.json): canonical inventory SHA `f4ba3085db9115e00dbeaead06ad13031b26b2cabc25a10eca2aa3998aa8e5c1`·전체 inventory deep equality.
+- [f2 보관 ZIP](output/releases/madi-0.0.1-win32-x64-f2efe6ebf4d02d5f56ec3f6ed5d9e74be6df8276): 이전 UI의 ZIP SHA `5a0df130…`·inventory SHA `4684dd2e…`. 현재 배포본으로 표현하지 않는다.
 - 이전 f2 source archive는444개 source의 **RUNNING snapshot**을 그대로 보존한다. 해당 terminal full metadata와 별도로 연결하며 snapshot을 PASS로 고쳐 쓰지 않는다.
 - 이전 UI·report 실패와 Node/npm·e2/source52/cde/f2 기록은 [오프라인 결과](docs/OFFLINE_RUNTIME_RELEASE_RESULT.md)에 revision-bound 역사로 보존한다.
 

@@ -1,18 +1,19 @@
 # 오프라인 검사·portable 배포 준비 검증 결과
 
-기록일: 2026-10-07. 현재 UI 제품 source: `b9aa3e7e45aae85d18969b89366a590c341877c7`.
-현재 UI·전체 Windows gate·실제 AI 결과는 아래 b9 절을 따른다. 이전 f2의 full·ZIP·AI·자연 종료와 후속 문서 source `65936f254be025472db1c3df85a5ac30d3d876db`의 UI 검수는 해당 revision의 근거로 보존한다.
+기록일: 2026-10-08. 현재 모노톤 UI 제품 source: `03e44d8e3d2e8c506534d02e17065da4cb39106b`.
+현재 UI·전체 Windows gate·실제 AI 결과는 아래03절을 따른다. 이전 b9 UI·full·AI와 f2의 full·ZIP·AI·자연 종료, 후속 문서 source `65936f254be025472db1c3df85a5ac30d3d876db`의 UI 검수는 해당 revision의 근거로 보존한다.
 후속 문서 commit은 이 실행 기준과 구분한다. 현재 계획은 [PLANS.md](../PLANS.md)에서만 관리한다.
 
 ## 현재 판정
 
 ```text
-Exact b9 full pinned npm Windows: PASS / exit0 / 4192.837s
+Exact03 full pinned npm Windows: PASS / exit0 / 4181.694s
 Development and fresh-unpacked Basic/D/E/F/G/H: PASS
 Offline EPUBCheck/JRE and HWPX: PRIVATE LOCAL TECHNICAL GO
-Exact b9 packaged UI: PASS / harness67.113s / host69.599s / source and whole package joined
-Exact b9 actual AI UI: PASS WITH DIAGNOSTIC WARNING / host34.011s
-Current b9 unpacked: VERIFIED / 556 files / whole inventory join PASS
+Exact03 monochrome packaged UI: PASS / harness65.427s / host67.798s / source and whole package joined
+Exact03 actual AI UI: PASS WITH DIAGNOSTIC WARNING / probe22.196s / host31.278s
+Current03 unpacked: VERIFIED / 556 files / whole inventory join PASS
+b9 UI / full / actual AI: PRIOR REVISION EVIDENCE
 f2 portable ZIP / AI / plain close / IME report: PRIOR REVISION EVIDENCE
 Binary HWP / Hancom bridge / .NET requirement: REMOVED FROM PRODUCT SCOPE
 Native Korean IME15: NOT TESTED
@@ -24,6 +25,62 @@ Public/paid/customer/installer distribution: NOT APPROVED
 현재 HWPX 내보내기는 한컴 설치와 독립적이다. 이전 ZIP·직접 자연 종료·IME report의 근거는 마지막 f2 절을 따른다.
 Typie 개발 permission은 owner-confirmed이며 배포 범위는 저장소 밖 exact grant를 따른다.
 실증은 이 PC의 개발판·fresh unpacked에 한정하며 다른 깨끗한 PC나 installer 설치 검증은 수행하지 않았다.
+
+## 2026-10-08 exact source03 모노톤 UI와 검증
+
+제품 source는 `03e44d8e3d2e8c506534d02e17065da4cb39106b`이며 아래 실행은 source 전후 같은03/clean이다. 후속 문서 commit은 이 제품 source와 구분한다.
+공통10색상 token·저장 상태dot·AI backdrop와 Graph/Canvas 기본 장식색을 흰색·회색·검정으로 바꿨다.
+굵은 테두리·단단한 그림자·Pretendard·기존 배치/동작을 유지한다. 원고·저장·AI 계약을 바꾸거나 npm 의존성을 추가하지 않았다.
+Graph8종 기본node·기본edge fallback·선택/인접/텍스트 배경과 Canvas 기본edge/label은 grayscale이다. 사용자 named-token/hex/Canvas1~6 해석과 canonical 색상은 유지한다.
+Reader shadow preview의 장식chrome·focus·선택을 neutral/currentColor로 바꿨다. Reader LIGHT/DARK/SEPIA/CUSTOM과 출판 preset의 색상·출력 계약은 유지한다.
+
+Pinned Node24.21.0/npm12.2.0/Rust1.97.1과 committed lock을 사용한다. `npm ci`는 실제 PASS26.208초/exit0,306 packages 설치다.
+Install의 npm audit16건(5 moderate·7 high·4 critical)은 보존한다. 취약점 해결이나 CI workflow 실행을 주장하지 않는다.
+`full-mono-verify-03e44d8-run1`은 **terminal PASS4181.694초/exit0**다. Desktop102파일/714테스트·별도 bundle1파일/4테스트를 통과했다. Bundle4는 unique714에 더하지 않는다.
+`npm run verify`의 repository·format·typecheck·Rust·Typie·integration·build·오프라인 EPUBCheck와 개발판/fresh-unpacked Basic/D–H를 완료했다. `package:unpacked`도 full 안에서 새로 실행했다.
+Repository13 artifact pins와 format290파일/whitespace0/invalidJson0을 확인했다. HWPX 장편 각5회 exporter max는 개발판626ms/배포판69ms로15초 target을 통과했다. 이는 native exporter 시간이며 UI wall이나 사람의 layout 승인이 아니다.
+
+Full은 소유 비활성 Win32 desktop·BelowNormal·job에서 실행했다. Job3,251 processes/cleanup active0·강제 job 종료0·handle 정리·desktop 제거를 확인했다.
+입력8,224표본의 owned desktop 비활성 flag는 모두 true다. Input name unavailable5회(Win32 error5)도 독립 flag에서 owned inactive5회로 확인했다.
+이름 관측은 Default→Screen-saver→Default이며 `inputNameAvailabilityComplete=false`/`inputDefaultEverySample=false`/`allowedActiveInputEverySample=null`을 보존한다. 모든 표본의 이름이 Default였거나 unknown0이라고 표현하지 않는다.
+
+`ui-review-mono-03e44d8-run1`은 **harness PASS65.427초·host PASS67.798초/exit0**다. 1440×1000·1180×820·980×720·880×620의40 layout/40 main-row·폰트10회·54PNG를 기록했다.
+실제 computed 공통10 tokens+root text/background2개와 현재 표시된 toolbar·선택chrome·저장dot에서 RGB채널 일치를42회 확인했다.
+관측한 저장 phase는 `saved`뿐이다. 모든 save phase를 실증했다고 확대하지 않으며 사용자 Graph/Canvas 색상과 Reader preset 본문은 neutral assertion에서 제외한다.
+Graph/Canvas8회 실제 노드 검사와 Canvas zoom4회·작업 패널 닫기·focus·hover를 통과했다. Graph는 RGB[115,115,115]의 최대8연결 component로 body 범위를 추정해 회색 antialias label 오염을 줄인다.
+원형 ratio0.85~1.15·fill0.5·전체 bounds/clip·9hit·viewport250×120 조건을 유지했다. 이는 UI fit·선택을 수행한 합성 CHARACTER1개 시험이며 임의 label·다중node·모든 형상의 일반 보증이 아니다.
+새 작품·장면2개·한글 집필·Undo/Redo·인물/POV·치환·Reader2pane/본문 이동·EPUB/HWPX ZIP/XML 재열기·앱 재시작과 출력 EPUB360/960px overflow0을 통과했다.
+Read-only SQLite schema와 UI 상태 외19테이블 전체 row가 네 시점에서 일치했다. `ui_state`와 물리 `.madi` byte hash는 달라지며 format 계약상 불변 조건이 아니다.
+두 session의 renderer HTTP/WS·main fetch·default-session 외부 요청·page error는 instrumentation부터 pre-close 관측 범위에서0이었다. 전체 process TCP/UDP 감사는 아니다.
+Ordered product quit·Core 각1개 종료·wrapper 전 owned native0·wrapper exit/close0·force0을 확인했다. `naturalMainProcessExitProven=false`/`nativeExitCodesObserved=false`를 유지한다.
+UI host134표본은 Default/owned inactive·이름 미가용0, job79/cleanup active0·host force0·desktop gone이다.
+
+Full 이후 두 번 읽은 fresh package 전체 inventory는556파일/80디렉터리/551,929,597B이며 UI·AI 검수 전후 tree와 실제 deep equality로 연결했다.
+Canonical inventory SHA는 `f4ba3085db9115e00dbeaead06ad13031b26b2cabc25a10eca2aa3998aa8e5c1`이다. Exact source/full/UI/AI join은 `PASS_EXACT_SOURCE_WHOLE_PACKAGE_JOIN`이다.
+새 portable ZIP은 만들지 않았다. 이전 f2 ZIP이나 b9의 package inventory를03 배포본으로 표현하지 않는다.
+
+`ai-ui-mono-03e44d8-run2`는 **host PASS31.278초/exit0·actual probe22.196초**다. 기존 Qwen3-0.6B-Q8_0/llama CPU를 소유 loopback18143·threads2/batch2·GPU0·context2048로 잠시 실행했다.
+제공자 설정·진단·제안·선택 다듬기4화면×1440/880px의8PNG·geometry8회·관측 버튼52개·폰트4회를 통과했다.
+요청별 명시 동의·검토 전 canonical 불변·exact same-block 적용·Undo/Redo·저장·재열기를 확인했다. 제공자 설정은 canonical 원고와 분리한다.
+`PASS_LOOPBACK_ACTUAL_WITH_DIAGNOSTIC_WARNING`을 유지한다. 실제 provider 응답을 받았지만 진단 기대문구 `MADI_OK`가 아니어 `UNEXPECTED_RESPONSE` 경고1개가 발생했다.
+첫 session의 승인 loopback main fetch3건·재열기0건, 그 외 renderer HTTP/WS·default-session 외부 요청·unapproved main fetch·page error0을 instrumentation부터 pre-close까지 관측했다.
+Remote HTTPS·인증키·OS clipboard·native IME·AI whole-process TCP 감사는 검증하지 않았다. 두 앱의 ordered quit·Core 종료·wrapper exit/close0·force0은 main 자연 exit/native exit-code 증명이 아니다.
+소유 llama server는 SIGTERM/null exitCode로 종료했고 임시 directory를 제거했다. Host62표본은 Default/owned inactive·이름 미가용0, job92/active0·강제 job 종료0·desktop gone이다.
+
+이전 `ai-ui-mono-03e44d8-run1`은 before-model boundary에서 **COMMAND_FAILED1.517초/exit1**이었다. 이전 b9 requiredSource pin에 새03 expectation을 전달해 contract 검사에서 멈췄으며 원본 실패를 보존했다.
+새 copy는 `ai-ui-boundary.mjs`의 requiredSource literal만 b9→03으로 바꿨다. 원본 전체 bytes·model/provider/resource pins·source/package/isolation/cleanup guards를 유지했다.
+준비 receipt의11 syntax 검사 PASS는 runtime acceptance가 아니다. 실제 runtime 결과는 별도 run2다. 실패 run1도 job11/active0·force0·desktop 제거를 확인했다.
+
+| 원본 근거 | 저장소 상대 경로 / 실제 SHA-256 |
+| --- | --- |
+| Install host | `.tools/verification/frozen-install-mono-03e44d8-run1/metadata.json`; `0395bf9ef4c9f3a448b01af82094f05914da0fbe240caed2dcd5b0e1e75fcdbb` |
+| Full host / log | `.tools/verification/full-mono-verify-03e44d8-run1/metadata.json`; `e90c869c808981363dc826188a693618926e1f7a083bf018e76981d7a77e04bd`; 같은 run의 `command.log`; `554fb4372d79f2dcb0171cf694932422ee51cbcb01b35bea78f5fc4b93c8f34d` |
+| UI actual / host | `.tools/verification/ui-review-mono-03e44d8-run1/ui-review-evidence.json`; `e922967f31d6f7addbb8b49fa46f4cc326bb3fbd5d27b9dd586de1b0cd68b11b`; host `5b71de247314dfbcd81730da9bd0c57bc6f7c8d67254780702376e11c9096c82` |
+| AI actual / orchestrator / host | `.tools/verification/ai-ui-mono-03e44d8-run2/llm-loopback-runs/packaged-15868649-272a-4e91-9a55-99d0c422aaba/actual.json`; `520a526b8005a6d04e128ccfe04866ce1464a3d8be1207a85746ba4186e31298`; 같은 folder의 orchestrator `71f81d92198b9bbf04365f8074a3bb4d0191c5e377bd469ab41148756fd521f6`; host `28ec6ce25f32ebcc5d37364a4b0adff96bc46c8267bd4ec96c83ab58f6f1b00e` |
+| Exact package join | `.tools/verification/full-mono-verify-03e44d8-run1/final-monochrome-package-join.json`; `e2971d6d96cc57dd0da6938902d3cbe1f2fe6ae4b9c7c2c786f735b2c7d73f2b` |
+| AI prior failure / preparation | `.tools/verification/ai-ui-mono-03e44d8-run1/metadata.json`; `ebbb99d5ecd2ed00d03133f49cd77613bee6f12f55ada42f90580b0f2d18de29`; `.tools/verification/ai-ui-monochrome-prepared-0229a3cb-6d71-4358-9db0-21b3f2e02ab1/preparation-monochrome-ai-ui-receipt.json`; `1048a7dae78d931fda3b6dd541b26af21028310dcd26d201c39decbda20509b7` |
+
+실행 자료와 합성 문서는 local-only로 보존한다. Windows native IME15항목·사람의 HWPX layout·exact grant에 따른 공개/유료/고객/installer 배포 승인 조건은 그대로 남긴다.
 
 ## 2026-10-07 exact source b9 UI 개선과 검증
 
