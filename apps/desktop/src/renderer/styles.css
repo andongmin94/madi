@@ -401,6 +401,23 @@ button:disabled {
   padding: 4px 6px;
 }
 
+.binder__row .binder__move-form {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.binder__row .binder__move-form label {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.binder__move-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 11px;
+}
+
 .binder__row > span[aria-label^="유형"] {
   color: var(--color-muted);
   font-size: 11px;

@@ -39,6 +39,11 @@ export interface BinderReorderRequest {
   readonly direction: "up" | "down";
 }
 
+export interface BinderMoveRequest {
+  readonly nodeId: string;
+  readonly newParentId: string;
+}
+
 export interface BinderProps {
   readonly tree: BinderWorkNode;
   readonly selectedNodeId?: string | null;
@@ -49,6 +54,7 @@ export interface BinderProps {
   readonly onRename: (request: BinderRenameRequest) => void;
   readonly onDelete: (request: BinderDeleteRequest) => void;
   readonly onReorder: (request: BinderReorderRequest) => void;
+  readonly onMove: (request: BinderMoveRequest) => void;
   readonly confirmDelete?: (node: BinderNode) => boolean;
   readonly title?: ReactNode;
   readonly ariaLabel?: string;
@@ -67,6 +73,8 @@ interface BinderTreeNodeProps extends BinderProps {
   readonly level: number;
   readonly renameDraft: RenameDraft | null;
   readonly setRenameDraft: (draft: RenameDraft | null) => void;
+  readonly moveDraft: BinderMoveRequest | null;
+  readonly setMoveDraft: (draft: BinderMoveRequest | null) => void;
 }
 
 function defaultDeleteConfirmation(node: BinderNode): boolean {
@@ -89,9 +97,12 @@ function BinderTreeNode({
   onRename,
   onDelete,
   onReorder,
+  onMove,
   confirmDelete,
   renameDraft,
   setRenameDraft,
+  moveDraft,
+  setMoveDraft,
   ...sharedProps
 }: BinderTreeNodeProps) {
   const children = binderChildren(node);
@@ -101,6 +112,33 @@ function BinderTreeNode({
   const collapsed = collapsedNodeIds.has(node.id);
   const branch = children.length > 0;
   const editing = renameDraft?.nodeId === node.id;
+  const moving = moveDraft?.nodeId === node.id;
+  const moveTargets = moving
+    ? sharedProps.tree.children.flatMap((child) =>
+        child.type === "VOLUME"
+          ? child.children.map((chapter) => ({
+              id: chapter.id,
+              label: `${binderDisplayTitle(child)} / ${binderDisplayTitle(chapter)}`
+            }))
+          : [{
+              id: child.id,
+              label: `${binderDisplayTitle(sharedProps.tree)} / ${binderDisplayTitle(child)}`
+            }]
+      ).filter((target) => target.id !== parentId)
+    : [];
+
+  const submitMove = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (
+      !moveDraft ||
+      moveDraft.nodeId !== node.id ||
+      !moveTargets.some((target) => target.id === moveDraft.newParentId)
+    ) {
+      return;
+    }
+    onMove(moveDraft);
+    setMoveDraft(null);
+  };
 
   const submitRename = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -185,7 +223,10 @@ function BinderTreeNode({
         <button
           type="button"
           aria-label={`${title} 이름 변경`}
-          onClick={() => setRenameDraft({ nodeId: node.id, value: title })}
+          onClick={() => {
+            setMoveDraft(null);
+            setRenameDraft({ nodeId: node.id, value: title });
+          }}
         >
           이름 변경
         </button>
@@ -250,6 +291,60 @@ function BinderTreeNode({
             </button>
           </>
         )}
+
+        {node.type === "SCENE" && (
+          moving && moveDraft ? (
+            <form className="binder__move-form" onSubmit={submitMove}>
+              <label>
+                <span className="sr-only">{title} 이동할 화</span>
+                <select
+                  autoFocus
+                  required
+                  aria-label={`${title} 이동할 화`}
+                  value={moveDraft.newParentId}
+                  disabled={moveTargets.length === 0}
+                  onChange={(event) => setMoveDraft({
+                    nodeId: node.id,
+                    newParentId: event.target.value
+                  })}
+                >
+                  <option value="" disabled>
+                    {moveTargets.length > 0
+                      ? "이동할 화 선택"
+                      : "이동할 다른 화가 없습니다"}
+                  </option>
+                  {moveTargets.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      {target.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="submit"
+                disabled={!moveTargets.some(
+                  (target) => target.id === moveDraft.newParentId
+                )}
+              >
+                이동
+              </button>
+              <button type="button" onClick={() => setMoveDraft(null)}>
+                취소
+              </button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              aria-label={`${title} 다른 화로 이동`}
+              onClick={() => {
+                setRenameDraft(null);
+                setMoveDraft({ nodeId: node.id, newParentId: "" });
+              }}
+            >
+              다른 화로 이동
+            </button>
+          )
+        )}
       </div>
 
       {branch && !collapsed && (
@@ -272,9 +367,12 @@ function BinderTreeNode({
               onRename={onRename}
               onDelete={onDelete}
               onReorder={onReorder}
+              onMove={onMove}
               confirmDelete={confirmDelete}
               renameDraft={renameDraft}
               setRenameDraft={setRenameDraft}
+              moveDraft={moveDraft}
+              setMoveDraft={setMoveDraft}
             />
           ))}
         </ul>
@@ -289,6 +387,7 @@ export function Binder({
   ...props
 }: BinderProps) {
   const [renameDraft, setRenameDraft] = useState<RenameDraft | null>(null);
+  const [moveDraft, setMoveDraft] = useState<BinderMoveRequest | null>(null);
 
   return (
     <aside className="binder" aria-label={ariaLabel}>
@@ -305,6 +404,8 @@ export function Binder({
           level={1}
           renameDraft={renameDraft}
           setRenameDraft={setRenameDraft}
+          moveDraft={moveDraft}
+          setMoveDraft={setMoveDraft}
         />
       </ul>
     </aside>

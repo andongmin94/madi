@@ -42,6 +42,7 @@ import {
   Binder,
   type BinderCreateRequest,
   type BinderDeleteRequest,
+  type BinderMoveRequest,
   type BinderRenameRequest,
   type BinderReorderRequest,
   type BinderSelectRequest
@@ -1980,6 +1981,34 @@ export function App({
     }
   };
 
+  const moveBinderNode = async ({ nodeId, newParentId }: BinderMoveRequest) => {
+    const session = workspace.session;
+    if (!session || !(await flushBeforeStructureChange())) {
+      return;
+    }
+    try {
+      const next = await api.moveNode({
+        sessionId: session.sessionId,
+        nodeId,
+        newParentId
+      });
+      setProjectTree(next);
+      controller?.adoptProjectRevision(next.revision);
+      setCollapsedNodeIds((current) => {
+        const updated = new Set(current);
+        updated.delete(newParentId);
+        const parentId = next.nodes.find((node) => node.id === newParentId)?.parentId;
+        if (parentId) {
+          updated.delete(parentId);
+        }
+        return updated;
+      });
+      setTreeError("");
+    } catch (error) {
+      setTreeError(error instanceof Error ? error.message : "장면 이동 실패");
+    }
+  };
+
   const reorderBinderNode = async ({
     nodeId,
     direction
@@ -3484,6 +3513,7 @@ export function App({
               onRename={(request) => void renameBinderNode(request)}
               onDelete={(request) => void deleteBinderNode(request)}
               onReorder={(request) => void reorderBinderNode(request)}
+              onMove={(request) => void moveBinderNode(request)}
             />
           ) : (
             <aside className="binder binder--empty" aria-label="작품 Binder">

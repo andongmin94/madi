@@ -72,6 +72,7 @@ function defaultProps(
     onRename: vi.fn(),
     onDelete: vi.fn(),
     onReorder: vi.fn(),
+    onMove: vi.fn(),
     ...overrides
   };
 }
@@ -283,5 +284,102 @@ describe("Phase 1A Binder", () => {
       parentId: "work-1",
       direction: "down"
     });
+  });
+
+  it.each(["chapter-direct", "chapter-2"])(
+    "moves a scene to the selected chapter %s, including another volume",
+    (newParentId) => {
+      const onMove = vi.fn();
+      const onSelect = vi.fn();
+      const moveTree: BinderWorkNode = {
+        ...tree,
+        children: [
+          ...tree.children,
+          {
+            id: "volume-2",
+            type: "VOLUME",
+            title: "제2권",
+            children: [{
+              id: "chapter-2",
+              type: "CHAPTER",
+              title: "제1화",
+              children: []
+            }]
+          },
+          {
+            id: "volume-empty",
+            type: "VOLUME",
+            title: "빈 권",
+            children: []
+          }
+        ]
+      };
+      render(<Binder {...defaultProps({
+        tree: moveTree,
+        collapsedNodeIds: new Set(["volume-2"]),
+        onMove,
+        onSelect
+      })} />);
+
+      fireEvent.click(screen.getByRole("button", {
+        name: "첫 장면 다른 화로 이동"
+      }));
+      const picker = screen.getByRole("combobox", { name: "첫 장면 이동할 화" });
+      expect(within(picker).getAllByRole("option").map((option) => [
+        (option as HTMLOptionElement).value,
+        option.textContent
+      ])).toEqual([
+        ["", "이동할 화 선택"],
+        ["chapter-direct", "드래곤을 죽이다 / 막간"],
+        ["chapter-2", "제2권 / 제1화"]
+      ]);
+      const submit = screen.getByRole("button", { name: "이동" });
+      expect((submit as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.change(picker, { target: { value: newParentId } });
+      expect(onMove).not.toHaveBeenCalled();
+      fireEvent.click(submit);
+
+      expect(onMove).toHaveBeenCalledTimes(1);
+      expect(onMove).toHaveBeenCalledWith({ nodeId: "scene-1", newParentId });
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(screen.queryByRole("combobox")).toBeNull();
+    }
+  );
+
+  it("cancels a destination without moving and clears the next selection", () => {
+    const onMove = vi.fn();
+    render(<Binder {...defaultProps({ onMove })} />);
+    const open = () => fireEvent.click(screen.getByRole("button", {
+      name: "첫 장면 다른 화로 이동"
+    }));
+    open();
+    fireEvent.change(screen.getByRole("combobox", { name: "첫 장면 이동할 화" }), {
+      target: { value: "chapter-direct" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "취소" }));
+    expect(onMove).not.toHaveBeenCalled();
+    expect(screen.queryByRole("combobox")).toBeNull();
+
+    open();
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("");
+  });
+
+  it("allows only scenes to open the picker and disables moving without another chapter", () => {
+    const onMove = vi.fn();
+    render(<Binder {...defaultProps({
+      tree: { ...tree, children: [tree.children[0]!] },
+      onMove
+    })} />);
+    expect(screen.queryByRole("button", { name: "제1권 다른 화로 이동" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "제1화 다른 화로 이동" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "첫 장면 다른 화로 이동" }));
+
+    const picker = screen.getByRole("combobox", { name: "첫 장면 이동할 화" });
+    expect((picker as HTMLSelectElement).disabled).toBe(true);
+    expect(within(picker).getByRole("option").textContent).toBe("이동할 다른 화가 없습니다");
+    const submit = screen.getByRole("button", { name: "이동" });
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(submit);
+    expect(onMove).not.toHaveBeenCalled();
   });
 });
