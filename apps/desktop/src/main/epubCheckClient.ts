@@ -106,7 +106,7 @@ async function boundedJson(filePath: string, maximumBytes: number): Promise<unkn
 }
 
 async function removeReportDirectory(directory: string): Promise<void> {
-  if (!path.isAbsolute(directory) || path.relative(path.resolve(tmpdir()), path.dirname(directory)) !== "" ||
+  if (!path.isAbsolute(directory) || path.relative(await realpath(tmpdir()), path.dirname(directory)) !== "" ||
       !/^madi-epubcheck-[A-Za-z0-9]{6}$/u.test(path.basename(directory))) {
     throw new Error("The EPUBCheck report directory ownership is invalid");
   }
@@ -316,7 +316,7 @@ export class ProcessEpubCheck implements EpubCheckPort {
         const input = await lstat(epubPath);
         if (!input.isFile() || input.isSymbolicLink() || input.size < 1 || input.size > 512 * 1024 * 1024) throw new Error("The EPUBCheck input file is invalid");
         this.checkCancellation(operation);
-        directory = await mkdtemp(path.join(tmpdir(), "madi-epubcheck-"));
+        directory = await mkdtemp(path.join(await realpath(tmpdir()), "madi-epubcheck-"));
         this.ownedReportDirectories.add(directory);
         const reportPath = path.join(directory, "report.json");
         const result = await this.execute(operation, epubPath, reportPath);

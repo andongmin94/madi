@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -31,7 +31,7 @@ function deferred<T>() {
 }
 
 async function bundle() {
-  const directory = await mkdtemp(path.join(tmpdir(), "madi-check-client-test-"));
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), "madi-check-client-test-"));
   directories.push(directory);
   const files = FIXTURE_FILES.map((file) => ({ path: file.path, bytes: Buffer.byteLength(file.content), sha256: digest(file.content) }));
   for (const file of FIXTURE_FILES) {
@@ -151,6 +151,29 @@ describe("pinned EPUBCheck runtime", () => {
     await expect(operation).resolves.toMatchObject({ status: "VALID", version: "5.3.0", warningCount: 1, messages: [{ severity: "WARNING", code: "OPF-003" }] });
     expect(existsSync(path.dirname(reportPath))).toBe(false);
     await fixture.checker.dispose();
+  });
+
+  it("uses a canonical report directory and cleans it when the temporary root is aliased", async () => {
+    const root = await mkdtemp(path.join(await realpath(tmpdir()), "madi-check-temp-test-"));
+    try {
+      const temporary = path.join(root, "temporary");
+      const alias = path.join(root, "alias");
+      await mkdir(temporary);
+      await symlink(temporary, alias, process.platform === "win32" ? "junction" : "dir");
+      for (const name of ["TMPDIR", "TEMP", "TMP"]) vi.stubEnv(name, alias);
+      const fixture = await bundle();
+      const { child, started } = observeSpawn();
+      const operation = fixture.checker.run(OPERATION_ID, fixture.input);
+      void operation.catch(() => undefined);
+      const reportPath = await started.promise;
+      await finish(child, reportPath);
+      await expect(operation).resolves.toMatchObject({ status: "VALID" });
+      expect(path.dirname(path.dirname(reportPath))).toBe(await realpath(temporary));
+      expect(existsSync(path.dirname(reportPath))).toBe(false);
+      await fixture.checker.dispose();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("returns INVALID for fatal/error reports and unsuccessful exits without an error message", async () => {

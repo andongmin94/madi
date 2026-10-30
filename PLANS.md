@@ -2,15 +2,14 @@
 
 갱신일: 2026-10-30. 작업 위치: `main`. 현재 실행 계획은 이 문서 하나로 관리한다.
 
-## 현재 요청: Binder 장면 대상 이동
+## 현재 요청: Windows EPUBCheck 실패 수정
 
-- 이전 자동작업 완료와 별개인 사용자 요청이다. 장면에서 다른 화를 선택해 이동하는 UI만 추가하며 새 phase나 drag-and-drop 의존성은 없다.
-- 원격 기준은 `main`의 `627a89a403bcb35f17a50b567ecb19585949a1c1`이다. 일반 clone은 환경 프록시 연결 오류로 실패했고, GitHub 읽기로 가져온 관련 파일의 로컬 `main` 스냅샷에서 패치를 작성했다. 전체 checkout은 아니다.
-- 구현: 현재 화를 제외한 `작품 / 화`·`권 / 화` 대상 선택, 이동·취소, 기존 `moveNode` 재사용. 이동 전 저장과 반환 tree/revision 반영, 대상 화·부모 펼침을 연결했다. core 계약상 장면은 화 아래로만 이동하며 대상 화 마지막에 놓인다.
-- 기존 Binder·App 테스트 파일에 대상 선택·취소·이동 불가·저장 선행·실패·선택 유지 검사를 추가했다. 관련 Vitest와 타입 검사 명령은 실행했지만 각각 `vitest`·`tsc`가 없어 시험 시작 전에 종료됐다.
-- 실행 검증은 **BLOCKED**다. `check:toolchain`은 Node24.21.0 요구/현재24.22.1로 실패했고 현재 npm11.9.0도 요구12.2.0과 다르다. npm 접근은 `EPERM`으로 실패했다. 버전 고정·접근 설정은 변경하지 않았다.
-- `npm ci`, 전체 `verify`, `package:unpacked`, 전체 repository/format 검사와 실제 Windows 앱의 이동 후 저장·종료·재열기는 **미실행**이다. 이전 d96 검증이나 정적 패치 검사를 이번 제품 검증으로 사용하지 않는다.
-- 사용자 최신 지시에 따라 이 변경 묶음을 실제 원격 `main` 커밋의 자식으로 반영한다. 로컬 스냅샷 이력은 전송하지 않는다. 종료 조건은 원격 커밋·반영 파일·CI 상태 재조회다. 수동 Actions 실행·재실행, PR·병합·배포는 하지 않으며 실제 Windows 검증 전까지 implementation-only 상태다.
+- 원격 기준은 `main`의 `beb0bc63493d4ecedeedb79ff7dd5d580dc6877d`다. 해당 커밋의 Binder 대상 선택·이동은 반영 완료이며 이번에는 변경하지 않는다. Cross-platform quality `41031658225`는 PASS, Windows full gate `41031658245`는 EPUBCheck fixture 검증 실패로 FAIL이다. Windows에서 Binder 11개·App 7개 테스트는 통과했다.
+- 기존 실패는 Java spawn 전 bundle 식별 검증에서 발생했고, 이후 spawn을 기다리던 12개 테스트가 실패했다. fixture의 고정 archive·파일 순서·해시 입력은 일치한다. 별칭이 있는 임시 부모 경로가 실경로 검증에 걸리는 조건을 Linux의 소유 임시 심볼릭 링크로 재현했다. Windows 러너의 실제 짧은 경로 사용 여부는 기존 로그로 확인되지 않았다.
+- 최소 수정은 `epubCheckClient.ts`의 보고서 생성·소유권 검사와 `epub-check-client.test.ts`의 fixture가 실경로 임시 부모를 사용하도록 맞추는 것이다. 기존 테스트 파일에 별칭 경로에서 검증·종료·보고서 정리까지 확인하는 회귀시험 한 개를 추가한다. bundle 해시·링크 거부·소유권·timeout 검증은 유지한다.
+- 로컬 검증: Node 내장 파일 API로 기존 경로 조건의 실패와 실경로 기준의 성공을 재현했다. Vitest·타입 검사는 로컬 의존성이 없고 Node24.22.1/npm11.9.0이 고정 버전과 달라 미실행이다. 이미 확인한 설치·접근 실패를 반복하거나 toolchain을 바꾸지 않는다. 관련 테스트의 실제 실행 결과는 새 커밋의 자동 Windows gate에서 확인한다.
+- 반영 파일은 이 계획과 위 두 소스 파일뿐이다. 최신 원격 부모 위에 정상 커밋을 만들고 원격 내용을 다시 읽은 뒤 자동 CI 두 실행의 종료까지 확인한다. 로컬 스냅샷 이력 전송·수동 CI 실행/재실행·강제 push·PR 승인/병합·배포는 하지 않는다.
+- 정확한 새 revision의 Windows gate 통과 전까지 implementation-only다. 실제 Windows 앱에서 Binder 이동→저장→종료→재열기, native 한국어 IME, HWPX 사람 서식 검수는 여전히 **미검증**이며 자동 테스트와 구분한다.
 
 ## 2026-10-08 자동작업 완료 상태
 
