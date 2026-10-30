@@ -2,14 +2,14 @@
 
 갱신일: 2026-10-30. 작업 위치: `main`. 현재 실행 계획은 이 문서 하나로 관리한다.
 
-## 현재 요청: Windows EPUBCheck 실패 수정
+## 현재 요청: Phase 1E Canvas 실패 위치 식별
 
-- 원격 기준은 `main`의 `beb0bc63493d4ecedeedb79ff7dd5d580dc6877d`다. 해당 커밋의 Binder 대상 선택·이동은 반영 완료이며 이번에는 변경하지 않는다. Cross-platform quality `41031658225`는 PASS, Windows full gate `41031658245`는 EPUBCheck fixture 검증 실패로 FAIL이다. Windows에서 Binder 11개·App 7개 테스트는 통과했다.
-- 기존 실패는 Java spawn 전 bundle 식별 검증에서 발생했고, 이후 spawn을 기다리던 12개 테스트가 실패했다. fixture의 고정 archive·파일 순서·해시 입력은 일치한다. 별칭이 있는 임시 부모 경로가 실경로 검증에 걸리는 조건을 Linux의 소유 임시 심볼릭 링크로 재현했다. Windows 러너의 실제 짧은 경로 사용 여부는 기존 로그로 확인되지 않았다.
-- 최소 수정은 `epubCheckClient.ts`의 보고서 생성·소유권 검사와 `epub-check-client.test.ts`의 fixture가 실경로 임시 부모를 사용하도록 맞추는 것이다. 기존 테스트 파일에 별칭 경로에서 검증·종료·보고서 정리까지 확인하는 회귀시험 한 개를 추가한다. bundle 해시·링크 거부·소유권·timeout 검증은 유지한다.
-- 로컬 검증: Node 내장 파일 API로 기존 경로 조건의 실패와 실경로 기준의 성공을 재현했다. Vitest·타입 검사는 로컬 의존성이 없고 Node24.22.1/npm11.9.0이 고정 버전과 달라 미실행이다. 이미 확인한 설치·접근 실패를 반복하거나 toolchain을 바꾸지 않는다. 관련 테스트의 실제 실행 결과는 새 커밋의 자동 Windows gate에서 확인한다.
-- 반영 파일은 이 계획과 위 두 소스 파일뿐이다. 최신 원격 부모 위에 정상 커밋을 만들고 원격 내용을 다시 읽은 뒤 자동 CI 두 실행의 종료까지 확인한다. 로컬 스냅샷 이력 전송·수동 CI 실행/재실행·강제 push·PR 승인/병합·배포는 하지 않는다.
-- 정확한 새 revision의 Windows gate 통과 전까지 implementation-only다. 실제 Windows 앱에서 Binder 이동→저장→종료→재열기, native 한국어 IME, HWPX 사람 서식 검수는 여전히 **미검증**이며 자동 테스트와 구분한다.
+- 기준은 `main`의 `0bd68121a6f8ef754249bf7d0ff6b6e207d98b75`다. EPUBCheck 수정은 Windows `41033945181`에서 관련 19개 테스트와 실제 validator 검증을 통과했다. 같은 실행은 이후 Canvas smoke에서 실패했다. 이번 작업은 그 실패의 관측 정보 보완이며 Canvas 근본 원인 수정이 아니다.
+- 기존 로그로는 500/1000 렌더링 완료 후 fit/search/multiselect/drag 묶음 중 실패 위치를 구분할 수 없었다. fixture 대상·개수 불일치는 확인되지 않았고 업로드 artifact는 없었다. 오류 메시지 길이로 원인을 추정하지 않는다.
+- 변경 파일은 `scripts/electron-phase1e-smoke.mjs`와 이 계획뿐이다. 기존 `currentStage`에 정적인 작업명·1~5회차와 집계 경계를 기록하고 기존 실패 요약에 stage와 허용 목록에서 일치한 검사 ID만 추가한다. 원문 오류·stack·내용·경로·임의 상세 값은 새 출력에 포함하지 않으며 기존 privacy/security 검사·상호작용 조건·timeout은 유지한다.
+- 로컬 검사: `node --check scripts/electron-phase1e-smoke.mjs` PASS. 실제 오류 요약 함수에 대한 Node 내장 assert 단위 검사 10개 PASS: 허용 ID·timeout 경계·유사 접두사 거부·미등록 오류·비 Error·원문/stack 미노출. 각 검사는 한 번 실행했다. 로컬 Vitest와 Windows Electron smoke는 기존 의존성·toolchain·플랫폼 제약으로 미실행이다.
+- 최신 원격 부모에 정상 main 커밋으로 반영하고 파일 내용을 재조회한다. 정상 반영으로 시작된 기존 자동 CI만 3~5분 간격으로 조용히 기다려 종료 결과와 새 stage/checkId를 확인한다. 수동 전체 gate 재실행, 새 워크플로·진단 프레임워크·다른 기능 변경은 하지 않는다.
+- 정확한 revision의 Windows gate 통과 전까지 implementation-only다. 실제 Windows 앱의 Binder 이동→저장→종료→재열기, native 한국어 IME, HWPX 사람 서식 검수는 여전히 **미검증**이다.
 
 ## 2026-10-08 자동작업 완료 상태
 

@@ -140,10 +140,33 @@ function summarizeError(error) {
   if (!(error instanceof Error)) {
     return { name: "NonError", messageLength: String(error).length };
   }
+  const checkId = [
+    "fit-view-transform-not-stable",
+    "ctrl-k-text-option-count",
+    "ctrl-k-focused-wrong-text-node",
+    "multi-selection reset",
+    "multi-select-node-hit-point-missing",
+    "initial single selection",
+    "multi-select-first-click-failed",
+    "actual multi-selection",
+    "multi-select-state-failed",
+    "multi-selection-five-runs",
+    "drag-node-bounds-missing",
+    "drag-node-position-unreadable",
+    "drag-pointer-target-covered",
+    "actual pointer node drag",
+    "drag-autosave-never-dirty",
+    "five-pointer-drags-did-not-move-node",
+  ].find((id) =>
+    [id, `${id} timed out`].some(
+      (prefix) => error.message === prefix || error.message.startsWith(`${prefix}: `),
+    ),
+  );
   return {
     name: error.name,
     messageLength: error.message.length,
     stackFrameCount: (error.stack?.match(/\n\s+at\s/gu) ?? []).length,
+    ...(checkId ? { checkId } : {}),
   };
 }
 
@@ -1985,16 +2008,19 @@ async function runSmoke() {
       largeRender,
     );
     reportStage("large 500/1000 rendered in five switch runs");
+    currentStage = "canvas-switch-runs";
     await checkpointRendererDiagnostics("canvas-switch-runs", firstRun);
 
     const fitRuns = [];
     for (let index = 0; index < measurementRuns; index += 1) {
+      currentStage = `canvas-fit-${index + 1}`;
       fitRuns.push(await fitView(firstRun.page));
       await checkpointRendererDiagnostics(`canvas-fit-${index + 1}`, firstRun);
     }
 
     const searchRuns = [];
     for (let index = 0; index < measurementRuns; index += 1) {
+      currentStage = `canvas-search-${index + 1}`;
       searchRuns.push(
         await focusExistingTextNode(firstRun.page, dragNodeText, dragNodeText),
       );
@@ -2003,12 +2029,14 @@ async function runSmoke() {
 
     const multiSelectionRuns = [];
     for (let index = 0; index < measurementRuns; index += 1) {
+      currentStage = `canvas-multi-selection-${index + 1}`;
       multiSelectionRuns.push(await selectNodesWithModifier(firstRun.page));
       await checkpointRendererDiagnostics(
         `canvas-multi-selection-${index + 1}`,
         firstRun,
       );
     }
+    currentStage = "canvas-multi-selection-summary";
     verify(
       multiSelectionRuns.every((run) => run.selectedNodeCount >= 2),
       "multi-selection-five-runs",
@@ -2017,6 +2045,7 @@ async function runSmoke() {
 
     const dragRuns = [];
     for (let index = 0; index < measurementRuns; index += 1) {
+      currentStage = `canvas-drag-${index + 1}`;
       dragRuns.push(
         await dragTextNode(firstRun.page, (phase) =>
           checkpointRendererDiagnostics(
@@ -2029,6 +2058,7 @@ async function runSmoke() {
     }
     const dragBefore = dragRuns[0].before;
     const dragAfter = dragRuns.at(-1).after;
+    currentStage = "canvas-drag-summary";
     verify(
       Math.abs(dragAfter.x - dragBefore.x) > 10 &&
         Math.abs(dragAfter.y - dragBefore.y) > 5,
@@ -2036,6 +2066,7 @@ async function runSmoke() {
       { dragBefore, dragAfter },
     );
     reportStage("fit/search/multi-select/pointer drag five-run evidence captured");
+    currentStage = "canvas-interactions";
     await checkpointRendererDiagnostics("canvas-interactions", firstRun);
 
     currentStage = "first-launch-text-add";
@@ -2527,7 +2558,7 @@ async function runSmoke() {
       "utf8",
     );
     throw new Error(
-      `phase1e-smoke-failed: ${JSON.stringify(summarizeError(error))}`,
+      `phase1e-smoke-failed: ${JSON.stringify({ stage: currentStage, ...summarizeError(error) })}`,
     );
   } finally {
     if (firstRun) {
