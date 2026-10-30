@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "../src/renderer/App";
 import type {
@@ -10,7 +10,8 @@ import type {
   LoadedEntityNote,
   LoadedSceneDocument,
   MadiDesktopApi,
-  ProjectTree
+  ProjectTree,
+  TagRecord
 } from "../src/shared/contracts";
 import { phase1bApiStubs } from "./phase1b-api-stubs";
 
@@ -354,5 +355,266 @@ describe("Phase 1C App renderer integration", () => {
       expect(screen.getByTestId("typie-editor-mount").contains(editor.surface)).toBe(true)
     );
     expect(calls.indexOf("save-entity")).toBeLessThan(calls.lastIndexOf("load-scene"));
+  });
+});
+
+describe("Story Bible tag rename integration", () => {
+  const serina: EntityRecord = {
+    ...leia,
+    id: "entity-serina",
+    name: "세리나",
+    documentId: "document-entity-serina"
+  };
+
+  async function renderTagRenameApp(colorToken: string | null) {
+    const tag: TagRecord = {
+      id: "tag-shared",
+      projectId: "project-1",
+      name: "이전 태그",
+      colorToken,
+      createdAt: NOW,
+      updatedAt: NOW
+    };
+    const keptTag: TagRecord = {
+      ...tag,
+      id: "tag-kept",
+      name: "보존 태그",
+      colorToken: null
+    };
+    const api: MadiDesktopApi = {
+      ...createApi([]),
+      listEntities: vi.fn(async () => ({ entities: [leia, serina], revision: 1 })),
+      listTags: vi.fn(async () => ({ tags: [tag, keptTag], revision: 1 })),
+      listEntityTags: vi.fn(async ({ entityId }) => ({
+        entityId,
+        tags: [tag, keptTag],
+        revision: 1
+      })),
+      listEntityAliases: vi.fn(async () => ({ aliases: [], revision: 1 })),
+      discoverEntityMentions: vi.fn(async ({ entityId }) => ({
+        entityId,
+        candidates: [],
+        totalScenes: 0,
+        offset: 0,
+        limit: 200,
+        hasMore: false,
+        revision: 1
+      })),
+      searchEntities: vi.fn(async ({ query }) => ({
+        query,
+        hits: [],
+        totalMatches: 0,
+        offset: 0,
+        limit: 200,
+        hasMore: false,
+        revision: 1
+      })),
+      loadEntityNote: vi.fn(async ({ ownerId }) => {
+        const entity = ownerId === leia.id ? leia : serina;
+        return {
+          ...loadedEntity(1),
+          ownerId: entity.id,
+          id: entity.documentId,
+          title: entity.name
+        };
+      }),
+      updateTag: vi.fn(async ({ name }) => ({
+        tag: { ...tag, name },
+        revision: 2
+      }))
+    };
+    const editor = new OwnerEditor();
+    const adapterFactory = vi.fn(async (mount: HTMLElement) => {
+      editor.relocate(mount);
+      return editor;
+    });
+    render(
+      <App
+        api={api}
+        adapterFactory={adapterFactory}
+        typieCommit="fixed-commit"
+        editorSchemaVersion={1}
+      />
+    );
+    fireEvent.click(await screen.findByRole("button", { name: ".madi 열기" }));
+    await waitFor(() => expect(api.listEntities).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "설정" }));
+    const entries = await screen.findByRole("list", { name: "설정 엔트리" });
+    await waitFor(() => {
+      expect((screen.getByRole("checkbox", { name: tag.name }) as HTMLInputElement).checked)
+        .toBe(true);
+      expect(screen.getByTestId("entity-note-editor-mount").contains(editor.surface))
+        .toBe(true);
+    });
+    fireEvent.click(within(entries).getByRole("button", { name: /세리나/ }));
+    await waitFor(() => {
+      expect(within(entries).getByRole("button", { name: /세리나/ })
+        .getAttribute("aria-current")).toBe("true");
+      expect((screen.getByRole("checkbox", { name: tag.name }) as HTMLInputElement).checked)
+        .toBe(true);
+      expect(screen.getByTestId("entity-note-editor-mount").getAttribute("data-owner-id"))
+        .toBe(serina.id);
+    });
+    return { api, editor, adapterFactory, tag, keptTag, entries };
+  }
+
+  it.each(["blue", null])(
+    "renames a shared tag with color %s while preserving links, selection and the editor",
+    async (colorToken) => {
+      const { api, editor, adapterFactory, tag, keptTag, entries } =
+        await renderTagRenameApp(colorToken);
+      const noteLoads = vi.mocked(api.loadEntityNote).mock.calls.length;
+      const editorMount = screen.getByTestId("entity-note-editor-mount");
+      fireEvent.click(screen.getByRole("button", { name: `${tag.name} 태그 이름 변경` }));
+      fireEvent.change(screen.getByRole("textbox", { name: `${tag.name} 태그 이름` }), {
+        target: { value: "수정 태그" }
+      });
+      fireEvent.click(screen.getByRole("button", { name: "태그 이름 저장" }));
+
+      const filter = screen.getByRole("combobox", { name: "태그 필터" });
+      await waitFor(() => {
+        expect(api.updateTag).toHaveBeenCalledTimes(1);
+        expect(api.updateTag).toHaveBeenCalledWith({
+          sessionId: "session-1", tagId: tag.id, name: "수정 태그", colorToken
+        });
+        expect((screen.getByRole("checkbox", { name: "수정 태그" }) as HTMLInputElement).checked)
+          .toBe(true);
+        expect(within(filter).getByRole("option", { name: "수정 태그" })
+          .getAttribute("value")).toBe(tag.id);
+      });
+      expect(within(filter).queryByRole("option", { name: tag.name })).toBeNull();
+      expect((screen.getByRole("checkbox", { name: keptTag.name }) as HTMLInputElement).checked)
+        .toBe(true);
+      expect(within(filter).getByRole("option", { name: keptTag.name })
+        .getAttribute("value")).toBe(keptTag.id);
+      expect(api.createTag).not.toHaveBeenCalled();
+      expect(api.deleteTag).not.toHaveBeenCalled();
+      expect(api.setEntityTags).not.toHaveBeenCalled();
+      expect(within(entries).getByRole("button", { name: /세리나/ })
+        .getAttribute("aria-current")).toBe("true");
+      expect((screen.getByRole("textbox", { name: "설정 이름" }) as HTMLInputElement).value)
+        .toBe(serina.name);
+      expect(screen.getByTestId("entity-note-editor-mount")).toBe(editorMount);
+      expect(editorMount.contains(editor.surface)).toBe(true);
+      expect(api.loadEntityNote).toHaveBeenCalledTimes(noteLoads);
+      expect(adapterFactory).toHaveBeenCalledTimes(1);
+
+      // Assert local cached tag names before the debounced backend search can run.
+      const search = screen.getByRole("searchbox", { name: "설정 검색" });
+      fireEvent.change(search, { target: { value: "수정 태그" } });
+      expect(within(entries).getAllByRole("button")).toHaveLength(2);
+      expect(within(entries).getByRole("button", { name: /레이아/ })).toBeTruthy();
+      expect(within(entries).getByRole("button", { name: /세리나/ })).toBeTruthy();
+      fireEvent.change(search, { target: { value: tag.name } });
+      expect(within(entries).queryAllByRole("button")).toHaveLength(0);
+      expect(api.searchEntities).not.toHaveBeenCalled();
+      fireEvent.change(search, { target: { value: "" } });
+    }
+  );
+
+  it("keeps renamed cached tags when an earlier entity mention request finishes later", async () => {
+    const { api, tag, keptTag, entries } = await renderTagRenameApp("blue");
+    const tagReads = vi.mocked(api.listEntityTags).mock.calls.length;
+    const mentionReads = vi.mocked(api.discoverEntityMentions).mock.calls.length;
+    const readyTagRead = Promise.resolve({
+      entityId: leia.id,
+      tags: [tag, keptTag],
+      revision: 1
+    });
+    let finishMentions!: () => void;
+    const pendingMentions = new Promise<
+      Awaited<ReturnType<MadiDesktopApi["discoverEntityMentions"]>>
+    >((resolve) => {
+      finishMentions = () => resolve({
+        entityId: leia.id,
+        candidates: [],
+        totalScenes: 0,
+        offset: 0,
+        limit: 200,
+        hasMore: false,
+        revision: 1
+      });
+    });
+    vi.mocked(api.listEntityTags).mockReturnValueOnce(readyTagRead);
+    vi.mocked(api.discoverEntityMentions).mockReturnValueOnce(pendingMentions);
+    fireEvent.click(within(entries).getByRole("button", { name: /레이아/ }));
+    await waitFor(() => {
+      expect(within(entries).getByRole("button", { name: /레이아/ })
+        .getAttribute("aria-current")).toBe("true");
+      expect(api.listEntityTags).toHaveBeenCalledTimes(tagReads + 1);
+      expect(api.listEntityTags).toHaveBeenLastCalledWith({
+        sessionId: "session-1", entityId: leia.id
+      });
+      expect(api.discoverEntityMentions).toHaveBeenCalledTimes(mentionReads + 1);
+      expect(api.discoverEntityMentions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ entityId: leia.id })
+      );
+    });
+    await act(async () => { await readyTagRead; });
+
+    fireEvent.click(screen.getByRole("button", { name: `${tag.name} 태그 이름 변경` }));
+    fireEvent.change(screen.getByRole("textbox", { name: `${tag.name} 태그 이름` }), {
+      target: { value: "수정 태그" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "태그 이름 저장" }));
+    await waitFor(() => {
+      expect(api.updateTag).toHaveBeenCalledTimes(1);
+      expect((screen.getByRole("checkbox", { name: "수정 태그" }) as HTMLInputElement).checked)
+        .toBe(true);
+    });
+    await act(async () => {
+      finishMentions();
+      await pendingMentions;
+    });
+
+    const search = screen.getByRole("searchbox", { name: "설정 검색" });
+    fireEvent.change(search, { target: { value: "수정 태그" } });
+    expect(within(entries).getAllByRole("button")).toHaveLength(2);
+    expect(within(entries).getByRole("button", { name: /레이아/ })).toBeTruthy();
+    expect(within(entries).getByRole("button", { name: /세리나/ })).toBeTruthy();
+    fireEvent.change(search, { target: { value: tag.name } });
+    expect(within(entries).queryAllByRole("button")).toHaveLength(0);
+    expect(api.searchEntities).not.toHaveBeenCalled();
+    expect(api.listEntityTags).toHaveBeenCalledTimes(tagReads + 1);
+    fireEvent.change(search, { target: { value: "" } });
+  });
+
+  it("keeps the old tag, links, selected entity and editor when renaming fails", async () => {
+    const { api, editor, adapterFactory, tag, entries } = await renderTagRenameApp("blue");
+    vi.mocked(api.updateTag).mockRejectedValue(new Error("태그 이름 변경 실패"));
+    const noteLoads = vi.mocked(api.loadEntityNote).mock.calls.length;
+    const editorMount = screen.getByTestId("entity-note-editor-mount");
+    fireEvent.click(screen.getByRole("button", { name: `${tag.name} 태그 이름 변경` }));
+    fireEvent.change(screen.getByRole("textbox", { name: `${tag.name} 태그 이름` }), {
+      target: { value: "수정 태그" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "태그 이름 저장" }));
+
+    expect(await screen.findByText("태그 이름 변경 실패")).toBeTruthy();
+    expect(api.updateTag).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("textbox", { name: `${tag.name} 태그 이름` }) as HTMLInputElement).value)
+      .toBe("수정 태그");
+    expect((screen.getByRole("button", { name: "태그 이름 저장" }) as HTMLButtonElement).disabled)
+      .toBe(false);
+    expect((screen.getByRole("checkbox", { name: tag.name }) as HTMLInputElement).checked)
+      .toBe(true);
+    const filter = screen.getByRole("combobox", { name: "태그 필터" });
+    expect(within(filter).getByRole("option", { name: tag.name }).getAttribute("value"))
+      .toBe(tag.id);
+    expect(within(filter).queryByRole("option", { name: "수정 태그" })).toBeNull();
+    expect(api.setEntityTags).not.toHaveBeenCalled();
+    expect(within(entries).getByRole("button", { name: /세리나/ })
+      .getAttribute("aria-current")).toBe("true");
+    expect(screen.getByTestId("entity-note-editor-mount")).toBe(editorMount);
+    expect(editorMount.contains(editor.surface)).toBe(true);
+    expect(api.loadEntityNote).toHaveBeenCalledTimes(noteLoads);
+    expect(adapterFactory).toHaveBeenCalledTimes(1);
+    const search = screen.getByRole("searchbox", { name: "설정 검색" });
+    fireEvent.change(search, { target: { value: tag.name } });
+    expect(within(entries).getAllByRole("button")).toHaveLength(2);
+    fireEvent.change(search, { target: { value: "수정 태그" } });
+    expect(within(entries).queryAllByRole("button")).toHaveLength(0);
+    expect(api.searchEntities).not.toHaveBeenCalled();
+    fireEvent.change(search, { target: { value: "" } });
   });
 });

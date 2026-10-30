@@ -1792,6 +1792,16 @@ button:disabled {
   width: auto;
 }
 
+.tag-picker__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.story-bible__chips .tag-rename-form {
+  flex-wrap: wrap;
+}
+
 .story-bible__typie-mount {
   min-height: 340px;
   margin-top: 8px;

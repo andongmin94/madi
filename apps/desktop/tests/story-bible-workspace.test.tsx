@@ -172,6 +172,7 @@ function props(
       colorToken: null,
       createdAt: NOW
     })),
+    onRenameTag: vi.fn(),
     onSetTags: vi.fn(),
     onCreateRelation: vi.fn(),
     onUpdateRelation: vi.fn(),
@@ -244,6 +245,74 @@ describe("Phase 1C Story Bible workspace", () => {
       expect(within(list).getByText("북부 마법사단")).toBeTruthy();
       expect(within(list).queryByText("레이아")).toBeNull();
     });
+  });
+
+  it("renames an existing tag without changing its entity link and rejects an empty name", async () => {
+    const onRenameTag = vi.fn();
+    const onSetTags = vi.fn();
+    render(<StoryBibleWorkspace {...props({ onRenameTag, onSetTags })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "주요 인물 태그 이름 변경" }));
+    const input = screen.getByRole("textbox", { name: "주요 인물 태그 이름" });
+    expect((input as HTMLInputElement).value).toBe("주요 인물");
+    fireEvent.change(input, { target: { value: "   " } });
+    expect((screen.getByRole("button", { name: "태그 이름 저장" }) as HTMLButtonElement)
+      .disabled).toBe(true);
+    fireEvent.submit(input.closest("form")!);
+    expect(onRenameTag).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: "  중심 인물  " } });
+    fireEvent.click(screen.getByRole("button", { name: "태그 이름 저장" }));
+    expect(onRenameTag).toHaveBeenCalledTimes(1);
+    expect(onRenameTag).toHaveBeenCalledWith("tag-hero", "중심 인물");
+    await waitFor(() => expect(screen.queryByRole("textbox", {
+      name: "주요 인물 태그 이름"
+    })).toBeNull());
+    expect(onSetTags).not.toHaveBeenCalled();
+    expect((screen.getByRole("checkbox", { name: "주요 인물" }) as HTMLInputElement)
+      .checked).toBe(true);
+  });
+
+  it("cancels a tag rename and starts again from the saved name", () => {
+    const onRenameTag = vi.fn();
+    const onSetTags = vi.fn();
+    render(<StoryBibleWorkspace {...props({ onRenameTag, onSetTags })} />);
+    const open = () => fireEvent.click(screen.getByRole("button", {
+      name: "주요 인물 태그 이름 변경"
+    }));
+
+    open();
+    fireEvent.change(screen.getByRole("textbox", { name: "주요 인물 태그 이름" }), {
+      target: { value: "취소할 이름" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "취소" }));
+    expect(screen.queryByRole("button", { name: "태그 이름 저장" })).toBeNull();
+    expect(onRenameTag).not.toHaveBeenCalled();
+    expect(onSetTags).not.toHaveBeenCalled();
+
+    open();
+    expect((screen.getByRole("textbox", { name: "주요 인물 태그 이름" }) as HTMLInputElement)
+      .value).toBe("주요 인물");
+  });
+
+  it("keeps the tag rename draft and existing link when saving fails", async () => {
+    const onRenameTag = vi.fn().mockRejectedValue(new Error("태그 이름 변경 실패"));
+    const onSetTags = vi.fn();
+    render(<StoryBibleWorkspace {...props({ onRenameTag, onSetTags })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "주요 인물 태그 이름 변경" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "주요 인물 태그 이름" }), {
+      target: { value: "중심 인물" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "태그 이름 저장" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe("태그 이름 변경 실패");
+    expect(onRenameTag).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("textbox", { name: "주요 인물 태그 이름" }) as HTMLInputElement)
+      .value).toBe("중심 인물");
+    expect((screen.getByRole("checkbox", { name: "주요 인물" }) as HTMLInputElement)
+      .checked).toBe(true);
+    expect(onSetTags).not.toHaveBeenCalled();
   });
 
   it("edits aliases, tags, directed/inverse relations and mention promotion", async () => {

@@ -202,6 +202,10 @@ Typie editor는 선택한 entity의 독립 상세 note document를 편집한다.
 같은 editor adapter를 공유하지만 controller는 `ownerKind`, `ownerId`, `documentId`,
 `generation`, `saveSequence`를 모두 확인해 서로의 오래된 저장 응답을 차단한다.
 
+기존 태그 옆의 `이름 변경`에서 이름을 입력하고 `태그 이름 저장`을 누른다. 태그 ID,
+색상과 설정 연결은 유지되며 모든 설정에서 같은 태그 이름이 갱신된다. `취소`하면
+변경하지 않고, 저장 실패 시 기존 이름과 편집 입력을 유지한다.
+
 오른쪽 열에서는 outgoing/incoming 관계, inverse label, 연결된 장면과 **본문에서 찾은
 후보**를 확인한다. 후보는 저장된 장면 recovery에서 entity 이름과 별칭을 exact
 substring으로 찾은 참고 결과이며 자동으로 canonical relation이나 scene link가 되지

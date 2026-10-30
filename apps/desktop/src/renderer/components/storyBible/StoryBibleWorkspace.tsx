@@ -169,6 +169,7 @@ export interface StoryBibleWorkspaceProps {
   readonly onAddAlias: (entityId: string, alias: string) => void | Promise<void>;
   readonly onDeleteAlias: (aliasId: string) => void | Promise<void>;
   readonly onCreateTag: (name: string) => StoryTag | Promise<StoryTag>;
+  readonly onRenameTag: (tagId: string, name: string) => void | Promise<void>;
   readonly onSetTags: (
     entityId: string,
     tagIds: readonly string[]
@@ -281,6 +282,7 @@ export function StoryBibleWorkspace({
   onAddAlias,
   onDeleteAlias,
   onCreateTag,
+  onRenameTag,
   onSetTags,
   onCreateRelation,
   onUpdateRelation,
@@ -309,6 +311,10 @@ export function StoryBibleWorkspace({
   const [createKind, setCreateKind] = useState<StoryEntityKind>("CHARACTER");
   const [aliasDraft, setAliasDraft] = useState("");
   const [tagDraft, setTagDraft] = useState("");
+  const [tagRenameDraft, setTagRenameDraft] = useState<{
+    readonly tagId: string;
+    readonly name: string;
+  } | null>(null);
   const [relationTypeId, setRelationTypeId] = useState("");
   const [relationTargetId, setRelationTargetId] = useState("");
   const [relationTargetQuery, setRelationTargetQuery] = useState("");
@@ -333,6 +339,7 @@ export function StoryBibleWorkspace({
 
   const selected =
     entities.find((entity) => entity.id === selectedEntityId) ?? null;
+  const renamingTag = tags.find((tag) => tag.id === tagRenameDraft?.tagId);
   const [nameDraft, setNameDraft] = useState(selected?.name ?? "");
   const [summaryDraft, setSummaryDraft] = useState(selected?.summary ?? "");
   const [colorDraft, setColorDraft] = useState(selected?.colorToken ?? "");
@@ -577,6 +584,18 @@ export function StoryBibleWorkspace({
         ...new Set([...selected.tags.map((item) => item.id), tag.id])
       ]);
       setTagDraft("");
+    });
+  };
+
+  const submitTagRename = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!tagRenameDraft || !tagRenameDraft.name.trim() || busy) {
+      return;
+    }
+    const { tagId, name } = tagRenameDraft;
+    void safely(async () => {
+      await onRenameTag(tagId, name.trim());
+      setTagRenameDraft(null);
     });
   };
 
@@ -956,28 +975,72 @@ export function StoryBibleWorkspace({
                 {tags.map((tag) => {
                   const checked = selected.tags.some((item) => item.id === tag.id);
                   return (
-                    <label key={tag.id}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() =>
-                          void safely(() =>
-                            onSetTags(
-                              selected.id,
-                              checked
-                                ? selected.tags
-                                    .filter((item) => item.id !== tag.id)
-                                    .map((item) => item.id)
-                                : [...selected.tags.map((item) => item.id), tag.id]
+                    <div key={tag.id} className="tag-picker__item">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            void safely(() =>
+                              onSetTags(
+                                selected.id,
+                                checked
+                                  ? selected.tags
+                                      .filter((item) => item.id !== tag.id)
+                                      .map((item) => item.id)
+                                  : [...selected.tags.map((item) => item.id), tag.id]
+                              )
                             )
-                          )
-                        }
-                      />
-                      <span>{tag.name}</span>
-                    </label>
+                          }
+                        />
+                        <span>{tag.name}</span>
+                      </label>
+                      <button
+                        type="button"
+                        aria-label={`${tag.name} 태그 이름 변경`}
+                        disabled={busy}
+                        onClick={() => {
+                          setLocalError("");
+                          setTagRenameDraft({ tagId: tag.id, name: tag.name });
+                        }}
+                      >
+                        이름 변경
+                      </button>
+                    </div>
                   );
                 })}
               </div>
+              {renamingTag && tagRenameDraft && (
+                <form className="tag-rename-form" onSubmit={submitTagRename}>
+                  <label>
+                    <span className="sr-only">{renamingTag.name} 태그 이름</span>
+                    <input
+                      autoFocus
+                      required
+                      aria-label={`${renamingTag.name} 태그 이름`}
+                      value={tagRenameDraft.name}
+                      disabled={busy}
+                      onChange={(event) => setTagRenameDraft({
+                        tagId: renamingTag.id,
+                        name: event.target.value
+                      })}
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={!tagRenameDraft.name.trim() || busy}
+                  >
+                    태그 이름 저장
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setTagRenameDraft(null)}
+                  >
+                    취소
+                  </button>
+                </form>
+              )}
               <form onSubmit={submitTag}>
                 <label>
                   <span className="sr-only">새 태그</span>

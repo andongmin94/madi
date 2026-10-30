@@ -1245,7 +1245,16 @@ export function App({
     let cancelled = false;
     void Promise.all([
       api.listEntityAliases({ sessionId, entityId }),
-      api.listEntityTags({ sessionId, entityId }),
+      api.listEntityTags({ sessionId, entityId }).then((tagResult) => {
+        if (!cancelled) {
+          setEntityTags((current) => {
+            const next = new Map(current);
+            next.set(entityId, tagResult.tags);
+            return next;
+          });
+        }
+        return tagResult;
+      }),
       discoverAllEntityMentions(api, sessionId, entityId)
     ])
       .then(([aliasResult, tagResult, mentions]) => {
@@ -1255,11 +1264,6 @@ export function App({
         setEntityAliases((current) => {
           const next = new Map(current);
           next.set(entityId, aliasResult.aliases);
-          return next;
-        });
-        setEntityTags((current) => {
-          const next = new Map(current);
-          next.set(entityId, tagResult.tags);
           return next;
         });
         setEntityMentions(mentions);
@@ -2888,6 +2892,38 @@ export function App({
     return result.tag;
   };
 
+  const renameStoryTag = async (tagId: string, name: string): Promise<void> => {
+    const session = workspace.session;
+    const tag = tags.find((item) => item.id === tagId);
+    if (!session || !tag) {
+      throw new Error("변경할 태그를 찾지 못했습니다.");
+    }
+    setStoryBibleBusy(true);
+    try {
+      const result = await api.updateTag({
+        sessionId: session.sessionId,
+        tagId,
+        name,
+        colorToken: tag.colorToken
+      });
+      setTags((current) => current.map((item) =>
+        item.id === tagId ? result.tag : item
+      ));
+      setEntityTags((current) => {
+        const next = new Map(current);
+        for (const [entityId, linkedTags] of current) {
+          next.set(entityId, linkedTags.map((item) =>
+            item.id === tagId ? result.tag : item
+          ));
+        }
+        return next;
+      });
+      controller?.adoptProjectRevision(result.revision);
+    } finally {
+      setStoryBibleBusy(false);
+    }
+  };
+
   const setStoryEntityTags = async (
     entityId: string,
     tagIds: readonly string[]
@@ -3858,6 +3894,7 @@ export function App({
           onAddAlias={addStoryAlias}
           onDeleteAlias={deleteStoryAlias}
           onCreateTag={createStoryTag}
+          onRenameTag={renameStoryTag}
           onSetTags={setStoryEntityTags}
           onCreateRelation={createStoryRelation}
           onUpdateRelation={updateStoryRelation}
