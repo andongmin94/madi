@@ -2,13 +2,14 @@
 
 갱신일: 2026-10-30. 작업 위치: `main`. 현재 실행 계획은 이 문서 하나로 관리한다.
 
-## 현재 요청: Phase 1E Canvas 실패 위치 식별
+## 현재 요청: Binder 화의 권·작품 루트 이동
 
-- 기준은 `main`의 `0bd68121a6f8ef754249bf7d0ff6b6e207d98b75`다. EPUBCheck 수정은 Windows `41033945181`에서 관련 19개 테스트와 실제 validator 검증을 통과했다. 같은 실행은 이후 Canvas smoke에서 실패했다. 이번 작업은 그 실패의 관측 정보 보완이며 Canvas 근본 원인 수정이 아니다.
-- 기존 로그로는 500/1000 렌더링 완료 후 fit/search/multiselect/drag 묶음 중 실패 위치를 구분할 수 없었다. fixture 대상·개수 불일치는 확인되지 않았고 업로드 artifact는 없었다. 오류 메시지 길이로 원인을 추정하지 않는다.
-- 변경 파일은 `scripts/electron-phase1e-smoke.mjs`와 이 계획뿐이다. 기존 `currentStage`에 정적인 작업명·1~5회차와 집계 경계를 기록하고 기존 실패 요약에 stage와 허용 목록에서 일치한 검사 ID만 추가한다. 원문 오류·stack·내용·경로·임의 상세 값은 새 출력에 포함하지 않으며 기존 privacy/security 검사·상호작용 조건·timeout은 유지한다.
-- 로컬 검사: `node --check scripts/electron-phase1e-smoke.mjs` PASS. 실제 오류 요약 함수에 대한 Node 내장 assert 단위 검사 10개 PASS: 허용 ID·timeout 경계·유사 접두사 거부·미등록 오류·비 Error·원문/stack 미노출. 각 검사는 한 번 실행했다. 로컬 Vitest와 Windows Electron smoke는 기존 의존성·toolchain·플랫폼 제약으로 미실행이다.
-- 최신 원격 부모에 정상 main 커밋으로 반영하고 파일 내용을 재조회한다. 정상 반영으로 시작된 기존 자동 CI만 3~5분 간격으로 조용히 기다려 종료 결과와 새 stage/checkId를 확인한다. 수동 전체 gate 재실행, 새 워크플로·진단 프레임워크·다른 기능 변경은 하지 않는다.
+- 기준은 `main`의 `9f6e10c00b78076bbf445fb674ac2a381b6215ec`다. core의 CHAPTER→WORK/VOLUME 계약을 기존 Binder 대상 선택 UI에 연결한다. 화 전체를 다른 권(빈 권 포함) 또는 같은 작품 루트로 옮기며, 현재 부모와 잘못된 부모는 대상에서 제외한다.
+- 기존 저장 선행 흐름과 `moveNode`를 재사용한다. 취소·실패 처리와 장면 이동을 유지하고, core·IPC·계층 엔진·Canvas는 변경하지 않는다. 변경은 Binder와 공통 이동 오류 문구, 기존 Binder/App/core hierarchy 테스트, README 사용법과 이 현재 계획에 한정한다.
+- 최소 회귀검사는 장의 대상 제한·취소·빈 대상, 이동 전 편집 저장·실패·선택/편집기 유지와 WORK→VOLUME→VOLUME→WORK 이동 후 자식 장면의 ID·순서·document 연결·snapshot·recovery text 보존이다. core 파일 재개방 검사는 실제 Windows 앱 수동 재열기와 구분한다.
+- 로컬의 두 관련 Vitest 파일 실행은 `vitest: not found`, 새 core 검사 단독 실행은 `cargo: command not found`로 각각 exit 127이며 테스트 본문은 미실행이다. 저장소 의존성·Rust 도구가 없는 환경을 통과로 취급하지 않는다. 변경 diff를 확인하고 실제 검사 결과는 정상 반영으로 시작된 기존 자동 CI에서 확인한다.
+- 종료 조건은 최신 원격 및 동시 변경을 보존한 정상 main 커밋, 반영 파일 재조회, 해당 자동 CI 종료 결과 확인이다. 3~5분 간격으로 조용히 확인하며 전체 gate 수동 실행·재실행은 하지 않는다.
+- 이전 Canvas 관측 보완은 `9f6e10c`에 반영됐으며 Windows `41040699317`에서 `canvas-multi-selection-1 / multi-select-node-hit-point-missing`으로 좁혀졌다. 근본 원인은 **미해결**이고 이번 Binder 변경과 별개다. EPUBCheck 수정의 통과 근거는 이전 실행에 보존하며 수동 반복하지 않는다.
 - 정확한 revision의 Windows gate 통과 전까지 implementation-only다. 실제 Windows 앱의 Binder 이동→저장→종료→재열기, native 한국어 IME, HWPX 사람 서식 검수는 여전히 **미검증**이다.
 
 ## 2026-10-08 자동작업 완료 상태

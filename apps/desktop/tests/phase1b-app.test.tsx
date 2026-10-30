@@ -519,7 +519,7 @@ describe("Phase 1B App renderer integration", () => {
   });
 });
 
-describe("Binder scene move integration", () => {
+describe("Binder scene and chapter move integration", () => {
   const destinationTree: ProjectTree = {
     ...tree,
     nodes: [
@@ -549,23 +549,33 @@ describe("Binder scene move integration", () => {
     ]
   };
 
-  async function renderSceneMoveApp() {
+  async function renderMoveApp(nodeId = "scene-1", newParentId = "chapter-2") {
     const calls: string[] = [];
     const api = createApi(calls);
     const editor = new RelocatingEditor();
-    vi.mocked(api.getProjectTree).mockResolvedValue(destinationTree);
+    const initialTree = newParentId === "work-1"
+      ? {
+          ...destinationTree,
+          nodes: destinationTree.nodes.map((node) =>
+            node.id === "chapter-1" ? { ...node, parentId: "volume-2" } : node
+          )
+        }
+      : destinationTree;
+    vi.mocked(api.getProjectTree).mockResolvedValue(initialTree);
     vi.mocked(api.loadUiState).mockResolvedValue({
       state: {
         selectedNodeId: "scene-1",
-        expandedNodeIds: ["work-1", "chapter-1"],
+        expandedNodeIds: [
+          "work-1", "chapter-1", ...(newParentId === "work-1" ? ["volume-2"] : [])
+        ],
         binderWidth: 300
       }
     });
     vi.mocked(api.moveNode).mockImplementation(async ({ nodeId, newParentId }) => {
       calls.push(`move:${nodeId}`);
       return {
-        ...destinationTree,
-        nodes: destinationTree.nodes.map((node) =>
+        ...initialTree,
+        nodes: initialTree.nodes.map((node) =>
           node.id === nodeId ? { ...node, parentId: newParentId } : node
         ),
         revision: 3
@@ -590,20 +600,27 @@ describe("Binder scene move integration", () => {
       expect(screen.getByTestId("typie-editor-mount").contains(editor.surface))
         .toBe(true);
     });
-    fireEvent.click(within(binder).getByRole("button", {
-      name: "문 앞 다른 화로 이동"
-    }));
+    const title = nodeId === "chapter-1" ? "1화" : "문 앞";
+    const action = nodeId === "chapter-1" ? "권·작품 루트로 이동" : "다른 화로 이동";
+    const target = nodeId === "chapter-1" ? "권·작품 루트" : "화";
+    fireEvent.click(within(binder).getByRole("button", { name: `${title} ${action}` }));
     fireEvent.change(within(binder).getByRole("combobox", {
-      name: "문 앞 이동할 화"
-    }), { target: { value: "chapter-2" } });
+      name: `${title} 이동할 ${target}`
+    }), { target: { value: newParentId } });
     return { api, editor, binder, calls };
   }
 
-  it("saves before moving into another volume and keeps the selected scene and editor", async () => {
-    const { api, editor, binder, calls } = await renderSceneMoveApp();
+  it.each([
+    ["scene-1", "chapter-2"],
+    ["chapter-1", "volume-2"],
+    ["chapter-1", "work-1"]
+  ])("saves before moving %s to %s and preserves child scenes and the editor", async (nodeId, newParentId) => {
+    const { api, editor, binder, calls } = await renderMoveApp(nodeId, newParentId);
     const sceneLoads = vi.mocked(api.loadSceneDocument).mock.calls.length;
-    expect(within(binder).getByRole("button", { name: "2권 펼치기" })
-      .getAttribute("aria-expanded")).toBe("false");
+    if (newParentId !== "work-1") {
+      expect(within(binder).getByRole("button", { name: "2권 펼치기" })
+        .getAttribute("aria-expanded")).toBe("false");
+    }
 
     editor.emitDirty();
     fireEvent.click(within(binder).getByRole("button", { name: "이동" }));
@@ -612,31 +629,43 @@ describe("Binder scene move integration", () => {
       expect(api.moveNode).toHaveBeenCalledTimes(1);
       expect(api.moveNode).toHaveBeenCalledWith({
         sessionId: "session-1",
-        nodeId: "scene-1",
-        newParentId: "chapter-2"
+        nodeId,
+        newParentId
       });
       expect(within(binder).getByRole("button", { name: "2권 접기" })
         .getAttribute("aria-expanded")).toBe("true");
-      expect(within(binder).getByRole("button", { name: "2화 접기" })
-        .getAttribute("aria-expanded")).toBe("true");
+      if (nodeId === "scene-1") {
+        expect(within(binder).getByRole("button", { name: "2화 접기" })
+          .getAttribute("aria-expanded")).toBe("true");
+      }
+      expect(binder.querySelector(`[data-node-id="${nodeId}"]`)
+        ?.parentElement?.closest('[role="treeitem"]')?.getAttribute("data-node-id"))
+        .toBe(newParentId);
     });
     expect(calls.indexOf("save:scene-1")).toBeGreaterThanOrEqual(0);
-    expect(calls.indexOf("save:scene-1")).toBeLessThan(calls.indexOf("move:scene-1"));
+    expect(calls.indexOf("save:scene-1")).toBeLessThan(calls.indexOf(`move:${nodeId}`));
     expect(api.saveSceneDocument).toHaveBeenCalledWith(expect.objectContaining({
       sceneId: "scene-1",
       documentId: "document-1",
       plainTextRecovery: "수정된 현재 장면"
     }));
     const movedScene = within(binder).getByRole("button", { name: "문 앞" });
-    expect(movedScene.closest('[data-node-id="chapter-2"]')).not.toBeNull();
+    const movedNode = binder.querySelector(`[data-node-id="${nodeId}"]`);
+    if (nodeId === "chapter-1") {
+      expect(Array.from(movedNode!.querySelectorAll('[data-node-type="SCENE"]'))
+        .map((node) => node.getAttribute("data-node-id"))).toEqual(["scene-1", "scene-2"]);
+      expect(movedScene.closest('[data-node-id="chapter-1"]')).toBe(movedNode);
+    }
     expect(movedScene.getAttribute("aria-current")).toBe("true");
     expect(api.loadSceneDocument).toHaveBeenCalledTimes(sceneLoads);
     expect(screen.getByTestId("typie-editor-mount").contains(editor.surface)).toBe(true);
     expect(screen.getByText("revision").nextElementSibling?.textContent).toBe("3");
   });
 
-  it("does not move when pending scene edits cannot be saved", async () => {
-    const { api, editor, binder } = await renderSceneMoveApp();
+  it.each(["scene-1", "chapter-1"])("does not move %s when pending scene edits cannot be saved", async (nodeId) => {
+    const { api, editor, binder } = await renderMoveApp(
+      nodeId, nodeId === "chapter-1" ? "volume-2" : "chapter-2"
+    );
     vi.mocked(api.saveSceneDocument).mockRejectedValue(new Error("장면 저장 실패"));
 
     editor.emitDirty();
@@ -651,13 +680,15 @@ describe("Binder scene move integration", () => {
     expect(screen.getByTestId("typie-editor-mount").contains(editor.surface)).toBe(true);
   });
 
-  it("shows a move error without changing the tree or selected scene", async () => {
-    const { api, editor, binder } = await renderSceneMoveApp();
-    vi.mocked(api.moveNode).mockRejectedValue(new Error("장면 이동 실패"));
+  it.each(["scene-1", "chapter-1"])("shows a move error for %s without changing the tree or selected scene", async (nodeId) => {
+    const { api, editor, binder } = await renderMoveApp(
+      nodeId, nodeId === "chapter-1" ? "volume-2" : "chapter-2"
+    );
+    vi.mocked(api.moveNode).mockRejectedValue(new Error("노드 이동 실패"));
 
     fireEvent.click(within(binder).getByRole("button", { name: "이동" }));
 
-    expect(await screen.findByText("장면 이동 실패")).toBeTruthy();
+    expect(await screen.findByText("노드 이동 실패")).toBeTruthy();
     expect(api.moveNode).toHaveBeenCalledTimes(1);
     const scene = within(binder).getByRole("button", { name: "문 앞" });
     expect(scene.closest('[data-node-id="chapter-1"]')).not.toBeNull();

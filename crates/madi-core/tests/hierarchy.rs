@@ -340,6 +340,130 @@ fn rename_reorder_move_and_explicit_recursive_delete_are_transactional() {
 }
 
 #[test]
+fn chapter_moves_between_volumes_and_work_preserve_child_scenes_and_documents() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("chapter-moves.madi");
+    let created = create_project(create_params(&path)).unwrap();
+    let mut revision = 0;
+    for (node_id, title) in [("volume-a", "1권"), ("volume-b", "2권")] {
+        revision = create_node(
+            &path,
+            &created.work_node_id,
+            node_id,
+            NodeKind::Volume,
+            title,
+            revision,
+        )
+        .unwrap()
+        .metadata
+        .revision;
+    }
+    let second_scene = create_node(
+        &path,
+        &created.default_chapter_node_id,
+        "scene-second",
+        NodeKind::Scene,
+        "두 번째 장면",
+        revision,
+    )
+    .unwrap();
+    revision = second_scene.metadata.revision;
+    let scenes = [
+        (
+            created.default_scene_node_id.as_str(),
+            b"first-scene\0\xff".as_slice(),
+            "첫 번째 장면의 검사용 원고.\n다음 문단.",
+        ),
+        (
+            second_scene.node.id.as_str(),
+            b"second-scene\0\xfe".as_slice(),
+            "두 번째 장면의 검사용 원고.",
+        ),
+    ];
+    let mut originals = Vec::new();
+    for &(scene_id, snapshot, manuscript) in &scenes {
+        revision = save_scene(SaveSceneParams {
+            file_path: path.clone(),
+            scene_id: scene_id.to_owned(),
+            editor_engine: "typie".to_owned(),
+            editor_engine_commit: "test-commit".to_owned(),
+            editor_schema_version: 1,
+            snapshot_base64: BASE64_STANDARD.encode(snapshot),
+            plain_text_recovery: manuscript.to_owned(),
+            expected_revision: Some(revision),
+            saved_by: Some("chapter-move-test".to_owned()),
+        })
+        .unwrap()
+        .metadata
+        .revision;
+        originals.push(
+            load_scene(LoadSceneParams {
+                file_path: path.clone(),
+                scene_id: scene_id.to_owned(),
+            })
+            .unwrap(),
+        );
+    }
+
+    for parent_id in ["volume-a", "volume-b", created.work_node_id.as_str()] {
+        let moved = move_tree_node(MoveTreeNodeParams {
+            file_path: path.clone(),
+            node_id: created.default_chapter_node_id.clone(),
+            new_parent_id: parent_id.to_owned(),
+            before_node_id: None,
+            after_node_id: None,
+            expected_revision: Some(revision),
+            saved_by: Some("chapter-move-test".to_owned()),
+        })
+        .unwrap();
+        revision += 1;
+        assert_eq!(moved.metadata.revision, revision);
+        assert_eq!(moved.node.parent_id.as_deref(), Some(parent_id));
+
+        open_project(OpenProjectParams {
+            file_path: path.clone(),
+        })
+        .unwrap();
+        let reopened = load_project_tree(LoadProjectTreeParams {
+            file_path: path.clone(),
+        })
+        .unwrap();
+        let chapter = reopened
+            .nodes
+            .iter()
+            .find(|node| node.id == created.default_chapter_node_id)
+            .unwrap();
+        assert_eq!(chapter.parent_id.as_deref(), Some(parent_id));
+        assert_eq!(
+            reopened
+                .nodes
+                .iter()
+                .filter(|node| node.parent_id.as_deref() == Some(chapter.id.as_str()))
+                .collect::<Vec<_>>(),
+            originals
+                .iter()
+                .map(|original| &original.scene)
+                .collect::<Vec<_>>()
+        );
+        for (original, &(scene_id, snapshot, manuscript)) in originals.iter().zip(&scenes) {
+            let loaded = load_scene(LoadSceneParams {
+                file_path: path.clone(),
+                scene_id: scene_id.to_owned(),
+            })
+            .unwrap();
+            assert_eq!(loaded.project_revision, revision);
+            assert_eq!(loaded.scene, original.scene);
+            assert_eq!(loaded.document, original.document);
+            let decoded = BASE64_STANDARD
+                .decode(&loaded.document.snapshot_base64)
+                .unwrap();
+            assert_eq!(decoded.as_slice(), snapshot);
+            assert_eq!(loaded.document.plain_text_recovery, manuscript);
+        }
+    }
+}
+
+#[test]
 fn scene_save_load_and_reopen_round_trip_preserves_binary_and_korean_text() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("scene-roundtrip.madi");

@@ -113,8 +113,25 @@ function BinderTreeNode({
   const branch = children.length > 0;
   const editing = renameDraft?.nodeId === node.id;
   const moving = moveDraft?.nodeId === node.id;
+  const moveTargetLabel = node.type === "CHAPTER" ? "권·작품 루트" : "화";
+  const moveActionLabel = node.type === "CHAPTER"
+    ? "권·작품 루트로 이동"
+    : "다른 화로 이동";
   const moveTargets = moving
-    ? sharedProps.tree.children.flatMap((child) =>
+    ? (node.type === "CHAPTER"
+      ? [
+          {
+            id: sharedProps.tree.id,
+            label: `${binderDisplayTitle(sharedProps.tree)} (작품 루트)`
+          },
+          ...sharedProps.tree.children
+            .filter((child) => child.type === "VOLUME")
+            .map((volume) => ({
+              id: volume.id,
+              label: `${binderDisplayTitle(sharedProps.tree)} / ${binderDisplayTitle(volume)}`
+            }))
+        ]
+      : sharedProps.tree.children.flatMap((child) =>
         child.type === "VOLUME"
           ? child.children.map((chapter) => ({
               id: chapter.id,
@@ -124,7 +141,7 @@ function BinderTreeNode({
               id: child.id,
               label: `${binderDisplayTitle(sharedProps.tree)} / ${binderDisplayTitle(child)}`
             }]
-      ).filter((target) => target.id !== parentId)
+      )).filter((target) => target.id !== parentId)
     : [];
 
   const submitMove = (event: FormEvent<HTMLFormElement>) => {
@@ -292,15 +309,15 @@ function BinderTreeNode({
           </>
         )}
 
-        {node.type === "SCENE" && (
+        {(node.type === "SCENE" || node.type === "CHAPTER") && (
           moving && moveDraft ? (
             <form className="binder__move-form" onSubmit={submitMove}>
               <label>
-                <span className="sr-only">{title} 이동할 화</span>
+                <span className="sr-only">{title} 이동할 {moveTargetLabel}</span>
                 <select
                   autoFocus
                   required
-                  aria-label={`${title} 이동할 화`}
+                  aria-label={`${title} 이동할 ${moveTargetLabel}`}
                   value={moveDraft.newParentId}
                   disabled={moveTargets.length === 0}
                   onChange={(event) => setMoveDraft({
@@ -310,8 +327,8 @@ function BinderTreeNode({
                 >
                   <option value="" disabled>
                     {moveTargets.length > 0
-                      ? "이동할 화 선택"
-                      : "이동할 다른 화가 없습니다"}
+                      ? `이동할 ${moveTargetLabel} 선택`
+                      : `이동할 다른 ${moveTargetLabel}가 없습니다`}
                   </option>
                   {moveTargets.map((target) => (
                     <option key={target.id} value={target.id}>
@@ -335,13 +352,13 @@ function BinderTreeNode({
           ) : (
             <button
               type="button"
-              aria-label={`${title} 다른 화로 이동`}
+              aria-label={`${title} ${moveActionLabel}`}
               onClick={() => {
                 setRenameDraft(null);
                 setMoveDraft({ nodeId: node.id, newParentId: "" });
               }}
             >
-              다른 화로 이동
+              {moveActionLabel}
             </button>
           )
         )}

@@ -2005,7 +2005,7 @@ export function App({
       });
       setTreeError("");
     } catch (error) {
-      setTreeError(error instanceof Error ? error.message : "장면 이동 실패");
+      setTreeError(error instanceof Error ? error.message : "노드 이동 실패");
     }
   };
 
