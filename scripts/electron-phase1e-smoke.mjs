@@ -71,7 +71,9 @@ const generalCanvas = {
 };
 const dragNodeId = "large-text-000";
 const dragNodeText = "결정론적 플롯 메모 0000";
-const multiSelectNodeIds = ["large-entity-012", "large-entity-013"];
+// Keep both pointer targets near the fixture center when fitView reaches minZoom
+// and the supported short window clips the outer rows of the large canvas.
+const multiSelectNodeIds = ["large-entity-137", "large-entity-138"];
 const importedCanvasName = "Phase 1E 가져온 캔버스";
 const textNodeValue = "Phase 1E Electron autosave note";
 const flushedTextNodeValue = `${textNodeValue} / switch flush`;

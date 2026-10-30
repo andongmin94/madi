@@ -2,15 +2,14 @@
 
 갱신일: 2026-10-31. 작업 위치: `main`. 현재 실행 계획은 이 문서 하나로 관리한다.
 
-## 현재 요청: Story Bible 기존 태그 이름 변경
+## 현재 요청: Windows Canvas 선택과 이동·태그 영속성 검증
 
-- 기준은 `main`의 `2eea80ebfc4077b4fec27fcd73dc77c4deb82cb7`다. 이미 구현된 `updateTag`를 Story Bible의 기존 태그 이름 입력·저장·취소에 연결한다. 태그 ID·기존 `colorToken`·entity 연결을 보존하고, 성공 응답으로 전체 태그 목록과 entity별 태그 캐시를 함께 갱신한다.
-- 기존 오류 표시와 busy 상태를 재사용한다. 저장 성공 뒤 편집 폼을 닫으며 실패하면 기존 표시와 편집 입력을 유지한다. 범위는 StoryBibleWorkspace/App/행 배치 스타일, 기존 UI/App 테스트, README 사용법과 이 계획이다. core·API·색상 편집·새 관리 프레임워크는 추가하지 않는다.
-- 최소 회귀검사는 이름 저장·빈 이름 거부·취소·실패 입력 유지, string/null 색상과 태그 ID·연결 보존, 전체 태그 표시 및 두 entity 캐시의 새 이름 검색 일치다. 기존 태그 조회는 자체 응답 때 반영해 이미 받은 옛 태그 응답이 지연된 언급 조회와 함께 이름 변경 뒤 적용되지 않도록 한다. 이 완료 순서와 선택된 설정·동일 편집기 보존을 관련 App 검사에서 확인한다.
-- 로컬의 `story-bible-workspace.test.tsx`와 `phase1c-app.test.tsx` 단독 실행 시도는 `vitest: not found`로 exit 127이며 테스트 본문은 미실행이다. 변경 diff를 확인하고 실제 테스트 결과는 정상 반영으로 시작된 기존 자동 CI에서 확인한다. 환경 제약으로 본문이 실행되지 않은 검사를 통과로 취급하지 않는다.
-- 종료 조건은 최신 원격 및 동시 변경을 보존한 정상 main 커밋, 반영 파일 재조회, 해당 자동 CI 종료 결과 확인이다. 3~5분 간격으로 조용히 확인하며 전체 gate 수동 실행·재실행은 하지 않는다.
-- Windows `41077885988`의 Story Bible 별칭 smoke 실패와 `41040699317`의 Canvas `canvas-multi-selection-1 / multi-select-node-hit-point-missing`은 별개 **미해결**이다. 이번 태그 기능으로 해결했다고 보지 않으며 동일 실패의 추가 진단·무변경 CI 재실행을 하지 않는다. 완료한 Binder·EPUBCheck 검사는 관련 변경 없이 수동 반복하지 않는다.
-- 정확한 revision의 Windows gate 통과 전까지 implementation-only다. 실제 Windows 앱의 태그 이름 변경 또는 Binder 이동→저장→종료→재열기, native 한국어 IME, HWPX 사람 서식 검수는 여전히 **미검증**이다.
+- 기준 main은 3f15877257c4e3486646fbdd926ac8d1934ce07d다. 기존 사용자 체크아웃을 수정하지 않는 별도 clone에서 Node 24.21.0/npm 12.2.0/Rust 1.97.1과 committed lock으로 npm ci를 실행했다. 앱은 소유한 비활성 Win32 desktop/BelowNormal/GPU 비활성 상태에서 순차 실행하며 합성 프로젝트만 사용했다.
+- 기존 Windows 41087011986은 desktop 735 PASS/3 skip 뒤 canvas-multi-selection-1 / multi-select-node-hit-point-missing에 실패했다. 원본 CI의 실제 viewport 수치는 없으므로 아래 로컬 재현 수치를 CI 관측값으로 대체하지 않는다. 기본 1240×820 창에서는 기존 Phase1E 전체 smoke가 PASS했다.
+- 같은 첫 선택 흐름을 1240×720 창에서 재현했다. target/stage는 존재했으며 client viewport 1227×685, flow x=-177.25/y=-144/zoom=0.15였다. stage rect=(262,337.921875,643,276.078125), 기존 첫 target rect=(552.75,307.921875,36,22.5)로 stage 위에 잘렸고 hit는 outside-stage였다. fit/안정화/선택 해제 이후의 fixture 가시성 문제이며 검색 잔류나 제품 선택 버그로 추정하지 않는다.
+- smoke의 두 ENTITY_REFERENCE target을 같은 x의 중앙 행 137/138로만 옮겼다. 제품 코드·assertion·timeout·sleep은 변경하지 않았다. 동일 1240×720 창에서 target y=450.421875/h=22.5로 target-node 적중과 실제 두 노드 선택이 PASS했다. 제품 최소 880×620 창에서도 stage=(212,337.921875,333,176.078125), target y=400.421875/h=22.5, zoom=0.15로 두 target-node 적중·실제 선택이 PASS했다.
+- 합성 원고의 실제 앱 UI에서 장면→다른 화, 화→다른 권, 화→작품 직속 이동을 실행했다. 3회 앱 실행/정상 창 종료/자연 wrapper exit 0을 확인했다. 부모/문서 ID와 입력 원문은 이동 직후·두 재열기 UI 및 두 종료 후 core 조회에서 확인했다. snapshot bytes는 첫 이동·종료 후 값을 기준으로 두 번째 화 이동·종료 후 값과 정확히 일치했다. 기존 태그 2개의 이름 변경 후 ID/string·null 색상/2 entity 연결과 목록·entity cache·새/옛 이름 검색을 첫 실행에서 확인했고, 두 재열기에서 두 entity의 새 태그 이름·연결을 다시 확인했다. 별칭 추가 후 입력 비움·삭제 버튼·삭제도 PASS해 이전 별칭 실패는 이번 흐름에서 재현되지 않았다. 외부 runtime 요청 0/page error 0.
+- 관련 Story Bible/App/Binder UI 29개와 최종 묶음의 desktop 102파일/738검사, 타입, Rust/core/Typie/통합, bundle 4검사, 개발 Electron의 Phase1E 전체·Reader·EPUB smoke는 실제 Windows에서 PASS했다. 단일 npm run verify는 HWPX normal-export-reopen 출력 뒤 도구 호출 중단 직후 세션 핸들이 사라졌고, 기존 runner/app/core 프로세스 종료를 확인했다. 정상 종료 코드와 HWPX 완료 결과가 없으므로 전체 gate PASS나 HWPX assertion FAIL로 판정하지 않는다. pretest:package 및 unpacked package/packaged smoke에는 도달하지 않았으며 중복 전체 실행은 하지 않았다. 최종 repository/format/diff 검사도 PASS했다. 원격 main 반영은 자동 승인 검토에서 외부 저장소 변경의 구체적인 사용자 승인 부족으로 거부됐으며 실행되지 않았다. 승인 전 정상 push와 새 SHA의 자동 CI는 대기다. 정확한 SHA의 Windows gate는 여전히 acceptance 대기다. native 한국어 IME·HWPX 사람 layout·배포 허가는 이번 검증 범위가 아니다.
 
 ## 2026-10-08 자동작업 완료 상태
 
