@@ -161,6 +161,7 @@ function summarizeError(error) {
     "five-pointer-drags-did-not-move-node",
     "regular canvas edge create",
     "regular canvas edge delete",
+    "edge-pointer-zoom-not-stable",
   ].find((id) =>
     [id, `${id} timed out`].some(
       (prefix) => error.message === prefix || error.message.startsWith(`${prefix}: `),
@@ -1441,14 +1442,66 @@ async function createAndDeleteRegularEdge(page) {
   const target = page.locator(
     `.react-flow__node[data-id="${regularEdgeTargetId}"] [data-handleid="target-left"]`,
   );
-  const [sourceBounds, targetBounds] = await Promise.all([
+  const [beforeSource, beforeTarget] = await Promise.all([
     source.boundingBox(),
     target.boundingBox(),
   ]);
-  verify(Boolean(sourceBounds) && Boolean(targetBounds), "edge-handle-bounds-missing", {
-    sourcePresent: Boolean(sourceBounds),
-    targetPresent: Boolean(targetBounds),
+  verify(Boolean(beforeSource) && Boolean(beforeTarget), "edge-handle-bounds-missing", {
+    sourcePresent: Boolean(beforeSource),
+    targetPresent: Boolean(beforeTarget),
   });
+  const readViewport = () =>
+    page.locator(".react-flow__viewport").evaluate((element) => {
+      const matrix = new DOMMatrix(getComputedStyle(element).transform);
+      return {
+        x: matrix.e,
+        y: matrix.f,
+        zoom: matrix.a,
+        width: innerWidth,
+        height: innerHeight,
+      };
+    });
+  const stageBounds = await page.locator(".plot-canvas-stage").boundingBox();
+  reportStage(`regular-edge-before-zoom ${JSON.stringify({
+    source: beforeSource,
+    target: beforeTarget,
+    stage: stageBounds,
+    viewport: await readViewport(),
+  })}`);
+  // Fit can leave connection handles only a pixel wide. Use the real wheel UI
+  // around the source, then measure both targets again before the pointer drag.
+  await page.mouse.move(
+    beforeSource.x + beforeSource.width / 2,
+    beforeSource.y + beforeSource.height / 2,
+  );
+  await page.mouse.wheel(0, -1200);
+  let previousGeometry = "";
+  let stableObservationCount = 0;
+  const { sourceBounds, targetBounds } = await poll(async () => {
+    const [currentSource, currentTarget] = await Promise.all([
+      source.boundingBox(),
+      target.boundingBox(),
+    ]);
+    if (
+      !currentSource || !currentTarget ||
+      Math.min(
+        currentSource.width,
+        currentSource.height,
+        currentTarget.width,
+        currentTarget.height,
+      ) < 4
+    ) {
+      previousGeometry = "";
+      stableObservationCount = 0;
+      return null;
+    }
+    const geometry = JSON.stringify([currentSource, currentTarget]);
+    stableObservationCount = geometry === previousGeometry ? stableObservationCount + 1 : 1;
+    previousGeometry = geometry;
+    return stableObservationCount >= 4
+      ? { sourceBounds: currentSource, targetBounds: currentTarget }
+      : null;
+  }, "edge-pointer-zoom-not-stable", 10_000);
   const from = {
     x: sourceBounds.x + sourceBounds.width / 2,
     y: sourceBounds.y + sourceBounds.height / 2,
@@ -1475,6 +1528,14 @@ async function createAndDeleteRegularEdge(page) {
     handleHits,
   );
 
+  reportStage(`regular-edge-pointer-ready ${JSON.stringify({
+    source: sourceBounds,
+    target: targetBounds,
+    stage: stageBounds,
+    viewport: await readViewport(),
+    from,
+    to,
+  })}`);
   const workspace = page.locator('[data-testid="plot-canvas-workspace"]');
   const startedAt = performance.now();
   await page.mouse.move(from.x, from.y);
