@@ -350,7 +350,6 @@ export function StoryBibleWorkspace({
     setSummaryDraft(selected?.summary ?? "");
     setColorDraft(selected?.colorToken ?? "");
     setIconDraft(selected?.iconKey ?? "");
-    setAliasDraft("");
     setRelationTargetId("");
     setRelationTargetQuery("");
     setRelationNote("");
@@ -358,6 +357,10 @@ export function StoryBibleWorkspace({
     setEditingRelationDirection(null);
     setDeleteImpact(null);
   }, [selected?.id, selected?.updatedAt]);
+
+  useEffect(() => {
+    setAliasDraft("");
+  }, [selected?.id]);
 
   useEffect(() => {
     if (!relationTypeId && relationTypes[0]) {

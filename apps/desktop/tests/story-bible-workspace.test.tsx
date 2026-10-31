@@ -315,6 +315,58 @@ describe("Phase 1C Story Bible workspace", () => {
     expect(onSetTags).not.toHaveBeenCalled();
   });
 
+  it("preserves an alias draft across entity updates and clears it after submission or selection changes", async () => {
+    const onAddAlias = vi.fn(async () => {});
+    const initialProps = props({ onAddAlias });
+    const rendered = render(<StoryBibleWorkspace {...initialProps} />);
+    const aliasInput = screen.getByRole("textbox", {
+      name: "새 별칭"
+    }) as HTMLInputElement;
+    const addAliasButton = screen.getByRole("button", {
+      name: "별칭 추가"
+    }) as HTMLButtonElement;
+    const draft = "새 별칭 초안";
+
+    fireEvent.change(aliasInput, { target: { value: draft } });
+    const refreshedEntities = initialProps.entities.map((item) =>
+      item.id === leia.id
+        ? {
+            ...item,
+            summary: "저장 응답으로 갱신된 요약",
+            updatedAt: "2026-08-02T00:00:01.000Z"
+          }
+        : item
+    );
+    rendered.rerender(
+      <StoryBibleWorkspace {...initialProps} entities={refreshedEntities} />
+    );
+
+    expect(aliasInput.value).toBe(draft);
+    expect(addAliasButton.disabled).toBe(false);
+    expect(onAddAlias).not.toHaveBeenCalled();
+
+    fireEvent.click(addAliasButton);
+    expect(onAddAlias).toHaveBeenCalledWith(leia.id, draft);
+    await waitFor(() => expect(aliasInput.value).toBe(""));
+    expect(addAliasButton.disabled).toBe(true);
+
+    fireEvent.change(aliasInput, { target: { value: draft } });
+    rendered.rerender(
+      <StoryBibleWorkspace
+        {...initialProps}
+        entities={refreshedEntities}
+        selectedEntityId={serina.id}
+      />
+    );
+    expect(
+      (screen.getByRole("textbox", { name: "새 별칭" }) as HTMLInputElement).value
+    ).toBe("");
+    expect(
+      (screen.getByRole("button", { name: "별칭 추가" }) as HTMLButtonElement).disabled
+    ).toBe(true);
+    expect(onAddAlias).toHaveBeenCalledTimes(1);
+  });
+
   it("edits aliases, tags, directed/inverse relations and mention promotion", async () => {
     const onAddAlias = vi.fn();
     const onDeleteAlias = vi.fn();

@@ -18,6 +18,10 @@
 - 제품의 onConnect는 유효 endpoint와 용량만 확인하며 이 fixture는 201번째 연결선이 허용되는 상태다. 연결선 smoke만 실제 휠 UI로 source 핸들 주변을 확대하고, 두 핸들의 실제 client rect가 가로·세로 4px 이상이면서 4회 안정된 뒤 좌표를 다시 구해 같은 pointer 드래그를 수행한다. lock의 React Flow 12.11.2/system 0.0.79/d3-zoom 3.0.0 공식 소스에서 포인터 중심 휠 의미를 확인했지만 실제 zoom·사각형은 CI 측정값으로만 판단한다. 확대 전후 source/target/stage rect와 numeric viewport·pointer 좌표만 로그로 남긴다. 작은 핸들이 정확한 원인이었다고 미리 확정하지 않는다.
 - 기존 hit 검사·실제 12-step pointer gesture·201 생성→200 삭제·autosave·선택 검증은 유지한다. 제품은 바꾸지 않고 기존 생성/삭제의 10초 timeout을 유지한다. 고정 sleep·내부 상태 주입·반복 연결 시도는 추가하지 않는다. 현재 로컬 컴퓨터 연결이 없어 새 수정의 로컬 실행 성공을 주장하지 않고 정상 main 반영·파일 재조회 뒤 자동 CI에서 실제 동작을 확인한다. 이전 통과 검사는 무변경 반복하지 않는다. 기존 로컬 증거는 각 revision 범위로 유지하며 native 한국어 IME·HWPX 사람 layout·공개 배포 허가는 별도다.
 
+- 75b5fff의 Quality 41183544334는 32파일/219검사·repository/typecheck PASS다. Windows 41183544319는 desktop 735 PASS/3 skip·bundle 4 PASS 뒤 basic smoke 3005행의 별칭 추가 button.click에서 TimeoutError(messageLength=762)로 FAIL했다. 별칭 추가 후 확인 poll과 Canvas에는 도달하지 않았으며 연결선 확대 수정의 실행 결과도 이 CI로 확인할 수 없다. 패키지·후속 repository 검사는 skipped다. 원문 actionability 로그가 없어 이 클릭 timeout의 세부 원인을 확정하지 않는다.
+- Story Bible의 동일 엔터티 updatedAt 응답이 별칭 초안을 비우는 별도 제품 경로를 회귀 검사로 재현했다(기존 코드에서 신규 1 FAIL/기존 8 PASS). alias 초기화만 엔터티 ID 변경 effect로 옮겨 같은 엔터티 저장 응답에서 초안을 보존한다. 기존 추가 성공 후 초기화·다른 엔터티 선택 시 초기화는 유지하며 관련 9검사·desktop typecheck·renderer build는 PASS했다. timeout·sleep·기존 assertion은 바꾸지 않는다.
+- 연결 복구 뒤 깨끗한 로컬 main을 337021b에서 75b5fff로 정상 fast-forward했다. 진행 중이던 CI를 중복 실행하지 않았고, 종료 뒤 관련 basic Electron 전체 흐름과 연결선 생성/삭제까지의 표적 Phase1E만 기존 비활성 Win32 desktop runner에서 순차 PASS했다. basic은 별칭 추가·입력 초기화와 재열기, Graph 재진입·재열기까지 확인했고 외부 runtime 요청 0이다. 연결선은 실제 zoom 0.15→0.791705, 핸들 약 1.2px→6.33px에서 기존 hit 검사·12-step pointer·201 생성→200 삭제·선택·autosave 검증을 통과했다. host exit 0/desktopInactive=true/소유 잔여 프로세스 0이며 repository/format/diff 검사도 PASS했다. 이 표적 실행의 후속 Canvas export/reopen·현재 수정의 packaged 검사는 실행하지 않았다. 정확한 CI actionability 원인과 초안 소실 재현을 구분하며 제품 기능 확대·전체 무결성 작업은 하지 않는다.
+
 ## 2026-10-08 자동작업 완료 상태
 
 `neobrutal-ui`의 원본 기본 Mono 테마를 적용했고 자동 작업을 완료했다. 검증한 제품 source는 `d96bd0f50e45c9e999cd360a58e2c49d9a6b047c`다.
