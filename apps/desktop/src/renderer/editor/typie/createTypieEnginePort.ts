@@ -172,6 +172,7 @@ class BrowserTypieEnginePort implements TypieEnginePort {
   private readonly canvases = new Map<number, HTMLCanvasElement>();
   private input: HTMLTextAreaElement | undefined;
   private resizeObserver: ResizeObserver | undefined;
+  private resizeFrame: number | undefined;
   private readonly attachedSurfaceSizes = new Map<
     number,
     { readonly width: number; readonly height: number; readonly scale: number }
@@ -241,24 +242,31 @@ class BrowserTypieEnginePort implements TypieEnginePort {
     this.installInputHandlers(input);
 
     this.resizeObserver = new ResizeObserver(() => {
-      if (!this.editor || !this.mountElement) {
+      if (this.resizeFrame !== undefined) {
         return;
       }
-      const viewport = this.readViewport();
-      this.dispatch(
-        [
-          {
-            type: "system",
-            event: {
-              type: "resize",
-              width: viewport.width,
-              height: viewport.height,
-              scale_factor: viewport.scale_factor
+      // Canvas sizing can resize the observed mount; apply it after delivery.
+      this.resizeFrame = window.requestAnimationFrame(() => {
+        this.resizeFrame = undefined;
+        if (!this.editor || !this.mountElement) {
+          return;
+        }
+        const viewport = this.readViewport();
+        this.dispatch(
+          [
+            {
+              type: "system",
+              event: {
+                type: "resize",
+                width: viewport.width,
+                height: viewport.height,
+                scale_factor: viewport.scale_factor
+              }
             }
-          }
-        ],
-        null
-      );
+          ],
+          null
+        );
+      });
     });
     this.resizeObserver.observe(element);
   }
@@ -275,6 +283,10 @@ class BrowserTypieEnginePort implements TypieEnginePort {
 
     previous.classList.remove("typie-editor-mount--active");
     this.resizeObserver?.disconnect();
+    if (this.resizeFrame !== undefined) {
+      window.cancelAnimationFrame(this.resizeFrame);
+      this.resizeFrame = undefined;
+    }
     element.replaceChildren(surface);
     element.classList.add("typie-editor-mount--active");
     this.mountElement = element;

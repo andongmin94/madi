@@ -502,7 +502,7 @@ async function launchApplication({ projectPath, userDataPath }) {
         const allowedTags = new Set(["IMG", "LINK", "SCRIPT", "IFRAME", "VIDEO", "AUDIO"]);
         report({
           source: "window.error",
-          error: summarize(event.error),
+          error: summarize(event.error ?? event.message),
           messageLength: event.message.length,
           targetIsWindow: event.target === window,
           targetTag: allowedTags.has(tag) ? tag : tag ? "OTHER" : "",
@@ -2715,10 +2715,12 @@ async function runNormalScenario({ fixture, projectPath, userDataPath }) {
         ),
       },
     );
+    reportStage("normal-before-close-screenshot");
     await mkdir(artifactDirectory, { recursive: true });
     await firstRun.page.screenshot({ path: normalScreenshotPath, fullPage: true });
     const memoryAfter = sampleApplicationMemory(firstRun.application);
     const firstSecurity = securityEvidence(firstRun);
+    reportStage("normal-before-close-security");
     assertSecurity(firstSecurity);
     reportStage("normal-close");
     await closeWindowCleanly(firstRun);
