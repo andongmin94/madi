@@ -159,6 +159,8 @@ function summarizeError(error) {
     "actual pointer node drag",
     "drag-autosave-never-dirty",
     "five-pointer-drags-did-not-move-node",
+    "regular canvas edge create",
+    "regular canvas edge delete",
   ].find((id) =>
     [id, `${id} timed out`].some(
       (prefix) => error.message === prefix || error.message.startsWith(`${prefix}: `),
@@ -2543,6 +2545,9 @@ async function runSmoke() {
                       selectedNodeCount: workspace.querySelectorAll(
                         ".react-flow__node.selected",
                       ).length,
+                      selectedEdgeCount: workspace.querySelectorAll(
+                        ".react-flow__edge.selected",
+                      ).length,
                     }
                   : null;
               })(),
@@ -2560,7 +2565,14 @@ async function runSmoke() {
       "utf8",
     );
     throw new Error(
-      `phase1e-smoke-failed: ${JSON.stringify({ stage: currentStage, ...summarizeError(error) })}`,
+      `phase1e-smoke-failed: ${JSON.stringify({
+        stage: currentStage,
+        ...summarizeError(error),
+        nodeCount: failureEvidence.renderer?.workspace?.nodeCount ?? null,
+        edgeCount: failureEvidence.renderer?.workspace?.edgeCount ?? null,
+        selectedNodeCount: failureEvidence.renderer?.workspace?.selectedNodeCount ?? null,
+        selectedEdgeCount: failureEvidence.renderer?.workspace?.selectedEdgeCount ?? null,
+      })}`,
     );
   } finally {
     if (firstRun) {
