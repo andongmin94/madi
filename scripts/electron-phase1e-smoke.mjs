@@ -79,8 +79,8 @@ const textNodeValue = "Phase 1E Electron autosave note";
 const flushedTextNodeValue = `${textNodeValue} / switch flush`;
 const snapshotName = "Phase 1E actual checkpoint";
 const snapshotMutationValue = "Phase 1E snapshot mutation";
-const regularEdgeSourceId = "general-00-entity-012";
-const regularEdgeTargetId = "general-00-entity-013";
+const regularEdgeSourceId = "general-00-entity-004";
+const regularEdgeTargetId = "general-00-entity-005";
 const measurementRuns = 5;
 const privateContentFragments = [
   "결정론적 플롯 메모",
