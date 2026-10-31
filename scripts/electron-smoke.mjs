@@ -3657,6 +3657,11 @@ try {
       exact: true
     })
     .click();
+  // The linked scene can already be selected in Binder while its async mode
+  // transition is still pending; wait for manuscript mode before re-entering.
+  await firstPage
+    .getByRole("button", { name: "원고", exact: true, pressed: true })
+    .waitFor({ state: "visible", timeout: 30_000 });
   await pageWaitForSelectedBinderRow(firstPage, sceneThreeId);
   const sceneNavigation =
     (await binderRowById(firstPage, sceneThreeId).getAttribute("aria-selected")) ===
